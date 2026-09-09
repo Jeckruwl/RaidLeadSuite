@@ -108,12 +108,6 @@ function CFG:SubtabsFor(key)
             { key = "window", label = "Finestra" },
             { key = "debug", label = "Debug" },
         }
-    elseif key == "macrobar" then
-        return {
-            { key = "preraid", label = "Pre-raid" },
-            { key = "preboss", label = "Pre-boss" },
-            { key = "infight", label = "In-fight" },
-        }
     elseif key == "raidframe" then
         return {
             { key = "layout", label = "Layout" },
@@ -946,12 +940,11 @@ function CFG:PanelScale(key, title)
     self:AddSlider("Scala", 0.70, 1.30, 0.05, function() return L.scale end, function(v) L.scale = v end, 220)
 end
 
-function CFG:RestoreMacroBar(phase)
+function CFG:RestoreMacroBar()
     if RLSuite.macrobar and RLSuite.macrobar.EnsurePhases then
         RLSuite.macrobar:EnsurePhases()
     end
-    phase = phase or "preraid"
-    local mb = RLSuiteDB.macrobar.phases[phase]
+    local mb = RLSuiteDB.macrobar
     mb.enabled = true
     mb.locked = false
     mb.backdrop = true
@@ -972,22 +965,19 @@ function CFG:RestoreMacroBar(phase)
     mb.visibility = ""
     mb.keybinds = {}
     if RLSuite.macrobar and RLSuite.macrobar.frame then
-        if (RLSuite.context or "preraid") == phase then
-            RLSuite.macrobar.frame:ClearAllPoints()
-            RLSuite.macrobar.frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 4, 4)
-        end
+        RLSuite.macrobar.frame:ClearAllPoints()
+        RLSuite.macrobar.frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 4, 4)
     end
     self:ApplyAll()
     self:RebuildPanel()
 end
 
-function CFG:PanelMacroLayout(phase)
+function CFG:PanelMacroLayout()
     self.db = RLSuiteDB
     if RLSuite.macrobar and RLSuite.macrobar.EnsurePhases then
         RLSuite.macrobar:EnsurePhases()
     end
-    phase = phase or "preraid"
-    local mb = RLSuiteDB.macrobar.phases[phase]
+    local mb = RLSuiteDB.macrobar
     mb.buttons = mb.buttons or 12
     mb.columns = mb.columns or 12
     mb.buttonSize = mb.buttonSize or 32
@@ -1000,18 +990,17 @@ function CFG:PanelMacroLayout(phase)
     mb.actionPaging = mb.actionPaging or ""
     mb.visibility = mb.visibility or ""
 
-    local labels = { preraid = "Pre-raid", preboss = "Pre-boss", infight = "In-fight" }
-    self:Header("Macrobar — " .. (labels[phase] or phase))
-    self:Note("I bottoni visibili sulla HUD sono tanti quante le macro compilate in questa fase.")
+    self:Header("Macrobar")
+    self:Note("I bottoni visibili sulla HUD sono tanti quante le macro compilate nella fase corrente.")
 
     local c1, c2, c3 = self:Row3(26)
     self:CellCheck(c1, "Enable", function() return mb.enabled ~= false end, function(v) mb.enabled = v end)
     self:CellCheck(c2, "Lock", function() return mb.locked end, function(v) mb.locked = v end)
     self:CellTwoButtons(c3, "Restore Bar", function()
-        self:RestoreMacroBar(phase)
+        self:RestoreMacroBar()
     end, "Keybind", function()
         if RLSuite.macrobar and RLSuite.macrobar.OpenKeybindUI then
-            RLSuite.macrobar:OpenKeybindUI(phase)
+            RLSuite.macrobar:OpenKeybindUI()
         end
     end)
 

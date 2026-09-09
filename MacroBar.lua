@@ -217,44 +217,33 @@ function MB:EnsurePhases()
     local db = self:DB() or (RLSuiteDB and RLSuiteDB.macrobar)
     if not db then return end
     self.db = db
-    db.phases = db.phases or {}
     local defs = self:PhaseDefaults()
-    for _, phase in ipairs(self.phaseList) do
-        local p = db.phases[phase]
-        if not p then
-            p = {}
-            db.phases[phase] = p
-            for k, def in pairs(defs) do
-                if k == "keybinds" then
-                    p.keybinds = RLSuite.utils:CopyTable(db.keybinds or {})
-                elseif db[k] ~= nil then
-                    p[k] = db[k]
-                else
-                    p[k] = def
-                end
-            end
-        else
-            for k, def in pairs(defs) do
-                if p[k] == nil then
-                    if k == "keybinds" then
-                        p[k] = {}
-                    else
-                        p[k] = def
-                    end
+    if db.phases then
+        local src = db.phases.preraid or db.phases.preboss or db.phases.infight
+        if src then
+            for k, _ in pairs(defs) do
+                if src[k] ~= nil then
+                    db[k] = src[k]
                 end
             end
         end
-        p.keybinds = p.keybinds or {}
+        db.phases = nil
     end
+    for k, def in pairs(defs) do
+        if db[k] == nil then
+            if k == "keybinds" then
+                db[k] = {}
+            else
+                db[k] = def
+            end
+        end
+    end
+    db.keybinds = db.keybinds or {}
 end
 
 function MB:PhaseSettings(phase)
     self:EnsurePhases()
-    phase = phase or RLSuite.context or "preraid"
-    if not self.db.phases[phase] then
-        phase = "preraid"
-    end
-    return self.db.phases[phase]
+    return self.db
 end
 
 function MB:ApplyLayout()
@@ -814,7 +803,7 @@ function MB:BindingFromKey(key)
 end
 
 function MB:OpenKeybindUI(phase)
-    self.bindPhase = phase or RLSuite.context or "preraid"
+    self.bindPhase = nil
     if self.bindFrame then
         self.bindFrame:Show()
         self:RefreshKeybindUI()
@@ -915,8 +904,7 @@ function MB:RefreshKeybindUI()
     local p = self:PhaseSettings(self.bindPhase)
     local binds = (p and p.keybinds) or {}
     if self.bindTitle then
-        local labels = { preraid = "Pre-raid", preboss = "Pre-boss", infight = "In-fight" }
-        self.bindTitle:SetText("Keybinds — " .. (labels[self.bindPhase or "preraid"] or ""))
+        self.bindTitle:SetText("Macrobar Keybinds")
     end
     for i, row in ipairs(self.bindRows) do
         local key = binds[i]
