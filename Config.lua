@@ -60,7 +60,6 @@ function CFG:CreateFrame()
 
     self.categories = {
         { key = "general",     label = "General" },
-        { key = "main",        label = "Finestra" },
         { key = "groupmaking", label = "Groupmaking" },
         { key = "whisplist",   label = "Whisplist" },
         { key = "macrobar",    label = "Macrobar" },
@@ -106,6 +105,7 @@ function CFG:SubtabsFor(key)
         return {
             { key = "look", label = "Aspetto" },
             { key = "font", label = "Font" },
+            { key = "window", label = "Finestra" },
         }
     elseif key == "macrobar" then
         return {
@@ -172,7 +172,7 @@ function CFG:RebuildPanel()
         self:PanelGeneralLook()
     elseif cat == "general" and sub == "font" then
         self:PanelGeneralFont()
-    elseif cat == "main" then
+    elseif cat == "general" and sub == "window" then
         self:PanelMain()
     elseif cat == "groupmaking" then
         self:PanelScale("groupmaking", "Groupmaking")
@@ -213,7 +213,20 @@ function CFG:Note(text)
     return fs
 end
 
-function CFG:AddSlider(label, minV, maxV, step, getValue, setValue)
+function CFG:SnapSlider(val, minV, maxV, step)
+    if val < minV then val = minV end
+    if val > maxV then val = maxV end
+    if not step or step <= 0 then return val end
+    val = math.floor((val / step) + 0.5) * step
+    if val < minV then val = minV end
+    if val > maxV then val = maxV end
+    if step >= 1 then
+        return math.floor(val + 0.5)
+    end
+    return tonumber(string.format("%.2f", val))
+end
+
+function CFG:AddSlider(label, minV, maxV, step, getValue, setValue, sliderWidth)
     local y = self:NextY(36)
     local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
@@ -221,25 +234,68 @@ function CFG:AddSlider(label, minV, maxV, step, getValue, setValue)
 
     self.widgetId = self.widgetId + 1
     local sl = CreateFrame("Slider", "RLSuiteCfgSlider" .. self.widgetId, self.content, "OptionsSliderTemplate")
-    sl:SetSize(200, 16)
+    sl:SetSize(sliderWidth or 200, 16)
     sl:SetPoint("LEFT", fs, "LEFT", 150, 0)
     sl:SetMinMaxValues(minV, maxV)
     sl:SetValueStep(step)
-    sl:SetValue(getValue())
     getglobal(sl:GetName() .. "Low"):SetText(tostring(minV))
     getglobal(sl:GetName() .. "High"):SetText(tostring(maxV))
-    local valFS = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    valFS:SetPoint("LEFT", sl, "RIGHT", 8, 0)
+
+    local edit = CreateFrame("EditBox", "RLSuiteCfgSliderEdit" .. self.widgetId, self.content, "InputBoxTemplate")
+    edit:SetSize(48, 18)
+    edit:SetPoint("LEFT", sl, "RIGHT", 12, 0)
+    edit:SetAutoFocus(false)
+    edit:SetMaxLetters(6)
+    if step >= 1 then
+        edit:SetNumeric(true)
+    end
+
     local function fmt(v)
         if step < 1 then return string.format("%.2f", v) end
         return tostring(math.floor(v + 0.5))
     end
-    valFS:SetText(fmt(getValue()))
-    sl:SetScript("OnValueChanged", function(s, val)
-        if step >= 1 then val = math.floor(val + 0.5) end
+
+    local applying = false
+    local function commit(val, fromEdit)
+        val = self:SnapSlider(val, minV, maxV, step)
+        applying = true
+        sl:SetValue(val)
+        applying = false
         setValue(val)
-        valFS:SetText(fmt(val))
+        edit:SetText(fmt(val))
+        if fromEdit then edit:ClearFocus() end
         self:ApplyAll()
+        return val
+    end
+
+    sl:SetValue(getValue())
+    edit:SetText(fmt(getValue()))
+
+    sl:SetScript("OnValueChanged", function(s, val)
+        if applying then return end
+        commit(val, false)
+    end)
+
+    edit:SetScript("OnEnterPressed", function(s)
+        local val = tonumber(s:GetText())
+        if not val then
+            s:SetText(fmt(getValue()))
+            s:ClearFocus()
+            return
+        end
+        commit(val, true)
+    end)
+    edit:SetScript("OnEscapePressed", function(s)
+        s:SetText(fmt(getValue()))
+        s:ClearFocus()
+    end)
+    edit:SetScript("OnEditFocusLost", function(s)
+        local val = tonumber(s:GetText())
+        if not val then
+            s:SetText(fmt(getValue()))
+            return
+        end
+        commit(val, false)
     end)
     return sl
 end
@@ -375,16 +431,16 @@ function CFG:PanelMain()
     L.height = L.height or 700
     L.scale = L.scale or 1
     self:Header("Finestra principale")
-    self:AddSlider("Larghezza", 500, 900, 10, function() return L.width end, function(v) L.width = v end)
-    self:AddSlider("Altezza", 500, 900, 10, function() return L.height end, function(v) L.height = v end)
-    self:AddSlider("Scala", 0.6, 1.5, 0.05, function() return L.scale end, function(v) L.scale = v end)
+    self:AddSlider("Larghezza", 500, 900, 20, function() return L.width end, function(v) L.width = v end, 220)
+    self:AddSlider("Altezza", 500, 900, 20, function() return L.height end, function(v) L.height = v end, 220)
+    self:AddSlider("Scala", 0.70, 1.30, 0.05, function() return L.scale end, function(v) L.scale = v end, 220)
 end
 
 function CFG:PanelScale(key, title)
     local L = self:Layout(key)
     L.scale = L.scale or 1
     self:Header(title)
-    self:AddSlider("Scala", 0.6, 1.5, 0.05, function() return L.scale end, function(v) L.scale = v end)
+    self:AddSlider("Scala", 0.70, 1.30, 0.05, function() return L.scale end, function(v) L.scale = v end, 220)
 end
 
 function CFG:PanelMacroLayout()
@@ -400,7 +456,7 @@ function CFG:PanelMacroLayout()
     self:AddSlider("Colonne", 3, 12, 1, function() return mb.columns end, function(v) mb.columns = v end)
     self:AddSlider("Dimensione bottone", 24, 48, 1, function() return mb.buttonSize end, function(v) mb.buttonSize = v end)
     self:AddSlider("Spaziatura", 0, 12, 1, function() return mb.spacing end, function(v) mb.spacing = v end)
-    self:AddSlider("Scala", 0.5, 2.0, 0.05, function() return mb.scale end, function(v) mb.scale = v end)
+    self:AddSlider("Scala", 0.70, 1.50, 0.05, function() return mb.scale end, function(v) mb.scale = v end, 220)
 end
 
 function CFG:PanelMacroPos()
@@ -427,10 +483,10 @@ function CFG:PanelRaidLayout()
     rf.width = rf.width or 350
     rf.scale = rf.scale or 1
     self:Header("Raid Frame — layout HUD")
-    self:AddSlider("Larghezza", 220, 500, 10, function() return rf.width end, function(v) rf.width = v end)
+    self:AddSlider("Larghezza", 220, 500, 20, function() return rf.width end, function(v) rf.width = v end, 220)
     self:AddSlider("Altezza barra HP", 12, 32, 1, function() return rf.appearance.barHeight or 20 end, function(v) rf.appearance.barHeight = v end)
     self:AddSlider("Dimensione icone", 10, 24, 1, function() return rf.appearance.iconSize or 16 end, function(v) rf.appearance.iconSize = v end)
-    self:AddSlider("Scala", 0.5, 2.0, 0.05, function() return rf.scale end, function(v) rf.scale = v end)
+    self:AddSlider("Scala", 0.70, 1.50, 0.05, function() return rf.scale end, function(v) rf.scale = v end, 220)
 end
 
 function CFG:PanelRaidPos()
