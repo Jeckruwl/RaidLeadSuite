@@ -29,6 +29,10 @@ function GM:Init()
 end
 
 function GM:Toggle()
+    if RLSuite.mainWindow and RLSuite.mainWindow.ShowTab then
+        RLSuite.mainWindow:ShowTab("group")
+        return
+    end
     if self.mainFrame and self.mainFrame:IsShown() then
         self.mainFrame:Hide()
     elseif self.mainFrame then
@@ -57,6 +61,7 @@ function GM:CreateMainWindow()
     })
     f:Hide()
     self.mainFrame = f
+    RLSuite.utils:SkinFrame(f)
 
     -- Titolo
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -162,9 +167,9 @@ function GM:CreateMainWindow()
     self.previewText:SetText("Anteprima messaggio...")
 
     -- Close
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
-    closeBtn:SetScript("OnClick", function() f:Hide() end)
+    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
+    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 
     -- ORA posso chiamare BuildCompSlots e BuildClassBar (previewText esiste)
     self:BuildCompSlots()
@@ -570,6 +575,7 @@ function GM:CreateWhisplistWindow()
     })
     f:Hide()
     self.whisplistFrame = f
+    RLSuite.utils:SkinFrame(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -12)
@@ -655,9 +661,9 @@ function GM:CreateWhisplistWindow()
     customLabel:SetPoint("BOTTOMLEFT", self.wlCustomMsg, "TOPLEFT", 0, 2)
     customLabel:SetText("Custom msg (Enter per inviare):")
 
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
-    closeBtn:SetScript("OnClick", function() f:Hide() end)
+    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
+    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 end
 
 function GM:BuildWLCompSlots()
@@ -685,6 +691,10 @@ function GM:BuildWLCompSlots()
 end
 
 function GM:ToggleWhisplist()
+    if RLSuite.mainWindow and RLSuite.mainWindow.ShowTab then
+        RLSuite.mainWindow:ShowTab("whisplist")
+        return
+    end
     if self.whisplistFrame and self.whisplistFrame:IsShown() then
         self.whisplistFrame:Hide()
     elseif self.whisplistFrame then

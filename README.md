@@ -2,7 +2,7 @@
 
 Addon per **raid leader** su World of Warcraft **Wrath of the Lich King 3.3.5** (Interface `30300`), pensato per **Warmane Lordaeron**.
 
-Versione: **1.1.0**
+Versione: **1.2.0**
 
 ## Installazione
 
@@ -34,14 +34,21 @@ Se lasci il nome `RaidLeadSuite` (clone GitHub senza rinomina), è comunque supp
 
 ## Comandi
 
+`/rls help` stampa l’elenco in chat.
+
 | Comando | Finestra |
 |---|---|
-| `/rls` o `/rlsuite` | Finestra principale (profilo raid, macro, config) |
-| `/rls group` | Group making (comp, spam LFG, whisplist) |
-| `/rls macrobar` | Barra macro per fase + pull timer |
-| `/rls ms` | MS Change Manager |
-| `/rls loot` | Loot Manager (history, roll MS/OS) |
-| `/rls config` | Aspetto, scala macrobar, import/export |
+| `/rls` o `/rlsuite` | Finestra principale (tutte le tab) |
+| `/rls help` | Elenco comandi |
+| `/rls group` | Tab Groupmaking |
+| `/rls whisplist` | Tab Whisplist |
+| `/rls macro` | Tab editor Macrobar |
+| `/rls macrobar` | HUD MacroBar (pull / ready) |
+| `/rls raidframe` | Tab impostazioni Raid Frame |
+| `/rls rfhud` | HUD Raid Frame |
+| `/rls ms` | Tab MS Manager |
+| `/rls loot` | Tab Loot Manager |
+| `/rls config` | Tab Config |
 
 ## Moduli
 

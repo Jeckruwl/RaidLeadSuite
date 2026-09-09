@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.1.0"
+RLSuite.version = "1.2.0"
 
 local defaults = {
     profile = "",
@@ -261,21 +261,52 @@ frame:SetScript("OnEvent", function(self, event, ...)
     end
 end)
 
+function RLSuite:PrintHelp()
+    local p = function(t) self.utils:Print(t) end
+    p("Comandi disponibili:")
+    p("  /rls              Finestra principale")
+    p("  /rls help         Questo elenco")
+    p("  /rls group        Tab Groupmaking")
+    p("  /rls whisplist    Tab Whisplist")
+    p("  /rls macro        Tab Macrobar (editor)")
+    p("  /rls macrobar     HUD MacroBar")
+    p("  /rls raidframe    Tab Raid Frame (impostazioni)")
+    p("  /rls rfhud        HUD Raid Frame")
+    p("  /rls ms           Tab MS Manager")
+    p("  /rls loot         Tab Loot Manager")
+    p("  /rls config       Tab Config")
+end
+
 SLASH_RLSUITE1 = "/rls"
 SLASH_RLSUITE2 = "/rlsuite"
 SlashCmdList["RLSUITE"] = function(msg)
-    if msg == "macrobar" then
+    msg = string.gsub(string.gsub(msg or "", "^%s+", ""), "%s+$", "")
+    msg = string.lower(msg)
+    if msg == "help" or msg == "?" then
+        RLSuite:PrintHelp()
+    elseif msg == "macrobar" then
         if RLSuite.macrobar then RLSuite.macrobar:Toggle() end
+    elseif msg == "rfhud" then
+        if RLSuite.raidFrame then RLSuite.raidFrame:Toggle() end
     elseif msg == "group" then
-        if RLSuite.groupmaking then RLSuite.groupmaking:Toggle() end
+        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("group") end
+    elseif msg == "whisplist" or msg == "wl" then
+        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("whisplist") end
+    elseif msg == "macro" then
+        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("macro") end
+    elseif msg == "raidframe" or msg == "rf" then
+        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("raidframe") end
     elseif msg == "ms" then
-        if RLSuite.msManager then RLSuite.msManager:Toggle() end
+        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("ms") end
     elseif msg == "loot" then
-        if RLSuite.lootManager then RLSuite.lootManager:Toggle() end
+        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("loot") end
     elseif msg == "config" then
-        if RLSuite.config then RLSuite.config:Toggle() end
-    else
+        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("config") end
+    elseif msg == "" then
         if RLSuite.mainWindow then RLSuite.mainWindow:Toggle() end
+    else
+        RLSuite.utils:Print("Comando sconosciuto. /rls help per l'elenco.")
+        RLSuite:PrintHelp()
     end
 end
 
@@ -307,6 +338,9 @@ function RLSuite:InitModules()
     if self.mainWindow and self.mainWindow.Init then self.mainWindow:Init() end
     if self.config and self.config.ApplyTheme then
         self.config:ApplyTheme(RLSuiteDB.appearance and RLSuiteDB.appearance.theme)
+    end
+    if self.utils and self.utils.SkinAllWindows then
+        self.utils:SkinAllWindows()
     end
     self:UpdateRaidContext()
 end

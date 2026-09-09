@@ -12,6 +12,10 @@ function MSM:Init()
 end
 
 function MSM:Toggle()
+    if RLSuite.mainWindow and RLSuite.mainWindow.ShowTab then
+        RLSuite.mainWindow:ShowTab("ms")
+        return
+    end
     if self.frame and self.frame:IsShown() then
         self.frame:Hide()
     elseif self.frame then
@@ -38,6 +42,7 @@ function MSM:CreateFrame()
     })
     f:Hide()
     self.frame = f
+    RLSuite.utils:SkinFrame(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -12)
@@ -79,9 +84,9 @@ function MSM:CreateFrame()
     self.genMsgBtn:SetText("Genera Messaggio")
     self.genMsgBtn:SetScript("OnClick", function() self:GenerateMessage() end)
 
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
-    closeBtn:SetScript("OnClick", function() f:Hide() end)
+    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
+    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 end
 
 function MSM:ParseMSMessage(sender, msg)

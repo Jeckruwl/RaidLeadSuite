@@ -53,6 +53,7 @@ function MB:CreateFrame()
     })
     f:Hide()
     self.frame = f
+    RLSuite.utils:SkinFrame(f)
 
     self.phaseText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     self.phaseText:SetPoint("TOP", f, "TOP", 0, -5)
@@ -150,6 +151,7 @@ function MB:CreateKeypad()
         self.keypadButtons[i] = btn
     end
 
+    RLSuite.utils:SkinFrame(self.keypadFrame)
     self.keypadFrame:Hide()
 end
 
@@ -284,7 +286,9 @@ function MB:OpenMacroEdit(index)
     closeBtn:SetText("Annulla")
     closeBtn:SetScript("OnClick", function() f:Hide() end)
 
+    RLSuite.utils:SkinFrame(f)
     self.editFrame = f
+    f:Show()
 end
 
 function MB:LoadKeybinds()

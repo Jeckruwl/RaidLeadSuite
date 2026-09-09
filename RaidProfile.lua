@@ -14,13 +14,19 @@ function MW:Toggle()
         self.frame:Hide()
     elseif self.frame then
         self.frame:Show()
-        self:RefreshMacroTab()
+        self:SelectTab(self.currentTab or "group")
     end
+end
+
+function MW:ShowTab(key)
+    if not self.frame then return end
+    self.frame:Show()
+    self:SelectTab(key)
 end
 
 function MW:CreateFrame()
     local f = CreateFrame("Frame", "RLSuiteMainWindow", UIParent)
-    f:SetSize(600, 500)
+    f:SetSize(660, 700)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
     f:SetMovable(true)
@@ -28,117 +34,143 @@ function MW:CreateFrame()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    f:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 16,
-        insets = {left=4, right=4, top=4, bottom=4}
-    })
     f:Hide()
     self.frame = f
+    RLSuite.utils:SkinFrame(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", f, "TOP", 0, -12)
+    title:SetPoint("TOP", f, "TOP", 0, -14)
     title:SetText("RLSuite v" .. RLSuite.version)
 
-    -- Tabs
+    self.tabDefs = {
+        { key = "group",     label = "Groupmaking" },
+        { key = "whisplist", label = "Whisplist" },
+        { key = "macro",     label = "Macrobar" },
+        { key = "raidframe", label = "Raid Frame" },
+        { key = "ms",        label = "MS" },
+        { key = "loot",      label = "Loot" },
+        { key = "config",    label = "Config" },
+    }
     self.tabs = {}
-    self.tabContents = {}
-    self.currentTab = 1
+    self.tabPanels = {}
+    self.currentTab = "group"
 
-    local tabNames = {"Raid Profile", "Groupmaking", "Config"}
-    for i, name in ipairs(tabNames) do
-        local tab = CreateFrame("Button", "RLSuiteTab" .. i, f, "CharacterFrameTabButtonTemplate")
-        tab:SetSize(100, 24)
-        tab:SetPoint("TOPLEFT", f, "TOPLEFT", 15 + (i-1) * 105, -40)
-        tab:SetText(name)
-        tab:SetID(i)
-        tab:SetScript("OnClick", function() self:SelectTab(i) end)
-        self.tabs[i] = tab
+    for i, def in ipairs(self.tabDefs) do
+        local tab = CreateFrame("Button", "RLSuiteTab" .. def.key, f, "UIPanelButtonTemplate")
+        tab:SetSize(84, 22)
+        tab:SetPoint("TOPLEFT", f, "TOPLEFT", 16 + (i - 1) * 90, -40)
+        tab:SetText(def.label)
+        tab.tabKey = def.key
+        tab:SetScript("OnClick", function() self:SelectTab(def.key) end)
+        self.tabs[def.key] = tab
     end
 
     self.contentArea = CreateFrame("Frame", nil, f)
-    self.contentArea:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -70)
-    self.contentArea:SetSize(580, 420)
-
-    self:CreateRaidProfileTab()
-    self:CreateGroupmakingTab()
-    self:CreateConfigTab()
-
-    self:SelectTab(1)
-
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
-    closeBtn:SetScript("OnClick", function() f:Hide() end)
-end
-
-function MW:SelectTab(index)
-    self.currentTab = index
-    for i, tab in ipairs(self.tabs) do
-        if i == index then
-            PanelTemplates_SelectTab(tab)
-            if self.tabContents[i] then
-                self.tabContents[i]:Show()
-            end
-        else
-            PanelTemplates_DeselectTab(tab)
-            if self.tabContents[i] then
-                self.tabContents[i]:Hide()
-            end
-        end
-    end
-end
-
--- TAB 1: RAID PROFILE
-function MW:CreateRaidProfileTab()
-    local content = CreateFrame("Frame", nil, self.contentArea)
-    content:SetAllPoints(self.contentArea)
-    content:Hide()
-    self.tabContents[1] = content
-
-    local subTabs = {"Macrobar", "Raid Frame"}
-    self.subTabs = {}
-    self.subContents = {}
-
-    for i, name in ipairs(subTabs) do
-        local st = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-        st:SetSize(90, 22)
-        st:SetPoint("TOPLEFT", content, "TOPLEFT", 10 + (i-1) * 95, 0)
-        st:SetText(name)
-        st:SetScript("OnClick", function() self:SelectSubTab(i) end)
-        self.subTabs[i] = st
-    end
-
-    self.subContentArea = CreateFrame("Frame", nil, content)
-    self.subContentArea:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -30)
-    self.subContentArea:SetSize(580, 390)
+    self.contentArea:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -70)
+    self.contentArea:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 12)
 
     self:CreateMacrobarSubTab()
     self:CreateRaidFrameSubTab()
-    self:SelectSubTab(1)
+
+    self.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    self.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+    self.closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+    self:SelectTab("group")
 end
 
-function MW:SelectSubTab(index)
-    for i, st in ipairs(self.subTabs) do
-        if i == index then
-            st:LockHighlight()
-            if self.subContents[i] then
-                self.subContents[i]:Show()
-            end
+function MW:Dock(frame)
+    if not frame then return end
+    frame:SetParent(self.contentArea)
+    frame:ClearAllPoints()
+    frame:SetAllPoints(self.contentArea)
+    frame:SetFrameStrata(self.frame:GetFrameStrata())
+    frame:SetFrameLevel(self.contentArea:GetFrameLevel() + 3)
+    frame:SetMovable(false)
+    frame:SetScript("OnDragStart", nil)
+    frame:SetScript("OnDragStop", nil)
+    if frame.closeBtn then frame.closeBtn:Hide() end
+    RLSuite.utils:SkinFrame(frame)
+    frame:Show()
+end
+
+function MW:HideDocked()
+    local frames = {
+        RLSuite.groupmaking and RLSuite.groupmaking.mainFrame,
+        RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame,
+        RLSuite.msManager and RLSuite.msManager.frame,
+        RLSuite.lootManager and RLSuite.lootManager.frame,
+        RLSuite.config and RLSuite.config.frame,
+        self.tabPanels and self.tabPanels.macro,
+        self.tabPanels and self.tabPanels.raidframe,
+    }
+    for _, fr in ipairs(frames) do
+        if fr then fr:Hide() end
+    end
+end
+
+function MW:SelectTab(key)
+    if type(key) == "number" then
+        local def = self.tabDefs and self.tabDefs[key]
+        key = def and def.key or "group"
+    end
+    self.currentTab = key or "group"
+    for k, tab in pairs(self.tabs or {}) do
+        if k == self.currentTab then
+            tab:LockHighlight()
         else
-            st:UnlockHighlight()
-            if self.subContents[i] then
-                self.subContents[i]:Hide()
-            end
+            tab:UnlockHighlight()
         end
+    end
+
+    self:HideDocked()
+
+    if key == "group" then
+        self:Dock(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame)
+        if RLSuite.groupmaking and RLSuite.groupmaking.UpdateMessagePreview then
+            RLSuite.groupmaking:UpdateMessagePreview()
+        end
+    elseif key == "whisplist" then
+        self:Dock(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame)
+        if RLSuite.groupmaking and RLSuite.groupmaking.UpdateWhisplist then
+            RLSuite.groupmaking:UpdateWhisplist()
+        end
+    elseif key == "macro" then
+        if self.tabPanels.macro then
+            self.tabPanels.macro:SetParent(self.contentArea)
+            self.tabPanels.macro:ClearAllPoints()
+            self.tabPanels.macro:SetAllPoints(self.contentArea)
+            self.tabPanels.macro:Show()
+        end
+        self:RefreshMacroTab()
+    elseif key == "raidframe" then
+        if self.tabPanels.raidframe then
+            self.tabPanels.raidframe:SetParent(self.contentArea)
+            self.tabPanels.raidframe:ClearAllPoints()
+            self.tabPanels.raidframe:SetAllPoints(self.contentArea)
+            self.tabPanels.raidframe:Show()
+        end
+    elseif key == "ms" then
+        self:Dock(RLSuite.msManager and RLSuite.msManager.frame)
+        if RLSuite.msManager and RLSuite.msManager.UpdateList then
+            RLSuite.msManager:UpdateList()
+        end
+    elseif key == "loot" then
+        self:Dock(RLSuite.lootManager and RLSuite.lootManager.frame)
+        if RLSuite.lootManager and RLSuite.lootManager.UpdateHistory then
+            RLSuite.lootManager:UpdateHistory()
+        end
+    elseif key == "config" then
+        self:Dock(RLSuite.config and RLSuite.config.frame)
     end
 end
 
 function MW:CreateMacrobarSubTab()
-    local sc = CreateFrame("Frame", nil, self.subContentArea)
-    sc:SetAllPoints(self.subContentArea)
+    local sc = CreateFrame("Frame", nil, self.contentArea)
+    sc:SetAllPoints(self.contentArea)
     sc:Hide()
-    self.subContents[1] = sc
+    self.tabPanels = self.tabPanels or {}
+    self.tabPanels.macro = sc
     self.macroPhase = RLSuite.context or "preraid"
     self.macroPreviewBtns = {}
     self.macroEdits = {}
@@ -235,7 +267,7 @@ function MW:CreateMacrobarSubTab()
     local openBtn = CreateFrame("Button", nil, sc, "UIPanelButtonTemplate")
     openBtn:SetSize(130, 22)
     openBtn:SetPoint("TOPLEFT", mbPreview, "TOPRIGHT", 15, -5)
-    openBtn:SetText("Apri MacroBar")
+    openBtn:SetText("Mostra/Nascondi HUD")
     openBtn:SetScript("OnClick", function()
         if RLSuite.macrobar and RLSuite.macrobar.Toggle then
             RLSuite.macrobar:Toggle()
@@ -310,14 +342,25 @@ function MW:RefreshMacroPreview()
 end
 
 function MW:CreateRaidFrameSubTab()
-    local sc = CreateFrame("Frame", nil, self.subContentArea)
-    sc:SetAllPoints(self.subContentArea)
+    local sc = CreateFrame("Frame", nil, self.contentArea)
+    sc:SetAllPoints(self.contentArea)
     sc:Hide()
-    self.subContents[2] = sc
+    self.tabPanels = self.tabPanels or {}
+    self.tabPanels.raidframe = sc
 
     local rfLabel = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     rfLabel:SetPoint("TOPLEFT", sc, "TOPLEFT", 10, -10)
     rfLabel:SetText("Raid Frame Appearance:")
+
+    local hudBtn = CreateFrame("Button", nil, sc, "UIPanelButtonTemplate")
+    hudBtn:SetSize(160, 22)
+    hudBtn:SetPoint("LEFT", rfLabel, "RIGHT", 16, 0)
+    hudBtn:SetText("Mostra/Nascondi HUD")
+    hudBtn:SetScript("OnClick", function()
+        if RLSuite.raidFrame and RLSuite.raidFrame.Toggle then
+            RLSuite.raidFrame:Toggle()
+        end
+    end)
 
     local preview = CreateFrame("Frame", nil, sc)
     preview:SetSize(300, 100)
@@ -384,46 +427,3 @@ function MW:CreateRaidFrameSubTab()
     end
 end
 
--- TAB 2: GROUPMAKING
-function MW:CreateGroupmakingTab()
-    local content = CreateFrame("Frame", nil, self.contentArea)
-    content:SetAllPoints(self.contentArea)
-    content:Hide()
-    self.tabContents[2] = content
-
-    local text = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    text:SetPoint("CENTER", content, "CENTER")
-    text:SetText("Usa /rls group per la finestra Groupmaking completa")
-
-    local btn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    btn:SetSize(150, 25)
-    btn:SetPoint("TOP", text, "BOTTOM", 0, -10)
-    btn:SetText("Apri Groupmaking")
-    btn:SetScript("OnClick", function()
-        if RLSuite.groupmaking and RLSuite.groupmaking.Toggle then
-            RLSuite.groupmaking:Toggle()
-        end
-    end)
-end
-
--- TAB 3: CONFIG
-function MW:CreateConfigTab()
-    local content = CreateFrame("Frame", nil, self.contentArea)
-    content:SetAllPoints(self.contentArea)
-    content:Hide()
-    self.tabContents[3] = content
-
-    local text = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    text:SetPoint("CENTER", content, "CENTER")
-    text:SetText("Usa /rls config per la finestra Config completa")
-
-    local btn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    btn:SetSize(150, 25)
-    btn:SetPoint("TOP", text, "BOTTOM", 0, -10)
-    btn:SetText("Apri Config")
-    btn:SetScript("OnClick", function()
-        if RLSuite.config and RLSuite.config.Toggle then
-            RLSuite.config:Toggle()
-        end
-    end)
-end

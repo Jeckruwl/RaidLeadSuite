@@ -40,6 +40,7 @@ function RF:CreateFrame()
     })
     f:Hide()
     self.frame = f
+    RLSuite.utils:SkinFrame(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -10)
@@ -49,9 +50,9 @@ function RF:CreateFrame()
     self.content:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -35)
     self.content:SetSize(330, 360)
 
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
-    closeBtn:SetScript("OnClick", function() f:Hide() end)
+    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
+    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 end
 
 function RF:RegisterEvents()

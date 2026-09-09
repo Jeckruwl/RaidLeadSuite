@@ -11,6 +11,10 @@ function CFG:Init()
 end
 
 function CFG:Toggle()
+    if RLSuite.mainWindow and RLSuite.mainWindow.ShowTab then
+        RLSuite.mainWindow:ShowTab("config")
+        return
+    end
     if self.frame and self.frame:IsShown() then
         self.frame:Hide()
     elseif self.frame then
@@ -36,6 +40,7 @@ function CFG:CreateFrame()
     })
     f:Hide()
     self.frame = f
+    RLSuite.utils:SkinFrame(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -12)
@@ -180,50 +185,18 @@ function CFG:CreateFrame()
     importBtn:SetText("Import")
     importBtn:SetScript("OnClick", function() self:ImportData() end)
 
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
-    closeBtn:SetScript("OnClick", function() f:Hide() end)
+    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
+    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 
     self:ApplyTheme(self.db.appearance.theme or "default")
-end
-
-function CFG:GetThemeColors(theme)
-    theme = theme or "default"
-    if theme == "dark" then
-        return {bg = {0.05, 0.05, 0.08, 0.95}, border = {0.35, 0.35, 0.4, 1}}
-    elseif theme == "gold" then
-        return {bg = {0.12, 0.09, 0.02, 0.95}, border = {0.85, 0.7, 0.2, 1}}
-    end
-    return {bg = {0, 0, 0, 0.85}, border = {1, 1, 1, 1}}
 end
 
 function CFG:ApplyTheme(theme)
     if self.db and self.db.appearance then
         self.db.appearance.theme = theme or "default"
     end
-    local c = self:GetThemeColors(theme)
-    local frames = {}
-    local function add(fr)
-        if fr then table.insert(frames, fr) end
-    end
-    add(self.frame)
-    if RLSuite.mainWindow then add(RLSuite.mainWindow.frame) end
-    if RLSuite.groupmaking then
-        add(RLSuite.groupmaking.mainFrame)
-        add(RLSuite.groupmaking.whisplistFrame)
-    end
-    if RLSuite.macrobar then add(RLSuite.macrobar.frame) end
-    if RLSuite.raidFrame then add(RLSuite.raidFrame.frame) end
-    if RLSuite.msManager then add(RLSuite.msManager.frame) end
-    if RLSuite.lootManager then add(RLSuite.lootManager.frame) end
-    for _, fr in ipairs(frames) do
-        if fr.SetBackdropColor then
-            fr:SetBackdropColor(c.bg[1], c.bg[2], c.bg[3], c.bg[4])
-        end
-        if fr.SetBackdropBorderColor then
-            fr:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], c.border[4])
-        end
-    end
+    RLSuite.utils:SkinAllWindows()
 end
 
 function CFG:ExportData()

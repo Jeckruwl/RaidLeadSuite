@@ -15,6 +15,10 @@ function LM:Init()
 end
 
 function LM:Toggle()
+    if RLSuite.mainWindow and RLSuite.mainWindow.ShowTab then
+        RLSuite.mainWindow:ShowTab("loot")
+        return
+    end
     if self.frame and self.frame:IsShown() then
         self.frame:Hide()
     elseif self.frame then
@@ -41,6 +45,7 @@ function LM:CreateFrame()
     })
     f:Hide()
     self.frame = f
+    RLSuite.utils:SkinFrame(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -12)
@@ -99,9 +104,9 @@ function LM:CreateFrame()
     self.rerollBtn:Disable()
     self.rerollBtn:SetScript("OnClick", function() self:DoReroll() end)
 
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
-    closeBtn:SetScript("OnClick", function() f:Hide() end)
+    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
+    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 end
 
 function LM:SetPreMessage(msg)
@@ -452,7 +457,7 @@ function LM:ShowTradeWindow(item)
         f:Hide()
     end)
 
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
-    closeBtn:SetScript("OnClick", function() f:Hide() end)
+    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
+    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 end

@@ -107,6 +107,71 @@ end
 -- Dropdown (3.3.5, no Ace)
 -- ============================================================
 
+-- ============================================================
+-- Window skin (opaque backgrounds for 3.3.5)
+-- DialogBox-Background is mostly transparent; ChatFrameBackground is solid.
+-- ============================================================
+
+function Utils:GetThemeColors(theme)
+    theme = theme or (RLSuiteDB and RLSuiteDB.appearance and RLSuiteDB.appearance.theme) or "default"
+    if theme == "dark" then
+        return { fill = {0.02, 0.02, 0.04, 1}, bg = {0.04, 0.04, 0.06, 1}, border = {0.40, 0.40, 0.48, 1} }
+    elseif theme == "gold" then
+        return { fill = {0.10, 0.07, 0.01, 1}, bg = {0.12, 0.09, 0.02, 1}, border = {0.85, 0.70, 0.20, 1} }
+    end
+    return { fill = {0.05, 0.05, 0.07, 1}, bg = {0.08, 0.08, 0.10, 1}, border = {0.70, 0.70, 0.70, 1} }
+end
+
+function Utils:WindowBackdrop()
+    return {
+        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 16, edgeSize = 32,
+        insets = {left = 8, right = 8, top = 8, bottom = 8},
+    }
+end
+
+function Utils:SkinFrame(f)
+    if not f or not f.SetBackdrop then return end
+    local c = self:GetThemeColors()
+    f:SetBackdrop(self:WindowBackdrop())
+    f:SetBackdropColor(c.bg[1], c.bg[2], c.bg[3], 1)
+    f:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
+    if not f.rlsBgFill then
+        local tex = f:CreateTexture(nil, "BACKGROUND")
+        tex:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -8)
+        tex:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
+        tex:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
+        f.rlsBgFill = tex
+    end
+    f.rlsBgFill:SetVertexColor(c.fill[1], c.fill[2], c.fill[3], 1)
+    f.rlsBgFill:Show()
+end
+
+function Utils:AllWindows()
+    local list = {}
+    local function add(fr)
+        if fr then table.insert(list, fr) end
+    end
+    add(RLSuite.mainWindow and RLSuite.mainWindow.frame)
+    add(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame)
+    add(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame)
+    add(RLSuite.macrobar and RLSuite.macrobar.frame)
+    add(RLSuite.macrobar and RLSuite.macrobar.keypadFrame)
+    add(RLSuite.macrobar and RLSuite.macrobar.editFrame)
+    add(RLSuite.raidFrame and RLSuite.raidFrame.frame)
+    add(RLSuite.msManager and RLSuite.msManager.frame)
+    add(RLSuite.lootManager and RLSuite.lootManager.frame)
+    add(RLSuite.config and RLSuite.config.frame)
+    return list
+end
+
+function Utils:SkinAllWindows()
+    for _, fr in ipairs(self:AllWindows()) do
+        self:SkinFrame(fr)
+    end
+end
+
 function Utils:CloseDropdownMenu()
     if self.dropCatcher then self.dropCatcher:Hide() end
     if self.activeMenu then
@@ -120,11 +185,12 @@ function Utils:CreateDropdown(parent, name, width, height)
     dd:SetSize(width, height)
     dd:EnableMouse(true)
     dd:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true, tileSize = 16, edgeSize = 8,
         insets = {left=2, right=2, top=2, bottom=2}
     })
+    dd:SetBackdropColor(0.05, 0.05, 0.07, 1)
     dd.text = dd:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     dd.text:SetPoint("LEFT", dd, "LEFT", 5, 0)
     dd.text:SetPoint("RIGHT", dd, "RIGHT", -18, 0)
@@ -206,11 +272,12 @@ function Utils:ToggleDropdownMenu(dd)
     menu:SetFrameStrata("FULLSCREEN_DIALOG")
     menu:SetFrameLevel(10)
     menu:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true, tileSize = 16, edgeSize = 8,
         insets = {left=2, right=2, top=2, bottom=2}
     })
+    menu:SetBackdropColor(0.05, 0.05, 0.07, 1)
     menu.owner = dd
     local width = math.max(dd:GetWidth(), 80)
     menu:SetSize(width, #options * 20 + 8)
