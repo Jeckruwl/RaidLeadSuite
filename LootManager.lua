@@ -58,7 +58,7 @@ function LM:CreateFrame()
 
     local filterFS = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     filterFS:SetPoint("TOPRIGHT", f, "TOPRIGHT", -152, -54)
-    filterFS:SetText("Rarity")
+    filterFS:SetText("Rarity threshold")
 
     self.rarityFilter = (self.db and self.db.rarityFilter) or "all"
     self.rarityDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteLootRarityDD", 130, 20)
@@ -66,12 +66,12 @@ function LM:CreateFrame()
     self.rarityDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -50)
     RLSuite.utils:SetupDropdown(self.rarityDropdown, {
         { text = "All", value = "all" },
-        { text = "Poor+", value = 0 },
-        { text = "Common+", value = 1 },
-        { text = "Uncommon+", value = 2 },
-        { text = "Rare+", value = 3 },
-        { text = "Epic+", value = 4 },
-        { text = "Legendary+", value = 5 },
+        { text = "Poor", value = 0 },
+        { text = "Common", value = 1 },
+        { text = "Uncommon", value = 2 },
+        { text = "Rare", value = 3 },
+        { text = "Epic", value = 4 },
+        { text = "Legendary", value = 5 },
     }, self.rarityFilter, function(value)
         LM.rarityFilter = value
         if LM.db then LM.db.rarityFilter = value end
