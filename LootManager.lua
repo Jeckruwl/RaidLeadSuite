@@ -138,8 +138,8 @@ function LM:CreateFrame()
     self.rollOtherBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     self.rollOtherBtn:SetSize(80, 24)
     self.rollOtherBtn:SetPoint("LEFT", self.rollOSBtn, "RIGHT", 6, 0)
-    self.rollOtherBtn:SetText("Roll Other")
-    self.rollOtherBtn:SetScript("OnClick", function() self:StartRoll("OTHER") end)
+    self.rollOtherBtn:SetText("Roll FFA")
+    self.rollOtherBtn:SetScript("OnClick", function() self:StartRoll("FFA") end)
 
     self.rerollBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     self.rerollBtn:SetSize(80, 24)
@@ -164,21 +164,62 @@ function LM:SkinInner()
     self:SkinBox(self.selBox)
 end
 
+function LM:HistMetrics(w)
+    w = tonumber(w) or 420
+    local timeW, assignedW, typeW, gap, padR = 64, 72, 48, 6, 8
+    local itemX = 58
+    local assignedX = w - padR - timeW - gap - assignedW
+    local typeX = assignedX - gap - typeW
+    local inner = typeX - itemX - gap
+    if inner < 120 then inner = 120 end
+    local itemW = math.floor(inner * 0.58)
+    local bossW = inner - itemW
+    local bossX = itemX + itemW + gap
+    return {
+        itemX = itemX, itemW = itemW,
+        bossX = bossX, bossW = bossW,
+        typeX = typeX, typeW = typeW,
+        assignedX = assignedX, assignedW = assignedW,
+        timeW = timeW, padR = padR,
+    }
+end
+
 function LM:PaintHeader(header)
-    local function add(text, point, rel, x)
+    self.histHeads = {}
+    local function add(key, text)
         local fs = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetPoint(point, header, rel, x, 0)
         fs:SetText(text)
         fs:SetTextColor(1, 0.82, 0)
+        self.histHeads[key] = fs
         return fs
     end
-    add("#", "LEFT", "LEFT", 6)
-    add("Item", "LEFT", "LEFT", 58)
-    add("Boss", "LEFT", "LEFT", 214)
-    add("Type", "LEFT", "LEFT", 310)
-    add("Assigned", "LEFT", "LEFT", 371)
-    local tfs = add("Time left", "RIGHT", "RIGHT", -8)
+    add("num", "#"):SetPoint("LEFT", header, "LEFT", 6, 0)
+    add("item", "Item")
+    add("boss", "Boss")
+    add("type", "Type")
+    add("assigned", "Assigned")
+    local tfs = add("time", "Time left")
     tfs:SetJustifyH("RIGHT")
+    self:LayoutHeader()
+end
+
+function LM:LayoutHeader()
+    local header = self.histHeader
+    if not header or not self.histHeads then return end
+    local w = header:GetWidth()
+    if not w or w < 80 then w = 420 end
+    local m = self:HistMetrics(w)
+    local h = self.histHeads
+    h.item:ClearAllPoints()
+    h.item:SetPoint("LEFT", header, "LEFT", m.itemX, 0)
+    h.boss:ClearAllPoints()
+    h.boss:SetPoint("LEFT", header, "LEFT", m.bossX, 0)
+    h.type:ClearAllPoints()
+    h.type:SetPoint("LEFT", header, "LEFT", m.typeX, 0)
+    h.assigned:ClearAllPoints()
+    h.assigned:SetPoint("LEFT", header, "LEFT", m.assignedX, 0)
+    h.time:ClearAllPoints()
+    h.time:SetPoint("RIGHT", header, "RIGHT", -m.padR, 0)
 end
 
 function LM:EnsureTicker()
@@ -402,9 +443,12 @@ function LM:UpdateHistory()
             icon:SetTexture(entry.itemTexture or "Interface\Icons\INV_Misc_QuestionMark")
             icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
+            local m = self:HistMetrics(w)
+            self:LayoutHeader()
+
             local name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            name:SetPoint("LEFT", row, "LEFT", 58, 0)
-            name:SetWidth(150)
+            name:SetPoint("LEFT", row, "LEFT", m.itemX, 0)
+            name:SetWidth(m.itemW)
             name:SetJustifyH("LEFT")
             name:SetText(entry.itemName or "Unknown")
             local q = self:EntryQuality(entry)
@@ -414,26 +458,26 @@ function LM:UpdateHistory()
             end
 
             local boss = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            boss:SetPoint("LEFT", row, "LEFT", 214, 0)
-            boss:SetWidth(90)
+            boss:SetPoint("LEFT", row, "LEFT", m.bossX, 0)
+            boss:SetWidth(m.bossW)
             boss:SetJustifyH("LEFT")
             boss:SetText(entry.boss or "Unknown")
 
             local itype = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            itype:SetPoint("LEFT", row, "LEFT", 310, 0)
-            itype:SetWidth(55)
+            itype:SetPoint("LEFT", row, "LEFT", m.typeX, 0)
+            itype:SetWidth(m.typeW)
             itype:SetJustifyH("LEFT")
             itype:SetText(entry.itemType or "BOP")
 
             local remain = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            remain:SetPoint("RIGHT", row, "RIGHT", -8, 0)
-            remain:SetWidth(70)
+            remain:SetPoint("RIGHT", row, "RIGHT", -m.padR, 0)
+            remain:SetWidth(m.timeW)
             remain:SetJustifyH("RIGHT")
             remain:SetText(self:TradeRemaining(entry))
 
             local assigned = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            assigned:SetPoint("LEFT", row, "LEFT", 371, 0)
-            assigned:SetPoint("RIGHT", remain, "LEFT", -6, 0)
+            assigned:SetPoint("LEFT", row, "LEFT", m.assignedX, 0)
+            assigned:SetWidth(m.assignedW)
             assigned:SetJustifyH("LEFT")
             assigned:SetText(entry.assignedTo or "-")
             table.insert(self.remainTexts, { fs = remain, entry = entry })
@@ -484,7 +528,8 @@ function LM:StartRoll(rollType)
         active = true,
     }
 
-    local msg = "Roll " .. (rollType or "MS") .. " for " .. (self.selectedItem.itemName or "Unknown")
+    local typeNames = { MS = "MS", OS = "OS", FFA = "Free For All", OTHER = "Free For All" }
+    local msg = "Roll " .. (typeNames[rollType] or rollType or "MS") .. " for " .. (self.selectedItem.itemName or "Unknown")
     if self.preMessage and self.preMessage ~= "" then
         msg = self.preMessage .. " " .. msg
     end
@@ -572,7 +617,7 @@ function LM:AnnounceWinner()
         for _, w in ipairs(winners) do table.insert(names, w.name or "?") end
         RLSuite.utils:SendChat("Tie! Reroll between: " .. table.concat(names, ", "), "RAID")
     else
-        RLSuite.utils:SendChat((winner.name or "?") .. " wins " .. (self.currentRoll.item.itemName or "Unknown") .. " with roll " .. (winner.roll or 0) .. "! Please trade.", "RAID")
+        RLSuite.utils:SendChat((winner.name or "?") .. " wins " .. (self.currentRoll.item.itemName or "Unknown") .. " with " .. (winner.roll or 0) .. "! Please trade.", "RAID")
         self.currentRoll.item.assignedTo = winner.name
         self:ShowTradeWindow(self.currentRoll.item)
         self:UpdateHistory()

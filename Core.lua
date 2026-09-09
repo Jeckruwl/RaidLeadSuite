@@ -324,6 +324,7 @@ frame:RegisterEvent("RAID_ROSTER_UPDATE")
 frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 frame:RegisterEvent("PLAYER_REGEN_DISABLED")
 frame:RegisterEvent("CHAT_MSG_WHISPER")
+frame:RegisterEvent("CHAT_MSG_WHISPER_INFORM")
 frame:RegisterEvent("CHAT_MSG_RAID")
 frame:RegisterEvent("CHAT_MSG_RAID_LEADER")
 frame:RegisterEvent("CHAT_MSG_LOOT")
@@ -369,10 +370,10 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if RLSuite.groupmaking and RLSuite.groupmaking.OnWhisper then
             RLSuite.groupmaking:OnWhisper(sender, msg)
         end
-        if RLSuite:DebugMode() and RLSuite.msManager and RLSuite.msManager.ParseMSMessage then
-            local clean = string.gsub(msg or "", "^%[[^%]]+%]%s*", "")
-            RLSuite.msManager:ParseMSMessage(sender, clean)
-        end
+        RLSuite:HandleDebugMSWhisper(sender, msg)
+    elseif event == "CHAT_MSG_WHISPER_INFORM" then
+        local msg, target = ...
+        RLSuite:HandleDebugMSWhisper(UnitName("player") or target, msg)
     elseif event == "CHAT_MSG_RAID" or event == "CHAT_MSG_RAID_LEADER" then
         local msg, sender = ...
         if RLSuite.msManager and RLSuite.msManager.ParseMSMessage then
@@ -436,6 +437,13 @@ SlashCmdList["RLSUITE"] = function(msg)
 end
 
 RLSuite.context = "preraid"
+
+function RLSuite:HandleDebugMSWhisper(who, msg)
+    if not self:DebugMode() then return end
+    if not self.msManager or not self.msManager.ParseMSMessage then return end
+    local clean = string.gsub(msg or "", "^%[[^%]]+%]%s*", "")
+    self.msManager:ParseMSMessage(who or UnitName("player") or "?", clean)
+end
 
 function RLSuite:DebugMode()
     return RLSuiteDB and RLSuiteDB.debug == true

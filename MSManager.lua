@@ -96,9 +96,9 @@ function MSM:CreateFrame()
     addBtn:SetScript("OnClick", function() self:AddManual() end)
 
     self.genMsgBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    self.genMsgBtn:SetSize(150, 24)
+    self.genMsgBtn:SetSize(160, 24)
     self.genMsgBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 10)
-    self.genMsgBtn:SetText("Genera Messaggio")
+    self.genMsgBtn:SetText("Annuncia in Raid")
     self.genMsgBtn:SetScript("OnClick", function() self:GenerateMessage() end)
 
     f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -113,9 +113,13 @@ end
 
 function MSM:ParseMSMessage(sender, msg)
     local lower = string.lower(msg or "")
+    if string.find(lower, "^ms%s+changes") then
+        return
+    end
     local spec = string.match(lower, "^ms%s+(.+)")
     if spec then
         spec = string.gsub(string.gsub(spec, "^%s+", ""), "%s+$", "")
+        if spec == "" then return end
         self:AddEntry(sender, spec)
         RLSuite.utils:Print("MS change rilevato: " .. sender .. " -> " .. spec)
     end
@@ -200,5 +204,8 @@ function MSM:GenerateMessage()
         RLSuite.lootManager:SetPreMessage(msg)
     end
     RLSuite.utils:SendChat(msg, "RAID")
-    RLSuite.utils:Print("Messaggio generato: " .. msg)
+    RLSuite.utils:Print("Annunciato in raid: " .. msg)
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        RLSuite.utils:Print("Debug: inviato in whisper a te. Whisper 'ms <spec>' a te stesso per testare il parser.")
+    end
 end
