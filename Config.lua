@@ -928,14 +928,12 @@ end
 
 function CFG:PanelMain()
     local L = self:Layout("main")
-    L.width = L.width or 660
     L.height = L.height or 700
     L.scale = L.scale or 1
     self:Header("Barra e finestre tab")
-    self:Note("Larghezza e scala della barra. Le schede si aprono come finestre libere e spostabili; qui imposti la dimensione di default per quelle mai ridimensionate.")
-    self:AddSlider("Larghezza barra", 500, 900, 20, function() return L.width end, function(v) L.width = v end, 220)
+    self:Note("La barra si adatta automaticamente alla larghezza dei bottoni (4x2 + riga fase). Qui imposti l'altezza di default delle finestre tab e la scala della barra.")
     self:AddSlider("Altezza default finestre", 400, 900, 20, function() return L.height end, function(v) L.height = v end, 220)
-    self:AddSlider("Scala", 0.70, 1.30, 0.05, function() return L.scale end, function(v) L.scale = v end, 220)
+    self:AddSlider("Scala barra", 0.70, 1.30, 0.05, function() return L.scale end, function(v) L.scale = v end, 220)
 
     self:Header("Anchors HUD (stile ElvUI)")
     self:Note("Sblocca e mostra come placeholder spostabili le HUD Raid Frame e MacroBar. Le altre finestre restano normali.")

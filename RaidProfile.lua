@@ -15,11 +15,6 @@ function MW:BarHeight()
     return 8 + 24 + 4 + 24 + 8 + 24 + 6
 end
 
-function MW:PaneSize()
-    local L = RLSuiteDB and RLSuiteDB.layout and RLSuiteDB.layout.main or {}
-    return L.width or 660, L.height or 700
-end
-
 function MW:Toggle()
     if self.frame and self.frame:IsShown() then
         self:CloseTab()
@@ -138,12 +133,18 @@ function MW:ApplyLayout()
     local L = RLSuiteDB and RLSuiteDB.layout and RLSuiteDB.layout.main
     if not self.frame then return end
     L = L or {}
-    local w = L.width or 660
+
+    -- La barra si adatta ai bottoni: matrice 4x2 + margini + spazio per la
+    -- X di chiusura. La larghezza non viene piu' letta dal DB.
+    local bw, bh, gapX, gapY = 90, 22, 8, 4
+    local PAD = 12
+    local matrixW = 4 * bw + 3 * gapX
+    local closeW = 36
+    local w = PAD + matrixW + 8 + closeW
     self.frame:SetSize(w, self:BarHeight())
     self.frame:SetScale(L.scale or 1)
 
-    local bw, bh, gapX, gapY = 90, 22, 8, 4
-    local x0 = math.max(8, (w - (4 * bw + 3 * gapX)) / 2)
+    local x0 = PAD
     local topY = -10
     for i, btn in ipairs(self.matrixButtons or {}) do
         local col = (i - 1) % 4
@@ -154,7 +155,8 @@ function MW:ApplyLayout()
     end
 
     local pw, pgap = 90, 8
-    local px0 = math.max(8, (w - (3 * pw + 2 * pgap)) / 2)
+    local phaseW = 3 * pw + 2 * pgap
+    local px0 = PAD + (matrixW - phaseW) / 2
     local py = topY - 2 * (bh + gapY) - 8
     for i, key in ipairs({ "preraid", "preboss", "infight" }) do
         local btn = self.phaseButtons and self.phaseButtons[key]
