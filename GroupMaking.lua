@@ -574,10 +574,28 @@ end
 -- ============================================================
 -- MESSAGE
 -- ============================================================
+local RAID_SHORT = {
+    ["Icecrown Citadel"] = "ICC",
+    ["Ruby Sanctum"] = "RS",
+    ["Trial of the Crusader"] = "TOC",
+    ["Ulduar"] = "ULD",
+    ["Vault of Archavon"] = "VOA",
+    ["The Eye of Eternity"] = "EOE",
+    ["Eye of Eternity"] = "EOE",
+    ["Naxxramas"] = "NAXX",
+    ["Onyxia's Lair"] = "ONYXIA",
+    ["The Obsidian Sanctum"] = "OS",
+    ["Obsidian Sanctum"] = "OS",
+}
+
+function GM:RaidShortName(raid)
+    raid = raid or (self.db and self.db.raid) or "Raid"
+    return RAID_SHORT[raid] or raid
+end
+
 function GM:BuildSpamMessage()
-    local raid = self.db.raid or "Raid"
     local diff = self.db.difficulty or "10"
-    local msg = "LF " .. diff .. "m " .. raid
+    local msg = "LFM " .. self:RaidShortName() .. tostring(diff)
 
     local needed = {tank = 0, healer = 0, mdps = 0, rdps = 0}
     local specLists = {tank = {}, healer = {}, mdps = {}, rdps = {}}
