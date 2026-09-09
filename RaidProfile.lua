@@ -207,15 +207,10 @@ function MW:CreateMacrobarSubTab()
         local col = (i - 1) % 6
         local row = math.floor((i - 1) / 6)
         btn:SetPoint("TOPLEFT", mbPreview, "TOPLEFT", 8 + col * 36, -8 - row * 36)
-        btn:SetBackdrop({
-            bgFile = "Interface\\Buttons\\UI-Quickslot",
-            edgeFile = "Interface\\Buttons\\UI-Quickslot",
-            tile = false, tileSize = 32, edgeSize = 32,
-        })
         btn.icon = btn:CreateTexture(nil, "ARTWORK")
-        btn.icon:SetAllPoints(btn)
         btn.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        RLSuite.utils:SkinMacroButton(btn)
         btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         btn:SetScript("OnClick", function(s, button)
             if button == "RightButton" and RLSuite.macrobar and RLSuite.macrobar.OpenMacroEdit then

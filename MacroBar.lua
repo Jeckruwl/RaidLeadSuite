@@ -73,6 +73,7 @@ function MB:CreateButtons()
         local row = math.floor((i - 1) / 6)
         btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 10 + col * (btnSize + spacing), -20 - row * (btnSize + spacing))
         btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        btn:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 3)
 
         -- Background visibile
         btn:SetBackdrop({
@@ -122,6 +123,7 @@ function MB:CreateButtons()
         btn.numText:SetFont("Fonts\FRIZQT__.TTF", 8, "OUTLINE")
         btn.numText:SetText(i)
 
+        RLSuite.utils:SkinMacroButton(btn)
         self.buttons[i] = btn
     end
     self:ApplyLayout()
@@ -138,8 +140,9 @@ function MB:ApplyLayout()
     local size = db.buttonSize or 36
     local sp = db.spacing or 4
     local rows = math.ceil(n / cols)
-    local w = 20 + cols * size + (cols - 1) * sp
-    local h = 28 + rows * size + (rows - 1) * sp
+    local padX, padY = 16, 24
+    local w = padX * 2 + cols * size + (cols - 1) * sp
+    local h = padY + padX + rows * size + (rows - 1) * sp
     self.frame:SetSize(w, h)
     self.frame:SetScale(db.scale or 1)
     for i = 1, 12 do
@@ -151,7 +154,8 @@ function MB:ApplyLayout()
                 local col = (i - 1) % cols
                 local row = math.floor((i - 1) / cols)
                 btn:ClearAllPoints()
-                btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 10 + col * (size + sp), -20 - row * (size + sp))
+                btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", padX + col * (size + sp), -padY - row * (size + sp))
+                RLSuite.utils:SkinMacroButton(btn)
             else
                 btn:Hide()
             end

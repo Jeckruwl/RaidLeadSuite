@@ -166,6 +166,58 @@ function Utils:WindowBackdrop(f)
     }
 end
 
+function Utils:SkinMacroButton(btn)
+    if not btn then return end
+    btn:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 10,
+        insets = {left = 2, right = 2, top = 2, bottom = 2},
+    })
+    local c = self:GetThemeColors()
+    btn:SetBackdropColor(0.10, 0.10, 0.12, 1)
+    btn:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
+
+    if not btn.slotBg then
+        btn.slotBg = btn:CreateTexture(nil, "BACKGROUND")
+        btn.slotBg:SetDrawLayer("BACKGROUND", 1)
+    end
+    btn.slotBg:SetTexture("Interface\\Buttons\\UI-Quickslot")
+    btn.slotBg:ClearAllPoints()
+    btn.slotBg:SetPoint("TOPLEFT", btn, "TOPLEFT", 1, -1)
+    btn.slotBg:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+    btn.slotBg:SetVertexColor(0.9, 0.9, 0.9, 1)
+    btn.slotBg:Show()
+
+    if not btn.slotBorder then
+        btn.slotBorder = btn:CreateTexture(nil, "BORDER")
+        btn.slotBorder:SetDrawLayer("BORDER", 7)
+    end
+    btn.slotBorder:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+    btn.slotBorder:ClearAllPoints()
+    btn.slotBorder:SetPoint("TOPLEFT", btn, "TOPLEFT", -8, 8)
+    btn.slotBorder:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 8, -8)
+    btn.slotBorder:Show()
+
+    if btn.icon then
+        btn.icon:SetDrawLayer("ARTWORK", 0)
+        btn.icon:ClearAllPoints()
+        btn.icon:SetPoint("TOPLEFT", btn, "TOPLEFT", 3, -3)
+        btn.icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 3)
+        btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
+    if btn.highlight then
+        btn.highlight:ClearAllPoints()
+        btn.highlight:SetPoint("TOPLEFT", btn, "TOPLEFT", 2, -2)
+        btn.highlight:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
+    end
+    if btn.pushed then
+        btn.pushed:ClearAllPoints()
+        btn.pushed:SetPoint("TOPLEFT", btn, "TOPLEFT", 2, -2)
+        btn.pushed:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
+    end
+end
+
 function Utils:SkinFrame(f)
     if not f or not f.SetBackdrop then return end
     local c = self:GetThemeColors()
