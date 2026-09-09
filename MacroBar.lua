@@ -354,18 +354,26 @@ function MB:UpdatePhase()
     self:LoadMacrosForPhase(phase)
 end
 
+function MB:GetMacroData(index, phase)
+    phase = phase or RLSuite.context or "preraid"
+    local db = self:DB() or (RLSuiteDB and RLSuiteDB.macrobar)
+    if not db then return nil end
+    db.macros = db.macros or {}
+    local macros = db.macros[phase] or {}
+    return macros[index] or macros[tostring(index)]
+end
+
 function MB:LoadMacrosForPhase(phase)
-    local macros = self.db.macros[phase] or {}
     for i = 1, 12 do
         local btn = self.buttons[i]
         if btn and btn.icon then
-            local macroData = macros[i]
-            if macroData and macroData.text and macroData.text ~= "" then
-                btn.macroText = macroData.text
-                btn.icon:SetTexture(macroData.icon or "Interface\Icons\INV_Misc_QuestionMark")
+            local macroData = self:GetMacroData(i, phase)
+            if macroData and ((macroData.text and macroData.text ~= "") or (macroData.name and macroData.name ~= "") or macroData.icon) then
+                btn.macroText = macroData.text or ""
+                btn.icon:SetTexture(macroData.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
             else
                 btn.macroText = ""
-                btn.icon:SetTexture("Interface\Icons\INV_Misc_QuestionMark")
+                btn.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
             end
         end
     end
@@ -380,9 +388,14 @@ function MB:LoadMacrosForPhase(phase)
 end
 
 function MB:ExecuteMacro(index)
-    local btn = self.buttons[index]
-    if not btn or not btn.macroText or btn.macroText == "" then return end
-    local lines = {strsplit("\n", btn.macroText)}
+    local data = self:GetMacroData(index)
+    local text = (data and data.text) or ""
+    if text == "" then
+        local btn = self.buttons[index]
+        text = (btn and btn.macroText) or ""
+    end
+    if text == "" then return end
+    local lines = {strsplit("\n", text)}
     for _, line in ipairs(lines) do
         line = string.gsub(string.gsub(line, "^%s+", ""), "%s+$", "")
         if line ~= "" then
@@ -522,10 +535,15 @@ function MB:WireButtonClicks(btn, index)
     btn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
         GameTooltip:AddLine("Macro " .. tostring(index), 1, 0.82, 0)
-        local txt = s.macroText or ""
+        local data = MB:GetMacroData(index)
+        local name = data and data.name or ""
+        local txt = (data and data.text) or s.macroText or ""
+        if name ~= "" then
+            GameTooltip:AddLine(name, 1, 1, 1)
+        end
         if txt ~= "" then
-            GameTooltip:AddLine(txt, 1, 1, 1, true)
-        else
+            GameTooltip:AddLine(txt, 0.9, 0.9, 0.9, true)
+        elseif name == "" then
             GameTooltip:AddLine("Vuota", 0.6, 0.6, 0.6)
         end
         GameTooltip:Show()
