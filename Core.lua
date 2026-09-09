@@ -147,16 +147,87 @@ RLSuite.debugLoot = {
 }
 
 RLSuite.classData = {
-    WARRIOR     = {roles = {"Tank", "DPS"}, specs = {"Arms", "Fury", "Protection"}},
-    PALADIN     = {roles = {"Tank", "Healer", "DPS"}, specs = {"Holy", "Protection", "Retribution"}},
-    HUNTER      = {roles = {"DPS"}, specs = {"Beast Mastery", "Marksmanship", "Survival"}},
-    ROGUE       = {roles = {"DPS"}, specs = {"Assassination", "Combat", "Subtlety"}},
-    PRIEST      = {roles = {"Healer", "DPS"}, specs = {"Discipline", "Holy", "Shadow"}},
-    DEATHKNIGHT = {roles = {"Tank", "DPS"}, specs = {"Blood", "Frost", "Unholy"}},
-    SHAMAN      = {roles = {"Healer", "DPS"}, specs = {"Elemental", "Enhancement", "Restoration"}},
-    MAGE        = {roles = {"DPS"}, specs = {"Arcane", "Fire", "Frost"}},
-    WARLOCK     = {roles = {"DPS"}, specs = {"Affliction", "Demonology", "Destruction"}},
-    DRUID       = {roles = {"Tank", "Healer", "DPS"}, specs = {"Balance", "Feral", "Restoration"}},
+    WARRIOR = {
+        roles = {"Tank", "DPS"},
+        specs = {
+            {name = "Arms", role = "dps", icon = "Interface\\Icons\\Ability_Warrior_SavageBlow"},
+            {name = "Fury", role = "dps", icon = "Interface\\Icons\\Ability_Warrior_InnerRage"},
+            {name = "Protection", role = "tank", icon = "Interface\\Icons\\Ability_Warrior_DefensiveStance"},
+        },
+    },
+    PALADIN = {
+        roles = {"Tank", "Healer", "DPS"},
+        specs = {
+            {name = "Holy", role = "healer", icon = "Interface\\Icons\\Spell_Holy_HolyBolt"},
+            {name = "Protection", role = "tank", icon = "Interface\\Icons\\Spell_Holy_DevotionAura"},
+            {name = "Retribution", role = "dps", icon = "Interface\\Icons\\Spell_Holy_AuraOfLight"},
+        },
+    },
+    HUNTER = {
+        roles = {"DPS"},
+        specs = {
+            {name = "Beast Mastery", role = "dps", icon = "Interface\\Icons\\Ability_Hunter_BeastTaming"},
+            {name = "Marksmanship", role = "dps", icon = "Interface\\Icons\\Ability_Marksmanship"},
+            {name = "Survival", role = "dps", icon = "Interface\\Icons\\Ability_Hunter_SwiftStrike"},
+        },
+    },
+    ROGUE = {
+        roles = {"DPS"},
+        specs = {
+            {name = "Assassination", role = "dps", icon = "Interface\\Icons\\Ability_Rogue_Eviscerate"},
+            {name = "Combat", role = "dps", icon = "Interface\\Icons\\Ability_BackStab"},
+            {name = "Subtlety", role = "dps", icon = "Interface\\Icons\\Ability_Stealth"},
+        },
+    },
+    PRIEST = {
+        roles = {"Healer", "DPS"},
+        specs = {
+            {name = "Discipline", role = "healer", icon = "Interface\\Icons\\Spell_Holy_WordFortitude"},
+            {name = "Holy", role = "healer", icon = "Interface\\Icons\\Spell_Holy_HolyBolt"},
+            {name = "Shadow", role = "dps", icon = "Interface\\Icons\\Spell_Shadow_ShadowWordPain"},
+        },
+    },
+    DEATHKNIGHT = {
+        roles = {"Tank", "DPS"},
+        specs = {
+            {name = "Blood", role = "tank", icon = "Interface\\Icons\\Spell_Deathknight_BloodPresence"},
+            {name = "Frost", role = "dps", icon = "Interface\\Icons\\Spell_Deathknight_FrostPresence"},
+            {name = "Unholy", role = "dps", icon = "Interface\\Icons\\Spell_Deathknight_UnholyPresence"},
+        },
+    },
+    SHAMAN = {
+        roles = {"Healer", "DPS"},
+        specs = {
+            {name = "Elemental", role = "dps", icon = "Interface\\Icons\\Spell_Nature_Lightning"},
+            {name = "Enhancement", role = "dps", icon = "Interface\\Icons\\Spell_Nature_LightningShield"},
+            {name = "Restoration", role = "healer", icon = "Interface\\Icons\\Spell_Nature_MagicImmunity"},
+        },
+    },
+    MAGE = {
+        roles = {"DPS"},
+        specs = {
+            {name = "Arcane", role = "dps", icon = "Interface\\Icons\\Spell_Holy_MagicalSentry"},
+            {name = "Fire", role = "dps", icon = "Interface\\Icons\\Spell_Fire_FireBolt02"},
+            {name = "Frost", role = "dps", icon = "Interface\\Icons\\Spell_Frost_FrostBolt02"},
+        },
+    },
+    WARLOCK = {
+        roles = {"DPS"},
+        specs = {
+            {name = "Affliction", role = "dps", icon = "Interface\\Icons\\Spell_Shadow_DeathCoil"},
+            {name = "Demonology", role = "dps", icon = "Interface\\Icons\\Spell_Shadow_Metamorphosis"},
+            {name = "Destruction", role = "dps", icon = "Interface\\Icons\\Spell_Shadow_RainOfFire"},
+        },
+    },
+    DRUID = {
+        roles = {"Tank", "Healer", "DPS"},
+        specs = {
+            {name = "Balance", role = "dps", icon = "Interface\\Icons\\Spell_Nature_StarFall"},
+            {name = "Feral Bear", role = "tank", icon = "Interface\\Icons\\Ability_Racial_BearForm"},
+            {name = "Feral Cat", role = "dps", icon = "Interface\\Icons\\Ability_Druid_CatForm"},
+            {name = "Restoration", role = "healer", icon = "Interface\\Icons\\Spell_Nature_HealingTouch"},
+        },
+    },
 }
 
 RLSuite.keyAbilities = {

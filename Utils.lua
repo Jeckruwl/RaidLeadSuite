@@ -122,6 +122,43 @@ function Utils:ClassIcon(class)
     return icons[(class or "WARRIOR"):upper()] or "Interface\\Icons\\INV_Misc_QuestionMark"
 end
 
+function Utils:GetSpecInfo(class, specName)
+    if not specName or specName == "" then return nil end
+    local data = RLSuite.classData and RLSuite.classData[(class or ""):upper()]
+    if not data or not data.specs then return nil end
+    local want = string.lower(specName)
+    for _, spec in ipairs(data.specs) do
+        if type(spec) == "table" then
+            local name = string.lower(spec.name or "")
+            if name == want then return spec end
+        elseif type(spec) == "string" and string.lower(spec) == want then
+            return {name = spec, role = "dps"}
+        end
+    end
+    -- partial match: "feral" -> first feral*, "prot" -> protection
+    for _, spec in ipairs(data.specs) do
+        if type(spec) == "table" then
+            local name = string.lower(spec.name or "")
+            if string.find(name, want, 1, true) or string.find(want, name, 1, true) then
+                return spec
+            end
+        end
+    end
+    return nil
+end
+
+function Utils:SpecIcon(class, specName)
+    local info = self:GetSpecInfo(class, specName)
+    if info and info.icon then return info.icon end
+    return self:ClassIcon(class)
+end
+
+function Utils:RoleFromSpec(class, specName)
+    local info = self:GetSpecInfo(class, specName)
+    if info and info.role then return info.role end
+    return nil
+end
+
 -- ============================================================
 -- Dropdown (3.3.5, no Ace)
 -- ============================================================

@@ -120,7 +120,7 @@ function GM:CreateMainWindow()
 
     local classBarLabel = self.classBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     classBarLabel:SetPoint("TOPLEFT", self.classBox, "TOPLEFT", 8, -6)
-    classBarLabel:SetText("Clicca classe per aggiungere")
+    classBarLabel:SetText("Clicca spec per aggiungere")
     classBarLabel:SetTextColor(1, 0.82, 0)
 
     self.classBar = CreateFrame("Frame", nil, self.classBox)
@@ -128,8 +128,9 @@ function GM:CreateMainWindow()
     self.classBar:SetPoint("BOTTOMRIGHT", self.classBox, "BOTTOMRIGHT", -8, 8)
 
     self.reqBox = CreateFrame("Frame", nil, f)
-    self.reqBox:SetPoint("TOPLEFT", self.compBox, "BOTTOMLEFT", 0, -8)
-    self.reqBox:SetPoint("TOPRIGHT", self.classBox, "BOTTOMRIGHT", 0, -8)
+    self.reqBox:SetPoint("LEFT", self.compBox, "LEFT", 0, 0)
+    self.reqBox:SetPoint("RIGHT", self.classBox, "RIGHT", 0, 0)
+    self.reqBox:SetPoint("TOP", self.classBox, "BOTTOM", 0, -8)
     self.reqBox:SetHeight(88)
     RLSuite.utils:SkinBox(self.reqBox)
 
@@ -243,6 +244,7 @@ function GM:BuildCompSlots()
         slot.index = i
         slot.class = nil
         slot.role = nil
+        slot.spec = nil
         slot.filled = false
         slot.playerName = nil
 
@@ -273,9 +275,6 @@ function GM:SetDifficulty(diff)
     if self.compBox then
         self.compBox:SetHeight(newHeight + 36)
     end
-    if self.classBox then
-        self.classBox:SetHeight(newHeight + 36)
-    end
     self:UpdateMessagePreview()
     self:SaveComp()
 end
@@ -285,6 +284,7 @@ function GM:ClearSlot(index)
     if not slot then return end
     slot.class = nil
     slot.role = nil
+    slot.spec = nil
     slot.filled = false
     slot.playerName = nil
     if slot.icon then slot.icon:Hide() end
@@ -294,24 +294,26 @@ function GM:ClearSlot(index)
     self:SaveComp()
 end
 
-function GM:FillSlot(index, class, role, playerName)
+function GM:FillSlot(index, class, role, playerName, spec)
     local slot = self.compSlots[index]
     if not slot or not class then return end
     slot.class = class
-    slot.role = role or "dps"
+    slot.spec = spec
+    local fromSpec = RLSuite.utils:RoleFromSpec(class, spec)
+    slot.role = fromSpec or role or "dps"
     slot.filled = true
     slot.playerName = playerName or nil
     if slot.icon then
-        slot.icon:SetTexture(RLSuite.utils:ClassIcon(class))
+        slot.icon:SetTexture(RLSuite.utils:SpecIcon(class, slot.spec))
         slot.icon:Show()
     end
-    local c = ROLE_COLORS[slot.role]
-    if c and slot.roleBorder then
-        slot.roleBorder:SetVertexColor(c.r, c.g, c.b)
+    local r, g, b = RLSuite.utils:GetClassColor(class)
+    if slot.roleBorder then
+        slot.roleBorder:SetVertexColor(r, g, b)
         slot.roleBorder:Show()
     end
     if slot.roleText then
-        slot.roleText:SetText((role or "dps"):sub(1,1):upper())
+        slot.roleText:SetText((slot.role or "dps"):sub(1,1):upper())
     end
     self:UpdateMessagePreview()
     self:SaveComp()
@@ -319,10 +321,12 @@ end
 
 function GM:FindEmptySlotForRole(role)
     local numSlots = tonumber(self.db.difficulty or "10")
-    for i = 1, numSlots do
-        local slot = self.compSlots[i]
-        if slot and not slot.filled and slot.role == role then
-            return i
+    if role then
+        for i = 1, numSlots do
+            local slot = self.compSlots[i]
+            if slot and not slot.filled and slot.role == role then
+                return i
+            end
         end
     end
     for i = 1, numSlots do
@@ -339,64 +343,69 @@ end
 -- ============================================================
 function GM:BuildClassBar()
     local classes = {"WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "DEATHKNIGHT", "SHAMAN", "MAGE", "WARLOCK", "DRUID"}
-    local roles = {"tank", "healer", "dps"}
-    local x, y = 0, 0
+    local ICON = 26
+    local GAP = 4
+    local y = 0
     for _, class in ipairs(classes) do
-        for _, role in ipairs(roles) do
-            local data = RLSuite.classData[class]
-            local valid = false
-            if data and data.roles then
-                for _, r in ipairs(data.roles) do
-                    if string.lower(r) == role then valid = true end
-                end
-            end
-            if valid then
+        local data = RLSuite.classData[class]
+        local specs = data and data.specs or {}
+        local x = 0
+        local cr, cg, cb = RLSuite.utils:GetClassColor(class)
+        for _, spec in ipairs(specs) do
+            if type(spec) == "table" then
                 local btn = CreateFrame("Button", nil, self.classBar)
-                btn:SetSize(24, 24)
+                btn:SetSize(ICON, ICON)
                 btn:SetPoint("TOPLEFT", self.classBar, "TOPLEFT", x, y)
-
-                -- Sfondo
                 btn:SetBackdrop({
-                    bgFile = "Interface\Buttons\UI-Quickslot",
-                    edgeFile = "Interface\Buttons\UI-ActionButton-Border",
-                    tile = false, tileSize = 24, edgeSize = 14,
+                    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+                    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                    tile = true, tileSize = 16, edgeSize = 8,
+                    insets = {left = 1, right = 1, top = 1, bottom = 1},
                 })
+                btn:SetBackdropColor(0, 0, 0, 0.8)
+                btn:SetBackdropBorderColor(cr, cg, cb, 1)
 
-                -- Texture classe
                 local tex = btn:CreateTexture(nil, "ARTWORK")
-                tex:SetSize(20, 20)
-                tex:SetPoint("CENTER", btn, "CENTER")
-                tex:SetTexture(RLSuite.utils:ClassIcon(class))
+                tex:SetPoint("TOPLEFT", btn, "TOPLEFT", 3, -3)
+                tex:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 3)
+                tex:SetTexture(spec.icon or RLSuite.utils:ClassIcon(class))
                 tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
                 btn.bgTex = tex
 
-                -- Bordo colore ruolo
-                local c = ROLE_COLORS[role]
-                if c then
-                    btn:SetBackdropBorderColor(c.r, c.g, c.b)
-                end
-
                 btn.class = class
-                btn.role = role
+                btn.spec = spec.name
+                btn.role = spec.role
                 btn:SetScript("OnClick", function(s)
-                    self:OnClassBarClick(s.class, s.role)
+                    self:OnClassBarClick(s.class, s.role, s.spec)
+                end)
+                btn:SetScript("OnEnter", function(s)
+                    GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+                    GameTooltip:AddLine(s.spec or "?", 1, 0.82, 0)
+                    GameTooltip:AddLine((s.class or "") .. "  " .. (s.role or ""), cr, cg, cb)
+                    GameTooltip:Show()
+                end)
+                btn:SetScript("OnLeave", function()
+                    GameTooltip:Hide()
                 end)
                 btn:Show()
-
-                x = x + 28
-                if x > 350 then x = 0; y = y - 28 end
+                x = x + ICON + GAP
             end
         end
+        y = y - (ICON + GAP)
     end
-    self.classBar:SetSize(400, math.abs(y) + 30)
+    local barH = math.abs(y)
+    self.classBar:SetSize(4 * (ICON + GAP), barH)
+    if self.classBox then
+        self.classBox:SetHeight(barH + 36)
+    end
 end
 
-function GM:OnClassBarClick(class, role)
-    local slotIndex = self:FindEmptySlotForRole(role)
+function GM:OnClassBarClick(class, role, spec)
+    local slotIndex = self:FindEmptySlotForRole(nil)
     if slotIndex then
-        self:FillSlot(slotIndex, class, role)
+        self:FillSlot(slotIndex, class, role, nil, spec)
     else
-        RLSuite.utils:Print("Nessuno slot disponibile per " .. (class or "?") .. " " .. (role or "?"))
+        RLSuite.utils:Print("Nessuno slot disponibile per " .. (spec or class or "?"))
     end
 end
 
@@ -431,14 +440,18 @@ function GM:BuildSpamMessage()
     local msg = "LF " .. diff .. "m " .. raid
 
     local needed = {tank = 0, healer = 0, dps = 0}
+    local hasComp = false
     local numSlots = tonumber(diff) or 10
     for i = 1, numSlots do
         local slot = self.compSlots[i]
-        if slot and not slot.filled then
-            if slot.role then
-                needed[slot.role] = (needed[slot.role] or 0) + 1
-            else
-                needed.dps = (needed.dps or 0) + 1
+        if slot and slot.filled then
+            hasComp = true
+            if not slot.playerName then
+                local role = slot.role
+                if not role then
+                    role = RLSuite.utils:RoleFromSpec(slot.class, slot.spec) or "dps"
+                end
+                needed[role] = (needed[role] or 0) + 1
             end
         end
     end
@@ -449,7 +462,7 @@ function GM:BuildSpamMessage()
     if needed.dps > 0 then table.insert(roles, needed.dps .. " dps") end
     if #roles > 0 then
         msg = msg .. " - Need: " .. table.concat(roles, ", ")
-    else
+    elseif hasComp then
         msg = msg .. " - FULL"
     end
 
@@ -870,17 +883,18 @@ end
 function GM:InvitePlayerToSlot(entry, slotIndex)
     if not entry or not slotIndex then return end
     local slot = self.compSlots[slotIndex]
-    if not slot or slot.filled then
+    if not slot or slot.playerName then
         RLSuite.utils:Print("Slot già occupato!")
         return
     end
-    local role = entry.role or "dps"
-    local class = entry.class
+    local class = entry.class or slot.class
     if not class then
         RLSuite.utils:Print("Classe non riconosciuta per " .. (entry.name or "?"))
         return
     end
-    self:FillSlot(slotIndex, class, role, entry.name)
+    local spec = entry.spec or slot.spec
+    local role = RLSuite.utils:RoleFromSpec(class, spec) or entry.role or slot.role or "dps"
+    self:FillSlot(slotIndex, class, role, entry.name, spec)
     entry.invited = true
     if RLSuite.DebugMode and RLSuite:DebugMode() then
         RLSuite.utils:Print("[DBG] Invite " .. (entry.name or "?") .. " slot " .. slotIndex)
@@ -907,7 +921,7 @@ function GM:LoadCompFromDB()
     if self.db.comp then
         for i, data in pairs(self.db.comp) do
             if self.compSlots[i] then
-                self:FillSlot(i, data.class, data.role, data.playerName)
+                self:FillSlot(i, data.class, data.role, data.playerName, data.spec)
             end
         end
     end
@@ -923,6 +937,7 @@ function GM:SaveComp()
             self.db.comp[i] = {
                 class = slot.class,
                 role = slot.role,
+                spec = slot.spec,
                 playerName = slot.playerName,
             }
         end
