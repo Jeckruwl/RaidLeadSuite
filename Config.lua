@@ -198,6 +198,7 @@ function CFG:WipePanel()
         s:SetVerticalScroll(nxt)
     end)
     self._fitPanel = fit
+    self._rowLayouts = {}
     self.scroll = scroll
     self.content = content
     self.y = -4
@@ -205,6 +206,9 @@ end
 
 function CFG:FinishPanel()
     if self._fitPanel then self._fitPanel() end
+    for _, fn in ipairs(self._rowLayouts or {}) do
+        fn()
+    end
 end
 
 function CFG:NextY(h)
@@ -524,6 +528,158 @@ function CFG:AddInline(items)
     end
 end
 
+
+function CFG:Row3(height)
+    local y = self:NextY(height)
+    local row = CreateFrame("Frame", nil, self.content)
+    row:SetPoint("TOPLEFT", self.content, "TOPLEFT", 4, y)
+    row:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -4, y)
+    row:SetHeight(height)
+    local cells = {}
+    for i = 1, 3 do
+        local c = CreateFrame("Frame", nil, row)
+        c:SetHeight(height)
+        cells[i] = c
+    end
+    local function layout()
+        local w = row:GetWidth() or 0
+        if w < 90 then return end
+        local gap = 8
+        local cw = (w - gap * 2) / 3
+        for i = 1, 3 do
+            local c = cells[i]
+            c:ClearAllPoints()
+            c:SetWidth(cw)
+            c:SetHeight(height)
+            c:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * (cw + gap), 0)
+        end
+    end
+    row:SetScript("OnSizeChanged", function() layout() end)
+    self._rowLayouts = self._rowLayouts or {}
+    table.insert(self._rowLayouts, layout)
+    layout()
+    return cells[1], cells[2], cells[3]
+end
+
+function CFG:CellCheck(cell, label, getValue, setValue)
+    if not cell then return end
+    local cb = CreateFrame("CheckButton", nil, cell, "UICheckButtonTemplate")
+    cb:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, 2)
+    cb:SetChecked(getValue() and 1 or nil)
+    local fs = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetPoint("LEFT", cb, "RIGHT", 2, 0)
+    fs:SetPoint("RIGHT", cell, "RIGHT", 0, 0)
+    fs:SetJustifyH("LEFT")
+    fs:SetText(label)
+    cb:SetScript("OnClick", function(s)
+        setValue(s:GetChecked() and true or false)
+        self:ApplyAll()
+    end)
+    return cb
+end
+
+function CFG:CellButton(cell, label, onClick)
+    if not cell then return end
+    local btn = CreateFrame("Button", nil, cell, "UIPanelButtonTemplate")
+    btn:SetHeight(20)
+    btn:SetPoint("TOPLEFT", cell, "TOPLEFT", 4, -2)
+    btn:SetPoint("TOPRIGHT", cell, "TOPRIGHT", -4, -2)
+    btn:SetText(label)
+    btn:SetScript("OnClick", onClick)
+    return btn
+end
+
+function CFG:CellDropdown(cell, label, options, getValue, setValue)
+    if not cell then return end
+    local fs = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetPoint("TOPLEFT", cell, "TOPLEFT", 2, -2)
+    fs:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, -2)
+    fs:SetJustifyH("LEFT")
+    fs:SetText(label)
+    fs:SetTextColor(1, 0.82, 0)
+    self.widgetId = (self.widgetId or 0) + 1
+    local dd = RLSuite.utils:CreateDropdown(cell, "RLSuiteCfgDD" .. self.widgetId, 80, 22)
+    dd:ClearAllPoints()
+    dd:SetHeight(22)
+    dd:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, -16)
+    dd:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, -16)
+    RLSuite.utils:SetupDropdown(dd, options, getValue(), function(value)
+        setValue(value)
+        self:ApplyAll()
+    end)
+    return dd
+end
+
+function CFG:CellSlider(cell, label, minV, maxV, step, getValue, setValue)
+    if not cell then return end
+    local fs = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetPoint("TOPLEFT", cell, "TOPLEFT", 2, -2)
+    fs:SetPoint("TOPRIGHT", cell, "TOPRIGHT", -42, -2)
+    fs:SetJustifyH("LEFT")
+    fs:SetText(label)
+    fs:SetTextColor(1, 0.82, 0)
+
+    self.widgetId = (self.widgetId or 0) + 1
+    local edit = CreateFrame("EditBox", "RLSuiteCfgSliderEdit" .. self.widgetId, cell, "InputBoxTemplate")
+    edit:SetSize(40, 16)
+    edit:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, 0)
+    edit:SetAutoFocus(false)
+    edit:SetMaxLetters(6)
+    edit:SetJustifyH("CENTER")
+    edit:SetFrameLevel((cell:GetFrameLevel() or 1) + 8)
+    if step >= 1 and minV >= 0 then edit:SetNumeric(true) end
+
+    local sl = CreateFrame("Slider", "RLSuiteCfgSlider" .. self.widgetId, cell, "OptionsSliderTemplate")
+    sl:SetHeight(16)
+    sl:SetPoint("TOPLEFT", cell, "TOPLEFT", 2, -18)
+    sl:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, -18)
+    sl:SetMinMaxValues(minV, maxV)
+    sl:SetValueStep(step)
+    local low = getglobal(sl:GetName() .. "Low")
+    local high = getglobal(sl:GetName() .. "High")
+    if low then low:Hide() end
+    if high then high:Hide() end
+
+    local function fmt(v)
+        if step < 1 then return string.format("%.2f", v) end
+        return tostring(math.floor(v + 0.5))
+    end
+    local applying = false
+    local function commit(val, fromEdit)
+        val = self:SnapSlider(val, minV, maxV, step)
+        applying = true
+        sl:SetValue(val)
+        applying = false
+        setValue(val)
+        edit:SetText(fmt(val))
+        if fromEdit then edit:ClearFocus() end
+        self:ApplyAll()
+        return val
+    end
+    local cur = getValue() or minV
+    sl:SetValue(cur)
+    edit:SetText(fmt(cur))
+    sl:SetScript("OnValueChanged", function(s, val)
+        if applying then return end
+        commit(val, false)
+    end)
+    edit:SetScript("OnEnterPressed", function(s)
+        local val = tonumber(s:GetText())
+        if not val then s:SetText(fmt(getValue() or minV)) s:ClearFocus() return end
+        commit(val, true)
+    end)
+    edit:SetScript("OnEscapePressed", function(s)
+        s:SetText(fmt(getValue() or minV))
+        s:ClearFocus()
+    end)
+    edit:SetScript("OnEditFocusLost", function(s)
+        local val = tonumber(s:GetText())
+        if not val then s:SetText(fmt(getValue() or minV)) return end
+        commit(val, false)
+    end)
+    return sl
+end
+
 function CFG:PlaceCheck(x, y, label, getValue, setValue)
     local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
     cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y)
@@ -774,17 +930,18 @@ function CFG:PanelMacroLayout()
     mb.actionPaging = mb.actionPaging or ""
     mb.visibility = mb.visibility or ""
 
-    self:AddInline({
-        { type = "check", label = "Enable", get = function() return mb.enabled ~= false end, set = function(v) mb.enabled = v end },
-        { type = "button", label = "Restore Bar", width = 110, click = function() self:RestoreMacroBar() end },
-        { type = "check", label = "Lock", get = function() return mb.locked end, set = function(v) mb.locked = v end },
-    })
-    self:AddInline({
-        { type = "check", label = "Backdrop", get = function() return mb.backdrop ~= false end, set = function(v) mb.backdrop = v end },
-        { type = "check", label = "Show Empty Buttons", get = function() return mb.showEmpty ~= false end, set = function(v) mb.showEmpty = v end },
-        { type = "check", label = "Mouse Over", get = function() return mb.mouseover end, set = function(v) mb.mouseover = v end },
-        { type = "check", label = "Inherit Global Fade", get = function() return mb.inheritGlobalFade end, set = function(v) mb.inheritGlobalFade = v end },
-    })
+    local c1, c2, c3 = self:Row3(26)
+    self:CellCheck(c1, "Enable", function() return mb.enabled ~= false end, function(v) mb.enabled = v end)
+    self:CellButton(c2, "Restore Bar", function() self:RestoreMacroBar() end)
+    self:CellCheck(c3, "Lock", function() return mb.locked end, function(v) mb.locked = v end)
+
+    c1, c2, c3 = self:Row3(26)
+    self:CellCheck(c1, "Backdrop", function() return mb.backdrop ~= false end, function(v) mb.backdrop = v end)
+    self:CellCheck(c2, "Show Empty Buttons", function() return mb.showEmpty ~= false end, function(v) mb.showEmpty = v end)
+    self:CellCheck(c3, "Mouse Over", function() return mb.mouseover end, function(v) mb.mouseover = v end)
+
+    c1, c2, c3 = self:Row3(26)
+    self:CellCheck(c1, "Inherit Global Fade", function() return mb.inheritGlobalFade end, function(v) mb.inheritGlobalFade = v end)
 
     local anchors = {
         { text = "TOPLEFT", value = "TOPLEFT" },
@@ -797,19 +954,27 @@ function CFG:PanelMacroLayout()
         { text = "BOTTOM", value = "BOTTOM" },
         { text = "BOTTOMRIGHT", value = "BOTTOMRIGHT" },
     }
-    self:AddDropdown("Anchor Point", anchors, function() return mb.point or "CENTER" end, function(v)
+    c1, c2, c3 = self:Row3(44)
+    self:CellDropdown(c1, "Anchor Point", anchors, function() return mb.point or "CENTER" end, function(v)
         mb.point = v
         mb.relPoint = v
     end)
-    self:AddSlider("Buttons", 1, 12, 1, function() return mb.buttons end, function(v) mb.buttons = v end)
-    self:AddSlider("Buttons Per Row", 1, 12, 1, function() return mb.columns end, function(v) mb.columns = v end)
-    self:AddSlider("Button Size", 15, 60, 1, function() return mb.buttonSize end, function(v) mb.buttonSize = v end)
-    self:AddSlider("Button Spacing", -3, 20, 1, function() return mb.spacing end, function(v) mb.spacing = v end)
-    self:AddSlider("Backdrop Spacing", 0, 10, 1, function() return mb.backdropSpacing end, function(v) mb.backdropSpacing = v end)
-    self:AddSlider("Height Multiplier", 1, 5, 1, function() return mb.heightMult end, function(v) mb.heightMult = v end)
-    self:AddSlider("Width Multiplier", 1, 5, 1, function() return mb.widthMult end, function(v) mb.widthMult = v end)
-    self:AddSlider("Alpha", 0, 100, 1, function() return math.floor((mb.alpha or 1) * 100 + 0.5) end, function(v) mb.alpha = v / 100 end)
-    self:AddSlider("Scale", 0.50, 2.00, 0.05, function() return mb.scale or 1 end, function(v) mb.scale = v end)
+    self:CellSlider(c2, "Buttons", 1, 12, 1, function() return mb.buttons end, function(v) mb.buttons = v end)
+    self:CellSlider(c3, "Buttons Per Row", 1, 12, 1, function() return mb.columns end, function(v) mb.columns = v end)
+
+    c1, c2, c3 = self:Row3(44)
+    self:CellSlider(c1, "Button Size", 15, 60, 1, function() return mb.buttonSize end, function(v) mb.buttonSize = v end)
+    self:CellSlider(c2, "Button Spacing", -3, 20, 1, function() return mb.spacing end, function(v) mb.spacing = v end)
+    self:CellSlider(c3, "Backdrop Spacing", 0, 10, 1, function() return mb.backdropSpacing end, function(v) mb.backdropSpacing = v end)
+
+    c1, c2, c3 = self:Row3(44)
+    self:CellSlider(c1, "Height Multiplier", 1, 5, 1, function() return mb.heightMult end, function(v) mb.heightMult = v end)
+    self:CellSlider(c2, "Width Multiplier", 1, 5, 1, function() return mb.widthMult end, function(v) mb.widthMult = v end)
+    self:CellSlider(c3, "Alpha", 0, 100, 1, function() return math.floor((mb.alpha or 1) * 100 + 0.5) end, function(v) mb.alpha = v / 100 end)
+
+    c1, c2, c3 = self:Row3(44)
+    self:CellSlider(c1, "Scale", 0.50, 2.00, 0.05, function() return mb.scale or 1 end, function(v) mb.scale = v end)
+
     self:AddTextArea("Action Paging", 52, function() return mb.actionPaging end, function(v) mb.actionPaging = v end)
     self:AddTextArea("Visibility State", 52, function() return mb.visibility end, function(v) mb.visibility = v end)
 end
