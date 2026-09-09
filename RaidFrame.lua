@@ -56,7 +56,7 @@ function RF:CreateFrame()
     self.frame = f
     RLSuite.utils:SkinFrame(f)
 
-    local title = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormalLarge")
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -10)
     title:SetText("RLSuite - Raid Frame")
 
@@ -185,7 +185,7 @@ function RF:Rebuild()
             self:OnAlertClick(row)
         end)
 
-        row.nameText = RLSuite.utils:CreateFontString(row, nil, "OVERLAY", "GameFontNormalSmall")
+        row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         row.nameText:SetPoint("LEFT", row.alert, "RIGHT", 4, 0)
         row.nameText:SetText(name)
         local r, g, b = RLSuite.utils:GetClassColor(class)
@@ -199,9 +199,9 @@ function RF:Rebuild()
         row.healthBar:SetMinMaxValues(0, 100)
         row.healthBar:SetValue(100)
 
-        row.healthText = RLSuite.utils:CreateFontString(row.healthBar, nil, "OVERLAY", "GameFontNormalSmall")
+        row.healthText = row.healthBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         row.healthText:SetPoint("CENTER", row.healthBar, "CENTER")
-        RLSuite.utils:ApplyFont(row.healthText, "tiny")
+        row.healthText:SetFont("Fonts\FRIZQT__.TTF", 8)
         row.healthText:SetText("100%")
 
         row.manaBar = CreateFrame("StatusBar", nil, row)
@@ -222,9 +222,9 @@ function RF:Rebuild()
             cd:SetTexture((meta and meta.icon) or "Interface\Icons\INV_Misc_QuestionMark")
             cd:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             cd.ability = ability
-            local timer = RLSuite.utils:CreateFontString(row, nil, "OVERLAY", "GameFontNormalSmall")
+            local timer = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             timer:SetPoint("CENTER", cd, "CENTER", 0, 0)
-            RLSuite.utils:ApplyFont(timer, "tiny", "OUTLINE")
+            timer:SetFont("Fonts\FRIZQT__.TTF", 8, "OUTLINE")
             timer:SetText("")
             cd.timer = timer
             row.cdIcons[j] = cd
