@@ -95,10 +95,16 @@ function MSM:CreateFrame()
     addBtn:SetText("Add")
     addBtn:SetScript("OnClick", function() self:AddManual() end)
 
+    self.requestBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    self.requestBtn:SetSize(150, 24)
+    self.requestBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 10)
+    self.requestBtn:SetText("Request MS Change")
+    self.requestBtn:SetScript("OnClick", function() self:RequestChanges() end)
+
     self.genMsgBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    self.genMsgBtn:SetSize(160, 24)
-    self.genMsgBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 10)
-    self.genMsgBtn:SetText("Annuncia in Raid")
+    self.genMsgBtn:SetSize(150, 24)
+    self.genMsgBtn:SetPoint("LEFT", self.requestBtn, "RIGHT", 8, 0)
+    self.genMsgBtn:SetText("Announce Changes")
     self.genMsgBtn:SetScript("OnClick", function() self:GenerateMessage() end)
 
     f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -190,6 +196,15 @@ function MSM:UpdateList()
     self.listContent:SetHeight(math.max(y, 1))
 end
 
+function MSM:RequestChanges()
+    local msg = "Requesting MS changes — whisper me: ms <spec>"
+    RLSuite.utils:SendChat(msg, "RAID")
+    RLSuite.utils:Print("Richiesta MS change inviata.")
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        RLSuite.utils:Print("Debug: whisper a te stesso 'ms <spec>' per verificare che il parser lo legga.")
+    end
+end
+
 function MSM:GenerateMessage()
     if #self.db == 0 then
         RLSuite.utils:Print("Nessun MS change registrato.")
@@ -204,7 +219,7 @@ function MSM:GenerateMessage()
         RLSuite.lootManager:SetPreMessage(msg)
     end
     RLSuite.utils:SendChat(msg, "RAID")
-    RLSuite.utils:Print("Annunciato in raid: " .. msg)
+    RLSuite.utils:Print("Announce Changes: " .. msg)
     if RLSuite.DebugMode and RLSuite:DebugMode() then
         RLSuite.utils:Print("Debug: inviato in whisper a te. Whisper 'ms <spec>' a te stesso per testare il parser.")
     end
