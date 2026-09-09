@@ -22,6 +22,21 @@ function MW:Toggle()
     elseif self.frame then
         self.frame:Show()
         self:CloseTab()
+        -- /rls mostra anche l'HUD MacroBar (se abilitata e non gia' visibile)
+        self:ShowMacrobarHud()
+    end
+end
+
+-- Mostra la HUD MacroBar insieme alla barra (usata da /rls).
+function MW:ShowMacrobarHud()
+    local mb = RLSuite.macrobar
+    if not mb or not mb.frame then return end
+    if RLSuiteDB.macrobar and RLSuiteDB.macrobar.enabled == false then return end
+    local pset = mb.PhaseSettings and mb:PhaseSettings()
+    if pset and pset.enabled == false then return end
+    if not mb.frame:IsShown() then
+        mb.frame:Show()
+        if mb.ApplyLayout then mb:ApplyLayout() end
     end
 end
 
