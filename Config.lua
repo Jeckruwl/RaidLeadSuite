@@ -901,9 +901,10 @@ function CFG:PanelMain()
     L.width = L.width or 660
     L.height = L.height or 700
     L.scale = L.scale or 1
-    self:Header("Finestra principale")
+    self:Header("Barra e finestra tab")
+    self:Note("Larghezza della barra (e della tab agganciata). Altezza della finestra tab sotto la barra.")
     self:AddSlider("Larghezza", 500, 900, 20, function() return L.width end, function(v) L.width = v end, 220)
-    self:AddSlider("Altezza", 500, 900, 20, function() return L.height end, function(v) L.height = v end, 220)
+    self:AddSlider("Altezza tab", 400, 900, 20, function() return L.height end, function(v) L.height = v end, 220)
     self:AddSlider("Scala", 0.70, 1.30, 0.05, function() return L.scale end, function(v) L.scale = v end, 220)
 end
 
@@ -1061,7 +1062,7 @@ function CFG:ApplyAll()
     local function scale(fr, key)
         if not fr or not L[key] or not L[key].scale then return end
         local parent = fr.GetParent and fr:GetParent()
-        if RLSuite.mainWindow and RLSuite.mainWindow.contentArea and parent == RLSuite.mainWindow.contentArea then
+        if RLSuite.mainWindow and RLSuite.mainWindow.frame and parent == RLSuite.mainWindow.frame then
             fr:SetScale(1)
             return
         end

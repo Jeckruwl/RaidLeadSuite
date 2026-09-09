@@ -333,7 +333,7 @@ function Utils:AllWindows()
     return list
 end
 
-function Utils:AllDockedPanels()
+function Utils:AllTabPanes()
     local list = {}
     local function add(fr)
         if fr then table.insert(list, fr) end
@@ -343,12 +343,20 @@ function Utils:AllDockedPanels()
     add(RLSuite.msManager and RLSuite.msManager.frame)
     add(RLSuite.lootManager and RLSuite.lootManager.frame)
     add(RLSuite.config and RLSuite.config.frame)
-    add(RLSuite.config and RLSuite.config.left)
-    add(RLSuite.config and RLSuite.config.right)
     if RLSuite.mainWindow and RLSuite.mainWindow.tabPanels then
         add(RLSuite.mainWindow.tabPanels.macro)
         add(RLSuite.mainWindow.tabPanels.raidframe)
     end
+    return list
+end
+
+function Utils:AllDockedPanels()
+    local list = {}
+    local function add(fr)
+        if fr then table.insert(list, fr) end
+    end
+    add(RLSuite.config and RLSuite.config.left)
+    add(RLSuite.config and RLSuite.config.right)
     return list
 end
 
@@ -384,6 +392,10 @@ end
 
 function Utils:SkinAllWindows()
     for _, fr in ipairs(self:AllWindows()) do
+        self:SkinFrame(fr)
+    end
+    for _, fr in ipairs(self:AllTabPanes()) do
+        if fr.rlsBgFill then fr.rlsBgFill:Hide() end
         self:SkinFrame(fr)
     end
     for _, fr in ipairs(self:AllDockedPanels()) do

@@ -389,7 +389,7 @@ end)
 function RLSuite:PrintHelp()
     local p = function(t) self.utils:Print(t) end
     p("Comandi disponibili:")
-    p("  /rls              Finestra principale")
+    p("  /rls              Barra tab")
     p("  /rls help         Questo elenco")
     p("  /rls group        Tab Groupmaking")
     p("  /rls whisplist    Tab Whisplist")
