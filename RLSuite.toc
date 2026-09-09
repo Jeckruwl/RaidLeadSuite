@@ -1,0 +1,22 @@
+## Interface: 30300
+## Title: RLSuite - Raid Leading Suite
+## Notes: Complete raid leading addon for WOTLK - Warmane Lordaeron
+## Author: RLSuite
+## Version: 1.0.0
+## SavedVariables: RLSuiteDB
+## SavedVariablesPerCharacter: RLSuiteCharDB
+
+# Libraries (embedded if needed, here we use WoW API directly)
+
+# Core
+Utils.lua
+Core.lua
+
+# Modules
+RaidProfile.lua
+MacroBar.lua
+GroupMaking.lua
+RaidFrame.lua
+MSManager.lua
+LootManager.lua
+Config.lua
