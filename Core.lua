@@ -131,6 +131,19 @@ RLSuite.raidDB = {
     },
 }
 
+-- WotLK item IDs used only by debug-mode fake loot.
+RLSuite.debugLoot = {
+    ["Icecrown Citadel"] = {49623,50730,50429,50735,50737,50738,50070,50444,50733,49919,50428,50727,49908,52025,52026,52027,50411,50412,50603,50731},
+    ["Trial of the Crusader"] = {47515,47516,47517,47233,47422,47520,47239,47528,47475,47548,47261,47545},
+    ["Ulduar"] = {45620,45457,45570,45613,45449,45038,46017,45171,45443,45442,45232,45587,45448,45618},
+    ["Naxxramas"] = {40384,40402,40406,40386,39714,39417,40343,40408,39245,39344,40396,40189},
+    ["The Obsidian Sanctum"] = {40491,40497,40489,40488,40626,40625,40627,44006},
+    ["The Eye of Eternity"] = {40455,40486,40497,40489,40626,40625,40627,43952},
+    ["Onyxia's Lair"] = {49437,49298,49303,49465,49297,49299,49494,49296},
+    ["Ruby Sanctum"] = {53132,53125,53127,53134,54580,54581,54582,54583},
+    ["Vault of Archavon"] = {43954,43988,43998,44000,50415,50442,50709,50444},
+}
+
 RLSuite.classData = {
     WARRIOR     = {roles = {"Tank", "DPS"}, specs = {"Arms", "Fury", "Protection"}},
     PALADIN     = {roles = {"Tank", "Healer", "DPS"}, specs = {"Holy", "Protection", "Retribution"}},
@@ -282,6 +295,10 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if RLSuite.groupmaking and RLSuite.groupmaking.OnWhisper then
             RLSuite.groupmaking:OnWhisper(sender, msg)
         end
+        if RLSuite:DebugMode() and RLSuite.msManager and RLSuite.msManager.ParseMSMessage then
+            local clean = string.gsub(msg or "", "^%[[^%]]+%]%s*", "")
+            RLSuite.msManager:ParseMSMessage(sender, clean)
+        end
     elseif event == "CHAT_MSG_RAID" or event == "CHAT_MSG_RAID_LEADER" then
         local msg, sender = ...
         if RLSuite.msManager and RLSuite.msManager.ParseMSMessage then
@@ -346,8 +363,49 @@ end
 
 RLSuite.context = "preraid"
 
+function RLSuite:DebugMode()
+    return RLSuiteDB and RLSuiteDB.debug == true
+end
+
+function RLSuite:InRaid()
+    if self:DebugMode() then return true end
+    return GetNumRaidMembers() > 0
+end
+
+function RLSuite:IsOfficer()
+    if self:DebugMode() then return true end
+    return (IsRaidLeader and IsRaidLeader()) or (IsRaidOfficer and IsRaidOfficer())
+end
+
+function RLSuite:ApplyDebugMode()
+    self:UpdateRaidContext()
+    if self:DebugMode() then
+        self.utils:Print("|cffff9900DEBUG MODE ON|r — raid simulato, messaggi in whisper a te.")
+        if self.lootManager and self.lootManager.SpawnDebugLoot then
+            self.lootManager:SpawnDebugLoot()
+        end
+        if self.raidFrame and self.raidFrame.Rebuild then
+            self.raidFrame:Rebuild()
+            if self.raidFrame.UpdateAll then self.raidFrame:UpdateAll() end
+        end
+        if self.macrobar and self.macrobar.UpdatePhase then
+            self.macrobar:UpdatePhase()
+            self.macrobar:ShowKeypad(self.context == "preboss")
+        end
+    else
+        self.utils:Print("Debug mode OFF.")
+        if self.raidFrame and self.raidFrame.Rebuild then
+            self.raidFrame:Rebuild()
+        end
+        if self.macrobar and self.macrobar.UpdatePhase then
+            self.macrobar:UpdatePhase()
+            self.macrobar:ShowKeypad(self.context == "preboss")
+        end
+    end
+end
+
 function RLSuite:UpdateRaidContext()
-    local inRaid = GetNumRaidMembers() > 0
+    local inRaid = self:InRaid()
     local inCombat = UnitAffectingCombat("player")
     if not inRaid then
         self.context = "preraid"

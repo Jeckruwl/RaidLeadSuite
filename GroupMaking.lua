@@ -495,6 +495,11 @@ end
 
 function GM:DoSpam()
     local msg = self:BuildSpamMessage()
+    self.lastSpamMsg = msg
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        RLSuite.utils:SendChat(msg, "LFM")
+        return
+    end
     local channels = self.db.spamChannels or {"General", "Trade"}
     for _, ch in ipairs(channels) do
         local chNum = GetChannelName(ch)
@@ -509,6 +514,15 @@ end
 -- ============================================================
 function GM:OnWhisper(sender, msg)
     if not self.spamActive then return end
+    local me = UnitName("player")
+    if sender == me then
+        if self.lastSpamMsg and (msg == self.lastSpamMsg or string.find(msg, self.lastSpamMsg, 1, true)) then
+            return
+        end
+        if string.find(msg or "", "^%[") then
+            return
+        end
+    end
     local entry = {
         name = sender,
         rawMsg = msg,
@@ -758,24 +772,29 @@ end
 
 function GM:InviteSelected()
     if not self.selectedEntry then return end
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        RLSuite.utils:Print("[DBG] Invite " .. (self.selectedEntry.name or "?"))
+        RLSuite.utils:Whisper(self.selectedEntry.name, "You are invited (debug).")
+        return
+    end
     InviteUnit(self.selectedEntry.name)
 end
 
 function GM:AskGS()
     if not self.selectedEntry then return end
-    SendChatMessage("What's your GS?", "WHISPER", nil, self.selectedEntry.name)
+    RLSuite.utils:Whisper(self.selectedEntry.name, "What's your GS?")
 end
 
 function GM:AskAchi()
     if not self.selectedEntry then return end
-    SendChatMessage("Do you have the achievement for this raid?", "WHISPER", nil, self.selectedEntry.name)
+    RLSuite.utils:Whisper(self.selectedEntry.name, "Do you have the achievement for this raid?")
 end
 
 function GM:SendCustomMessage()
     if not self.selectedEntry then return end
     local msg = self.wlCustomMsg and self.wlCustomMsg:GetText() or ""
     if msg ~= "" then
-        SendChatMessage(msg, "WHISPER", nil, self.selectedEntry.name)
+        RLSuite.utils:Whisper(self.selectedEntry.name, msg)
         self.wlCustomMsg:SetText("")
     end
 end
@@ -795,7 +814,11 @@ function GM:InvitePlayerToSlot(entry, slotIndex)
     end
     self:FillSlot(slotIndex, class, role, entry.name)
     entry.invited = true
-    InviteUnit(entry.name)
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        RLSuite.utils:Print("[DBG] Invite " .. (entry.name or "?") .. " slot " .. slotIndex)
+    else
+        InviteUnit(entry.name)
+    end
     self:UpdateWhisplist()
     self:UpdateMessagePreview()
     RLSuite.utils:Print((entry.name or "?") .. " invitato nello slot " .. slotIndex)

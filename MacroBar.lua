@@ -385,13 +385,39 @@ function MB:ExecuteMacro(index)
     for _, line in ipairs(lines) do
         line = string.gsub(string.gsub(line, "^%s+", ""), "%s+$", "")
         if line ~= "" then
-            if string.sub(line, 1, 1) == "/" then
-                ChatFrame1EditBox:SetText(line)
-                ChatEdit_SendText(ChatFrame1EditBox, 1)
-            else
-                RLSuite.utils:SendChat(line, "RAID_WARNING")
-            end
+            MB:RunMacroLine(line)
         end
+    end
+end
+
+function MB:RunMacroLine(line)
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        local cmd, rest = string.match(line, "^/(%S+)%s*(.*)$")
+        if not cmd then
+            RLSuite.utils:SendChat(line, "RAID_WARNING")
+            return
+        end
+        local c = string.lower(cmd)
+        local talk = {
+            rw = "RAID_WARNING", raidwarning = "RAID_WARNING",
+            raid = "RAID", ra = "RAID", r = "RAID",
+            s = "SAY", say = "SAY", y = "YELL", yell = "YELL",
+            p = "PARTY", party = "PARTY", g = "GUILD", guild = "GUILD",
+        }
+        if talk[c] then
+            RLSuite.utils:SendChat((rest ~= "" and rest) or line, talk[c])
+            return
+        end
+        if c == "readycheck" then
+            RLSuite.utils:SendChat("Ready check!", "RAID")
+            return
+        end
+    end
+    if string.sub(line, 1, 1) == "/" then
+        ChatFrame1EditBox:SetText(line)
+        ChatEdit_SendText(ChatFrame1EditBox, 1)
+    else
+        RLSuite.utils:SendChat(line, "RAID_WARNING")
     end
 end
 
@@ -486,7 +512,7 @@ function MB:LoadKeybinds()
 end
 
 function MB:StartPullTimer(seconds)
-    if not IsRaidLeader() and not IsRaidOfficer() then
+    if not (RLSuite.IsOfficer and RLSuite:IsOfficer()) then
         RLSuite.utils:Print("Devi essere RL o assist per il pull timer.")
         return
     end
@@ -513,5 +539,9 @@ function MB:StartPullTimer(seconds)
 end
 
 function MB:DoReadyCheck()
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        RLSuite.utils:SendChat("Ready check!", "RAID")
+        return
+    end
     DoReadyCheck()
 end

@@ -106,6 +106,7 @@ function CFG:SubtabsFor(key)
             { key = "look", label = "Aspetto" },
             { key = "font", label = "Font" },
             { key = "window", label = "Finestra" },
+            { key = "debug", label = "Debug" },
         }
     elseif key == "macrobar" then
         return {}
@@ -226,6 +227,8 @@ function CFG:RebuildPanel()
         self:PanelGeneralFont()
     elseif cat == "general" and sub == "window" then
         self:PanelMain()
+    elseif cat == "general" and sub == "debug" then
+        self:PanelGeneralDebug()
     elseif cat == "groupmaking" then
         self:PanelScale("groupmaking", "Groupmaking")
     elseif cat == "whisplist" then
@@ -868,6 +871,29 @@ function CFG:Layout(key)
     self.db.layout = self.db.layout or {}
     self.db.layout[key] = self.db.layout[key] or { scale = 1 }
     return self.db.layout[key]
+end
+
+function CFG:PanelGeneralDebug()
+    self:Header("Debug mode")
+    self:Note("Simula un raid group. Macro, LFM, roll, loot e MS vanno in whisper a te. Il loot finto usa il raid selezionato in Groupmaking.")
+    self:AddCheck("Attiva debug mode", function()
+        return RLSuiteDB.debug == true
+    end, function(v)
+        RLSuiteDB.debug = v and true or false
+        if RLSuite.ApplyDebugMode then
+            RLSuite:ApplyDebugMode()
+        end
+    end)
+    local y = self:NextY(28)
+    local btn = CreateFrame("Button", nil, self.content, "UIPanelButtonTemplate")
+    btn:SetSize(160, 22)
+    btn:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
+    btn:SetText("Riempi loot finto")
+    btn:SetScript("OnClick", function()
+        if RLSuite.lootManager and RLSuite.lootManager.SpawnDebugLoot then
+            RLSuite.lootManager:SpawnDebugLoot()
+        end
+    end)
 end
 
 function CFG:PanelMain()

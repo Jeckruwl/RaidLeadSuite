@@ -66,11 +66,30 @@ function Utils:FormatCD(seconds)
 end
 
 function Utils:SendChat(msg, channel)
+    if not msg or msg == "" then return end
     channel = channel or "RAID"
+    if RLSuiteDB and RLSuiteDB.debug then
+        local me = UnitName("player")
+        if me then
+            SendChatMessage("[" .. channel .. "] " .. msg, "WHISPER", nil, me)
+        end
+        return
+    end
     if channel == "RAID_WARNING" and not IsRaidLeader() and not IsRaidOfficer() then
         channel = "RAID"
     end
     SendChatMessage(msg, channel)
+end
+
+function Utils:Whisper(name, msg)
+    if not msg or msg == "" then return end
+    local dest = name
+    if RLSuiteDB and RLSuiteDB.debug then
+        dest = UnitName("player")
+    end
+    if dest then
+        SendChatMessage(msg, "WHISPER", nil, dest)
+    end
 end
 
 function Utils:StripColorCodes(text)

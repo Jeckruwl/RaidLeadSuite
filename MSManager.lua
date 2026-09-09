@@ -167,5 +167,6 @@ function MSM:GenerateMessage()
     if RLSuite.lootManager and RLSuite.lootManager.SetPreMessage then
         RLSuite.lootManager:SetPreMessage(msg)
     end
+    RLSuite.utils:SendChat(msg, "RAID")
     RLSuite.utils:Print("Messaggio generato: " .. msg)
 end

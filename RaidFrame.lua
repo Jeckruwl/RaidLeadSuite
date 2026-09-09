@@ -99,13 +99,59 @@ function RF:RegisterEvents()
     end)
 end
 
+function RF:GetRoster()
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        local me = UnitName("player") or "Player"
+        local myClass = select(2, UnitClass("player")) or "WARRIOR"
+        local list = { { unit = "player", name = me, class = myClass, fake = false } }
+        local fakes = {
+            { name = "Thrallbot", class = "SHAMAN" },
+            { name = "Jainabot", class = "MAGE" },
+            { name = "Utherbot", class = "PALADIN" },
+            { name = "Sylbot", class = "ROGUE" },
+            { name = "Bolvarbot", class = "WARRIOR" },
+            { name = "Tyrandebot", class = "DRUID" },
+            { name = "Anduinbot", class = "PRIEST" },
+            { name = "Valeerabot", class = "HUNTER" },
+            { name = "Guldanbot", class = "WARLOCK" },
+        }
+        local n = tonumber(RLSuiteDB.groupmaking and RLSuiteDB.groupmaking.difficulty) or 10
+        if n < 2 then n = 10 end
+        if n > 10 then
+            for i = 1, n - 10 do
+                table.insert(fakes, { name = "Raider" .. i, class = "WARRIOR" })
+            end
+        end
+        for i = 1, n - 1 do
+            local f = fakes[i]
+            if f then
+                table.insert(list, { unit = nil, name = f.name, class = f.class, fake = true })
+            end
+        end
+        return list
+    end
+    local list = {}
+    local num = GetNumRaidMembers() or 0
+    for i = 1, num do
+        local unit = "raid" .. i
+        table.insert(list, {
+            unit = unit,
+            name = UnitName(unit) or "Unknown",
+            class = select(2, UnitClass(unit)) or "WARRIOR",
+            fake = false,
+        })
+    end
+    return list
+end
+
 function RF:Rebuild()
     for _, row in ipairs(self.rows) do
         row:Hide()
     end
     self.rows = {}
 
-    local numMembers = GetNumRaidMembers()
+    local roster = self:GetRoster()
+    local numMembers = #roster
     if numMembers == 0 then return end
 
     local barHeight = self.db.appearance.barHeight or 20
@@ -113,9 +159,10 @@ function RF:Rebuild()
     local rowHeight = math.max(barHeight, iconSize) + 2
 
     for i = 1, numMembers do
-        local unit = "raid" .. i
-        local name = UnitName(unit) or "Unknown"
-        local class = select(2, UnitClass(unit)) or "WARRIOR"
+        local info = roster[i]
+        local unit = info.unit
+        local name = info.name or "Unknown"
+        local class = info.class or "WARRIOR"
 
         local row = CreateFrame("Button", "RLSuiteRaidRow" .. i, self.content)
         row:SetSize(330, rowHeight)
@@ -123,6 +170,8 @@ function RF:Rebuild()
         row.unit = unit
         row.name = name
         row.class = class
+        row.fake = info.fake
+        row.fakeHP = 70 + ((i * 13) % 31)
 
         row.alert = row:CreateTexture(nil, "OVERLAY")
         row.alert:SetSize(iconSize, iconSize)
@@ -204,6 +253,32 @@ function RF:UpdateAll()
 end
 
 function RF:UpdateRow(row)
+    if row.fake then
+        local pct = row.fakeHP or 100
+        row.healthBar:SetMinMaxValues(0, 100)
+        row.healthBar:SetValue(pct)
+        row.healthText:SetText(pct .. "%")
+        if pct > 60 then
+            row.healthBar:SetStatusBarColor(0, 1, 0)
+        elseif pct > 30 then
+            row.healthBar:SetStatusBarColor(1, 1, 0)
+        else
+            row.healthBar:SetStatusBarColor(1, 0, 0)
+        end
+        row.manaBar:SetMinMaxValues(0, 100)
+        row.manaBar:SetValue(80)
+        if self.db.showFlask then
+            row.alert:SetTexture(self:GetAlertIcon("flask"))
+            row.alert:Show()
+            row.alertFrame:Show()
+            row.alertType = "flask"
+        else
+            row.alert:Hide()
+            row.alertFrame:Hide()
+            row.alertType = nil
+        end
+        return
+    end
     local unit = row.unit
     if not unit or not UnitExists(unit) then return end
 
@@ -337,7 +412,7 @@ function RF:OnAlertClick(row)
     local msg = alerts[row.alertType] or self:GetDefaultAlertMessage(row.alertType)
     if msg and name then
         msg = string.gsub(msg, "$name", name)
-        SendChatMessage(msg, "WHISPER", nil, name)
+        RLSuite.utils:Whisper(name, msg)
     end
 end
 
@@ -362,7 +437,7 @@ function RF:ApplyLayout()
         self.content:SetHeight(h - 40)
     end
     RLSuite.utils:SkinFrame(self.frame)
-    if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+    if (RLSuite.InRaid and RLSuite:InRaid()) or (GetNumRaidMembers and GetNumRaidMembers() > 0) then
         self:Rebuild()
         self:UpdateAll()
     end

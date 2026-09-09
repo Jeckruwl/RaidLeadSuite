@@ -116,6 +116,41 @@ function LM:SetPreMessage(msg)
     end
 end
 
+function LM:SpawnDebugLoot()
+    local raid = (RLSuiteDB.groupmaking and RLSuiteDB.groupmaking.raid) or "Icecrown Citadel"
+    local pool = (RLSuite.debugLoot and RLSuite.debugLoot[raid]) or {49623, 49908, 52025}
+    local bosses = (RLSuite.raidDB[raid] and RLSuite.raidDB[raid].bosses) or {"Unknown"}
+    local ids = {}
+    for _, id in ipairs(pool) do table.insert(ids, id) end
+    local n = math.min(6, #ids)
+    for i = #ids, 2, -1 do
+        local j = math.random(1, i)
+        ids[i], ids[j] = ids[j], ids[i]
+    end
+    for i = 1, n do
+        local id = ids[i]
+        local itemName, itemLink, _, _, _, _, _, _, _, itemTexture = GetItemInfo(id)
+        if not itemLink then
+            itemLink = "|cffff8000|Hitem:" .. id .. ":0:0:0:0:0:0:0:80|h[Debug Item " .. id .. "]|h|r"
+            itemName = "Debug Item " .. id
+            itemTexture = "Interface\\Icons\\INV_Misc_QuestionMark"
+        end
+        local boss = bosses[((i - 1) % #bosses) + 1] or "Unknown"
+        table.insert(self.history, {
+            id = #self.history + 1,
+            itemLink = itemLink,
+            itemName = itemName,
+            itemTexture = itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark",
+            boss = "[DBG] " .. boss,
+            itemType = self:DetectItemType(itemLink, itemName),
+            time = time(),
+            assignedTo = nil,
+        })
+    end
+    self:UpdateHistory()
+    RLSuite.utils:Print("Loot debug: " .. n .. " item da " .. raid)
+end
+
 function LM:OnLootMessage(msg)
     local itemLink = RLSuite.utils:GetItemLinkFromChat(msg or "")
     if not itemLink then return end
@@ -274,6 +309,16 @@ function LM:StartRoll(rollType)
         msg = self.preMessage .. " " .. msg
     end
     RLSuite.utils:SendChat(msg, "RAID")
+
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        local me = UnitName("player") or "You"
+        local names = {me, "Tankbot", "Healbot", "Dpsbot", "Huntbot"}
+        for _, n in ipairs(names) do
+            if math.random(1, 10) > 2 then
+                self:OnSystemRoll(n .. " rolls " .. math.random(1, 100) .. " (1-100).")
+            end
+        end
+    end
 
     if self.rollMSBtn then self.rollMSBtn:Disable() end
     if self.rollOSBtn then self.rollOSBtn:Disable() end
