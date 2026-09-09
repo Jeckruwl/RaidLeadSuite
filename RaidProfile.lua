@@ -257,8 +257,43 @@ function MW:CreateMacrobarSubTab()
     editor:SetPoint("TOPLEFT", mbPreview, "BOTTOMLEFT", 0, -8)
     editor:SetPoint("BOTTOMRIGHT", sc, "BOTTOMRIGHT", -10, 10)
     RLSuite.utils:SkinFrame(editor)
-    editor:Hide()
+    editor:Show()
     self.macroEditor = editor
+
+    local list = CreateFrame("Frame", nil, editor)
+    list:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -8, -8)
+    list:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -8, 8)
+    list:SetWidth(300)
+    RLSuite.utils:SkinFrame(list)
+    self.macroListFrame = list
+
+    local listTitle = list:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    listTitle:SetPoint("TOPLEFT", list, "TOPLEFT", 8, -8)
+    listTitle:SetText("Tutte le macro")
+
+    self.macroListRows = {}
+    for i = 1, 12 do
+        local row = CreateFrame("Button", nil, list)
+        row:SetHeight(20)
+        row:SetPoint("TOPLEFT", list, "TOPLEFT", 6, -26 - (i - 1) * 22)
+        row:SetPoint("RIGHT", list, "RIGHT", -6, 0)
+        local num = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        num:SetPoint("LEFT", row, "LEFT", 2, 0)
+        num:SetWidth(16)
+        num:SetJustifyH("LEFT")
+        num:SetText(tostring(i))
+        local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("LEFT", num, "RIGHT", 4, 0)
+        fs:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+        fs:SetJustifyH("LEFT")
+        fs:SetText("")
+        row.fs = fs
+        row.idx = i
+        row:SetScript("OnClick", function()
+            MW:OpenMacroEditor(i)
+        end)
+        self.macroListRows[i] = row
+    end
 
     local slotFS = editor:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     slotFS:SetPoint("TOPLEFT", editor, "TOPLEFT", 12, -10)
@@ -270,7 +305,7 @@ function MW:CreateMacrobarSubTab()
     nameLabel:SetText("Nome:")
 
     local nameEdit = CreateFrame("EditBox", "RLSuiteMacroNameEdit", editor, "InputBoxTemplate")
-    nameEdit:SetSize(220, 20)
+    nameEdit:SetSize(140, 20)
     nameEdit:SetPoint("LEFT", nameLabel, "RIGHT", 8, 0)
     nameEdit:SetAutoFocus(false)
     nameEdit:SetMaxLetters(32)
@@ -299,7 +334,8 @@ function MW:CreateMacrobarSubTab()
 
     local bodyFrame = CreateFrame("Frame", nil, editor)
     bodyFrame:SetPoint("TOPLEFT", editor, "TOPLEFT", 12, -78)
-    bodyFrame:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -12, 40)
+    bodyFrame:SetPoint("BOTTOMLEFT", editor, "BOTTOMLEFT", 12, 40)
+    bodyFrame:SetPoint("RIGHT", list, "LEFT", -8, 0)
     bodyFrame:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -326,7 +362,7 @@ function MW:CreateMacrobarSubTab()
 
     local util = CreateFrame("Frame", nil, editor)
     util:SetPoint("BOTTOMLEFT", editor, "BOTTOMLEFT", 10, 8)
-    util:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -10, 8)
+    util:SetPoint("RIGHT", list, "LEFT", -8, 0)
     util:SetHeight(26)
     self.macroUtilBar = util
 
@@ -360,14 +396,33 @@ function MW:CreateMacrobarSubTab()
         MW:ToggleMacroCaps()
     end)
 
+    self:HookMacroInsertLink()
     self:CreateMacroIconPicker(editor)
     self:SelectMacroPhase(self.macroPhase)
+    self:OpenMacroEditor(1)
+end
+
+function MW:HookMacroInsertLink()
+    if self._insertLinkHooked then return end
+    self._insertLinkHooked = true
+    local orig = ChatEdit_InsertLink
+    ChatEdit_InsertLink = function(text)
+        local edit = MW.macroBodyEdit
+        if text and edit and edit:IsShown() and edit:HasFocus() then
+            edit:Insert(text)
+            MW:SaveMacroSlot()
+            return true
+        end
+        if orig then
+            return orig(text)
+        end
+    end
 end
 
 function MW:CreateMacroIconPicker(parent)
     local picker = CreateFrame("Frame", "RLSuiteMacroIconPicker", parent)
-    picker:SetSize(380, 250)
-    picker:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -8, -40)
+    picker:SetSize(280, 220)
+    picker:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 12, 44)
     picker:SetFrameStrata("FULLSCREEN_DIALOG")
     RLSuite.utils:SkinFrame(picker)
     picker:Hide()
@@ -510,6 +565,7 @@ function MW:OpenMacroEditor(index)
         self.macroIconBtn.icon:SetTexture(self.macroEditIcon)
     end
     self.macroLoading = false
+    self:RefreshMacroList()
 end
 
 function MW:InsertMacroText(token)
@@ -620,6 +676,36 @@ function MW:RefreshMacroTab()
     self:RefreshMacroPreview()
 end
 
+function MW:MacroPreviewText(data)
+    if not data then return "" end
+    local name = data.name or ""
+    local text = data.text or ""
+    text = string.gsub(text, "\n", " | ")
+    if name ~= "" and text ~= "" then
+        return name .. "  " .. text
+    end
+    if name ~= "" then return name end
+    return text
+end
+
+function MW:RefreshMacroList()
+    local macros = self:GetMacroDB(self.macroPhase)
+    local sel = self.macroEditIndex
+    for i, row in ipairs(self.macroListRows or {}) do
+        local data = macros[i]
+        if row.fs then
+            local line = self:MacroPreviewText(data)
+            if line == "" then line = " " end
+            row.fs:SetText(line)
+            if sel == i then
+                row.fs:SetTextColor(1, 0.82, 0)
+            else
+                row.fs:SetTextColor(0.9, 0.9, 0.9)
+            end
+        end
+    end
+end
+
 function MW:RefreshMacroPreview()
     local macros = self:GetMacroDB(self.macroPhase)
     for i, btn in ipairs(self.macroPreviewBtns or {}) do
@@ -633,6 +719,7 @@ function MW:RefreshMacroPreview()
             end
         end
     end
+    self:RefreshMacroList()
 end
 
 function MW:CreateRaidFrameSubTab()
