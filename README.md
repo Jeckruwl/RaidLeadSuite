@@ -57,6 +57,7 @@ Se lasci il nome `RaidLeadSuite` (clone GitHub senza rinomina), è comunque supp
 - **Config → Saved Raids** (voce sotto General): elenco dei salvataggi con il titolo e pulsante **Load** per ripristinare tutto.
 - **Anchors stile ElvUI** in *Config → General → Finestra → Toggle Anchors*: le HUD **Raid Frame** e **MacroBar** sono bloccate di default; con Toggle Anchors compaiono come placeholder spostabili evidenziati. Le altre finestre restano normali.
 - **Ridimensionabili** (maniglia in basso a destra): Groupmaking, Whisplist, MS Manager e Loot Manager; le dimensioni vengono ricordate.
+- **Integrazione DBM/BigWigs**: se DBM (o BigWigs) è installato, pull timer, richiesta MS changes e roll/reroll avviano anche una barra-timer visibile.
 
 ## Moduli
 

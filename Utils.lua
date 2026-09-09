@@ -754,3 +754,42 @@ function Utils:SetAnchorVisual(frame, on)
         frame.rlsAnchorBox:Hide()
     end
 end
+
+-- ============================================================
+-- DBM / BigWigs: timer visibili (pull, MS changes, roll, ecc.)
+-- ============================================================
+
+-- Avvia una barra-timer in DBM se l'addon e' presente (fallback:
+-- BigWigs). Non genera errori se nessuno dei due e' installato.
+-- Ritorna true se il timer e' partito.
+function Utils:StartDbmTimer(seconds, label, icon)
+    if not seconds or seconds <= 0 then return false end
+    label = label or "Timer"
+    icon = icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+
+    if DBM then
+        -- API pubblica "pizza timer" (DBM moderno e classico)
+        local ok = pcall(DBM.CreatePizzaTimer, DBM, seconds, label, icon)
+        if ok then return true end
+        -- fallback: barre interne dei DBM piu' vecchi
+        if DBM.Bars and DBM.Bars.CreateBar then
+            ok = pcall(DBM.Bars.CreateBar, DBM.Bars, seconds, label, icon)
+            if ok then return true end
+        end
+    end
+
+    if BigWigs then
+        if BigWigs.CreatePizzaTimer then
+            local ok = pcall(BigWigs.CreatePizzaTimer, BigWigs, seconds, label, icon)
+            if ok then return true end
+        elseif BigWigs.CreateBar then
+            local ok = pcall(BigWigs.CreateBar, BigWigs, seconds, label, icon)
+            if ok then return true end
+        end
+    end
+
+    if RLSuiteDB and RLSuiteDB.debug then
+        self:Debug("DBM/BigWigs non disponibile: timer \"" .. label .. "\" non avviato.")
+    end
+    return false
+end

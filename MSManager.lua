@@ -221,6 +221,8 @@ function MSM:RequestChanges()
     self.listenUntil = GetTime() + dur
     local msg = "Requesting MS changes — type in raid: ms <spec> you have only 40s"
     RLSuite.utils:SendChat(msg, "RAID")
+    -- barra-timer in DBM/BigWigs se installati
+    RLSuite.utils:StartDbmTimer(dur, "MS Changes", "Interface\\Icons\\Spell_Nature_AstralRecall")
     local f = CreateFrame("Frame")
     f:SetScript("OnUpdate", function(self2, elapsed)
         if not MSM.listening or not MSM.listenUntil then

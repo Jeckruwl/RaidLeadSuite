@@ -534,6 +534,9 @@ function LM:StartRoll(rollType)
         msg = self.preMessage .. " " .. msg
     end
     RLSuite.utils:SendChat(msg, "RAID")
+    -- barra-timer in DBM/BigWigs se installati (durata del roll)
+    RLSuite.utils:StartDbmTimer(self.db.rollDuration or 10, "Roll " .. (self.selectedItem.itemName or "Unknown"),
+        self.selectedItem.itemTexture)
 
     if RLSuite.DebugMode and RLSuite:DebugMode() then
         local me = UnitName("player") or "You"
@@ -637,6 +640,9 @@ function LM:DoReroll()
     for _, w in ipairs(winners) do table.insert(names, w.name or "?") end
 
     RLSuite.utils:SendChat("Reroll! Only " .. table.concat(names, ", ") .. " can roll for " .. (self.currentRoll.item.itemName or "Unknown"), "RAID")
+    -- barra-timer in DBM/BigWigs se installati (durata del reroll)
+    RLSuite.utils:StartDbmTimer(self.db.rerollDuration or 5, "Reroll " .. (self.currentRoll.item.itemName or "Unknown"),
+        self.currentRoll.item.itemTexture)
 
     self.currentRoll.rolls = {}
     self.currentRoll.active = true

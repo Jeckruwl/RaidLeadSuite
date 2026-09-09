@@ -969,6 +969,8 @@ function MB:StartPullTimer(seconds)
         return
     end
     RLSuite.utils:SendChat("Pull in " .. seconds .. " seconds!", "RAID_WARNING")
+    -- barra-timer in DBM/BigWigs se installati
+    RLSuite.utils:StartDbmTimer(seconds, "Pull", "Interface\\Icons\\Ability_Warrior_Charge")
     local remaining = seconds
     local timerFrame = CreateFrame("Frame")
     timerFrame:SetScript("OnUpdate", function(self2, elapsed)
