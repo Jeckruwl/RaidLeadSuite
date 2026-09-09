@@ -7,6 +7,7 @@ local GM = RLSuite.groupmaking
 
 local SLOT_SIZE = 32
 local SLOT_SPACING = 4
+local GROUP_LABEL_H = 14
 
 local ROLE_COLORS = {
     tank   = {r=0.2, g=0.4, b=1.0},
@@ -225,15 +226,28 @@ end
 -- ============================================================
 -- COMP SLOTS
 -- ============================================================
+function GM:GroupRowHeight()
+    return GROUP_LABEL_H + SLOT_SIZE + SLOT_SPACING
+end
+
 function GM:BuildCompSlots()
     local maxSlots = 25
     self.compSlots = {}
+    self.groupLabels = {}
+    for g = 1, 5 do
+        local fs = self.compFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("TOPLEFT", self.compFrame, "TOPLEFT", 0, -((g - 1) * self:GroupRowHeight()))
+        fs:SetText("Group " .. g)
+        fs:SetTextColor(1, 0.82, 0)
+        self.groupLabels[g] = fs
+    end
     for i = 1, maxSlots do
         local slot = CreateFrame("Button", "RLSuiteCompSlot"..i, self.compFrame)
         slot:SetSize(SLOT_SIZE, SLOT_SIZE)
         local col = (i - 1) % 5
         local row = math.floor((i - 1) / 5)
-        slot:SetPoint("TOPLEFT", self.compFrame, "TOPLEFT", col * (SLOT_SIZE + SLOT_SPACING), -row * (SLOT_SIZE + SLOT_SPACING))
+        local y = -(row * self:GroupRowHeight() + GROUP_LABEL_H)
+        slot:SetPoint("TOPLEFT", self.compFrame, "TOPLEFT", col * (SLOT_SIZE + SLOT_SPACING), y)
         -- Sfondo slot visibile
         slot:SetBackdrop({
             bgFile = "Interface\Buttons\UI-Quickslot",
@@ -294,7 +308,10 @@ function GM:SetDifficulty(diff)
         end
     end
     local rows = math.ceil(numSlots / 5)
-    local newHeight = rows * (SLOT_SIZE + SLOT_SPACING) - SLOT_SPACING
+    for g, fs in ipairs(self.groupLabels or {}) do
+        if g <= rows then fs:Show() else fs:Hide() end
+    end
+    local newHeight = rows * self:GroupRowHeight() - SLOT_SPACING
     self.compFrame:SetSize((SLOT_SIZE + SLOT_SPACING) * 5 - SLOT_SPACING, newHeight)
     self:LayoutGroupPanels()
     self:UpdateMessagePreview()
@@ -312,7 +329,8 @@ function GM:LayoutGroupPanels(rowW)
 
     local numSlots = tonumber(self.db and self.db.difficulty or "10") or 10
     local slotRows = math.ceil(numSlots / 5)
-    local compH = slotRows * (SLOT_SIZE + SLOT_SPACING) - SLOT_SPACING + 36
+    local rowH = GROUP_LABEL_H + SLOT_SIZE + SLOT_SPACING
+    local compH = slotRows * rowH - SLOT_SPACING + 36
     self:LayoutClassBar()
     local specH = (self._specBarHeight or 120) + 36
     local h = math.max(compH, specH, 140)
