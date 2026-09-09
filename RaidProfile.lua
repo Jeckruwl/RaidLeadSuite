@@ -94,6 +94,16 @@ function MW:ApplyLayout()
     RLSuite.utils:SkinFrame(self.frame)
 end
 
+function MW:SkinInner()
+    local u = RLSuite.utils
+    u:SkinBox(self.macroPreview)
+    u:SkinBox(self.macroEditor)
+    u:SkinBox(self.macroListFrame)
+    u:SkinBox(self.macroBodyFrame)
+    u:SkinBox(self.rfPreview)
+    u:SkinBox(self.rfAlertBox)
+end
+
 function MW:Dock(frame)
     if not frame then return end
     frame:SetParent(self.contentArea)
@@ -231,7 +241,7 @@ function MW:CreateMacrobarSubTab()
     local mbPreview = CreateFrame("Frame", nil, sc)
     mbPreview:SetSize(616, 52)
     mbPreview:SetPoint("TOPLEFT", hudLabel, "BOTTOMLEFT", 0, -4)
-    RLSuite.utils:SkinFrame(mbPreview)
+    RLSuite.utils:SkinBox(mbPreview)
     self.macroPreview = mbPreview
 
     for i = 1, 12 do
@@ -256,7 +266,7 @@ function MW:CreateMacrobarSubTab()
     local editor = CreateFrame("Frame", "RLSuiteMacroEditor", sc)
     editor:SetPoint("TOPLEFT", mbPreview, "BOTTOMLEFT", 0, -8)
     editor:SetPoint("BOTTOMRIGHT", sc, "BOTTOMRIGHT", -10, 10)
-    RLSuite.utils:SkinFrame(editor)
+    RLSuite.utils:SkinBox(editor)
     editor:Show()
     self.macroEditor = editor
 
@@ -264,7 +274,7 @@ function MW:CreateMacrobarSubTab()
     list:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -8, -8)
     list:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -8, 8)
     list:SetWidth(300)
-    RLSuite.utils:SkinFrame(list)
+    RLSuite.utils:SkinBox(list)
     self.macroListFrame = list
 
     local listTitle = list:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -744,9 +754,11 @@ function MW:CreateRaidFrameSubTab()
     end)
 
     local preview = CreateFrame("Frame", nil, sc)
-    preview:SetSize(300, 100)
     preview:SetPoint("TOPLEFT", rfLabel, "BOTTOMLEFT", 0, -10)
-    RLSuite.utils:SkinFrame(preview)
+    preview:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -10, -42)
+    preview:SetHeight(100)
+    RLSuite.utils:SkinBox(preview)
+    self.rfPreview = preview
 
     local example = CreateFrame("Frame", nil, preview)
     example:SetSize(280, 22)
@@ -781,19 +793,28 @@ function MW:CreateRaidFrameSubTab()
         cd:SetTexture("Interface\Icons\INV_Misc_QuestionMark")
     end
 
-    local alertLabel = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    alertLabel:SetPoint("TOPLEFT", preview, "BOTTOMLEFT", 0, -20)
-    alertLabel:SetText("Alert Messages:")
+    local alertBox = CreateFrame("Frame", nil, sc)
+    alertBox:SetPoint("TOPLEFT", preview, "BOTTOMLEFT", 0, -10)
+    alertBox:SetPoint("BOTTOMRIGHT", sc, "BOTTOMRIGHT", -10, 10)
+    RLSuite.utils:SkinBox(alertBox)
+    self.rfAlertBox = alertBox
+
+    local alertLabel = alertBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    alertLabel:SetPoint("TOPLEFT", alertBox, "TOPLEFT", 10, -10)
+    alertLabel:SetText("Alert Messages")
+    alertLabel:SetTextColor(1, 0.82, 0)
 
     local alertTypes = {"flask", "food", "buff"}
     for i, atype in ipairs(alertTypes) do
-        local aLabel = sc:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        aLabel:SetPoint("TOPLEFT", alertLabel, "BOTTOMLEFT", 0, -10 - (i-1)*30)
+        local aLabel = alertBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        aLabel:SetPoint("TOPLEFT", alertBox, "TOPLEFT", 10, -32 - (i-1)*30)
+        aLabel:SetWidth(50)
         aLabel:SetText(string.upper(atype) .. ":")
 
-        local edit = CreateFrame("EditBox", "RLSuiteAlertEdit_" .. atype, sc, "InputBoxTemplate")
-        edit:SetSize(400, 18)
-        edit:SetPoint("LEFT", aLabel, "RIGHT", 10, 0)
+        local edit = CreateFrame("EditBox", "RLSuiteAlertEdit_" .. atype, alertBox, "InputBoxTemplate")
+        edit:SetHeight(18)
+        edit:SetPoint("LEFT", aLabel, "RIGHT", 8, 0)
+        edit:SetPoint("RIGHT", alertBox, "RIGHT", -16, 0)
         edit:SetAutoFocus(false)
         local alerts = RLSuiteDB.raidframe.alerts or {}
         edit:SetText(alerts[atype] or "")

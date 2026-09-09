@@ -156,16 +156,12 @@ function LM:CreateFrame()
 end
 
 function LM:SkinBox(box)
-    if not box or not box.SetBackdrop then return end
-    box:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = {left = 3, right = 3, top = 3, bottom = 3},
-    })
-    local c = RLSuite.utils:GetThemeColors()
-    box:SetBackdropColor(0, 0, 0, 0.6)
-    box:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
+    RLSuite.utils:SkinBox(box)
+end
+
+function LM:SkinInner()
+    self:SkinBox(self.histBox)
+    self:SkinBox(self.selBox)
 end
 
 function LM:PaintHeader(header)
@@ -392,20 +388,7 @@ function LM:UpdateHistory()
             row:SetPoint("TOPLEFT", self.histContent, "TOPLEFT", 0, -y)
             row:SetPoint("TOPRIGHT", self.histContent, "TOPRIGHT", 0, -y)
             row.entry = entry
-            row:SetBackdrop({
-                bgFile = "Interface\Tooltips\UI-Tooltip-Background",
-                edgeFile = "Interface\Tooltips\UI-Tooltip-Border",
-                tile = true, tileSize = 16, edgeSize = 8,
-                insets = {left = 2, right = 2, top = 2, bottom = 2},
-            })
-            local sel = self.selectedItem == entry
-            if sel then
-                row:SetBackdropColor(0.25, 0.18, 0.02, 0.95)
-                row:SetBackdropBorderColor(0.85, 0.70, 0.20, 1)
-            else
-                row:SetBackdropColor(0.05, 0.05, 0.07, 0.9)
-                row:SetBackdropBorderColor(0.45, 0.45, 0.48, 1)
-            end
+            RLSuite.utils:SkinRow(row, self.selectedItem == entry)
 
             local num = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             num:SetPoint("LEFT", row, "LEFT", 6, 0)

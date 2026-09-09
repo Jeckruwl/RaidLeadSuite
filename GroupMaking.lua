@@ -63,34 +63,31 @@ function GM:CreateMainWindow()
     self.mainFrame = f
     RLSuite.utils:SkinFrame(f)
 
-    -- Titolo
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", f, "TOP", 0, -12)
-    title:SetText("RLSuite - Group Making")
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
+    title:SetText("Group Making")
 
-    -- Raid selector
     local raidLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    raidLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 20, -45)
+    raidLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -36)
     raidLabel:SetText("Raid:")
 
     self.raidDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteRaidDropdown", 180, 22)
-    self.raidDropdown:SetPoint("TOPLEFT", raidLabel, "TOPRIGHT", 10, 4)
+    self.raidDropdown:SetPoint("LEFT", raidLabel, "RIGHT", 8, 0)
     self:PopulateRaidDropdown()
 
-    -- Diff selector
     local diffLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    diffLabel:SetPoint("TOPLEFT", self.raidDropdown, "TOPRIGHT", 15, -4)
+    diffLabel:SetPoint("LEFT", self.raidDropdown, "RIGHT", 12, 0)
     diffLabel:SetText("Diff:")
 
     self.diffDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteDiffDropdown", 60, 22)
-    self.diffDropdown:SetPoint("TOPLEFT", diffLabel, "TOPRIGHT", 10, 4)
+    self.diffDropdown:SetPoint("LEFT", diffLabel, "RIGHT", 8, 0)
     RLSuite.utils:SetupDropdown(self.diffDropdown, {"10", "25"}, self.db.difficulty or "10", function(value)
         self:SetDifficulty(value)
     end)
 
     local diff10 = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     diff10:SetSize(30, 22)
-    diff10:SetPoint("TOPLEFT", self.diffDropdown, "TOPRIGHT", 5, 0)
+    diff10:SetPoint("LEFT", self.diffDropdown, "RIGHT", 6, 0)
     diff10:SetText("10")
     diff10:SetScript("OnClick", function() self:SetDifficulty("10") end)
 
@@ -100,75 +97,99 @@ function GM:CreateMainWindow()
     diff25:SetText("25")
     diff25:SetScript("OnClick", function() self:SetDifficulty("25") end)
 
-    -- Comp Array
-    local compLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    compLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 20, -85)
-    compLabel:SetText("Composizione:")
+    self.compBox = CreateFrame("Frame", nil, f)
+    self.compBox:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -66)
+    self.compBox:SetWidth(200)
+    self.compBox:SetHeight(200)
+    RLSuite.utils:SkinBox(self.compBox)
 
-    self.compFrame = CreateFrame("Frame", nil, f)
-    self.compFrame:SetPoint("TOPLEFT", compLabel, "BOTTOMLEFT", 0, -5)
+    local compLabel = self.compBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    compLabel:SetPoint("TOPLEFT", self.compBox, "TOPLEFT", 8, -6)
+    compLabel:SetText("Composizione")
+    compLabel:SetTextColor(1, 0.82, 0)
+
+    self.compFrame = CreateFrame("Frame", nil, self.compBox)
+    self.compFrame:SetPoint("TOPLEFT", self.compBox, "TOPLEFT", 8, -24)
     self.compFrame:SetSize((SLOT_SIZE + SLOT_SPACING) * 5 - SLOT_SPACING, (SLOT_SIZE + SLOT_SPACING) * 2 - SLOT_SPACING)
 
-    -- Classbar
-    local classBarLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    classBarLabel:SetPoint("TOPLEFT", self.compFrame, "BOTTOMLEFT", 0, -15)
-    classBarLabel:SetText("Clicca classe per aggiungere:")
+    self.classBox = CreateFrame("Frame", nil, f)
+    self.classBox:SetPoint("TOPLEFT", self.compBox, "TOPRIGHT", 8, 0)
+    self.classBox:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -66)
+    self.classBox:SetHeight(200)
+    RLSuite.utils:SkinBox(self.classBox)
 
-    self.classBar = CreateFrame("Frame", nil, f)
-    self.classBar:SetPoint("TOPLEFT", classBarLabel, "BOTTOMLEFT", 0, -5)
+    local classBarLabel = self.classBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    classBarLabel:SetPoint("TOPLEFT", self.classBox, "TOPLEFT", 8, -6)
+    classBarLabel:SetText("Clicca classe per aggiungere")
+    classBarLabel:SetTextColor(1, 0.82, 0)
 
-    -- Reserved
-    local reservedLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    reservedLabel:SetPoint("TOPLEFT", self.classBar, "BOTTOMLEFT", 0, -15)
-    reservedLabel:SetText("Pezzi riservati:")
+    self.classBar = CreateFrame("Frame", nil, self.classBox)
+    self.classBar:SetPoint("TOPLEFT", self.classBox, "TOPLEFT", 8, -24)
+    self.classBar:SetPoint("BOTTOMRIGHT", self.classBox, "BOTTOMRIGHT", -8, 8)
 
-    self.reservedEdit = CreateFrame("EditBox", "RLSuiteReservedEdit", f, "InputBoxTemplate")
-    self.reservedEdit:SetSize(350, 20)
-    self.reservedEdit:SetPoint("TOPLEFT", reservedLabel, "BOTTOMLEFT", 5, -5)
+    self.reqBox = CreateFrame("Frame", nil, f)
+    self.reqBox:SetPoint("TOPLEFT", self.compBox, "BOTTOMLEFT", 0, -8)
+    self.reqBox:SetPoint("TOPRIGHT", self.classBox, "BOTTOMRIGHT", 0, -8)
+    self.reqBox:SetHeight(88)
+    RLSuite.utils:SkinBox(self.reqBox)
+
+    local reservedLabel = self.reqBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    reservedLabel:SetPoint("TOPLEFT", self.reqBox, "TOPLEFT", 8, -8)
+    reservedLabel:SetText("Pezzi riservati")
+    reservedLabel:SetTextColor(1, 0.82, 0)
+
+    self.reservedEdit = CreateFrame("EditBox", "RLSuiteReservedEdit", self.reqBox, "InputBoxTemplate")
+    self.reservedEdit:SetHeight(20)
+    self.reservedEdit:SetPoint("TOPLEFT", reservedLabel, "BOTTOMLEFT", 4, -4)
+    self.reservedEdit:SetPoint("RIGHT", self.reqBox, "RIGHT", -12, 0)
     self.reservedEdit:SetAutoFocus(false)
     self.reservedEdit:SetScript("OnTextChanged", function() self:SaveComp() end)
 
-    -- Other reqs
-    local otherLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    otherLabel:SetPoint("TOPLEFT", self.reservedEdit, "BOTTOMLEFT", -5, -10)
-    otherLabel:SetText("Altre richieste:")
+    local otherLabel = self.reqBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    otherLabel:SetPoint("TOPLEFT", self.reservedEdit, "BOTTOMLEFT", -4, -6)
+    otherLabel:SetText("Altre richieste")
+    otherLabel:SetTextColor(1, 0.82, 0)
 
-    self.otherEdit = CreateFrame("EditBox", "RLSuiteOtherEdit", f, "InputBoxTemplate")
-    self.otherEdit:SetSize(350, 20)
-    self.otherEdit:SetPoint("TOPLEFT", otherLabel, "BOTTOMLEFT", 5, -5)
+    self.otherEdit = CreateFrame("EditBox", "RLSuiteOtherEdit", self.reqBox, "InputBoxTemplate")
+    self.otherEdit:SetHeight(20)
+    self.otherEdit:SetPoint("TOPLEFT", otherLabel, "BOTTOMLEFT", 4, -4)
+    self.otherEdit:SetPoint("RIGHT", self.reqBox, "RIGHT", -12, 0)
     self.otherEdit:SetAutoFocus(false)
     self.otherEdit:SetScript("OnTextChanged", function() self:SaveComp() end)
 
-    -- Buttons
-    local btnY = -420
+    self.previewBox = CreateFrame("Frame", nil, f)
+    self.previewBox:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 16)
+    self.previewBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 16)
+    self.previewBox:SetHeight(58)
+    RLSuite.utils:SkinBox(self.previewBox)
+
+    self.previewText = self.previewBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.previewText:SetPoint("TOPLEFT", self.previewBox, "TOPLEFT", 8, -8)
+    self.previewText:SetPoint("BOTTOMRIGHT", self.previewBox, "BOTTOMRIGHT", -8, 8)
+    self.previewText:SetJustifyH("LEFT")
+    self.previewText:SetJustifyV("TOP")
+    self.previewText:SetText("Anteprima messaggio...")
+
     self.spamBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    self.spamBtn:SetSize(100, 25)
-    self.spamBtn:SetPoint("TOPLEFT", f, "TOPLEFT", 20, btnY)
+    self.spamBtn:SetSize(100, 24)
+    self.spamBtn:SetPoint("BOTTOMLEFT", self.previewBox, "TOPLEFT", 0, 8)
     self.spamBtn:SetText("Start Spam")
     self.spamBtn:SetScript("OnClick", function() self:ToggleSpam() end)
 
     self.whisplistBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    self.whisplistBtn:SetSize(100, 25)
-    self.whisplistBtn:SetPoint("LEFT", self.spamBtn, "RIGHT", 10, 0)
+    self.whisplistBtn:SetSize(100, 24)
+    self.whisplistBtn:SetPoint("LEFT", self.spamBtn, "RIGHT", 8, 0)
     self.whisplistBtn:SetText("Whisplist")
     self.whisplistBtn:SetScript("OnClick", function() self:ToggleWhisplist() end)
 
     self.previewBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    self.previewBtn:SetSize(100, 25)
-    self.previewBtn:SetPoint("LEFT", self.whisplistBtn, "RIGHT", 10, 0)
+    self.previewBtn:SetSize(100, 24)
+    self.previewBtn:SetPoint("LEFT", self.whisplistBtn, "RIGHT", 8, 0)
     self.previewBtn:SetText("Preview Msg")
     self.previewBtn:SetScript("OnClick", function() self:ShowMessagePreview() end)
 
-    -- Preview text (CREATO PRIMA di BuildCompSlots)
-    self.previewText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.previewText:SetPoint("TOPLEFT", f, "TOPLEFT", 20, btnY - 35)
-    self.previewText:SetWidth(460)
-    self.previewText:SetJustifyH("LEFT")
-    self.previewText:SetText("Anteprima messaggio...")
-
-    -- Close
     f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
+    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
     f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 
     -- ORA posso chiamare BuildCompSlots e BuildClassBar (previewText esiste)
@@ -249,6 +270,12 @@ function GM:SetDifficulty(diff)
     local rows = math.ceil(numSlots / 5)
     local newHeight = rows * (SLOT_SIZE + SLOT_SPACING) - SLOT_SPACING
     self.compFrame:SetSize((SLOT_SIZE + SLOT_SPACING) * 5 - SLOT_SPACING, newHeight)
+    if self.compBox then
+        self.compBox:SetHeight(newHeight + 36)
+    end
+    if self.classBox then
+        self.classBox:SetHeight(newHeight + 36)
+    end
     self:UpdateMessagePreview()
     self:SaveComp()
 end
@@ -582,101 +609,119 @@ function GM:CreateWhisplistWindow()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    f:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 16,
-    })
     f:Hide()
     self.whisplistFrame = f
     RLSuite.utils:SkinFrame(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", f, "TOP", 0, -12)
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
     title:SetText("Whisplist")
 
-    local compLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    compLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 15, -40)
-    compLabel:SetText("Comp:")
+    self.wlCompBox = CreateFrame("Frame", nil, f)
+    self.wlCompBox:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -36)
+    self.wlCompBox:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -36)
+    self.wlCompBox:SetHeight(52)
+    RLSuite.utils:SkinBox(self.wlCompBox)
 
-    self.wlCompFrame = CreateFrame("Frame", nil, f)
-    self.wlCompFrame:SetPoint("TOPLEFT", compLabel, "TOPRIGHT", 5, 2)
+    local compLabel = self.wlCompBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    compLabel:SetPoint("TOPLEFT", self.wlCompBox, "TOPLEFT", 8, -6)
+    compLabel:SetText("Comp")
+    compLabel:SetTextColor(1, 0.82, 0)
+
+    self.wlCompFrame = CreateFrame("Frame", nil, self.wlCompBox)
+    self.wlCompFrame:SetPoint("TOPLEFT", self.wlCompBox, "TOPLEFT", 8, -22)
     self:BuildWLCompSlots()
 
-    local listLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    listLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 15, -80)
-    listLabel:SetText("Whispers ricevuti:")
+    self.wlListBox = CreateFrame("Frame", nil, f)
+    self.wlListBox:SetPoint("TOPLEFT", self.wlCompBox, "BOTTOMLEFT", 0, -8)
+    self.wlListBox:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -6, 16)
+    RLSuite.utils:SkinBox(self.wlListBox)
 
-    self.wlScroll = CreateFrame("ScrollFrame", "RLSuiteWLScroll", f, "UIPanelScrollFrameTemplate")
-    self.wlScroll:SetPoint("TOPLEFT", listLabel, "BOTTOMLEFT", 0, -5)
-    self.wlScroll:SetSize(220, 280)
+    local listLabel = self.wlListBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    listLabel:SetPoint("TOPLEFT", self.wlListBox, "TOPLEFT", 8, -6)
+    listLabel:SetText("Whispers ricevuti")
+    listLabel:SetTextColor(1, 0.82, 0)
 
-    self.wlContent = CreateFrame("Frame")
-    self.wlContent:SetSize(220, 1)
+    self.wlScroll = CreateFrame("ScrollFrame", "RLSuiteWLScroll", self.wlListBox, "UIPanelScrollFrameTemplate")
+    self.wlScroll:SetPoint("TOPLEFT", self.wlListBox, "TOPLEFT", 6, -24)
+    self.wlScroll:SetPoint("BOTTOMRIGHT", self.wlListBox, "BOTTOMRIGHT", -26, 6)
+
+    self.wlContent = CreateFrame("Frame", nil, self.wlScroll)
+    self.wlContent:SetWidth(200)
+    self.wlContent:SetHeight(1)
     self.wlScroll:SetScrollChild(self.wlContent)
+    self.wlScroll:SetScript("OnSizeChanged", function(s, w, h)
+        if GM.wlContent and w and w > 40 then
+            GM.wlContent:SetWidth(w)
+        end
+    end)
 
-    self.wlDetailPanel = CreateFrame("Frame", nil, f)
-    self.wlDetailPanel:SetPoint("TOPLEFT", self.wlScroll, "TOPRIGHT", 10, 0)
-    self.wlDetailPanel:SetSize(220, 320)
+    self.wlDetailBox = CreateFrame("Frame", nil, f)
+    self.wlDetailBox:SetPoint("TOPRIGHT", self.wlCompBox, "BOTTOMRIGHT", 0, -8)
+    self.wlDetailBox:SetPoint("BOTTOMLEFT", f, "BOTTOM", 6, 16)
+    RLSuite.utils:SkinBox(self.wlDetailBox)
+    self.wlDetailPanel = self.wlDetailBox
 
-    self.wlDetailName = self.wlDetailPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    self.wlDetailName:SetPoint("TOPLEFT", self.wlDetailPanel, "TOPLEFT", 0, 0)
+    self.wlDetailName = self.wlDetailBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    self.wlDetailName:SetPoint("TOPLEFT", self.wlDetailBox, "TOPLEFT", 10, -10)
+    self.wlDetailName:SetPoint("TOPRIGHT", self.wlDetailBox, "TOPRIGHT", -10, -10)
+    self.wlDetailName:SetJustifyH("LEFT")
     self.wlDetailName:SetText("Seleziona un giocatore")
+    self.wlDetailName:SetTextColor(1, 0.82, 0)
 
-    self.wlDetailInfo = self.wlDetailPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.wlDetailInfo:SetPoint("TOPLEFT", self.wlDetailName, "BOTTOMLEFT", 0, -5)
-    self.wlDetailInfo:SetWidth(200)
+    self.wlDetailInfo = self.wlDetailBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.wlDetailInfo:SetPoint("TOPLEFT", self.wlDetailName, "BOTTOMLEFT", 0, -6)
+    self.wlDetailInfo:SetPoint("RIGHT", self.wlDetailBox, "RIGHT", -10, 0)
     self.wlDetailInfo:SetJustifyH("LEFT")
     self.wlDetailInfo:SetText("")
 
-    self.wlChat = CreateFrame("Frame", nil, self.wlDetailPanel)
-    self.wlChat:SetPoint("TOPLEFT", self.wlDetailInfo, "BOTTOMLEFT", 0, -10)
-    self.wlChat:SetSize(220, 120)
-    self.wlChat:SetBackdrop({
-        bgFile = "Interface\Tooltips\UI-Tooltip-Background",
-        tile = true, tileSize = 16,
-    })
-    self.wlChat:SetBackdropColor(0, 0, 0, 0.7)
+    self.wlChat = CreateFrame("Frame", nil, self.wlDetailBox)
+    self.wlChat:SetPoint("TOPLEFT", self.wlDetailInfo, "BOTTOMLEFT", 0, -8)
+    self.wlChat:SetPoint("RIGHT", self.wlDetailBox, "RIGHT", -10, 0)
+    self.wlChat:SetHeight(90)
+    RLSuite.utils:SkinBox(self.wlChat)
 
     self.wlChatText = self.wlChat:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.wlChatText:SetPoint("TOPLEFT", self.wlChat, "TOPLEFT", 5, -5)
-    self.wlChatText:SetWidth(210)
+    self.wlChatText:SetPoint("TOPLEFT", self.wlChat, "TOPLEFT", 6, -6)
+    self.wlChatText:SetPoint("BOTTOMRIGHT", self.wlChat, "BOTTOMRIGHT", -6, 6)
     self.wlChatText:SetJustifyH("LEFT")
+    self.wlChatText:SetJustifyV("TOP")
     self.wlChatText:SetText("")
 
-    local btnY = -260
-    self.wlInviteBtn = CreateFrame("Button", nil, self.wlDetailPanel, "UIPanelButtonTemplate")
+    self.wlInviteBtn = CreateFrame("Button", nil, self.wlDetailBox, "UIPanelButtonTemplate")
     self.wlInviteBtn:SetSize(80, 22)
-    self.wlInviteBtn:SetPoint("TOPLEFT", self.wlDetailPanel, "TOPLEFT", 0, btnY)
+    self.wlInviteBtn:SetPoint("BOTTOMLEFT", self.wlDetailBox, "BOTTOMLEFT", 10, 36)
     self.wlInviteBtn:SetText("Invite")
     self.wlInviteBtn:SetScript("OnClick", function() self:InviteSelected() end)
 
-    self.wlAskGusBtn = CreateFrame("Button", nil, self.wlDetailPanel, "UIPanelButtonTemplate")
+    self.wlAskGusBtn = CreateFrame("Button", nil, self.wlDetailBox, "UIPanelButtonTemplate")
     self.wlAskGusBtn:SetSize(80, 22)
-    self.wlAskGusBtn:SetPoint("LEFT", self.wlInviteBtn, "RIGHT", 5, 0)
+    self.wlAskGusBtn:SetPoint("LEFT", self.wlInviteBtn, "RIGHT", 6, 0)
     self.wlAskGusBtn:SetText("Ask GS")
     self.wlAskGusBtn:SetScript("OnClick", function() self:AskGS() end)
 
-    self.wlAskAchiBtn = CreateFrame("Button", nil, self.wlDetailPanel, "UIPanelButtonTemplate")
+    self.wlAskAchiBtn = CreateFrame("Button", nil, self.wlDetailBox, "UIPanelButtonTemplate")
     self.wlAskAchiBtn:SetSize(80, 22)
-    self.wlAskAchiBtn:SetPoint("LEFT", self.wlAskGusBtn, "RIGHT", 5, 0)
+    self.wlAskAchiBtn:SetPoint("LEFT", self.wlAskGusBtn, "RIGHT", 6, 0)
     self.wlAskAchiBtn:SetText("Ask Achi")
     self.wlAskAchiBtn:SetScript("OnClick", function() self:AskAchi() end)
 
-    self.wlCustomMsg = CreateFrame("EditBox", "RLSuiteWLCustomMsg", self.wlDetailPanel, "InputBoxTemplate")
-    self.wlCustomMsg:SetSize(200, 20)
-    self.wlCustomMsg:SetPoint("TOPLEFT", self.wlInviteBtn, "BOTTOMLEFT", 5, -10)
+    local customLabel = self.wlDetailBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    customLabel:SetPoint("BOTTOMLEFT", self.wlDetailBox, "BOTTOMLEFT", 10, 16)
+    customLabel:SetText("Custom msg")
+    customLabel:SetTextColor(1, 0.82, 0)
+
+    self.wlCustomMsg = CreateFrame("EditBox", "RLSuiteWLCustomMsg", self.wlDetailBox, "InputBoxTemplate")
+    self.wlCustomMsg:SetHeight(20)
+    self.wlCustomMsg:SetPoint("LEFT", customLabel, "RIGHT", 8, 0)
+    self.wlCustomMsg:SetPoint("RIGHT", self.wlDetailBox, "RIGHT", -12, 0)
     self.wlCustomMsg:SetAutoFocus(false)
     self.wlCustomMsg:SetScript("OnEnterPressed", function()
         self:SendCustomMessage()
     end)
 
-    local customLabel = self.wlDetailPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    customLabel:SetPoint("BOTTOMLEFT", self.wlCustomMsg, "TOPLEFT", 0, 2)
-    customLabel:SetText("Custom msg (Enter per inviare):")
-
     f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
+    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
     f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 end
 
@@ -717,21 +762,43 @@ function GM:ToggleWhisplist()
     end
 end
 
+function GM:SkinInner()
+    local u = RLSuite.utils
+    u:SkinBox(self.compBox)
+    u:SkinBox(self.classBox)
+    u:SkinBox(self.reqBox)
+    u:SkinBox(self.previewBox)
+    u:SkinBox(self.wlCompBox)
+    u:SkinBox(self.wlListBox)
+    u:SkinBox(self.wlDetailBox)
+    u:SkinBox(self.wlChat)
+end
+
 function GM:UpdateWhisplist()
+    if not self.wlContent then return end
+    if self.SkinInner then self:SkinInner() end
     for _, child in ipairs({self.wlContent:GetChildren()}) do
         child:Hide()
         child:SetParent(nil)
+    end
+    if self.wlScroll then
+        local w = self.wlScroll:GetWidth()
+        if w and w > 40 then self.wlContent:SetWidth(w) end
     end
 
     local entries = self.whisperDB.entries or {}
     local y = 0
     for i, entry in ipairs(entries) do
         local row = CreateFrame("Button", nil, self.wlContent)
-        row:SetSize(200, 22)
+        row:SetHeight(24)
         row:SetPoint("TOPLEFT", self.wlContent, "TOPLEFT", 0, -y)
+        row:SetPoint("TOPRIGHT", self.wlContent, "TOPRIGHT", 0, -y)
+        RLSuite.utils:SkinRow(row, self.selectedEntryIndex == i)
 
         local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        text:SetPoint("LEFT", row, "LEFT", 5, 0)
+        text:SetPoint("LEFT", row, "LEFT", 6, 0)
+        text:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+        text:SetJustifyH("LEFT")
         local info = entry.name or "Unknown"
         if entry.class then
             info = info .. " (" .. string.sub(entry.class, 1, 1) .. string.lower(string.sub(entry.class, 2)) .. ")"
@@ -746,9 +813,10 @@ function GM:UpdateWhisplist()
 
         row:SetScript("OnClick", function()
             self:SelectWhisperEntry(i)
+            self:UpdateWhisplist()
         end)
 
-        y = y + 24
+        y = y + 26
     end
     self.wlContent:SetHeight(math.max(y, 1))
 end

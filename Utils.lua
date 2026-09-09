@@ -280,9 +280,51 @@ function Utils:AllWindows()
     return list
 end
 
+function Utils:SkinBox(box)
+    if not box or not box.SetBackdrop then return end
+    box:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = {left = 3, right = 3, top = 3, bottom = 3},
+    })
+    local c = self:GetThemeColors()
+    box:SetBackdropColor(0, 0, 0, 0.6)
+    box:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
+end
+
+function Utils:SkinRow(row, selected)
+    if not row or not row.SetBackdrop then return end
+    row:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 8,
+        insets = {left = 2, right = 2, top = 2, bottom = 2},
+    })
+    if selected then
+        row:SetBackdropColor(0.25, 0.18, 0.02, 0.95)
+        row:SetBackdropBorderColor(0.85, 0.70, 0.20, 1)
+    else
+        row:SetBackdropColor(0.05, 0.05, 0.07, 0.9)
+        row:SetBackdropBorderColor(0.45, 0.45, 0.48, 1)
+    end
+end
+
 function Utils:SkinAllWindows()
     for _, fr in ipairs(self:AllWindows()) do
         self:SkinFrame(fr)
+    end
+    if RLSuite.lootManager and RLSuite.lootManager.SkinInner then
+        RLSuite.lootManager:SkinInner()
+    end
+    if RLSuite.groupmaking and RLSuite.groupmaking.SkinInner then
+        RLSuite.groupmaking:SkinInner()
+    end
+    if RLSuite.msManager and RLSuite.msManager.SkinInner then
+        RLSuite.msManager:SkinInner()
+    end
+    if RLSuite.mainWindow and RLSuite.mainWindow.SkinInner then
+        RLSuite.mainWindow:SkinInner()
     end
 end
 
