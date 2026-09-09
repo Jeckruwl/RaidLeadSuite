@@ -41,6 +41,7 @@ function MW:CreateFrame()
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -14)
     title:SetText("RLSuite v" .. RLSuite.version)
+    self.titleFS = title
 
     self.tabDefs = {
         { key = "group",     label = "Groupmaking" },
@@ -77,6 +78,20 @@ function MW:CreateFrame()
     self.closeBtn:SetScript("OnClick", function() f:Hide() end)
 
     self:SelectTab("group")
+    self:ApplyLayout()
+end
+
+function MW:ApplyLayout()
+    local L = RLSuiteDB and RLSuiteDB.layout and RLSuiteDB.layout.main
+    if not L or not self.frame then return end
+    self.frame:SetSize(L.width or 660, L.height or 700)
+    self.frame:SetScale(L.scale or 1)
+    local font, size = RLSuite.utils:GetUIFont()
+    if self.titleFS then
+        self.titleFS:SetFont(font, size + 2)
+        self.titleFS:SetText("RLSuite v" .. RLSuite.version)
+    end
+    RLSuite.utils:SkinFrame(self.frame)
 end
 
 function MW:Dock(frame)

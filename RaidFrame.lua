@@ -11,6 +11,7 @@ function RF:Init()
     self.cdTracker = {}
     self:CreateFrame()
     self:RegisterEvents()
+    self:ApplyLayout()
 end
 
 function RF:Toggle()
@@ -24,14 +25,27 @@ end
 
 function RF:CreateFrame()
     local f = CreateFrame("Frame", "RLSuiteRaidFrame", UIParent)
-    f:SetSize(350, 400)
-    f:SetPoint("LEFT", UIParent, "LEFT", 10, 0)
+    local w = (self.db and self.db.width) or 350
+    local h = (self.db and self.db.height) or 400
+    f:SetSize(w, h)
+    f:SetPoint(self.db.point or "LEFT", UIParent, self.db.relPoint or "LEFT", self.db.x or 10, self.db.y or 0)
     f:SetFrameStrata("LOW")
     f:SetMovable(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetScript("OnDragStart", function(self2)
+        if not RLSuiteDB.raidframe.locked then
+            self2:StartMoving()
+        end
+    end)
+    f:SetScript("OnDragStop", function(self2)
+        self2:StopMovingOrSizing()
+        local point, _, relPoint, x, y = self2:GetPoint()
+        RLSuiteDB.raidframe.point = point
+        RLSuiteDB.raidframe.relPoint = relPoint
+        RLSuiteDB.raidframe.x = x
+        RLSuiteDB.raidframe.y = y
+    end)
     f:SetBackdrop({
         bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
         edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
@@ -48,7 +62,7 @@ function RF:CreateFrame()
 
     self.content = CreateFrame("Frame", nil, f)
     self.content:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -35)
-    self.content:SetSize(330, 360)
+    self.content:SetSize(w - 20, h - 40)
 
     f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
@@ -334,6 +348,24 @@ function RF:GetDefaultAlertMessage(alertType)
         buff = "Hey $name, you're missing some raid buffs!",
     }
     return msgs[alertType]
+end
+
+function RF:ApplyLayout()
+    local db = self.db
+    if not db or not self.frame then return end
+    local w = db.width or 350
+    local h = db.height or 400
+    self.frame:SetSize(w, h)
+    self.frame:SetScale(db.scale or 1)
+    if self.content then
+        self.content:SetWidth(w - 20)
+        self.content:SetHeight(h - 40)
+    end
+    RLSuite.utils:SkinFrame(self.frame)
+    if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+        self:Rebuild()
+        self:UpdateAll()
+    end
 end
 
 function RF:Update()

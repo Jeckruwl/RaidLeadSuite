@@ -12,6 +12,7 @@ function MB:Init()
     self:CreateFrame()
     self:CreateButtons()
     self:CreateKeypad()
+    self:ApplyLayout()
     self:LoadKeybinds()
     self:UpdatePhase()
 end
@@ -123,6 +124,44 @@ function MB:CreateButtons()
 
         self.buttons[i] = btn
     end
+    self:ApplyLayout()
+end
+
+function MB:ApplyLayout()
+    local db = self.db
+    if not db or not self.frame then return end
+    local n = db.buttons or 12
+    if n < 1 then n = 1 end
+    if n > 12 then n = 12 end
+    local cols = db.columns or 6
+    if cols < 1 then cols = 1 end
+    local size = db.buttonSize or 36
+    local sp = db.spacing or 4
+    local rows = math.ceil(n / cols)
+    local w = 20 + cols * size + (cols - 1) * sp
+    local h = 28 + rows * size + (rows - 1) * sp
+    self.frame:SetSize(w, h)
+    self.frame:SetScale(db.scale or 1)
+    for i = 1, 12 do
+        local btn = self.buttons[i]
+        if btn then
+            if i <= n then
+                btn:Show()
+                btn:SetSize(size, size)
+                local col = (i - 1) % cols
+                local row = math.floor((i - 1) / cols)
+                btn:ClearAllPoints()
+                btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 10 + col * (size + sp), -20 - row * (size + sp))
+            else
+                btn:Hide()
+            end
+        end
+    end
+    if self.keypadFrame then
+        self.keypadFrame:SetWidth(math.max(w, 350))
+        RLSuite.utils:SkinFrame(self.keypadFrame)
+    end
+    RLSuite.utils:SkinFrame(self.frame)
 end
 
 function MB:CreateKeypad()

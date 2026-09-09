@@ -112,23 +112,57 @@ end
 -- DialogBox-Background is mostly transparent; ChatFrameBackground is solid.
 -- ============================================================
 
-function Utils:GetThemeColors(theme)
-    theme = theme or (RLSuiteDB and RLSuiteDB.appearance and RLSuiteDB.appearance.theme) or "default"
-    if theme == "dark" then
-        return { fill = {0.02, 0.02, 0.04, 1}, bg = {0.04, 0.04, 0.06, 1}, border = {0.40, 0.40, 0.48, 1} }
-    elseif theme == "gold" then
-        return { fill = {0.10, 0.07, 0.01, 1}, bg = {0.12, 0.09, 0.02, 1}, border = {0.85, 0.70, 0.20, 1} }
-    end
-    return { fill = {0.05, 0.05, 0.07, 1}, bg = {0.08, 0.08, 0.10, 1}, border = {0.70, 0.70, 0.70, 1} }
+function Utils:ThemePresets()
+    return {
+        default = { fill = {0.05, 0.05, 0.07, 1}, bg = {0.08, 0.08, 0.10, 1}, border = {0.70, 0.70, 0.70, 1} },
+        dark    = { fill = {0.02, 0.02, 0.04, 1}, bg = {0.04, 0.04, 0.06, 1}, border = {0.40, 0.40, 0.48, 1} },
+        gold    = { fill = {0.10, 0.07, 0.01, 1}, bg = {0.12, 0.09, 0.02, 1}, border = {0.85, 0.70, 0.20, 1} },
+    }
 end
 
-function Utils:WindowBackdrop()
-    -- UI-Tooltip-Background is opaque in 3.3.5; DialogBox-Background is not.
+function Utils:ColorToArray(c)
+    if not c then return {0.08, 0.08, 0.10, 1} end
+    if c.r then return {c.r, c.g, c.b, c.a or 1} end
+    return {c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1}
+end
+
+function Utils:GetThemeColors(theme)
+    local a = RLSuiteDB and RLSuiteDB.appearance or {}
+    if a.bg and a.bg.r then
+        return {
+            fill = self:ColorToArray(a.fill),
+            bg = self:ColorToArray(a.bg),
+            border = self:ColorToArray(a.border),
+        }
+    end
+    theme = theme or a.theme or "default"
+    return self:ThemePresets()[theme] or self:ThemePresets().default
+end
+
+function Utils:GetUIFont()
+    local a = RLSuiteDB and RLSuiteDB.appearance or {}
+    return a.font or "Fonts\\FRIZQT__.TTF", a.fontSize or 12
+end
+
+function Utils:WindowBackdrop(f)
+    local edge = 32
+    if RLSuiteDB and RLSuiteDB.appearance and RLSuiteDB.appearance.edgeSize then
+        edge = RLSuiteDB.appearance.edgeSize
+    end
+    if f and f.GetWidth then
+        local w, h = f:GetWidth() or 200, f:GetHeight() or 200
+        local minSide = math.min(w, h)
+        local cap = math.floor(minSide / 4)
+        if cap < 8 then cap = 8 end
+        if edge > cap then edge = cap end
+        if minSide < 200 and edge > 12 then edge = 12 end
+    end
+    local inset = math.max(3, math.floor(edge / 5))
     return {
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 16, edgeSize = 32,
-        insets = {left = 6, right = 6, top = 6, bottom = 6},
+        tile = true, tileSize = 16, edgeSize = edge,
+        insets = {left = inset, right = inset, top = inset, bottom = inset},
     }
 end
 
@@ -146,7 +180,7 @@ function Utils:SkinFrame(f)
     f.rlsBgFill:SetTexture("Interface\\Tooltips\\UI-Tooltip-Background")
     f.rlsBgFill:SetVertexColor(c.fill[1], c.fill[2], c.fill[3], 1)
     f.rlsBgFill:Show()
-    f:SetBackdrop(self:WindowBackdrop())
+    f:SetBackdrop(self:WindowBackdrop(f))
     f:SetBackdropColor(c.bg[1], c.bg[2], c.bg[3], 1)
     f:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
 end
@@ -166,6 +200,8 @@ function Utils:AllWindows()
     add(RLSuite.msManager and RLSuite.msManager.frame)
     add(RLSuite.lootManager and RLSuite.lootManager.frame)
     add(RLSuite.config and RLSuite.config.frame)
+    add(RLSuite.config and RLSuite.config.left)
+    add(RLSuite.config and RLSuite.config.right)
     if RLSuite.mainWindow and RLSuite.mainWindow.tabPanels then
         add(RLSuite.mainWindow.tabPanels.macro)
         add(RLSuite.mainWindow.tabPanels.raidframe)

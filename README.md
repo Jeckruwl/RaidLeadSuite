@@ -2,7 +2,7 @@
 
 Addon per **raid leader** su World of Warcraft **Wrath of the Lich King 3.3.5** (Interface `30300`), pensato per **Warmane Lordaeron**.
 
-Versione: **1.2.0**
+Versione: **1.3.0**
 
 ## Installazione
 
@@ -57,6 +57,7 @@ Se lasci il nome `RaidLeadSuite` (clone GitHub senza rinomina), è comunque supp
 - **Raid Frame** — HP/mana, alert flask/food/buff, cooldown raid via combat log
 - **MS Manager** — legge `ms <spec>` in raid chat e genera il pre-messaggio loot
 - **Loot Manager** — history drop, roll, tie/reroll
+- **Config** — tab stile ElvUI (lista a sinistra, pannello + sottotab a destra): aspetto, bordi, font, dimensioni e ancoraggi. Non cambia le funzionalità (es. testi macro restano nella tab Macrobar)
 
 ## Requisiti
 

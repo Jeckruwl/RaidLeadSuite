@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.2.0"
+RLSuite.version = "1.3.0"
 
 local defaults = {
     profile = "",
@@ -17,6 +17,10 @@ local defaults = {
         relPoint = "CENTER",
         x = 0,
         y = 100,
+        buttons = 12,
+        columns = 6,
+        buttonSize = 36,
+        spacing = 4,
         keybinds = {},
         macros = {
             preraid = {},
@@ -43,6 +47,14 @@ local defaults = {
         showBuffs = true,
         showFlask = true,
         showFood = true,
+        locked = false,
+        scale = 1.0,
+        width = 350,
+        height = 400,
+        point = "LEFT",
+        relPoint = "LEFT",
+        x = 10,
+        y = 0,
         appearance = {
             barHeight = 20,
             iconSize = 16,
@@ -60,6 +72,18 @@ local defaults = {
         theme = "default",
         font = "Fonts\FRIZQT__.TTF",
         fontSize = 12,
+        edgeSize = 32,
+        bg = { r = 0.08, g = 0.08, b = 0.10, a = 1 },
+        fill = { r = 0.05, g = 0.05, b = 0.07, a = 1 },
+        border = { r = 0.70, g = 0.70, b = 0.70, a = 1 },
+    },
+    layout = {
+        main = { width = 660, height = 700, scale = 1 },
+        groupmaking = { scale = 1 },
+        whisplist = { scale = 1 },
+        ms = { scale = 1 },
+        loot = { scale = 1 },
+        config = { scale = 1 },
     },
 }
 
