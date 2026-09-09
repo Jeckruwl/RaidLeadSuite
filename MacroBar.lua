@@ -5,6 +5,12 @@
 RLSuite.macrobar = {}
 local MB = RLSuite.macrobar
 
+local KEYPAD_BTN_W = 75
+local KEYPAD_BTN_H = 22
+local KEYPAD_GAP = 6
+local KEYPAD_PAD = 8
+local KEYPAD_COUNT = 4
+
 function MB:Init()
     self.db = RLSuiteDB.macrobar
     self:EnsurePhases()
@@ -32,6 +38,56 @@ function MB:Toggle()
     self.frame:Show()
 end
 
+function MB:KeypadSize()
+    local w = KEYPAD_PAD * 2 + KEYPAD_COUNT * KEYPAD_BTN_W + (KEYPAD_COUNT - 1) * KEYPAD_GAP
+    local h = KEYPAD_PAD * 2 + KEYPAD_BTN_H
+    return w, h
+end
+
+function MB:SaveHolderPosition()
+    local f = self.frame
+    if not f then return end
+    local point, _, relPoint, x, y = f:GetPoint()
+    local p = self:PhaseSettings()
+    if not p then return end
+    p.point = point
+    p.relPoint = relPoint
+    p.x = x
+    p.y = y
+end
+
+function MB:EndShiftDrag()
+    if not self._shiftDrag then return end
+    if self.frame then
+        self.frame:StopMovingOrSizing()
+    end
+    self:SaveHolderPosition()
+    self._shiftDrag = false
+end
+
+function MB:BeginShiftDrag()
+    local p = self:PhaseSettings()
+    if p and p.locked then return end
+    if not self.frame then return end
+    self._shiftDrag = true
+    self.frame:StartMoving()
+end
+
+function MB:AttachShiftDrag(fr)
+    if not fr then return end
+    fr:EnableMouse(true)
+    fr:SetScript("OnMouseDown", function(s, button)
+        if button == "LeftButton" and IsShiftKeyDown() then
+            MB:BeginShiftDrag()
+        end
+    end)
+    fr:SetScript("OnMouseUp", function(s, button)
+        if MB._shiftDrag then
+            MB:EndShiftDrag()
+        end
+    end)
+end
+
 function MB:CreateFrame()
     local f = CreateFrame("Frame", "RLSuiteMacroBar", UIParent)
     f:SetSize(350, 80)
@@ -40,34 +96,20 @@ function MB:CreateFrame()
     f:SetFrameStrata("MEDIUM")
     f:SetMovable(true)
     f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", function(self2)
-        local dragP = MB:PhaseSettings()
-        if not (dragP and dragP.locked) then
-            self2:StartMoving()
-        end
-    end)
-    f:SetScript("OnDragStop", function(self2)
-        self2:StopMovingOrSizing()
-        local point, _, relPoint, x, y = self2:GetPoint()
-        local dragP = MB:PhaseSettings()
-        dragP.point = point
-        dragP.relPoint = relPoint
-        dragP.x = x
-        dragP.y = y
-    end)
-    f:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 12,
-        insets = {left=3, right=3, top=3, bottom=3}
-    })
+    f:SetBackdrop(nil)
     f:Hide()
     self.frame = f
-    RLSuite.utils:SkinFrame(f)
+    self:AttachShiftDrag(f)
+
+    local host = CreateFrame("Frame", "RLSuiteMacroHost", f)
+    host:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    host:SetSize(350, 40)
+    host:EnableMouse(true)
+    self.macroHost = host
+    self:AttachShiftDrag(host)
 
     self.phaseText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.phaseText:SetPoint("TOP", f, "TOP", 0, -5)
+    self.phaseText:SetPoint("BOTTOM", host, "TOP", 0, 2)
     self.phaseText:SetText("MacroBar")
 end
 
@@ -77,7 +119,7 @@ function MB:CreateButtons()
     local spacing = 4
     for i = 1, 12 do
         -- FIX: Usa un frame normale invece di ActionButtonTemplate
-        local btn = CreateFrame("Button", "RLSuiteMacroBtn" .. i, self.frame)
+        local btn = CreateFrame("Button", "RLSuiteMacroBtn" .. i, self.macroHost or self.frame)
         btn:SetSize(btnSize, btnSize)
         local col = (i - 1) % 6
         local row = math.floor((i - 1) / 6)
@@ -250,10 +292,21 @@ function MB:ApplyLayout()
     local extraW = (wm - 1) * (size + sp)
     local extraH = (hm - 1) * (size + sp)
     local showBd = p.backdrop ~= false
-    local pad = showBd and (bs + 4) or 2
-    local w = innerW + extraW + pad * 2
-    local h = innerH + extraH + pad * 2
-    self.frame:SetSize(w, h)
+    local pad = 2
+    local kw, kh = self:KeypadSize()
+    local hostW = math.max(kw, innerW + extraW + pad * 2)
+    local hostH = innerH + extraH + pad * 2
+    if hostH < size then hostH = size end
+
+    local keypadOn = self.keypadFrame and self.keypadFrame:IsShown()
+    local gap = 4
+    local holderH = hostH
+    if keypadOn then
+        holderH = hostH + gap + kh
+    end
+    self.frame:SetBackdrop(nil)
+    if self.frame.rlsBgFill then self.frame.rlsBgFill:Hide() end
+    self.frame:SetSize(hostW, holderH)
     self.frame:SetScale(p.scale or 1)
 
     local point = p.point or "CENTER"
@@ -261,9 +314,15 @@ function MB:ApplyLayout()
     self.frame:ClearAllPoints()
     self.frame:SetPoint(point, UIParent, rel, p.x or 0, p.y or 0)
 
+    if self.macroHost then
+        self.macroHost:ClearAllPoints()
+        self.macroHost:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, 0)
+        self.macroHost:SetSize(hostW, hostH)
+    end
+
     if self.phaseText then
         self.phaseText:ClearAllPoints()
-        self.phaseText:SetPoint("BOTTOM", self.frame, "TOP", 0, 2)
+        self.phaseText:SetPoint("BOTTOM", self.macroHost or self.frame, "TOP", 0, 2)
     end
 
     for i = 1, 12 do
@@ -277,7 +336,7 @@ function MB:ApplyLayout()
             local col = (vis - 1) % cols
             local row = math.floor((vis - 1) / cols)
             btn:ClearAllPoints()
-            btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", pad + col * (size + sp), -pad - row * (size + sp))
+            btn:SetPoint("TOPLEFT", self.macroHost or self.frame, "TOPLEFT", pad + col * (size + sp), -pad - row * (size + sp))
             if RLSuite.utils.SkinMacroButton then
                 RLSuite.utils:SkinMacroButton(btn)
             end
@@ -289,21 +348,29 @@ function MB:ApplyLayout()
         end
     end
 
-    if showBd then
-        RLSuite.utils:SkinFrame(self.frame)
-    else
-        if self.frame.rlsBgFill then self.frame.rlsBgFill:Hide() end
-        self.frame:SetBackdrop(nil)
-    end
-
     if self.keypadFrame then
-        self.keypadFrame:SetWidth(math.max(w, 280))
-        if showBd then RLSuite.utils:SkinFrame(self.keypadFrame) end
+        self.keypadFrame:SetSize(kw, kh)
+        self.keypadFrame:ClearAllPoints()
+        self.keypadFrame:SetPoint("TOP", self.macroHost or self.frame, "BOTTOM", 0, -gap)
+        if showBd then
+            RLSuite.utils:SkinFrame(self.keypadFrame)
+        else
+            if self.keypadFrame.rlsBgFill then self.keypadFrame.rlsBgFill:Hide() end
+            self.keypadFrame:SetBackdrop(nil)
+        end
+        local kpad = KEYPAD_PAD
+        for i, kbtn in ipairs(self.keypadButtons or {}) do
+            kbtn:ClearAllPoints()
+            kbtn:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
+            kbtn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", kpad + (i - 1) * (KEYPAD_BTN_W + KEYPAD_GAP), -kpad)
+        end
     end
 
-    local locked = p.locked
-    self.frame:EnableMouse(not locked)
-    self.frame:SetMovable(not locked)
+    self.frame:EnableMouse(true)
+    self.frame:SetMovable(not p.locked)
+    if self.macroHost then
+        self.macroHost:EnableMouse(true)
+    end
 
     self:ApplyVisibility()
     self:SetupHover()
@@ -377,14 +444,11 @@ function MB:ApplyVisibility()
 end
 
 function MB:CreateKeypad()
+    local kw, kh = self:KeypadSize()
     self.keypadFrame = CreateFrame("Frame", "RLSuiteMacroKeypad", self.frame)
-    self.keypadFrame:SetSize(350, 35)
-    self.keypadFrame:SetPoint("TOP", self.frame, "BOTTOM", 0, -5)
-    self.keypadFrame:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 12,
-    })
+    self.keypadFrame:SetSize(kw, kh)
+    self.keypadFrame:SetPoint("TOP", self.macroHost or self.frame, "BOTTOM", 0, -4)
+    self:AttachShiftDrag(self.keypadFrame)
 
     local buttons = {
         {text = "Pull 15", func = function() MB:StartPullTimer(15) end},
@@ -395,10 +459,18 @@ function MB:CreateKeypad()
 
     for i, data in ipairs(buttons) do
         local btn = CreateFrame("Button", nil, self.keypadFrame, "UIPanelButtonTemplate")
-        btn:SetSize(75, 22)
-        btn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", 10 + (i-1) * 82, -6)
+        btn:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
+        btn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", KEYPAD_PAD + (i - 1) * (KEYPAD_BTN_W + KEYPAD_GAP), -KEYPAD_PAD)
         btn:SetText(data.text)
-        btn:SetScript("OnClick", data.func)
+        btn:SetScript("OnClick", function()
+            if IsShiftKeyDown() or MB._shiftDrag then
+                MB:EndShiftDrag()
+                return
+            end
+            data.func()
+        end)
+        self:AttachShiftDrag(btn)
+        -- AttachShiftDrag overwrites OnMouseDown; keep click via OnClick
         self.keypadButtons[i] = btn
     end
 
@@ -412,6 +484,9 @@ function MB:ShowKeypad(show)
         self.keypadFrame:Show()
     else
         self.keypadFrame:Hide()
+    end
+    if self.ApplyLayout then
+        self:ApplyLayout()
     end
 end
 
@@ -615,7 +690,16 @@ function MB:WireButtonClicks(btn, index)
     index = index or btn.index
     btn:EnableMouse(true)
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn:SetScript("OnMouseDown", function(s, button)
+        if button == "LeftButton" and IsShiftKeyDown() then
+            MB:BeginShiftDrag()
+        end
+    end)
     btn:SetScript("OnClick", function(s, button)
+        if IsShiftKeyDown() or MB._shiftDrag then
+            MB:EndShiftDrag()
+            return
+        end
         if button == "RightButton" then
             MB:OpenMacroEdit(index)
         else

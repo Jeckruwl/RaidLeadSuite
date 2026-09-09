@@ -345,7 +345,6 @@ function Utils:AllWindows()
         if fr then table.insert(list, fr) end
     end
     add(RLSuite.mainWindow and RLSuite.mainWindow.frame)
-    add(RLSuite.macrobar and RLSuite.macrobar.frame)
     add(RLSuite.macrobar and RLSuite.macrobar.keypadFrame)
     add(RLSuite.macrobar and RLSuite.macrobar.editFrame)
     add(RLSuite.raidFrame and RLSuite.raidFrame.frame)
