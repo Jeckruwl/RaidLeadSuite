@@ -592,6 +592,33 @@ function CFG:CellButton(cell, label, onClick)
     return btn
 end
 
+function CFG:CellTwoButtons(cell, label1, onClick1, label2, onClick2)
+    if not cell then return end
+    local b1 = CreateFrame("Button", nil, cell, "UIPanelButtonTemplate")
+    b1:SetHeight(20)
+    b1:SetText(label1)
+    b1:SetScript("OnClick", onClick1)
+    local b2 = CreateFrame("Button", nil, cell, "UIPanelButtonTemplate")
+    b2:SetHeight(20)
+    b2:SetText(label2)
+    b2:SetScript("OnClick", onClick2)
+    local function layout()
+        local w = cell:GetWidth() or 0
+        if w < 40 then return end
+        local gap = 4
+        local bw = math.max(24, math.floor((w - gap) / 2))
+        b1:ClearAllPoints()
+        b1:SetWidth(bw)
+        b1:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, -2)
+        b2:ClearAllPoints()
+        b2:SetWidth(bw)
+        b2:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, -2)
+    end
+    cell:SetScript("OnSizeChanged", function() layout() end)
+    layout()
+    return b1, b2
+end
+
 function CFG:CellDropdown(cell, label, options, getValue, setValue)
     if not cell then return end
     local fs = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -959,8 +986,14 @@ function CFG:PanelMacroLayout()
 
     local c1, c2, c3 = self:Row3(26)
     self:CellCheck(c1, "Enable", function() return mb.enabled ~= false end, function(v) mb.enabled = v end)
-    self:CellButton(c2, "Restore Bar", function() self:RestoreMacroBar() end)
-    self:CellCheck(c3, "Lock", function() return mb.locked end, function(v) mb.locked = v end)
+    self:CellCheck(c2, "Lock", function() return mb.locked end, function(v) mb.locked = v end)
+    self:CellTwoButtons(c3, "Restore Bar", function()
+        self:RestoreMacroBar()
+    end, "Keybind", function()
+        if RLSuite.macrobar and RLSuite.macrobar.OpenKeybindUI then
+            RLSuite.macrobar:OpenKeybindUI()
+        end
+    end)
 
     c1, c2, c3 = self:Row3(26)
     self:CellCheck(c1, "Backdrop", function() return mb.backdrop ~= false end, function(v) mb.backdrop = v end)

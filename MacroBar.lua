@@ -77,8 +77,9 @@ function MB:CreateButtons()
         local col = (i - 1) % 6
         local row = math.floor((i - 1) / 6)
         btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 10 + col * (btnSize + spacing), -20 - row * (btnSize + spacing))
+        btn:EnableMouse(true)
         btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        btn:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 3)
+        btn:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 10)
 
         -- Background visibile
         btn:SetBackdrop({
@@ -110,13 +111,8 @@ function MB:CreateButtons()
         btn:SetPushedTexture(btn.pushed)
 
         btn.macroText = ""
-        btn:SetScript("OnClick", function(s, button)
-            if button == "RightButton" then
-                MB:OpenMacroEdit(i)
-            else
-                MB:ExecuteMacro(i)
-            end
-        end)
+        btn.index = i
+        self:WireButtonClicks(btn, i)
 
         btn.hotkey = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         btn.hotkey:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -2, -2)
@@ -196,6 +192,10 @@ function MB:ApplyLayout()
                 if RLSuite.utils.SkinMacroButton then
                     RLSuite.utils:SkinMacroButton(btn)
                 end
+                btn:EnableMouse(true)
+                btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+                btn:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 10)
+                self:WireButtonClicks(btn, i)
                 btn:Show()
             else
                 btn:Hide()
@@ -216,6 +216,10 @@ function MB:ApplyLayout()
         self.keypadFrame:SetWidth(math.max(w, 280))
         if showBd then RLSuite.utils:SkinFrame(self.keypadFrame) end
     end
+
+    local locked = db.locked
+    self.frame:EnableMouse(not locked)
+    self.frame:SetMovable(not locked)
 
     self:ApplyVisibility()
     self:SetupHover()
@@ -274,22 +278,19 @@ function MB:SetupHover()
             self:SetBarAlpha(0)
         end
     end
+    self._hoverEnter = enter
+    self._hoverLeave = leave
     if db.mouseover then
         self:SetBarAlpha(0)
         f:SetScript("OnEnter", enter)
         f:SetScript("OnLeave", leave)
-        for _, btn in ipairs(self.buttons or {}) do
-            btn:SetScript("OnEnter", enter)
-            btn:SetScript("OnLeave", leave)
-        end
     else
         self:SetBarAlpha()
         f:SetScript("OnEnter", nil)
         f:SetScript("OnLeave", nil)
-        for _, btn in ipairs(self.buttons or {}) do
-            btn:SetScript("OnEnter", nil)
-            btn:SetScript("OnLeave", nil)
-        end
+    end
+    for i, btn in ipairs(self.buttons or {}) do
+        self:WireButtonClicks(btn, i)
     end
 end
 
@@ -414,8 +415,13 @@ function MB:RunMacroLine(line)
         end
     end
     if string.sub(line, 1, 1) == "/" then
-        ChatFrame1EditBox:SetText(line)
-        ChatEdit_SendText(ChatFrame1EditBox, 1)
+        local edit = ChatFrame1EditBox or ChatFrameEditBox or (DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.editBox)
+        if edit then
+            edit:SetText(line)
+            ChatEdit_SendText(edit, 1)
+        else
+            RLSuite.utils:Print("Chat edit box non trovato.")
+        end
     else
         RLSuite.utils:SendChat(line, "RAID_WARNING")
     end
@@ -501,12 +507,228 @@ function MB:OpenMacroEdit(index)
     f:Show()
 end
 
+function MB:WireButtonClicks(btn, index)
+    if not btn then return end
+    index = index or btn.index
+    btn:EnableMouse(true)
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn:SetScript("OnClick", function(s, button)
+        if button == "RightButton" then
+            MB:OpenMacroEdit(index)
+        else
+            MB:ExecuteMacro(index)
+        end
+    end)
+    btn:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Macro " .. tostring(index), 1, 0.82, 0)
+        local txt = s.macroText or ""
+        if txt ~= "" then
+            GameTooltip:AddLine(txt, 1, 1, 1, true)
+        else
+            GameTooltip:AddLine("Vuota", 0.6, 0.6, 0.6)
+        end
+        GameTooltip:Show()
+        if MB._hoverEnter then MB._hoverEnter() end
+    end)
+    btn:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+        if MB._hoverLeave then MB._hoverLeave() end
+    end)
+end
+
 function MB:LoadKeybinds()
+    self.db.keybinds = self.db.keybinds or {}
     for i = 1, 12 do
         local key = self.db.keybinds[i]
-        if key and self.buttons[i] and self.buttons[i].hotkey then
-            self.buttons[i].hotkey:SetText(key)
+        if self.buttons[i] and self.buttons[i].hotkey then
+            self.buttons[i].hotkey:SetText(key or "")
+        end
+        if key and key ~= "" then
             SetBindingClick(key, "RLSuiteMacroBtn" .. i)
+        end
+    end
+    self:RefreshKeybindUI()
+end
+
+function MB:ClearKeybind(index)
+    self.db.keybinds = self.db.keybinds or {}
+    local old = self.db.keybinds[index]
+    if old and old ~= "" then
+        SetBinding(old)
+    end
+    self.db.keybinds[index] = nil
+    if self.buttons[index] and self.buttons[index].hotkey then
+        self.buttons[index].hotkey:SetText("")
+    end
+    if SaveBindings and GetCurrentBindingSet then
+        SaveBindings(GetCurrentBindingSet())
+    end
+    self:RefreshKeybindUI()
+end
+
+function MB:SetKeybind(index, key)
+    if not key or key == "" then
+        self:ClearKeybind(index)
+        return
+    end
+    self.db.keybinds = self.db.keybinds or {}
+    for i = 1, 12 do
+        if i ~= index and self.db.keybinds[i] == key then
+            self:ClearKeybind(i)
+        end
+    end
+    local old = self.db.keybinds[index]
+    if old and old ~= "" and old ~= key then
+        SetBinding(old)
+    end
+    self.db.keybinds[index] = key
+    SetBindingClick(key, "RLSuiteMacroBtn" .. index)
+    if self.buttons[index] and self.buttons[index].hotkey then
+        self.buttons[index].hotkey:SetText(key)
+    end
+    if SaveBindings and GetCurrentBindingSet then
+        SaveBindings(GetCurrentBindingSet())
+    end
+    RLSuite.utils:Print("Macro " .. index .. " -> " .. key)
+    self:RefreshKeybindUI()
+end
+
+function MB:BindingFromKey(key)
+    if not key or key == "" then return nil end
+    local skip = {
+        LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true,
+        LALT = true, RALT = true, UNKNOWN = true,
+    }
+    if skip[key] then return nil end
+    if key == "ESCAPE" then return "ESCAPE" end
+    local bind = key
+    if IsShiftKeyDown() then bind = "SHIFT-" .. bind end
+    if IsControlKeyDown() then bind = "CTRL-" .. bind end
+    if IsAltKeyDown() then bind = "ALT-" .. bind end
+    return bind
+end
+
+function MB:OpenKeybindUI()
+    if self.bindFrame then
+        if self.bindFrame:IsShown() then
+            self.bindFrame:Hide()
+            return
+        end
+        self.bindFrame:Show()
+        self:RefreshKeybindUI()
+        return
+    end
+    local f = CreateFrame("Frame", "RLSuiteMacroKeybindFrame", UIParent)
+    f:SetSize(300, 390)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    RLSuite.utils:SkinFrame(f)
+    self.bindFrame = f
+
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -10)
+    title:SetText("Macrobar Keybinds")
+    self.bindTitle = title
+
+    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+    close:SetScript("OnClick", function()
+        self.bindingIndex = nil
+        f:Hide()
+    end)
+
+    local hint = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hint:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -28)
+    hint:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -28)
+    hint:SetJustifyH("LEFT")
+    hint:SetText("Clicca una riga, poi premi un tasto. Backspace o click destro: togli.")
+    self.bindHint = hint
+
+    self.bindRows = {}
+    for i = 1, 12 do
+        local row = CreateFrame("Button", nil, f)
+        row:SetHeight(24)
+        row:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -48 - (i - 1) * 26)
+        row:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -48 - (i - 1) * 26)
+        RLSuite.utils:SkinRow(row, false)
+        local left = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        left:SetPoint("LEFT", row, "LEFT", 8, 0)
+        left:SetText("Macro " .. i)
+        local right = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        right:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+        right:SetText("-")
+        row.right = right
+        row.index = i
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        row:SetScript("OnClick", function(s, button)
+            if button == "RightButton" then
+                MB:ClearKeybind(s.index)
+                MB.bindingIndex = nil
+                MB:RefreshKeybindUI()
+                return
+            end
+            MB.bindingIndex = s.index
+            MB:RefreshKeybindUI()
+        end)
+        self.bindRows[i] = row
+    end
+
+    f:EnableKeyboard(true)
+    f:SetScript("OnKeyDown", function(s, key)
+        local idx = MB.bindingIndex
+        if not idx then return end
+        local bind = MB:BindingFromKey(key)
+        if not bind then return end
+        if bind == "ESCAPE" then
+            MB.bindingIndex = nil
+            MB:RefreshKeybindUI()
+            return
+        end
+        if key == "BACKSPACE" or key == "DELETE" then
+            MB:ClearKeybind(idx)
+            MB.bindingIndex = nil
+            return
+        end
+        MB:SetKeybind(idx, bind)
+        MB.bindingIndex = nil
+    end)
+    f:SetScript("OnShow", function(s)
+        s:EnableKeyboard(true)
+        MB:RefreshKeybindUI()
+    end)
+    f:SetScript("OnHide", function()
+        MB.bindingIndex = nil
+    end)
+    f:Show()
+    self:RefreshKeybindUI()
+end
+
+function MB:RefreshKeybindUI()
+    if not self.bindRows then return end
+    local binds = (self.db and self.db.keybinds) or {}
+    for i, row in ipairs(self.bindRows) do
+        local key = binds[i]
+        if self.bindingIndex == i then
+            row.right:SetText("...")
+            row.right:SetTextColor(1, 0.82, 0)
+            RLSuite.utils:SkinRow(row, true)
+        else
+            row.right:SetText((key and key ~= "") and key or "-")
+            row.right:SetTextColor(0.9, 0.9, 0.9)
+            RLSuite.utils:SkinRow(row, false)
+        end
+    end
+    if self.bindHint then
+        if self.bindingIndex then
+            self.bindHint:SetText("Premi un tasto per Macro " .. self.bindingIndex .. " (Esc annulla).")
+        else
+            self.bindHint:SetText("Clicca una riga, poi premi un tasto. Backspace o click destro: togli.")
         end
     end
 end
