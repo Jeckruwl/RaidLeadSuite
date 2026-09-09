@@ -274,20 +274,11 @@ function CFG:SnapSlider(val, minV, maxV, step)
     return tonumber(string.format("%.2f", val))
 end
 
-function CFG:AddSliderPair(a, b)
-    local y = self:NextY(46)
-    self:AddSlider(a[1], a[2], a[3], a[4], a[5], a[6], nil, "left", y)
-    if b then
-        self:AddSlider(b[1], b[2], b[3], b[4], b[5], b[6], nil, "right", y)
-    end
-end
-
-function CFG:AddSlider(label, minV, maxV, step, getValue, setValue, sliderWidth, col, y)
-    col = col or "full"
-    if not y then
-        y = self:NextY(46)
-    end
+function CFG:AddSlider(label, minV, maxV, step, getValue, setValue, sliderWidth)
+    local y = self:NextY(42)
     local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
+    fs:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -64, y)
     fs:SetJustifyH("LEFT")
     fs:SetText(label)
     fs:SetTextColor(1, 0.82, 0)
@@ -295,6 +286,7 @@ function CFG:AddSlider(label, minV, maxV, step, getValue, setValue, sliderWidth,
     self.widgetId = self.widgetId + 1
     local edit = CreateFrame("EditBox", "RLSuiteCfgSliderEdit" .. self.widgetId, self.content, "InputBoxTemplate")
     edit:SetSize(52, 18)
+    edit:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y + 2)
     edit:SetAutoFocus(false)
     edit:SetMaxLetters(6)
     edit:SetJustifyH("CENTER")
@@ -305,32 +297,14 @@ function CFG:AddSlider(label, minV, maxV, step, getValue, setValue, sliderWidth,
 
     local sl = CreateFrame("Slider", "RLSuiteCfgSlider" .. self.widgetId, self.content, "OptionsSliderTemplate")
     sl:SetHeight(16)
+    sl:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y - 16)
+    sl:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y - 16)
     sl:SetMinMaxValues(minV, maxV)
     sl:SetValueStep(step)
     local low = getglobal(sl:GetName() .. "Low")
     local high = getglobal(sl:GetName() .. "High")
     if low then low:Hide() end
     if high then high:Hide() end
-
-    if col == "left" then
-        fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
-        fs:SetPoint("RIGHT", self.content, "CENTER", -40, 0)
-        edit:SetPoint("TOPRIGHT", self.content, "CENTER", -8, y + 2)
-        sl:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y - 18)
-        sl:SetPoint("TOPRIGHT", self.content, "CENTER", -8, y - 18)
-    elseif col == "right" then
-        fs:SetPoint("TOPLEFT", self.content, "CENTER", 8, y)
-        fs:SetPoint("RIGHT", self.content, "RIGHT", -64, 0)
-        edit:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y + 2)
-        sl:SetPoint("TOPLEFT", self.content, "CENTER", 8, y - 18)
-        sl:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y - 18)
-    else
-        fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
-        fs:SetPoint("RIGHT", self.content, "RIGHT", -64, 0)
-        edit:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y + 2)
-        sl:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y - 18)
-        sl:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y - 18)
-    end
 
     local function fmt(v)
         if step < 1 then return string.format("%.2f", v) end
@@ -827,22 +801,14 @@ function CFG:PanelMacroLayout()
         mb.point = v
         mb.relPoint = v
     end)
-    self:AddSliderPair(
-        { "Buttons", 1, 12, 1, function() return mb.buttons end, function(v) mb.buttons = v end },
-        { "Buttons Per Row", 1, 12, 1, function() return mb.columns end, function(v) mb.columns = v end }
-    )
-    self:AddSliderPair(
-        { "Button Size", 15, 60, 1, function() return mb.buttonSize end, function(v) mb.buttonSize = v end },
-        { "Button Spacing", -3, 20, 1, function() return mb.spacing end, function(v) mb.spacing = v end }
-    )
-    self:AddSliderPair(
-        { "Backdrop Spacing", 0, 10, 1, function() return mb.backdropSpacing end, function(v) mb.backdropSpacing = v end },
-        { "Height Multiplier", 1, 5, 1, function() return mb.heightMult end, function(v) mb.heightMult = v end }
-    )
-    self:AddSliderPair(
-        { "Width Multiplier", 1, 5, 1, function() return mb.widthMult end, function(v) mb.widthMult = v end },
-        { "Alpha", 0, 100, 1, function() return math.floor((mb.alpha or 1) * 100 + 0.5) end, function(v) mb.alpha = v / 100 end }
-    )
+    self:AddSlider("Buttons", 1, 12, 1, function() return mb.buttons end, function(v) mb.buttons = v end)
+    self:AddSlider("Buttons Per Row", 1, 12, 1, function() return mb.columns end, function(v) mb.columns = v end)
+    self:AddSlider("Button Size", 15, 60, 1, function() return mb.buttonSize end, function(v) mb.buttonSize = v end)
+    self:AddSlider("Button Spacing", -3, 20, 1, function() return mb.spacing end, function(v) mb.spacing = v end)
+    self:AddSlider("Backdrop Spacing", 0, 10, 1, function() return mb.backdropSpacing end, function(v) mb.backdropSpacing = v end)
+    self:AddSlider("Height Multiplier", 1, 5, 1, function() return mb.heightMult end, function(v) mb.heightMult = v end)
+    self:AddSlider("Width Multiplier", 1, 5, 1, function() return mb.widthMult end, function(v) mb.widthMult = v end)
+    self:AddSlider("Alpha", 0, 100, 1, function() return math.floor((mb.alpha or 1) * 100 + 0.5) end, function(v) mb.alpha = v / 100 end)
     self:AddSlider("Scale", 0.50, 2.00, 0.05, function() return mb.scale or 1 end, function(v) mb.scale = v end)
     self:AddTextArea("Action Paging", 52, function() return mb.actionPaging end, function(v) mb.actionPaging = v end)
     self:AddTextArea("Visibility State", 52, function() return mb.visibility end, function(v) mb.visibility = v end)
