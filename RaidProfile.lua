@@ -184,11 +184,7 @@ function MW:CreateMacrobarSubTab()
     local mbPreview = CreateFrame("Frame", nil, sc)
     mbPreview:SetSize(300, 80)
     mbPreview:SetPoint("TOPLEFT", mbLabel, "BOTTOMLEFT", 0, -5)
-    mbPreview:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 12,
-    })
+    RLSuite.utils:SkinFrame(mbPreview)
 
     for i = 1, 12 do
         local btn = CreateFrame("Button", nil, mbPreview)
@@ -365,11 +361,7 @@ function MW:CreateRaidFrameSubTab()
     local preview = CreateFrame("Frame", nil, sc)
     preview:SetSize(300, 100)
     preview:SetPoint("TOPLEFT", rfLabel, "BOTTOMLEFT", 0, -10)
-    preview:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 12,
-    })
+    RLSuite.utils:SkinFrame(preview)
 
     local example = CreateFrame("Frame", nil, preview)
     example:SetSize(280, 22)

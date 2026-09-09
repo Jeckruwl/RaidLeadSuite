@@ -123,29 +123,32 @@ function Utils:GetThemeColors(theme)
 end
 
 function Utils:WindowBackdrop()
+    -- UI-Tooltip-Background is opaque in 3.3.5; DialogBox-Background is not.
     return {
-        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true, tileSize = 16, edgeSize = 32,
-        insets = {left = 8, right = 8, top = 8, bottom = 8},
+        insets = {left = 6, right = 6, top = 6, bottom = 6},
     }
 end
 
 function Utils:SkinFrame(f)
     if not f or not f.SetBackdrop then return end
     local c = self:GetThemeColors()
+    f:SetAlpha(1)
+    if not f.rlsBgFill then
+        local tex = f:CreateTexture(nil, "BACKGROUND")
+        tex:SetDrawLayer("BACKGROUND", -8)
+        tex:SetAllPoints(f)
+        f.rlsBgFill = tex
+    end
+    -- Full-bleed fill so the window is never see-through, even if backdrop fails.
+    f.rlsBgFill:SetTexture("Interface\\Tooltips\\UI-Tooltip-Background")
+    f.rlsBgFill:SetVertexColor(c.fill[1], c.fill[2], c.fill[3], 1)
+    f.rlsBgFill:Show()
     f:SetBackdrop(self:WindowBackdrop())
     f:SetBackdropColor(c.bg[1], c.bg[2], c.bg[3], 1)
     f:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
-    if not f.rlsBgFill then
-        local tex = f:CreateTexture(nil, "BACKGROUND")
-        tex:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -8)
-        tex:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
-        tex:SetTexture("Interface\\ChatFrame\\ChatFrameBackground")
-        f.rlsBgFill = tex
-    end
-    f.rlsBgFill:SetVertexColor(c.fill[1], c.fill[2], c.fill[3], 1)
-    f.rlsBgFill:Show()
 end
 
 function Utils:AllWindows()
@@ -163,6 +166,10 @@ function Utils:AllWindows()
     add(RLSuite.msManager and RLSuite.msManager.frame)
     add(RLSuite.lootManager and RLSuite.lootManager.frame)
     add(RLSuite.config and RLSuite.config.frame)
+    if RLSuite.mainWindow and RLSuite.mainWindow.tabPanels then
+        add(RLSuite.mainWindow.tabPanels.macro)
+        add(RLSuite.mainWindow.tabPanels.raidframe)
+    end
     return list
 end
 
@@ -185,7 +192,7 @@ function Utils:CreateDropdown(parent, name, width, height)
     dd:SetSize(width, height)
     dd:EnableMouse(true)
     dd:SetBackdrop({
-        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true, tileSize = 16, edgeSize = 8,
         insets = {left=2, right=2, top=2, bottom=2}
@@ -272,7 +279,7 @@ function Utils:ToggleDropdownMenu(dd)
     menu:SetFrameStrata("FULLSCREEN_DIALOG")
     menu:SetFrameLevel(10)
     menu:SetBackdrop({
-        bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true, tileSize = 16, edgeSize = 8,
         insets = {left=2, right=2, top=2, bottom=2}

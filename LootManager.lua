@@ -430,11 +430,7 @@ function LM:ShowTradeWindow(item)
     f:SetSize(200, 100)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
-    f:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 16,
-    })
+    RLSuite.utils:SkinFrame(f)
 
     local icon = f:CreateTexture(nil, "ARTWORK")
     icon:SetSize(40, 40)
