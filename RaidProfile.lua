@@ -14,6 +14,7 @@ function MW:Toggle()
         self.frame:Hide()
     elseif self.frame then
         self.frame:Show()
+        self:RefreshMacroTab()
     end
 end
 
@@ -138,21 +139,22 @@ function MW:CreateMacrobarSubTab()
     sc:SetAllPoints(self.subContentArea)
     sc:Hide()
     self.subContents[1] = sc
-
-    local raidLabel = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    raidLabel:SetPoint("TOPLEFT", sc, "TOPLEFT", 10, -10)
-    raidLabel:SetText("Raid Profile:")
+    self.macroPhase = RLSuite.context or "preraid"
+    self.macroPreviewBtns = {}
+    self.macroEdits = {}
+    self.macroPhaseBtns = {}
+    self.macroLoading = false
 
     local mbLabel = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    mbLabel:SetPoint("TOPLEFT", raidLabel, "BOTTOMLEFT", 0, -20)
-    mbLabel:SetText("Macrobar Preview:")
+    mbLabel:SetPoint("TOPLEFT", sc, "TOPLEFT", 10, -10)
+    mbLabel:SetText("Macrobar (collegate al DB, 12 slot):")
 
     local mbPreview = CreateFrame("Frame", nil, sc)
     mbPreview:SetSize(300, 80)
     mbPreview:SetPoint("TOPLEFT", mbLabel, "BOTTOMLEFT", 0, -5)
     mbPreview:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true, tileSize = 32, edgeSize = 12,
     })
 
@@ -162,39 +164,147 @@ function MW:CreateMacrobarSubTab()
         local col = (i - 1) % 6
         local row = math.floor((i - 1) / 6)
         btn:SetPoint("TOPLEFT", mbPreview, "TOPLEFT", 8 + col * 36, -8 - row * 36)
-        btn:SetSize(32, 32)
         btn:SetBackdrop({
-            bgFile = "Interface\Buttons\UI-Quickslot",
-            edgeFile = "Interface\Buttons\UI-Quickslot",
+            bgFile = "Interface\\Buttons\\UI-Quickslot",
+            edgeFile = "Interface\\Buttons\\UI-Quickslot",
             tile = false, tileSize = 32, edgeSize = 32,
         })
         btn.icon = btn:CreateTexture(nil, "ARTWORK")
         btn.icon:SetAllPoints(btn)
-        btn.icon:SetTexture("Interface\Icons\INV_Misc_QuestionMark")
+        btn.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         btn:SetScript("OnClick", function(s, button)
             if button == "RightButton" and RLSuite.macrobar and RLSuite.macrobar.OpenMacroEdit then
                 RLSuite.macrobar:OpenMacroEdit(i)
+            elseif self.macroEdits[i] then
+                self.macroEdits[i]:SetFocus()
             end
         end)
         local num = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         num:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 2, 2)
-        num:SetFont("Fonts\FRIZQT__.TTF", 8)
+        num:SetFont("Fonts\\FRIZQT__.TTF", 8)
         num:SetText(i)
+        self.macroPreviewBtns[i] = btn
     end
 
-    local phases = {"Pre-raid", "Pre-boss", "In-fight"}
-    for i, phase in ipairs(phases) do
-        local pLabel = sc:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        pLabel:SetPoint("TOPLEFT", mbPreview, "BOTTOMLEFT", 0, -15 - (i-1) * 90)
-        pLabel:SetText(phase .. " macros:")
+    local phaseLabel = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    phaseLabel:SetPoint("TOPLEFT", mbPreview, "BOTTOMLEFT", 0, -12)
+    phaseLabel:SetText("Fase:")
 
-        for j = 1, 10 do
-            local edit = CreateFrame("EditBox", "RLSuiteMacroEdit_" .. i .. "_" .. j, sc, "InputBoxTemplate")
-            edit:SetSize(500, 18)
-            edit:SetPoint("TOPLEFT", pLabel, "BOTTOMLEFT", 5, -5 - (j-1) * 20)
-            edit:SetAutoFocus(false)
+    local phases = {
+        {key = "preraid", label = "Pre-raid"},
+        {key = "preboss", label = "Pre-boss"},
+        {key = "infight", label = "In-fight"},
+    }
+    for i, pdata in ipairs(phases) do
+        local btn = CreateFrame("Button", nil, sc, "UIPanelButtonTemplate")
+        btn:SetSize(80, 20)
+        btn:SetPoint("LEFT", phaseLabel, "RIGHT", 8 + (i - 1) * 86, 0)
+        btn:SetText(pdata.label)
+        btn.phaseKey = pdata.key
+        btn:SetScript("OnClick", function()
+            self:SelectMacroPhase(pdata.key)
+        end)
+        self.macroPhaseBtns[pdata.key] = btn
+    end
+
+    local hint = sc:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hint:SetPoint("TOPLEFT", phaseLabel, "BOTTOMLEFT", 0, -8)
+    hint:SetText("Testo salvato automaticamente. Tasto destro sull'icona per l'editor avanzato.")
+
+    for j = 1, 12 do
+        local lab = sc:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        lab:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", 0, -6 - (j - 1) * 20)
+        lab:SetWidth(20)
+        lab:SetJustifyH("LEFT")
+        lab:SetText(tostring(j))
+
+        local edit = CreateFrame("EditBox", "RLSuiteMainMacroEdit" .. j, sc, "InputBoxTemplate")
+        edit:SetSize(500, 18)
+        edit:SetPoint("LEFT", lab, "RIGHT", 8, 0)
+        edit:SetAutoFocus(false)
+        edit.slotIndex = j
+        edit:SetScript("OnTextChanged", function(s)
+            if MW.macroLoading then return end
+            MW:SaveMacroLine(s.slotIndex, s:GetText())
+        end)
+        self.macroEdits[j] = edit
+    end
+
+    local openBtn = CreateFrame("Button", nil, sc, "UIPanelButtonTemplate")
+    openBtn:SetSize(130, 22)
+    openBtn:SetPoint("TOPLEFT", mbPreview, "TOPRIGHT", 15, -5)
+    openBtn:SetText("Apri MacroBar")
+    openBtn:SetScript("OnClick", function()
+        if RLSuite.macrobar and RLSuite.macrobar.Toggle then
+            RLSuite.macrobar:Toggle()
+        end
+    end)
+
+    self:SelectMacroPhase(self.macroPhase)
+end
+
+function MW:SelectMacroPhase(phase)
+    self.macroPhase = phase or "preraid"
+    for key, btn in pairs(self.macroPhaseBtns or {}) do
+        if key == self.macroPhase then
+            btn:LockHighlight()
+        else
+            btn:UnlockHighlight()
+        end
+    end
+    self:RefreshMacroTab()
+end
+
+function MW:GetMacroDB(phase)
+    phase = phase or self.macroPhase or "preraid"
+    if not RLSuiteDB or not RLSuiteDB.macrobar then return {} end
+    RLSuiteDB.macrobar.macros = RLSuiteDB.macrobar.macros or {}
+    RLSuiteDB.macrobar.macros[phase] = RLSuiteDB.macrobar.macros[phase] or {}
+    return RLSuiteDB.macrobar.macros[phase]
+end
+
+function MW:SaveMacroLine(index, text)
+    local phase = self.macroPhase or "preraid"
+    local macros = self:GetMacroDB(phase)
+    local current = macros[index] or {text = "", icon = "Interface\\Icons\\INV_Misc_QuestionMark"}
+    current.text = text or ""
+    current.icon = current.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+    macros[index] = current
+    if RLSuite.macrobar and RLSuite.macrobar.LoadMacrosForPhase then
+        if (RLSuite.context or "preraid") == phase then
+            RLSuite.macrobar:LoadMacrosForPhase(phase)
+        end
+    end
+    self:RefreshMacroPreview()
+end
+
+function MW:RefreshMacroTab()
+    if not self.macroEdits then return end
+    self.macroLoading = true
+    local macros = self:GetMacroDB(self.macroPhase)
+    for j = 1, 12 do
+        local data = macros[j]
+        local text = (data and data.text) or ""
+        if self.macroEdits[j] then
+            self.macroEdits[j]:SetText(text)
+        end
+    end
+    self.macroLoading = false
+    self:RefreshMacroPreview()
+end
+
+function MW:RefreshMacroPreview()
+    local macros = self:GetMacroDB(self.macroPhase)
+    for i, btn in ipairs(self.macroPreviewBtns or {}) do
+        local data = macros[i]
+        if btn and btn.icon then
+            if data and data.text and data.text ~= "" then
+                btn.icon:SetTexture(data.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+            else
+                btn.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+            end
         end
     end
 end

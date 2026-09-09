@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.0.0"
+RLSuite.version = "1.1.0"
 
 local defaults = {
     profile = "",
@@ -29,6 +29,7 @@ local defaults = {
         raid = "",
         difficulty = "10",
         reserved = {},
+        reservedText = "",
         otherReq = "",
         comp = {},
         spamChannels = {"General", "Trade"},
@@ -122,6 +123,59 @@ RLSuite.keyAbilities = {
     DRUID       = {"Tranquility", "Rebirth", "Barkskin", "Innervate"},
 }
 
+-- WotLK 3.3.5 baselines. Combat log uses spellId (locale-safe); player uses GetSpellCooldown.
+RLSuite.abilityByName = {
+    ["Shield Wall"]              = { cd = 300,  icon = "Interface\\Icons\\Ability_Warrior_ShieldWall" },
+    ["Last Stand"]               = { cd = 180,  icon = "Interface\\Icons\\Spell_Holy_AshesToAshes" },
+    ["Divine Protection"]        = { cd = 120,  icon = "Interface\\Icons\\Spell_Holy_Restoration" },
+    ["Lay on Hands"]             = { cd = 1200, icon = "Interface\\Icons\\Spell_Holy_LayOnHands" },
+    ["Hand of Sacrifice"]        = { cd = 120,  icon = "Interface\\Icons\\Spell_Holy_SealOfSacrifice" },
+    ["Misdirection"]             = { cd = 30,   icon = "Interface\\Icons\\Ability_Hunter_Misdirection" },
+    ["Deterrence"]               = { cd = 90,   icon = "Interface\\Icons\\Ability_Whirlwind" },
+    ["Tricks of the Trade"]      = { cd = 30,   icon = "Interface\\Icons\\Ability_Rogue_TricksOftheTrade" },
+    ["Vanish"]                   = { cd = 180,  icon = "Interface\\Icons\\Ability_Vanish" },
+    ["Pain Suppression"]         = { cd = 180,  icon = "Interface\\Icons\\Spell_Holy_PainSupression" },
+    ["Guardian Spirit"]          = { cd = 180,  icon = "Interface\\Icons\\Spell_Holy_GuardianSpirit" },
+    ["Divine Hymn"]              = { cd = 480,  icon = "Interface\\Icons\\Spell_Holy_DivineHymn" },
+    ["Icebound Fortitude"]       = { cd = 120,  icon = "Interface\\Icons\\Spell_DeathKnight_IceBoundFortitude" },
+    ["Anti-Magic Shell"]         = { cd = 45,   icon = "Interface\\Icons\\Spell_Shadow_AntiMagicShell" },
+    ["Vampiric Blood"]           = { cd = 60,   icon = "Interface\\Icons\\Spell_Shadow_LifeDrain" },
+    ["Heroism"]                  = { cd = 300,  icon = "Interface\\Icons\\Ability_Shaman_Heroism" },
+    ["Bloodlust"]                = { cd = 300,  icon = "Interface\\Icons\\Spell_Nature_BloodLust" },
+    ["Nature's Swiftness"]       = { cd = 180,  icon = "Interface\\Icons\\Spell_Nature_RavenForm" },
+    ["Ice Block"]                = { cd = 300,  icon = "Interface\\Icons\\Spell_Frost_Frost" },
+    ["Invisibility"]             = { cd = 180,  icon = "Interface\\Icons\\Ability_Mage_Invisibility" },
+    ["Soulstone"]                = { cd = 900,  icon = "Interface\\Icons\\Spell_Shadow_SoulGem" },
+    ["Demonic Circle: Teleport"] = { cd = 30,   icon = "Interface\\Icons\\Spell_Shadow_DemonicCircleTeleport" },
+    ["Tranquility"]              = { cd = 480,  icon = "Interface\\Icons\\Spell_Nature_Tranquility" },
+    ["Rebirth"]                  = { cd = 600,  icon = "Interface\\Icons\\Spell_Nature_Reincarnation" },
+    ["Barkskin"]                 = { cd = 60,   icon = "Interface\\Icons\\Spell_Nature_StoneClawTotem" },
+    ["Innervate"]                = { cd = 180,  icon = "Interface\\Icons\\Spell_Nature_Lightning" },
+}
+
+RLSuite.abilityBySpellId = {
+    [871] = "Shield Wall", [12975] = "Last Stand",
+    [498] = "Divine Protection", [6940] = "Hand of Sacrifice",
+    [633] = "Lay on Hands", [2800] = "Lay on Hands", [10310] = "Lay on Hands",
+    [27154] = "Lay on Hands", [48788] = "Lay on Hands",
+    [34477] = "Misdirection", [19263] = "Deterrence",
+    [57934] = "Tricks of the Trade",
+    [1856] = "Vanish", [1857] = "Vanish", [26889] = "Vanish",
+    [33206] = "Pain Suppression", [47788] = "Guardian Spirit", [64843] = "Divine Hymn",
+    [48792] = "Icebound Fortitude", [48707] = "Anti-Magic Shell", [55233] = "Vampiric Blood",
+    [32182] = "Heroism", [2825] = "Bloodlust", [16188] = "Nature's Swiftness",
+    [45438] = "Ice Block", [66] = "Invisibility",
+    [20707] = "Soulstone", [20762] = "Soulstone", [20763] = "Soulstone",
+    [20764] = "Soulstone", [20765] = "Soulstone", [27239] = "Soulstone",
+    [47883] = "Soulstone", [47884] = "Soulstone",
+    [48020] = "Demonic Circle: Teleport",
+    [740] = "Tranquility", [8918] = "Tranquility", [9862] = "Tranquility",
+    [9863] = "Tranquility", [26983] = "Tranquility", [48446] = "Tranquility", [48447] = "Tranquility",
+    [20484] = "Rebirth", [20739] = "Rebirth", [20742] = "Rebirth", [20747] = "Rebirth",
+    [20748] = "Rebirth", [26994] = "Rebirth", [48477] = "Rebirth",
+    [22812] = "Barkskin", [29166] = "Innervate",
+}
+
 RLSuite.buffData = {
     flask = {
         "Flask of the Frost Wyrm", "Flask of Endless Rage", "Flask of Pure Mojo",
@@ -156,7 +210,8 @@ frame:RegisterEvent("CHAT_MSG_LOOT")
 frame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
         local addon = ...
-        if addon == "RLSuite" then
+        -- Folder name is the addon name. Canonical: RLSuite. GitHub clone: RaidLeadSuite.
+        if addon == "RLSuite" or addon == "RaidLeadSuite" then
             RLSuiteDB = RLSuiteDB or {}
             RLSuiteCharDB = RLSuiteCharDB or {}
             for k, v in pairs(defaults) do
@@ -250,5 +305,8 @@ function RLSuite:InitModules()
     if self.lootManager and self.lootManager.Init then self.lootManager:Init() end
     if self.config and self.config.Init then self.config:Init() end
     if self.mainWindow and self.mainWindow.Init then self.mainWindow:Init() end
+    if self.config and self.config.ApplyTheme then
+        self.config:ApplyTheme(RLSuiteDB.appearance and RLSuiteDB.appearance.theme)
+    end
     self:UpdateRaidContext()
 end

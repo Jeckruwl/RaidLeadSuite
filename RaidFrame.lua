@@ -8,6 +8,7 @@ local RF = RLSuite.raidFrame
 function RF:Init()
     self.db = RLSuiteDB.raidframe
     self.rows = {}
+    self.cdTracker = {}
     self:CreateFrame()
     self:RegisterEvents()
 end
@@ -59,12 +60,19 @@ function RF:RegisterEvents()
     f:RegisterEvent("UNIT_HEALTH")
     f:RegisterEvent("UNIT_MANA")
     f:RegisterEvent("UNIT_AURA")
+    f:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     f:SetScript("OnEvent", function(self2, event, ...)
         if event == "RAID_ROSTER_UPDATE" then
             RF:Rebuild()
         elseif event == "UNIT_HEALTH" or event == "UNIT_MANA" or event == "UNIT_AURA" then
             local unit = ...
             RF:UpdateUnit(unit)
+        elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
+            -- 3.3.5: timestamp, subEvent, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, ...
+            local _, subEvent, _, sourceName, _, _, _, _, spellId = ...
+            if subEvent == "SPELL_CAST_SUCCESS" then
+                RF:OnSpellCast(sourceName, spellId)
+            end
         end
     end)
     f:SetScript("OnUpdate", function(self2, elapsed)
@@ -146,9 +154,15 @@ function RF:Rebuild()
             local cd = row:CreateTexture(nil, "OVERLAY")
             cd:SetSize(iconSize, iconSize)
             cd:SetPoint("LEFT", row.manaBar, "RIGHT", 10 + (j-1)*(iconSize+2), 0)
-            cd:SetTexture("Interface\Icons\INV_Misc_QuestionMark")
+            local meta = RLSuite.abilityByName and RLSuite.abilityByName[ability]
+            cd:SetTexture((meta and meta.icon) or "Interface\Icons\INV_Misc_QuestionMark")
             cd:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             cd.ability = ability
+            local timer = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            timer:SetPoint("CENTER", cd, "CENTER", 0, 0)
+            timer:SetFont("Fonts\FRIZQT__.TTF", 8, "OUTLINE")
+            timer:SetText("")
+            cd.timer = timer
             row.cdIcons[j] = cd
         end
 
@@ -221,19 +235,46 @@ function RF:UpdateRow(row)
 
     for _, cd in ipairs(row.cdIcons) do
         if cd and cd.ability then
-            local start, duration, enabled = GetSpellCooldown(cd.ability)
-            if start and duration and duration > 0 then
-                local remaining = start + duration - GetTime()
-                if remaining > 0 then
-                    cd:SetVertexColor(0.3, 0.3, 0.3)
-                else
-                    cd:SetVertexColor(1, 1, 1)
+            local remaining = self:GetAbilityRemaining(row.name, unit, cd.ability)
+            if remaining and remaining > 0 then
+                cd:SetVertexColor(0.35, 0.35, 0.35)
+                if cd.timer then
+                    cd.timer:SetText(RLSuite.utils:FormatCD(remaining))
                 end
             else
                 cd:SetVertexColor(1, 1, 1)
+                if cd.timer then cd.timer:SetText("") end
             end
         end
     end
+end
+
+-- GetSpellCooldown only works for the player. Raid members are tracked via combat log + known CD.
+function RF:GetAbilityRemaining(playerName, unit, ability)
+    if unit and UnitIsUnit(unit, "player") then
+        local start, duration = GetSpellCooldown(ability)
+        if start and duration and duration > 1.5 then
+            local rem = start + duration - GetTime()
+            if rem > 0 then return rem end
+        end
+    end
+    local expire = self.cdTracker and self.cdTracker[playerName] and self.cdTracker[playerName][ability]
+    if expire then
+        local rem = expire - GetTime()
+        if rem > 0 then return rem end
+    end
+    return 0
+end
+
+function RF:OnSpellCast(sourceName, spellId)
+    if not sourceName or not spellId then return end
+    local ability = RLSuite.abilityBySpellId and RLSuite.abilityBySpellId[spellId]
+    if not ability then return end
+    local meta = RLSuite.abilityByName and RLSuite.abilityByName[ability]
+    if not meta or not meta.cd then return end
+    self.cdTracker = self.cdTracker or {}
+    self.cdTracker[sourceName] = self.cdTracker[sourceName] or {}
+    self.cdTracker[sourceName][ability] = GetTime() + meta.cd
 end
 
 function RF:CheckAlerts(unit)

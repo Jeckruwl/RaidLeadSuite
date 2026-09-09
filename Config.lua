@@ -50,9 +50,16 @@ function CFG:CreateFrame()
     themeLabel:SetPoint("TOPLEFT", appLabel, "BOTTOMLEFT", 0, -10)
     themeLabel:SetText("Theme:")
 
-    self.themeDropdown = self:CreateDropdown(f, "RLSuiteThemeDD", 120, 22)
+    self.themeDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteThemeDD", 120, 22)
     self.themeDropdown:SetPoint("LEFT", themeLabel, "RIGHT", 10, 0)
-    self.themeDropdown.text:SetText(self.db.appearance.theme or "default")
+    local themes = {
+        {text = "Default", value = "default"},
+        {text = "Dark", value = "dark"},
+        {text = "Gold", value = "gold"},
+    }
+    RLSuite.utils:SetupDropdown(self.themeDropdown, themes, self.db.appearance.theme or "default", function(value)
+        self:ApplyTheme(value)
+    end)
 
     local fontLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fontLabel:SetPoint("TOPLEFT", themeLabel, "BOTTOMLEFT", 0, -15)
@@ -176,21 +183,47 @@ function CFG:CreateFrame()
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
     closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+    self:ApplyTheme(self.db.appearance.theme or "default")
 end
 
-function CFG:CreateDropdown(parent, name, width, height)
-    local dd = CreateFrame("Frame", name, parent)
-    dd:SetSize(width, height)
-    dd:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
-        tile = true, tileSize = 16, edgeSize = 8,
-        insets = {left=2, right=2, top=2, bottom=2}
-    })
-    dd.text = dd:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    dd.text:SetPoint("LEFT", dd, "LEFT", 5, 0)
-    dd.text:SetText("default")
-    return dd
+function CFG:GetThemeColors(theme)
+    theme = theme or "default"
+    if theme == "dark" then
+        return {bg = {0.05, 0.05, 0.08, 0.95}, border = {0.35, 0.35, 0.4, 1}}
+    elseif theme == "gold" then
+        return {bg = {0.12, 0.09, 0.02, 0.95}, border = {0.85, 0.7, 0.2, 1}}
+    end
+    return {bg = {0, 0, 0, 0.85}, border = {1, 1, 1, 1}}
+end
+
+function CFG:ApplyTheme(theme)
+    if self.db and self.db.appearance then
+        self.db.appearance.theme = theme or "default"
+    end
+    local c = self:GetThemeColors(theme)
+    local frames = {}
+    local function add(fr)
+        if fr then table.insert(frames, fr) end
+    end
+    add(self.frame)
+    if RLSuite.mainWindow then add(RLSuite.mainWindow.frame) end
+    if RLSuite.groupmaking then
+        add(RLSuite.groupmaking.mainFrame)
+        add(RLSuite.groupmaking.whisplistFrame)
+    end
+    if RLSuite.macrobar then add(RLSuite.macrobar.frame) end
+    if RLSuite.raidFrame then add(RLSuite.raidFrame.frame) end
+    if RLSuite.msManager then add(RLSuite.msManager.frame) end
+    if RLSuite.lootManager then add(RLSuite.lootManager.frame) end
+    for _, fr in ipairs(frames) do
+        if fr.SetBackdropColor then
+            fr:SetBackdropColor(c.bg[1], c.bg[2], c.bg[3], c.bg[4])
+        end
+        if fr.SetBackdropBorderColor then
+            fr:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], c.border[4])
+        end
+    end
 end
 
 function CFG:ExportData()
@@ -200,6 +233,7 @@ function CFG:ExportData()
         macrobar = self.db.macrobar,
         raidframe = self.db.raidframe,
         groupmaking = self.db.groupmaking,
+        appearance = self.db.appearance,
     }
     local serialized = self:Serialize(data)
     self.ioEdit:SetText(serialized)
@@ -217,6 +251,11 @@ function CFG:ImportData()
         if data.macrobar then self.db.macrobar = data.macrobar end
         if data.raidframe then self.db.raidframe = data.raidframe end
         if data.profiles then self.db.profiles = data.profiles end
+        if data.groupmaking then self.db.groupmaking = data.groupmaking end
+        if data.appearance then
+            self.db.appearance = data.appearance
+            self:ApplyTheme(data.appearance.theme or "default")
+        end
         RLSuite.utils:Print("Dati importati con successo!")
     else
         RLSuite.utils:Print("Errore nell'importazione dei dati.")

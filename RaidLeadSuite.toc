@@ -1,6 +1,6 @@
 ## Interface: 30300
 ## Title: RLSuite - Raid Leading Suite
-## Notes: Raid leading addon for WOTLK 3.3.5 (Warmane). Folder name: RLSuite
+## Notes: Raid leading addon for WOTLK 3.3.5 (Warmane). Canonical folder name: RLSuite
 ## Author: RLSuite
 ## Version: 1.1.0
 ## SavedVariables: RLSuiteDB

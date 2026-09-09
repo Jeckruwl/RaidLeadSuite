@@ -21,9 +21,11 @@ function GM:Init()
     self.compSlots = {}
     self.whisperEntries = {}
     self.selectedEntry = nil
+    self.loadingComp = true
     self:CreateMainWindow()
     self:CreateWhisplistWindow()
     self:LoadCompFromDB()
+    self.loadingComp = false
 end
 
 function GM:Toggle()
@@ -66,7 +68,7 @@ function GM:CreateMainWindow()
     raidLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 20, -45)
     raidLabel:SetText("Raid:")
 
-    self.raidDropdown = self:CreateDropdown(f, "RLSuiteRaidDropdown", 180, 22)
+    self.raidDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteRaidDropdown", 180, 22)
     self.raidDropdown:SetPoint("TOPLEFT", raidLabel, "TOPRIGHT", 10, 4)
     self:PopulateRaidDropdown()
 
@@ -75,9 +77,11 @@ function GM:CreateMainWindow()
     diffLabel:SetPoint("TOPLEFT", self.raidDropdown, "TOPRIGHT", 15, -4)
     diffLabel:SetText("Diff:")
 
-    self.diffDropdown = self:CreateDropdown(f, "RLSuiteDiffDropdown", 60, 22)
+    self.diffDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteDiffDropdown", 60, 22)
     self.diffDropdown:SetPoint("TOPLEFT", diffLabel, "TOPRIGHT", 10, 4)
-    self.diffDropdown.text:SetText(self.db.difficulty or "10")
+    RLSuite.utils:SetupDropdown(self.diffDropdown, {"10", "25"}, self.db.difficulty or "10", function(value)
+        self:SetDifficulty(value)
+    end)
 
     local diff10 = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     diff10:SetSize(30, 22)
@@ -117,6 +121,7 @@ function GM:CreateMainWindow()
     self.reservedEdit:SetSize(350, 20)
     self.reservedEdit:SetPoint("TOPLEFT", reservedLabel, "BOTTOMLEFT", 5, -5)
     self.reservedEdit:SetAutoFocus(false)
+    self.reservedEdit:SetScript("OnTextChanged", function() self:SaveComp() end)
 
     -- Other reqs
     local otherLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -127,6 +132,7 @@ function GM:CreateMainWindow()
     self.otherEdit:SetSize(350, 20)
     self.otherEdit:SetPoint("TOPLEFT", otherLabel, "BOTTOMLEFT", 5, -5)
     self.otherEdit:SetAutoFocus(false)
+    self.otherEdit:SetScript("OnTextChanged", function() self:SaveComp() end)
 
     -- Buttons
     local btnY = -420
@@ -239,6 +245,7 @@ function GM:SetDifficulty(diff)
     local newHeight = rows * (SLOT_SIZE + SLOT_SPACING) - SLOT_SPACING
     self.compFrame:SetSize((SLOT_SIZE + SLOT_SPACING) * 5 - SLOT_SPACING, newHeight)
     self:UpdateMessagePreview()
+    self:SaveComp()
 end
 
 function GM:ClearSlot(index)
@@ -252,6 +259,7 @@ function GM:ClearSlot(index)
     if slot.roleBorder then slot.roleBorder:Hide() end
     if slot.roleText then slot.roleText:SetText("") end
     self:UpdateMessagePreview()
+    self:SaveComp()
 end
 
 function GM:FillSlot(index, class, role, playerName)
@@ -274,6 +282,7 @@ function GM:FillSlot(index, class, role, playerName)
         slot.roleText:SetText((role or "dps"):sub(1,1):upper())
     end
     self:UpdateMessagePreview()
+    self:SaveComp()
 end
 
 function GM:FindEmptySlotForRole(role)
@@ -362,25 +371,6 @@ end
 -- ============================================================
 -- DROPDOWN
 -- ============================================================
-function GM:CreateDropdown(parent, name, width, height)
-    local dd = CreateFrame("Frame", name, parent)
-    dd:SetSize(width, height)
-    dd:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
-        tile = true, tileSize = 16, edgeSize = 8,
-        insets = {left=2, right=2, top=2, bottom=2}
-    })
-    dd.text = dd:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    dd.text:SetPoint("LEFT", dd, "LEFT", 5, 0)
-    dd.text:SetText("Seleziona...")
-    dd.button = CreateFrame("Button", nil, dd)
-    dd.button:SetSize(16, 16)
-    dd.button:SetPoint("RIGHT", dd, "RIGHT", -2, 0)
-    dd.button:SetNormalTexture("Interface\ChatFrame\UI-ChatIcon-ScrollDown-Up")
-    return dd
-end
-
 function GM:PopulateRaidDropdown()
     local raids = {}
     for name, _ in pairs(RLSuite.raidDB) do
@@ -388,46 +378,16 @@ function GM:PopulateRaidDropdown()
     end
     table.sort(raids)
     self.raidList = raids
-    if #raids > 0 and self.raidDropdown and self.raidDropdown.text then
-        self.raidDropdown.text:SetText(raids[1])
-        self.db.raid = raids[1]
+    local current = self.db.raid
+    if not current or current == "" or not RLSuite.raidDB[current] then
+        current = raids[1]
+        self.db.raid = current
     end
-    if self.raidDropdown and self.raidDropdown.button then
-        self.raidDropdown.button:SetScript("OnClick", function()
-            self:ShowRaidMenu()
-        end)
-    end
-end
-
-function GM:ShowRaidMenu()
-    if self.raidMenu then self.raidMenu:Hide() end
-    local menu = CreateFrame("Frame", "RLSuiteRaidMenu", self.mainFrame)
-    menu:SetSize(180, #self.raidList * 20 + 10)
-    menu:SetPoint("TOPLEFT", self.raidDropdown, "BOTTOMLEFT", 0, -2)
-    menu:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
-        tile = true, tileSize = 16, edgeSize = 8,
-    })
-    menu:SetFrameStrata("DIALOG")
-    for i, raid in ipairs(self.raidList) do
-        local btn = CreateFrame("Button", nil, menu)
-        btn:SetSize(170, 18)
-        btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 5, -5 - (i-1)*20)
-        local txt = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        txt:SetAllPoints(btn)
-        txt:SetText(raid)
-        txt:SetJustifyH("LEFT")
-        btn:SetScript("OnClick", function()
-            self.db.raid = raid
-            if self.raidDropdown and self.raidDropdown.text then
-                self.raidDropdown.text:SetText(raid)
-            end
-            menu:Hide()
-            self:UpdateMessagePreview()
-        end)
-    end
-    self.raidMenu = menu
+    RLSuite.utils:SetupDropdown(self.raidDropdown, raids, current, function(value)
+        self.db.raid = value
+        self:UpdateMessagePreview()
+        self:SaveComp()
+    end)
 end
 
 -- ============================================================
@@ -835,6 +795,14 @@ end
 -- SAVE / LOAD
 -- ============================================================
 function GM:LoadCompFromDB()
+    local reserved = ""
+    if type(self.db.reservedText) == "string" then
+        reserved = self.db.reservedText
+    elseif type(self.db.reserved) == "string" then
+        reserved = self.db.reserved
+    end
+    if self.reservedEdit then self.reservedEdit:SetText(reserved) end
+    if self.otherEdit then self.otherEdit:SetText(self.db.otherReq or "") end
     if self.db.comp then
         for i, data in pairs(self.db.comp) do
             if self.compSlots[i] then
@@ -842,11 +810,14 @@ function GM:LoadCompFromDB()
             end
         end
     end
+    self:UpdateMessagePreview()
 end
 
 function GM:SaveComp()
+    if self.loadingComp then return end
+    if not self.db then return end
     self.db.comp = {}
-    for i, slot in ipairs(self.compSlots) do
+    for i, slot in ipairs(self.compSlots or {}) do
         if slot and slot.filled then
             self.db.comp[i] = {
                 class = slot.class,
@@ -854,6 +825,12 @@ function GM:SaveComp()
                 playerName = slot.playerName,
             }
         end
+    end
+    if self.reservedEdit then
+        self.db.reservedText = self.reservedEdit:GetText() or ""
+    end
+    if self.otherEdit then
+        self.db.otherReq = self.otherEdit:GetText() or ""
     end
 end
 

@@ -185,6 +185,11 @@ function MB:LoadMacrosForPhase(phase)
             end
         end
     end
+    if RLSuite.mainWindow and RLSuite.mainWindow.RefreshMacroPreview then
+        if RLSuite.mainWindow.macroPhase == phase then
+            RLSuite.mainWindow:RefreshMacroPreview()
+        end
+    end
 end
 
 function MB:ExecuteMacro(index)
@@ -266,6 +271,9 @@ function MB:OpenMacroEdit(index)
             icon = current.icon or "Interface\Icons\INV_Misc_QuestionMark",
         }
         self:LoadMacrosForPhase(phase)
+        if RLSuite.mainWindow and RLSuite.mainWindow.RefreshMacroTab then
+            RLSuite.mainWindow:RefreshMacroTab()
+        end
         f:Hide()
         RLSuite.utils:Print("Macro " .. index .. " salvata per fase " .. phase)
     end)

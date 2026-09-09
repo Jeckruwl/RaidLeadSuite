@@ -112,15 +112,51 @@ function LM:SetPreMessage(msg)
 end
 
 function LM:OnLootMessage(msg)
-    local itemLink = string.match(msg or "", "(item:%d+:%d+:%d+:%d+)")
-    if itemLink then
-        local itemName, _, _, _, _, _, _, _, _, itemTexture = GetItemInfo(itemLink)
-        if itemName then
-            self:AddToHistory(itemLink, itemName, itemTexture)
-        else
-            GameTooltip:SetHyperlink(itemLink)
-        end
+    local itemLink = RLSuite.utils:GetItemLinkFromChat(msg or "")
+    if not itemLink then return end
+    local itemName, _, _, _, _, _, _, _, _, itemTexture = GetItemInfo(itemLink)
+    if itemName then
+        self:AddToHistory(itemLink, itemName, itemTexture)
+    else
+        self:QueuePendingLoot(itemLink)
     end
+end
+
+function LM:QueuePendingLoot(itemLink)
+    self.pendingLoot = self.pendingLoot or {}
+    table.insert(self.pendingLoot, {link = itemLink, tries = 0})
+    if self.pendingFrame then return end
+    local f = CreateFrame("Frame")
+    f.elapsed = 0
+    f:SetScript("OnUpdate", function(self2, elapsed)
+        self2.elapsed = self2.elapsed + elapsed
+        if self2.elapsed < 0.25 then return end
+        self2.elapsed = 0
+        local pending = LM.pendingLoot or {}
+        if #pending == 0 then
+            self2:SetScript("OnUpdate", nil)
+            LM.pendingFrame = nil
+            return
+        end
+        for i = #pending, 1, -1 do
+            local p = pending[i]
+            GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+            pcall(function() GameTooltip:SetHyperlink(p.link) end)
+            GameTooltip:Hide()
+            local itemName, _, _, _, _, _, _, _, _, itemTexture = GetItemInfo(p.link)
+            if itemName then
+                LM:AddToHistory(p.link, itemName, itemTexture)
+                table.remove(pending, i)
+            else
+                p.tries = (p.tries or 0) + 1
+                if p.tries > 20 then
+                    LM:AddToHistory(p.link, "Unknown Item", "Interface\\Icons\\INV_Misc_QuestionMark")
+                    table.remove(pending, i)
+                end
+            end
+        end
+    end)
+    self.pendingFrame = f
 end
 
 function LM:AddToHistory(itemLink, itemName, itemTexture)
@@ -138,11 +174,17 @@ function LM:AddToHistory(itemLink, itemName, itemTexture)
     self:UpdateHistory()
 end
 
-function LM:DetectItemType(itemLink)
-    local lower = string.lower(itemLink or "")
-    if string.find(lower, "pattern") then return "PATTERN" end
-    if string.find(lower, "orb") then return "ORB" end
-    if string.find(lower, "token") then return "TOKEN" end
+function LM:DetectItemType(itemLink, itemName)
+    local lower = string.lower(itemName or itemLink or "")
+    if string.find(lower, "pattern") or string.find(lower, "formula") or string.find(lower, "schematic") or string.find(lower, "design") then
+        return "PATTERN"
+    end
+    if string.find(lower, "primordial saronite") or string.find(lower, "orb") then
+        return "ORB"
+    end
+    if string.find(lower, "token") or string.find(lower, "conqueror") or string.find(lower, "protector") or string.find(lower, "vanquisher") or string.find(lower, "regalia") then
+        return "TOKEN"
+    end
     return "BOP"
 end
 
