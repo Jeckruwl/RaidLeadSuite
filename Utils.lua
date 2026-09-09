@@ -598,12 +598,14 @@ end
 
 -- Applica la posizione salvata a una finestra; se non c'e', la ancora
 -- sotto la barra principale (comportamento dock-like iniziale).
+-- NOTA: SetPoint(point, relativeTo, relativePoint, x, y): relativeTo
+-- deve essere un frame (o il suo nome), relativePoint un punto valido.
 function Utils:ApplySavedPos(frame, key)
     if not frame then return end
     frame:ClearAllPoints()
     local L = self:WindowLayout(key)
     if L.point then
-        frame:SetPoint(L.point, L.relPoint or "UIParent", L.x or 0, L.y or 0)
+        frame:SetPoint(L.point, UIParent, L.relPoint or L.point, L.x or 0, L.y or 0)
     else
         local bar = RLSuite.mainWindow and RLSuite.mainWindow.frame
         if bar then
