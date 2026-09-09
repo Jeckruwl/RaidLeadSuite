@@ -7,6 +7,7 @@ local MB = RLSuite.macrobar
 
 function MB:Init()
     self.db = RLSuiteDB.macrobar
+    self:EnsurePhases()
     self.buttons = {}
     self.keypadButtons = {}
     self:CreateFrame()
@@ -23,7 +24,8 @@ function MB:Toggle()
         self.frame:Hide()
         return
     end
-    if self.db and self.db.enabled == false then
+    local pset = self:PhaseSettings()
+    if pset and pset.enabled == false then
         RLSuite.utils:Print("Macrobar disabilitata in Config.")
         return
     end
@@ -33,23 +35,26 @@ end
 function MB:CreateFrame()
     local f = CreateFrame("Frame", "RLSuiteMacroBar", UIParent)
     f:SetSize(350, 80)
-    f:SetPoint(self.db.point or "CENTER", UIParent, self.db.relPoint or "CENTER", self.db.x or 0, self.db.y or 100)
+    local ps = self:PhaseSettings()
+    f:SetPoint(ps.point or "CENTER", UIParent, ps.relPoint or "CENTER", ps.x or 0, ps.y or 100)
     f:SetFrameStrata("MEDIUM")
     f:SetMovable(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", function(self2)
-        if not RLSuiteDB.macrobar.locked then
+        local dragP = MB:PhaseSettings()
+        if not (dragP and dragP.locked) then
             self2:StartMoving()
         end
     end)
     f:SetScript("OnDragStop", function(self2)
         self2:StopMovingOrSizing()
         local point, _, relPoint, x, y = self2:GetPoint()
-        RLSuiteDB.macrobar.point = point
-        RLSuiteDB.macrobar.relPoint = relPoint
-        RLSuiteDB.macrobar.x = x
-        RLSuiteDB.macrobar.y = y
+        local dragP = MB:PhaseSettings()
+        dragP.point = point
+        dragP.relPoint = relPoint
+        dragP.x = x
+        dragP.y = y
     end)
     f:SetBackdrop({
         bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
@@ -137,25 +142,99 @@ function MB:DB()
     return self.db
 end
 
+MB.phaseList = { "preraid", "preboss", "infight" }
+
+function MB:PhaseDefaults()
+    return {
+        enabled = true,
+        locked = false,
+        scale = 1,
+        point = "CENTER",
+        relPoint = "CENTER",
+        x = 0,
+        y = 100,
+        buttons = 12,
+        columns = 12,
+        buttonSize = 32,
+        spacing = 2,
+        backdrop = true,
+        showEmpty = true,
+        mouseover = false,
+        inheritGlobalFade = false,
+        backdropSpacing = 2,
+        heightMult = 1,
+        widthMult = 1,
+        alpha = 1,
+        actionPaging = "[bonusbar:1,nostealth] 7; [bonusbar:1,stealth] 8; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10;",
+        visibility = "",
+        keybinds = {},
+    }
+end
+
+function MB:EnsurePhases()
+    local db = self:DB() or (RLSuiteDB and RLSuiteDB.macrobar)
+    if not db then return end
+    self.db = db
+    db.phases = db.phases or {}
+    local defs = self:PhaseDefaults()
+    for _, phase in ipairs(self.phaseList) do
+        local p = db.phases[phase]
+        if not p then
+            p = {}
+            db.phases[phase] = p
+            for k, def in pairs(defs) do
+                if k == "keybinds" then
+                    p.keybinds = RLSuite.utils:CopyTable(db.keybinds or {})
+                elseif db[k] ~= nil then
+                    p[k] = db[k]
+                else
+                    p[k] = def
+                end
+            end
+        else
+            for k, def in pairs(defs) do
+                if p[k] == nil then
+                    if k == "keybinds" then
+                        p[k] = {}
+                    else
+                        p[k] = def
+                    end
+                end
+            end
+        end
+        p.keybinds = p.keybinds or {}
+    end
+end
+
+function MB:PhaseSettings(phase)
+    self:EnsurePhases()
+    phase = phase or RLSuite.context or "preraid"
+    if not self.db.phases[phase] then
+        phase = "preraid"
+    end
+    return self.db.phases[phase]
+end
+
 function MB:ApplyLayout()
     local db = self:DB()
     if not db or not self.frame then return end
+    local p = self:PhaseSettings()
 
-    if db.enabled == false then
+    if p.enabled == false then
         self.frame:Hide()
         return
     end
 
-    local n = tonumber(db.buttons) or 12
+    local n = tonumber(p.buttons) or 12
     if n < 1 then n = 1 end
     if n > 12 then n = 12 end
-    local cols = tonumber(db.columns) or 12
+    local cols = tonumber(p.columns) or 12
     if cols < 1 then cols = 1 end
-    local size = tonumber(db.buttonSize) or 32
-    local sp = tonumber(db.spacing) or 2
-    local bs = tonumber(db.backdropSpacing) or 2
-    local wm = tonumber(db.widthMult) or 1
-    local hm = tonumber(db.heightMult) or 1
+    local size = tonumber(p.buttonSize) or 32
+    local sp = tonumber(p.spacing) or 2
+    local bs = tonumber(p.backdropSpacing) or 2
+    local wm = tonumber(p.widthMult) or 1
+    local hm = tonumber(p.heightMult) or 1
     if wm < 1 then wm = 1 end
     if hm < 1 then hm = 1 end
     local rows = math.ceil(n / cols)
@@ -163,17 +242,17 @@ function MB:ApplyLayout()
     local innerH = rows * size + (rows - 1) * sp
     local extraW = (wm - 1) * (size + sp)
     local extraH = (hm - 1) * (size + sp)
-    local showBd = db.backdrop ~= false
+    local showBd = p.backdrop ~= false
     local pad = showBd and (bs + 4) or 2
     local w = innerW + extraW + pad * 2
     local h = innerH + extraH + pad * 2
     self.frame:SetSize(w, h)
-    self.frame:SetScale(db.scale or 1)
+    self.frame:SetScale(p.scale or 1)
 
-    local point = db.point or "CENTER"
-    local rel = db.relPoint or point
+    local point = p.point or "CENTER"
+    local rel = p.relPoint or point
     self.frame:ClearAllPoints()
-    self.frame:SetPoint(point, UIParent, rel, db.x or 0, db.y or 0)
+    self.frame:SetPoint(point, UIParent, rel, p.x or 0, p.y or 0)
 
     if self.phaseText then
         self.phaseText:ClearAllPoints()
@@ -217,7 +296,7 @@ function MB:ApplyLayout()
         if showBd then RLSuite.utils:SkinFrame(self.keypadFrame) end
     end
 
-    local locked = db.locked
+    local locked = p.locked
     self.frame:EnableMouse(not locked)
     self.frame:SetMovable(not locked)
 
@@ -228,8 +307,9 @@ end
 function MB:UpdateEmptyButtons()
     local db = self:DB()
     if not db then return end
-    local n = db.buttons or 12
-    local showEmpty = db.showEmpty ~= false
+    local p = self:PhaseSettings()
+    local n = p.buttons or 12
+    local showEmpty = p.showEmpty ~= false
     local phase = RLSuite.context or "preraid"
     local macros = (db.macros and db.macros[phase]) or {}
     for i = 1, 12 do
@@ -252,8 +332,9 @@ function MB:SetBarAlpha(override)
     local db = self:DB()
     if not db or not self.frame then return end
     local a = override
-    if a == nil then a = db.alpha or 1 end
-    if db.inheritGlobalFade then
+    local p = self:PhaseSettings()
+    if a == nil then a = p.alpha or 1 end
+    if p.inheritGlobalFade then
         a = a * (UIParent:GetAlpha() or 1)
     end
     if a < 0 then a = 0 end
@@ -265,6 +346,7 @@ function MB:SetupHover()
     local db = self:DB()
     local f = self.frame
     if not db or not f then return end
+    local p = self:PhaseSettings()
     local function over()
         if MouseIsOver(f) then return true end
         if self.keypadFrame and self.keypadFrame:IsShown() and MouseIsOver(self.keypadFrame) then return true end
@@ -274,13 +356,13 @@ function MB:SetupHover()
         self:SetBarAlpha()
     end
     local function leave()
-        if db.mouseover and not over() then
+        if p.mouseover and not over() then
             self:SetBarAlpha(0)
         end
     end
     self._hoverEnter = enter
     self._hoverLeave = leave
-    if db.mouseover then
+    if p.mouseover then
         self:SetBarAlpha(0)
         f:SetScript("OnEnter", enter)
         f:SetScript("OnLeave", leave)
@@ -298,7 +380,7 @@ function MB:ApplyVisibility()
     local f = self.frame
     local db = self:DB()
     if not f or not db then return end
-    local vis = db.visibility or ""
+    local vis = self:PhaseSettings().visibility or ""
     if UnregisterStateDriver then
         UnregisterStateDriver(f, "visibility")
     end
@@ -352,6 +434,10 @@ function MB:UpdatePhase()
         self.phaseText:SetText("Fase: " .. string.upper(phase))
     end
     self:LoadMacrosForPhase(phase)
+    self:LoadKeybinds(phase)
+    if self.ApplyLayout then
+        self:ApplyLayout()
+    end
 end
 
 function MB:GetMacroData(index, phase)
@@ -555,27 +641,38 @@ function MB:WireButtonClicks(btn, index)
     end)
 end
 
-function MB:LoadKeybinds()
-    self.db.keybinds = self.db.keybinds or {}
+function MB:LoadKeybinds(phase)
+    local p = self:PhaseSettings(phase)
+    p.keybinds = p.keybinds or {}
+    if self._boundKeys then
+        for _, key in ipairs(self._boundKeys) do
+            if key and key ~= "" then
+                SetBinding(key)
+            end
+        end
+    end
+    self._boundKeys = {}
     for i = 1, 12 do
-        local key = self.db.keybinds[i]
+        local key = p.keybinds[i]
         if self.buttons[i] and self.buttons[i].hotkey then
             self.buttons[i].hotkey:SetText(key or "")
         end
         if key and key ~= "" then
             SetBindingClick(key, "RLSuiteMacroBtn" .. i)
+            table.insert(self._boundKeys, key)
         end
     end
     self:RefreshKeybindUI()
 end
 
 function MB:ClearKeybind(index)
-    self.db.keybinds = self.db.keybinds or {}
-    local old = self.db.keybinds[index]
+    local p = self:PhaseSettings(self.bindPhase)
+    p.keybinds = p.keybinds or {}
+    local old = p.keybinds[index]
     if old and old ~= "" then
         SetBinding(old)
     end
-    self.db.keybinds[index] = nil
+    p.keybinds[index] = nil
     if self.buttons[index] and self.buttons[index].hotkey then
         self.buttons[index].hotkey:SetText("")
     end
@@ -590,17 +687,18 @@ function MB:SetKeybind(index, key)
         self:ClearKeybind(index)
         return
     end
-    self.db.keybinds = self.db.keybinds or {}
+    local p = self:PhaseSettings(self.bindPhase)
+    p.keybinds = p.keybinds or {}
     for i = 1, 12 do
-        if i ~= index and self.db.keybinds[i] == key then
+        if i ~= index and p.keybinds[i] == key then
             self:ClearKeybind(i)
         end
     end
-    local old = self.db.keybinds[index]
+    local old = p.keybinds[index]
     if old and old ~= "" and old ~= key then
         SetBinding(old)
     end
-    self.db.keybinds[index] = key
+    p.keybinds[index] = key
     SetBindingClick(key, "RLSuiteMacroBtn" .. index)
     if self.buttons[index] and self.buttons[index].hotkey then
         self.buttons[index].hotkey:SetText(key)
@@ -627,12 +725,9 @@ function MB:BindingFromKey(key)
     return bind
 end
 
-function MB:OpenKeybindUI()
+function MB:OpenKeybindUI(phase)
+    self.bindPhase = phase or RLSuite.context or "preraid"
     if self.bindFrame then
-        if self.bindFrame:IsShown() then
-            self.bindFrame:Hide()
-            return
-        end
         self.bindFrame:Show()
         self:RefreshKeybindUI()
         return
@@ -729,7 +824,12 @@ end
 
 function MB:RefreshKeybindUI()
     if not self.bindRows then return end
-    local binds = (self.db and self.db.keybinds) or {}
+    local p = self:PhaseSettings(self.bindPhase)
+    local binds = (p and p.keybinds) or {}
+    if self.bindTitle then
+        local labels = { preraid = "Pre-raid", preboss = "Pre-boss", infight = "In-fight" }
+        self.bindTitle:SetText("Keybinds — " .. (labels[self.bindPhase or "preraid"] or ""))
+    end
     for i, row in ipairs(self.bindRows) do
         local key = binds[i]
         if self.bindingIndex == i then
