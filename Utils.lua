@@ -159,6 +159,41 @@ function Utils:RoleFromSpec(class, specName)
     return nil
 end
 
+function Utils:SpecShortName(class, specName)
+    local info = self:GetSpecInfo(class, specName)
+    if info and info.short then return info.short end
+    local n = specName or ""
+    local map = {
+        ["beast mastery"] = "BM",
+        marksmanship = "MM",
+        survival = "Surv",
+        protection = "Prot",
+        retribution = "Ret",
+        assassination = "Assa",
+        subtlety = "Sub",
+        discipline = "Disc",
+        restoration = "Resto",
+        enhancement = "Enh",
+        elemental = "Ele",
+        affliction = "Aff",
+        demonology = "Demo",
+        destruction = "Destro",
+        ["feral bear"] = "Bear",
+        ["feral cat"] = "Cat",
+        ["feral"] = "Feral",
+    }
+    return map[string.lower(n)] or n
+end
+
+function Utils:ClassLabel(class)
+    local labels = {
+        WARRIOR = "Warrior", PALADIN = "Paladin", HUNTER = "Hunter",
+        ROGUE = "Rogue", PRIEST = "Priest", DEATHKNIGHT = "DK",
+        SHAMAN = "Shaman", MAGE = "Mage", WARLOCK = "Warlock", DRUID = "Druid",
+    }
+    return labels[(class or ""):upper()] or class or "?"
+end
+
 -- ============================================================
 -- Dropdown (3.3.5, no Ace)
 -- ============================================================

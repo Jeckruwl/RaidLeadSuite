@@ -48,6 +48,7 @@ local defaults = {
         comp = {},
         spamChannels = {"General", "Trade"},
         spamInterval = 60,
+        showSpecsInMessage = false,
     },
     whisplist = {
         entries = {},

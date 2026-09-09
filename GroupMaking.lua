@@ -97,10 +97,15 @@ function GM:CreateMainWindow()
     diff25:SetText("25")
     diff25:SetScript("OnClick", function() self:SetDifficulty("25") end)
 
-    self.compBox = CreateFrame("Frame", nil, f)
-    self.compBox:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -66)
+    self.topRow = CreateFrame("Frame", nil, f)
+    self.topRow:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -66)
+    self.topRow:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -66)
+    self.topRow:SetHeight(200)
+
+    self.compBox = CreateFrame("Frame", nil, self.topRow)
+    self.compBox:SetPoint("TOPLEFT", self.topRow, "TOPLEFT", 0, 0)
+    self.compBox:SetPoint("BOTTOMLEFT", self.topRow, "BOTTOMLEFT", 0, 0)
     self.compBox:SetWidth(200)
-    self.compBox:SetHeight(200)
     RLSuite.utils:SkinBox(self.compBox)
 
     local compLabel = self.compBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -112,10 +117,10 @@ function GM:CreateMainWindow()
     self.compFrame:SetPoint("TOPLEFT", self.compBox, "TOPLEFT", 8, -24)
     self.compFrame:SetSize((SLOT_SIZE + SLOT_SPACING) * 5 - SLOT_SPACING, (SLOT_SIZE + SLOT_SPACING) * 2 - SLOT_SPACING)
 
-    self.classBox = CreateFrame("Frame", nil, f)
-    self.classBox:SetPoint("TOPLEFT", self.compBox, "TOPRIGHT", 8, 0)
-    self.classBox:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -66)
-    self.classBox:SetHeight(200)
+    self.classBox = CreateFrame("Frame", nil, self.topRow)
+    self.classBox:SetPoint("TOPRIGHT", self.topRow, "TOPRIGHT", 0, 0)
+    self.classBox:SetPoint("BOTTOMRIGHT", self.topRow, "BOTTOMRIGHT", 0, 0)
+    self.classBox:SetWidth(200)
     RLSuite.utils:SkinBox(self.classBox)
 
     local classBarLabel = self.classBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -125,12 +130,16 @@ function GM:CreateMainWindow()
 
     self.classBar = CreateFrame("Frame", nil, self.classBox)
     self.classBar:SetPoint("TOPLEFT", self.classBox, "TOPLEFT", 8, -24)
-    self.classBar:SetPoint("BOTTOMRIGHT", self.classBox, "BOTTOMRIGHT", -8, 8)
+    self.classBar:SetPoint("TOPRIGHT", self.classBox, "TOPRIGHT", -8, -24)
+    self.classBar:SetHeight(160)
+
+    self.topRow:SetScript("OnSizeChanged", function(s, w, h)
+        GM:LayoutGroupPanels(w)
+    end)
 
     self.reqBox = CreateFrame("Frame", nil, f)
-    self.reqBox:SetPoint("LEFT", self.compBox, "LEFT", 0, 0)
-    self.reqBox:SetPoint("RIGHT", self.classBox, "RIGHT", 0, 0)
-    self.reqBox:SetPoint("TOP", self.classBox, "BOTTOM", 0, -8)
+    self.reqBox:SetPoint("TOPLEFT", self.topRow, "BOTTOMLEFT", 0, -8)
+    self.reqBox:SetPoint("TOPRIGHT", self.topRow, "BOTTOMRIGHT", 0, -8)
     self.reqBox:SetHeight(88)
     RLSuite.utils:SkinBox(self.reqBox)
 
@@ -188,6 +197,21 @@ function GM:CreateMainWindow()
     self.previewBtn:SetPoint("LEFT", self.whisplistBtn, "RIGHT", 8, 0)
     self.previewBtn:SetText("Preview Msg")
     self.previewBtn:SetScript("OnClick", function() self:ShowMessagePreview() end)
+
+    self.showSpecsCheck = CreateFrame("CheckButton", "RLSuiteShowSpecsCheck", f, "UICheckButtonTemplate")
+    self.showSpecsCheck:SetSize(24, 24)
+    self.showSpecsCheck:SetPoint("LEFT", self.previewBtn, "RIGHT", 6, 0)
+    self.showSpecsCheck:SetChecked(self.db.showSpecsInMessage and true or false)
+    self.showSpecsCheck:SetScript("OnClick", function(s)
+        self.db.showSpecsInMessage = s:GetChecked() and true or false
+        self:UpdateMessagePreview()
+        self:SaveComp()
+    end)
+
+    local specsLbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    specsLbl:SetPoint("LEFT", self.showSpecsCheck, "RIGHT", 0, 0)
+    specsLbl:SetText("Show specs in message")
+    specsLbl:SetTextColor(1, 0.82, 0)
 
     f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
@@ -272,11 +296,31 @@ function GM:SetDifficulty(diff)
     local rows = math.ceil(numSlots / 5)
     local newHeight = rows * (SLOT_SIZE + SLOT_SPACING) - SLOT_SPACING
     self.compFrame:SetSize((SLOT_SIZE + SLOT_SPACING) * 5 - SLOT_SPACING, newHeight)
-    if self.compBox then
-        self.compBox:SetHeight(newHeight + 36)
-    end
+    self:LayoutGroupPanels()
     self:UpdateMessagePreview()
     self:SaveComp()
+end
+
+function GM:LayoutGroupPanels(rowW)
+    if not self.topRow then return end
+    if self._layoutLock then return end
+    self._layoutLock = true
+    local w = rowW or self.topRow:GetWidth() or 400
+    local half = math.max(80, math.floor((w - 8) / 2))
+    if self.compBox then self.compBox:SetWidth(half) end
+    if self.classBox then self.classBox:SetWidth(half) end
+
+    local numSlots = tonumber(self.db and self.db.difficulty or "10") or 10
+    local slotRows = math.ceil(numSlots / 5)
+    local compH = slotRows * (SLOT_SIZE + SLOT_SPACING) - SLOT_SPACING + 36
+    self:LayoutClassBar()
+    local specH = (self._specBarHeight or 120) + 36
+    local h = math.max(compH, specH, 140)
+    self.topRow:SetHeight(h)
+    if self.classBar then
+        self.classBar:SetHeight(math.max(40, h - 32))
+    end
+    self._layoutLock = false
 end
 
 function GM:ClearSlot(index)
@@ -343,19 +387,21 @@ end
 -- ============================================================
 function GM:BuildClassBar()
     local classes = {"WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "DEATHKNIGHT", "SHAMAN", "MAGE", "WARLOCK", "DRUID"}
-    local ICON = 26
-    local GAP = 4
-    local y = 0
+    self.specCells = {}
     for _, class in ipairs(classes) do
         local data = RLSuite.classData[class]
         local specs = data and data.specs or {}
-        local x = 0
         local cr, cg, cb = RLSuite.utils:GetClassColor(class)
+        local cell = CreateFrame("Frame", nil, self.classBar)
+        local nameFS = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        nameFS:SetPoint("TOPLEFT", cell, "TOPLEFT", 1, 0)
+        nameFS:SetText(RLSuite.utils:ClassLabel(class))
+        nameFS:SetTextColor(cr, cg, cb)
+        local buttons = {}
         for _, spec in ipairs(specs) do
             if type(spec) == "table" then
-                local btn = CreateFrame("Button", nil, self.classBar)
-                btn:SetSize(ICON, ICON)
-                btn:SetPoint("TOPLEFT", self.classBar, "TOPLEFT", x, y)
+                local btn = CreateFrame("Button", nil, cell)
+                btn:SetSize(22, 22)
                 btn:SetBackdrop({
                     bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
                     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -366,8 +412,8 @@ function GM:BuildClassBar()
                 btn:SetBackdropBorderColor(cr, cg, cb, 1)
 
                 local tex = btn:CreateTexture(nil, "ARTWORK")
-                tex:SetPoint("TOPLEFT", btn, "TOPLEFT", 3, -3)
-                tex:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 3)
+                tex:SetPoint("TOPLEFT", btn, "TOPLEFT", 2, -2)
+                tex:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
                 tex:SetTexture(spec.icon or RLSuite.utils:ClassIcon(class))
                 tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
                 btn.bgTex = tex
@@ -381,23 +427,66 @@ function GM:BuildClassBar()
                 btn:SetScript("OnEnter", function(s)
                     GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
                     GameTooltip:AddLine(s.spec or "?", 1, 0.82, 0)
-                    GameTooltip:AddLine((s.class or "") .. "  " .. (s.role or ""), cr, cg, cb)
+                    GameTooltip:AddLine(RLSuite.utils:ClassLabel(s.class) .. "  " .. (s.role or ""), cr, cg, cb)
                     GameTooltip:Show()
                 end)
                 btn:SetScript("OnLeave", function()
                     GameTooltip:Hide()
                 end)
                 btn:Show()
-                x = x + ICON + GAP
+                table.insert(buttons, btn)
             end
         end
-        y = y - (ICON + GAP)
+        table.insert(self.specCells, {frame = cell, buttons = buttons})
     end
-    local barH = math.abs(y)
-    self.classBar:SetSize(4 * (ICON + GAP), barH)
-    if self.classBox then
-        self.classBox:SetHeight(barH + 36)
+    self.classBar:SetScript("OnSizeChanged", function()
+        GM:LayoutClassBar()
+    end)
+    self:LayoutClassBar()
+    self:LayoutGroupPanels()
+end
+
+function GM:LayoutClassBar()
+    if not self.classBar or not self.specCells then return end
+    local w = self.classBar:GetWidth() or 0
+    if w < 40 then return end
+    local COLS = 4
+    local ICON_COLS = 4
+    local GAP = 8
+    local NAME_H = 14
+    local iconGap = 2
+    local colW = math.floor((w - GAP * (COLS - 1)) / COLS)
+    if colW < 40 then colW = 40 end
+
+    local maxSpecs = 1
+    for _, cell in ipairs(self.specCells) do
+        if #cell.buttons > maxSpecs then maxSpecs = #cell.buttons end
     end
+    local perRow = math.min(ICON_COLS, maxSpecs)
+    local iconSize = math.floor((colW - 2 - (perRow - 1) * iconGap) / perRow)
+    if iconSize > 26 then iconSize = 26 end
+    if iconSize < 16 then iconSize = 16 end
+    local iconRows = math.ceil(maxSpecs / ICON_COLS)
+    local cellH = NAME_H + iconRows * iconSize + (iconRows - 1) * iconGap + 4
+
+    for i, cell in ipairs(self.specCells) do
+        local col = (i - 1) % COLS
+        local row = math.floor((i - 1) / COLS)
+        local x = col * (colW + GAP)
+        local y = -row * (cellH + 6)
+        cell.frame:ClearAllPoints()
+        cell.frame:SetSize(colW, cellH)
+        cell.frame:SetPoint("TOPLEFT", self.classBar, "TOPLEFT", x, y)
+        for j, btn in ipairs(cell.buttons) do
+            local ic = (j - 1) % ICON_COLS
+            local ir = math.floor((j - 1) / ICON_COLS)
+            btn:SetSize(iconSize, iconSize)
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPLEFT", cell.frame, "TOPLEFT", ic * (iconSize + iconGap), -(NAME_H + ir * (iconSize + iconGap)))
+        end
+    end
+    local rows = math.ceil(#self.specCells / COLS)
+    self._specBarHeight = rows * (cellH + 6) - 6
 end
 
 function GM:OnClassBarClick(class, role, spec)
@@ -440,6 +529,7 @@ function GM:BuildSpamMessage()
     local msg = "LF " .. diff .. "m " .. raid
 
     local needed = {tank = 0, healer = 0, dps = 0}
+    local specLists = {tank = {}, healer = {}, dps = {}}
     local hasComp = false
     local numSlots = tonumber(diff) or 10
     for i = 1, numSlots do
@@ -452,14 +542,27 @@ function GM:BuildSpamMessage()
                     role = RLSuite.utils:RoleFromSpec(slot.class, slot.spec) or "dps"
                 end
                 needed[role] = (needed[role] or 0) + 1
+                local specName = RLSuite.utils:SpecShortName(slot.class, slot.spec)
+                if specName and specName ~= "" then
+                    table.insert(specLists[role], specName)
+                end
             end
         end
     end
 
     local roles = {}
-    if needed.tank > 0 then table.insert(roles, needed.tank .. " tank") end
-    if needed.healer > 0 then table.insert(roles, needed.healer .. " healer") end
-    if needed.dps > 0 then table.insert(roles, needed.dps .. " dps") end
+    local showSpecs = self.db and self.db.showSpecsInMessage
+    if showSpecs then
+        for _, role in ipairs({"tank", "healer", "dps"}) do
+            if needed[role] and needed[role] > 0 then
+                table.insert(roles, role .. "(" .. table.concat(specLists[role], ", ") .. ")")
+            end
+        end
+    else
+        if needed.tank > 0 then table.insert(roles, needed.tank .. " tank") end
+        if needed.healer > 0 then table.insert(roles, needed.healer .. " healer") end
+        if needed.dps > 0 then table.insert(roles, needed.dps .. " dps") end
+    end
     if #roles > 0 then
         msg = msg .. " - Need: " .. table.concat(roles, ", ")
     elseif hasComp then
