@@ -14,7 +14,9 @@ function MW:Toggle()
         self.frame:Hide()
     elseif self.frame then
         self.frame:Show()
-        self:SelectTab(self.currentTab or "group")
+        if self.currentTab then
+            self:SelectTab(self.currentTab)
+        end
     end
 end
 
@@ -22,6 +24,27 @@ function MW:ShowTab(key)
     if not self.frame then return end
     self.frame:Show()
     self:SelectTab(key)
+end
+
+function MW:OnTabClick(key)
+    if not self.frame then return end
+    if self.frame:IsShown() and self.currentTab == key then
+        self:CloseTab()
+        return
+    end
+    self.frame:Show()
+    self:SelectTab(key)
+end
+
+function MW:CloseTab()
+    self:HideDocked()
+    self.currentTab = nil
+    for _, tab in pairs(self.tabs or {}) do
+        tab:UnlockHighlight()
+    end
+    if self.contentArea then
+        self.contentArea:Hide()
+    end
 end
 
 function MW:CreateFrame()
@@ -62,7 +85,7 @@ function MW:CreateFrame()
         tab:SetPoint("TOPLEFT", f, "TOPLEFT", 16 + (i - 1) * 90, -40)
         tab:SetText(def.label)
         tab.tabKey = def.key
-        tab:SetScript("OnClick", function() self:SelectTab(def.key) end)
+        tab:SetScript("OnClick", function() self:OnTabClick(def.key) end)
         self.tabs[def.key] = tab
     end
 
@@ -77,7 +100,8 @@ function MW:CreateFrame()
     self.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
     self.closeBtn:SetScript("OnClick", function() f:Hide() end)
 
-    self:SelectTab("group")
+    self.currentTab = nil
+    if self.contentArea then self.contentArea:Hide() end
     self:ApplyLayout()
 end
 
@@ -115,7 +139,8 @@ function MW:Dock(frame)
     frame:SetScript("OnDragStart", nil)
     frame:SetScript("OnDragStop", nil)
     if frame.closeBtn then frame.closeBtn:Hide() end
-    RLSuite.utils:SkinFrame(frame)
+    if frame.rlsBgFill then frame.rlsBgFill:Hide() end
+    RLSuite.utils:SkinBox(frame)
     frame:Show()
 end
 
@@ -139,6 +164,7 @@ function MW:SelectTab(key)
         local def = self.tabDefs and self.tabDefs[key]
         key = def and def.key or "group"
     end
+    if self.contentArea then self.contentArea:Show() end
     self.currentTab = key or "group"
     for k, tab in pairs(self.tabs or {}) do
         if k == self.currentTab then

@@ -164,24 +164,23 @@ function Utils:GetUIFont()
 end
 
 function Utils:WindowBackdrop(f)
-    local edge = 32
+    -- Tooltip border sits on the frame edge. insets 0 = fill goes to that same edge.
+    local edge = 16
     if RLSuiteDB and RLSuiteDB.appearance and RLSuiteDB.appearance.edgeSize then
         edge = RLSuiteDB.appearance.edgeSize
     end
+    if edge > 16 then edge = 16 end
+    if edge < 8 then edge = 8 end
     if f and f.GetWidth then
         local w, h = f:GetWidth() or 200, f:GetHeight() or 200
         local minSide = math.min(w, h)
-        local cap = math.floor(minSide / 4)
-        if cap < 8 then cap = 8 end
-        if edge > cap then edge = cap end
-        if minSide < 200 and edge > 12 then edge = 12 end
+        if minSide < 80 and edge > 10 then edge = 10 end
     end
-    local inset = math.max(3, math.floor(edge / 5))
     return {
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = edge,
-        insets = {left = inset, right = inset, top = inset, bottom = inset},
+        insets = {left = 0, right = 0, top = 0, bottom = 0},
     }
 end
 
@@ -241,18 +240,11 @@ function Utils:SkinFrame(f)
     if not f or not f.SetBackdrop then return end
     local c = self:GetThemeColors()
     f:SetAlpha(1)
-    if not f.rlsBgFill then
-        local tex = f:CreateTexture(nil, "BACKGROUND")
-        tex:SetDrawLayer("BACKGROUND", -8)
-        tex:SetAllPoints(f)
-        f.rlsBgFill = tex
+    if f.rlsBgFill then
+        f.rlsBgFill:Hide()
     end
-    -- Full-bleed fill so the window is never see-through, even if backdrop fails.
-    f.rlsBgFill:SetTexture("Interface\\Tooltips\\UI-Tooltip-Background")
-    f.rlsBgFill:SetVertexColor(c.fill[1], c.fill[2], c.fill[3], 1)
-    f.rlsBgFill:Show()
     f:SetBackdrop(self:WindowBackdrop(f))
-    f:SetBackdropColor(c.bg[1], c.bg[2], c.bg[3], 1)
+    f:SetBackdropColor(c.fill[1], c.fill[2], c.fill[3], 1)
     f:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
 end
 
@@ -262,12 +254,20 @@ function Utils:AllWindows()
         if fr then table.insert(list, fr) end
     end
     add(RLSuite.mainWindow and RLSuite.mainWindow.frame)
-    add(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame)
-    add(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame)
     add(RLSuite.macrobar and RLSuite.macrobar.frame)
     add(RLSuite.macrobar and RLSuite.macrobar.keypadFrame)
     add(RLSuite.macrobar and RLSuite.macrobar.editFrame)
     add(RLSuite.raidFrame and RLSuite.raidFrame.frame)
+    return list
+end
+
+function Utils:AllDockedPanels()
+    local list = {}
+    local function add(fr)
+        if fr then table.insert(list, fr) end
+    end
+    add(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame)
+    add(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame)
     add(RLSuite.msManager and RLSuite.msManager.frame)
     add(RLSuite.lootManager and RLSuite.lootManager.frame)
     add(RLSuite.config and RLSuite.config.frame)
@@ -286,7 +286,7 @@ function Utils:SkinBox(box)
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 12,
-        insets = {left = 3, right = 3, top = 3, bottom = 3},
+        insets = {left = 0, right = 0, top = 0, bottom = 0},
     })
     local c = self:GetThemeColors()
     box:SetBackdropColor(0, 0, 0, 0.6)
@@ -299,7 +299,7 @@ function Utils:SkinRow(row, selected)
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 8,
-        insets = {left = 2, right = 2, top = 2, bottom = 2},
+        insets = {left = 0, right = 0, top = 0, bottom = 0},
     })
     if selected then
         row:SetBackdropColor(0.25, 0.18, 0.02, 0.95)
@@ -313,6 +313,10 @@ end
 function Utils:SkinAllWindows()
     for _, fr in ipairs(self:AllWindows()) do
         self:SkinFrame(fr)
+    end
+    for _, fr in ipairs(self:AllDockedPanels()) do
+        if fr.rlsBgFill then fr.rlsBgFill:Hide() end
+        self:SkinBox(fr)
     end
     if RLSuite.lootManager and RLSuite.lootManager.SkinInner then
         RLSuite.lootManager:SkinInner()
@@ -344,7 +348,7 @@ function Utils:CreateDropdown(parent, name, width, height)
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true, tileSize = 16, edgeSize = 8,
-        insets = {left=2, right=2, top=2, bottom=2}
+        insets = {left=0, right=0, top=0, bottom=0}
     })
     dd:SetBackdropColor(0.05, 0.05, 0.07, 1)
     dd.text = dd:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -431,7 +435,7 @@ function Utils:ToggleDropdownMenu(dd)
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true, tileSize = 16, edgeSize = 8,
-        insets = {left=2, right=2, top=2, bottom=2}
+        insets = {left=0, right=0, top=0, bottom=0}
     })
     menu:SetBackdropColor(0.05, 0.05, 0.07, 1)
     menu.owner = dd
