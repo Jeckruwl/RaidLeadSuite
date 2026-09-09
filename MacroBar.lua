@@ -225,11 +225,15 @@ function MB:ApplyLayout()
         return
     end
 
-    local n = tonumber(p.buttons) or 12
-    if n < 1 then n = 1 end
-    if n > 12 then n = 12 end
+    local filled = self:FilledSlots()
+    local n = #filled
     local cols = tonumber(p.columns) or 12
     if cols < 1 then cols = 1 end
+    if n == 0 then
+        cols = 1
+    elseif cols > n then
+        cols = n
+    end
     local size = tonumber(p.buttonSize) or 32
     local sp = tonumber(p.spacing) or 2
     local bs = tonumber(p.backdropSpacing) or 2
@@ -237,7 +241,10 @@ function MB:ApplyLayout()
     local hm = tonumber(p.heightMult) or 1
     if wm < 1 then wm = 1 end
     if hm < 1 then hm = 1 end
-    local rows = math.ceil(n / cols)
+    local rows = 1
+    if n > 0 then
+        rows = math.ceil(n / cols)
+    end
     local innerW = cols * size + (cols - 1) * sp
     local innerH = rows * size + (rows - 1) * sp
     local extraW = (wm - 1) * (size + sp)
@@ -261,28 +268,26 @@ function MB:ApplyLayout()
 
     for i = 1, 12 do
         local btn = self.buttons[i]
+        if btn then btn:Hide() end
+    end
+    for vis, slot in ipairs(filled) do
+        local btn = self.buttons[slot]
         if btn then
-            if i <= n then
-                btn:SetSize(size, size)
-                local col = (i - 1) % cols
-                local row = math.floor((i - 1) / cols)
-                btn:ClearAllPoints()
-                btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", pad + col * (size + sp), -pad - row * (size + sp))
-                if RLSuite.utils.SkinMacroButton then
-                    RLSuite.utils:SkinMacroButton(btn)
-                end
-                btn:EnableMouse(true)
-                btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-                btn:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 10)
-                self:WireButtonClicks(btn, i)
-                btn:Show()
-            else
-                btn:Hide()
+            btn:SetSize(size, size)
+            local col = (vis - 1) % cols
+            local row = math.floor((vis - 1) / cols)
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", pad + col * (size + sp), -pad - row * (size + sp))
+            if RLSuite.utils.SkinMacroButton then
+                RLSuite.utils:SkinMacroButton(btn)
             end
+            btn:EnableMouse(true)
+            btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            btn:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 10)
+            self:WireButtonClicks(btn, slot)
+            btn:Show()
         end
     end
-
-    self:UpdateEmptyButtons()
 
     if showBd then
         RLSuite.utils:SkinFrame(self.frame)
@@ -305,26 +310,8 @@ function MB:ApplyLayout()
 end
 
 function MB:UpdateEmptyButtons()
-    local db = self:DB()
-    if not db then return end
-    local p = self:PhaseSettings()
-    local n = p.buttons or 12
-    local showEmpty = p.showEmpty ~= false
-    local phase = RLSuite.context or "preraid"
-    local macros = (db.macros and db.macros[phase]) or {}
-    for i = 1, 12 do
-        local btn = self.buttons[i]
-        if btn and i <= n then
-            local data = macros[i]
-            local filled = data and data.text and data.text ~= ""
-            if showEmpty or filled then
-                btn:Show()
-            else
-                btn:Hide()
-            end
-        elseif btn then
-            btn:Hide()
-        end
+    if self.ApplyLayout then
+        self:ApplyLayout()
     end
 end
 
@@ -438,6 +425,23 @@ function MB:UpdatePhase()
     if self.ApplyLayout then
         self:ApplyLayout()
     end
+end
+
+function MB:MacroIsFilled(data)
+    if not data then return false end
+    if data.text and data.text ~= "" then return true end
+    if data.name and data.name ~= "" then return true end
+    return false
+end
+
+function MB:FilledSlots(phase)
+    local list = {}
+    for i = 1, 12 do
+        if self:MacroIsFilled(self:GetMacroData(i, phase)) then
+            table.insert(list, i)
+        end
+    end
+    return list
 end
 
 function MB:GetMacroData(index, phase)

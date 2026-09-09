@@ -1002,6 +1002,7 @@ function CFG:PanelMacroLayout(phase)
 
     local labels = { preraid = "Pre-raid", preboss = "Pre-boss", infight = "In-fight" }
     self:Header("Macrobar — " .. (labels[phase] or phase))
+    self:Note("I bottoni visibili sulla HUD sono tanti quante le macro compilate in questa fase.")
 
     local c1, c2, c3 = self:Row3(26)
     self:CellCheck(c1, "Enable", function() return mb.enabled ~= false end, function(v) mb.enabled = v end)
@@ -1016,11 +1017,8 @@ function CFG:PanelMacroLayout(phase)
 
     c1, c2, c3 = self:Row3(26)
     self:CellCheck(c1, "Backdrop", function() return mb.backdrop ~= false end, function(v) mb.backdrop = v end)
-    self:CellCheck(c2, "Show Empty Buttons", function() return mb.showEmpty ~= false end, function(v) mb.showEmpty = v end)
-    self:CellCheck(c3, "Mouse Over", function() return mb.mouseover end, function(v) mb.mouseover = v end)
-
-    c1, c2, c3 = self:Row3(26)
-    self:CellCheck(c1, "Inherit Global Fade", function() return mb.inheritGlobalFade end, function(v) mb.inheritGlobalFade = v end)
+    self:CellCheck(c2, "Mouse Over", function() return mb.mouseover end, function(v) mb.mouseover = v end)
+    self:CellCheck(c3, "Inherit Global Fade", function() return mb.inheritGlobalFade end, function(v) mb.inheritGlobalFade = v end)
 
     local anchors = {
         { text = "TOPLEFT", value = "TOPLEFT" },
@@ -1038,8 +1036,7 @@ function CFG:PanelMacroLayout(phase)
         mb.point = v
         mb.relPoint = v
     end)
-    self:CellSlider(c2, "Buttons", 1, 12, 1, function() return mb.buttons end, function(v) mb.buttons = v end)
-    self:CellSlider(c3, "Buttons Per Row", 1, 12, 1, function() return mb.columns end, function(v) mb.columns = v end)
+    self:CellSlider(c2, "Buttons Per Row", 1, 12, 1, function() return mb.columns end, function(v) mb.columns = v end)
 
     c1, c2, c3 = self:Row3(44)
     self:CellSlider(c1, "Button Size", 15, 60, 1, function() return mb.buttonSize end, function(v) mb.buttonSize = v end)
