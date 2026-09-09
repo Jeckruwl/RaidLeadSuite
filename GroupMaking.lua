@@ -12,6 +12,8 @@ local GROUP_LABEL_H = 14
 local ROLE_COLORS = {
     tank   = {r=0.2, g=0.4, b=1.0},
     healer = {r=0.2, g=1.0, b=0.2},
+    mdps   = {r=1.0, g=0.45, b=0.15},
+    rdps   = {r=1.0, g=0.2, b=0.2},
     dps    = {r=1.0, g=0.2, b=0.2},
 }
 
@@ -86,18 +88,6 @@ function GM:CreateMainWindow()
         self:SetDifficulty(value)
     end)
 
-    local diff10 = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    diff10:SetSize(30, 22)
-    diff10:SetPoint("LEFT", self.diffDropdown, "RIGHT", 6, 0)
-    diff10:SetText("10")
-    diff10:SetScript("OnClick", function() self:SetDifficulty("10") end)
-
-    local diff25 = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    diff25:SetSize(30, 22)
-    diff25:SetPoint("LEFT", diff10, "RIGHT", 2, 0)
-    diff25:SetText("25")
-    diff25:SetScript("OnClick", function() self:SetDifficulty("25") end)
-
     self.topRow = CreateFrame("Frame", nil, f)
     self.topRow:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -66)
     self.topRow:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -66)
@@ -149,12 +139,25 @@ function GM:CreateMainWindow()
     reservedLabel:SetText("Pezzi riservati")
     reservedLabel:SetTextColor(1, 0.82, 0)
 
+    self.atlasBtn = CreateFrame("Button", nil, self.reqBox, "UIPanelButtonTemplate")
+    self.atlasBtn:SetSize(80, 20)
+    self.atlasBtn:SetPoint("TOPRIGHT", self.reqBox, "TOPRIGHT", -10, -28)
+    self.atlasBtn:SetText("AtlasLoot")
+    self.atlasBtn:SetScript("OnClick", function() self:OpenAtlasLoot() end)
+
     self.reservedEdit = CreateFrame("EditBox", "RLSuiteReservedEdit", self.reqBox, "InputBoxTemplate")
     self.reservedEdit:SetHeight(20)
     self.reservedEdit:SetPoint("TOPLEFT", reservedLabel, "BOTTOMLEFT", 4, -4)
-    self.reservedEdit:SetPoint("RIGHT", self.reqBox, "RIGHT", -12, 0)
+    self.reservedEdit:SetPoint("RIGHT", self.atlasBtn, "LEFT", -6, 0)
     self.reservedEdit:SetAutoFocus(false)
+    self.reservedEdit:SetMaxLetters(250)
     self.reservedEdit:SetScript("OnTextChanged", function() self:SaveComp() end)
+    self.reservedEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+    self.reservedEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
+    RLSuite.utils:RegisterInsertLink(self.reservedEdit, function()
+        GM:SaveComp()
+        GM:UpdateMessagePreview()
+    end)
 
     local otherLabel = self.reqBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     otherLabel:SetPoint("TOPLEFT", self.reservedEdit, "BOTTOMLEFT", -4, -6)
@@ -576,8 +579,8 @@ function GM:BuildSpamMessage()
     local diff = self.db.difficulty or "10"
     local msg = "LF " .. diff .. "m " .. raid
 
-    local needed = {tank = 0, healer = 0, dps = 0}
-    local specLists = {tank = {}, healer = {}, dps = {}}
+    local needed = {tank = 0, healer = 0, mdps = 0, rdps = 0}
+    local specLists = {tank = {}, healer = {}, mdps = {}, rdps = {}}
     local hasComp = false
     local numSlots = tonumber(diff) or 10
     for i = 1, numSlots do
@@ -585,31 +588,42 @@ function GM:BuildSpamMessage()
         if slot and slot.filled then
             hasComp = true
             if not slot.playerName then
-                local role = slot.role
-                if not role then
-                    role = RLSuite.utils:RoleFromSpec(slot.class, slot.spec) or "dps"
-                end
+                local role = RLSuite.utils:NormalizeRole(slot.role, slot.class, slot.spec)
                 needed[role] = (needed[role] or 0) + 1
-                local specName = RLSuite.utils:SpecShortName(slot.class, slot.spec)
-                if specName and specName ~= "" then
-                    table.insert(specLists[role], specName)
+                if specLists[role] then
+                    local specName = RLSuite.utils:SpecShortName(slot.class, slot.spec)
+                    if specName and specName ~= "" then
+                        table.insert(specLists[role], specName)
+                    end
                 end
             end
         end
     end
 
+    local roleOrder = {
+        {key = "tank", label = "TANK"},
+        {key = "healer", label = "HEAL"},
+        {key = "mdps", label = "MDPS"},
+        {key = "rdps", label = "RDPS"},
+    }
+    local function fmtCount(n)
+        if n > 5 then return "rest" end
+        return tostring(n)
+    end
     local roles = {}
     local showSpecs = self.db and self.db.showSpecsInMessage
     if showSpecs then
-        for _, role in ipairs({"tank", "healer", "dps"}) do
-            if needed[role] and needed[role] > 0 then
-                table.insert(roles, role .. "(" .. table.concat(specLists[role], ", ") .. ")")
+        for _, def in ipairs(roleOrder) do
+            if needed[def.key] and needed[def.key] > 0 then
+                table.insert(roles, def.label .. "(" .. table.concat(specLists[def.key], ", ") .. ")")
             end
         end
     else
-        if needed.tank > 0 then table.insert(roles, needed.tank .. " tank") end
-        if needed.healer > 0 then table.insert(roles, needed.healer .. " healer") end
-        if needed.dps > 0 then table.insert(roles, needed.dps .. " dps") end
+        for _, def in ipairs(roleOrder) do
+            if needed[def.key] and needed[def.key] > 0 then
+                table.insert(roles, fmtCount(needed[def.key]) .. " " .. def.label)
+            end
+        end
     end
     if #roles > 0 then
         msg = msg .. " - Need: " .. table.concat(roles, ", ")
@@ -641,6 +655,26 @@ function GM:ShowMessagePreview()
     if self.previewText then
         RLSuite.utils:Print("Messaggio: " .. (self.previewText:GetText() or ""))
     end
+end
+
+function GM:OpenAtlasLoot()
+    if SlashCmdList and SlashCmdList["ATLASLOOT"] then
+        SlashCmdList["ATLASLOOT"]("")
+        return
+    end
+    if SlashCmdList and SlashCmdList["AL"] then
+        SlashCmdList["AL"]("")
+        return
+    end
+    if AtlasLootDefaultFrame then
+        if AtlasLootDefaultFrame:IsShown() then
+            AtlasLootDefaultFrame:Hide()
+        else
+            AtlasLootDefaultFrame:Show()
+        end
+        return
+    end
+    RLSuite.utils:Print("AtlasLoot non e' caricato.")
 end
 
 -- ============================================================

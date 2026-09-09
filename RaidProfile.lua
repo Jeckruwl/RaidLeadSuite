@@ -464,18 +464,9 @@ end
 function MW:HookMacroInsertLink()
     if self._insertLinkHooked then return end
     self._insertLinkHooked = true
-    local orig = ChatEdit_InsertLink
-    ChatEdit_InsertLink = function(text)
-        local edit = MW.macroBodyEdit
-        if text and edit and edit:IsShown() and edit:HasFocus() then
-            edit:Insert(text)
-            MW:SaveMacroSlot()
-            return true
-        end
-        if orig then
-            return orig(text)
-        end
-    end
+    RLSuite.utils:RegisterInsertLink(self.macroBodyEdit, function()
+        MW:SaveMacroSlot()
+    end)
 end
 
 function MW:CreateMacroIconPicker(parent)

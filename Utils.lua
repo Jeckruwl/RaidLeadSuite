@@ -162,27 +162,46 @@ end
 function Utils:SpecShortName(class, specName)
     local info = self:GetSpecInfo(class, specName)
     if info and info.short then return info.short end
-    local n = specName or ""
-    local map = {
-        ["beast mastery"] = "BM",
-        marksmanship = "MM",
-        survival = "Surv",
-        protection = "Prot",
-        retribution = "Ret",
-        assassination = "Assa",
-        subtlety = "Sub",
-        discipline = "Disc",
-        restoration = "Resto",
-        enhancement = "Enh",
-        elemental = "Ele",
-        affliction = "Aff",
-        demonology = "Demo",
-        destruction = "Destro",
-        ["feral bear"] = "Bear",
-        ["feral cat"] = "Cat",
-        ["feral"] = "Feral",
-    }
-    return map[string.lower(n)] or n
+    return specName or ""
+end
+
+function Utils:NormalizeRole(role, class, spec)
+    if role == "mdps" or role == "rdps" or role == "tank" or role == "healer" then
+        return role
+    end
+    local fromSpec = self:RoleFromSpec(class, spec)
+    if fromSpec then return fromSpec end
+    if role == "dps" then return "mdps" end
+    return role or "mdps"
+end
+
+function Utils:EnsureInsertLinkHook()
+    if self._insertLinkHooked then return end
+    self._insertLinkHooked = true
+    self.insertLinkTargets = self.insertLinkTargets or {}
+    local orig = ChatEdit_InsertLink
+    ChatEdit_InsertLink = function(text)
+        for _, t in ipairs(Utils.insertLinkTargets) do
+            local edit = t.edit
+            if text and edit and edit.IsShown and edit:IsShown() and edit.HasFocus and edit:HasFocus() then
+                if edit.Insert then
+                    edit:Insert(text)
+                else
+                    edit:SetText((edit:GetText() or "") .. text)
+                end
+                if t.onInsert then t.onInsert(text) end
+                return true
+            end
+        end
+        if orig then return orig(text) end
+    end
+end
+
+function Utils:RegisterInsertLink(edit, onInsert)
+    if not edit then return end
+    self:EnsureInsertLinkHook()
+    self.insertLinkTargets = self.insertLinkTargets or {}
+    table.insert(self.insertLinkTargets, {edit = edit, onInsert = onInsert})
 end
 
 function Utils:ClassLabel(class)

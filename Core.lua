@@ -151,82 +151,82 @@ RLSuite.classData = {
     WARRIOR = {
         roles = {"Tank", "DPS"},
         specs = {
-            {name = "Arms", role = "dps", icon = "Interface\\Icons\\Ability_Warrior_SavageBlow"},
-            {name = "Fury", role = "dps", icon = "Interface\\Icons\\Ability_Warrior_InnerRage"},
-            {name = "Protection", role = "tank", icon = "Interface\\Icons\\Ability_Warrior_DefensiveStance"},
+            {name = "Arms", short = "ArmsWarr", role = "mdps", icon = "Interface\\Icons\\Ability_Warrior_SavageBlow"},
+            {name = "Fury", short = "Fury", role = "mdps", icon = "Interface\\Icons\\Ability_Warrior_InnerRage"},
+            {name = "Protection", short = "PWar", role = "tank", icon = "Interface\\Icons\\Ability_Warrior_DefensiveStance"},
         },
     },
     PALADIN = {
         roles = {"Tank", "Healer", "DPS"},
         specs = {
-            {name = "Holy", role = "healer", icon = "Interface\\Icons\\Spell_Holy_HolyBolt"},
-            {name = "Protection", role = "tank", icon = "Interface\\Icons\\Spell_Holy_DevotionAura"},
-            {name = "Retribution", role = "dps", icon = "Interface\\Icons\\Spell_Holy_AuraOfLight"},
+            {name = "Holy", short = "HPala", role = "healer", icon = "Interface\\Icons\\Spell_Holy_HolyBolt"},
+            {name = "Protection", short = "PPala", role = "tank", icon = "Interface\\Icons\\Spell_Holy_DevotionAura"},
+            {name = "Retribution", short = "RPala", role = "mdps", icon = "Interface\\Icons\\Spell_Holy_AuraOfLight"},
         },
     },
     HUNTER = {
         roles = {"DPS"},
         specs = {
-            {name = "Beast Mastery", role = "dps", icon = "Interface\\Icons\\Ability_Hunter_BeastTaming"},
-            {name = "Marksmanship", role = "dps", icon = "Interface\\Icons\\Ability_Marksmanship"},
-            {name = "Survival", role = "dps", icon = "Interface\\Icons\\Ability_Hunter_SwiftStrike"},
+            {name = "Beast Mastery", short = "BMHunt", role = "rdps", icon = "Interface\\Icons\\Ability_Hunter_BeastTaming"},
+            {name = "Marksmanship", short = "MMHunt", role = "rdps", icon = "Interface\\Icons\\Ability_Marksmanship"},
+            {name = "Survival", short = "Survival", role = "rdps", icon = "Interface\\Icons\\Ability_Hunter_SwiftStrike"},
         },
     },
     ROGUE = {
         roles = {"DPS"},
         specs = {
-            {name = "Assassination", role = "dps", icon = "Interface\\Icons\\Ability_Rogue_Eviscerate"},
-            {name = "Combat", role = "dps", icon = "Interface\\Icons\\Ability_BackStab"},
-            {name = "Subtlety", role = "dps", icon = "Interface\\Icons\\Ability_Stealth"},
+            {name = "Assassination", short = "AssaRog", role = "mdps", icon = "Interface\\Icons\\Ability_Rogue_Eviscerate"},
+            {name = "Combat", short = "CRog", role = "mdps", icon = "Interface\\Icons\\Ability_BackStab"},
+            {name = "Subtlety", short = "SubRog", role = "mdps", icon = "Interface\\Icons\\Ability_Stealth"},
         },
     },
     PRIEST = {
         roles = {"Healer", "DPS"},
         specs = {
-            {name = "Discipline", role = "healer", icon = "Interface\\Icons\\Spell_Holy_WordFortitude"},
-            {name = "Holy", role = "healer", icon = "Interface\\Icons\\Spell_Holy_HolyBolt"},
-            {name = "Shadow", role = "dps", icon = "Interface\\Icons\\Spell_Shadow_ShadowWordPain"},
+            {name = "Discipline", short = "Disco", role = "healer", icon = "Interface\\Icons\\Spell_Holy_WordFortitude"},
+            {name = "Holy", short = "HPriest", role = "healer", icon = "Interface\\Icons\\Spell_Holy_HolyBolt"},
+            {name = "Shadow", short = "Shadow", role = "rdps", icon = "Interface\\Icons\\Spell_Shadow_ShadowWordPain"},
         },
     },
     DEATHKNIGHT = {
         roles = {"Tank", "DPS"},
         specs = {
-            {name = "Blood", role = "tank", icon = "Interface\\Icons\\Spell_Deathknight_BloodPresence"},
-            {name = "Frost", role = "dps", icon = "Interface\\Icons\\Spell_Deathknight_FrostPresence"},
-            {name = "Unholy", role = "dps", icon = "Interface\\Icons\\Spell_Deathknight_UnholyPresence"},
+            {name = "Blood", short = "BDK", role = "tank", icon = "Interface\\Icons\\Spell_Deathknight_BloodPresence"},
+            {name = "Frost", short = "FDK", role = "mdps", icon = "Interface\\Icons\\Spell_Deathknight_FrostPresence"},
+            {name = "Unholy", short = "UDK", role = "mdps", icon = "Interface\\Icons\\Spell_Deathknight_UnholyPresence"},
         },
     },
     SHAMAN = {
         roles = {"Healer", "DPS"},
         specs = {
-            {name = "Elemental", role = "dps", icon = "Interface\\Icons\\Spell_Nature_Lightning"},
-            {name = "Enhancement", role = "dps", icon = "Interface\\Icons\\Spell_Nature_LightningShield"},
-            {name = "Restoration", role = "healer", icon = "Interface\\Icons\\Spell_Nature_MagicImmunity"},
+            {name = "Elemental", short = "Ele", role = "rdps", icon = "Interface\\Icons\\Spell_Nature_Lightning"},
+            {name = "Enhancement", short = "Enha", role = "mdps", icon = "Interface\\Icons\\Spell_Nature_LightningShield"},
+            {name = "Restoration", short = "RSham", role = "healer", icon = "Interface\\Icons\\Spell_Nature_MagicImmunity"},
         },
     },
     MAGE = {
         roles = {"DPS"},
         specs = {
-            {name = "Arcane", role = "dps", icon = "Interface\\Icons\\Spell_Holy_MagicalSentry"},
-            {name = "Fire", role = "dps", icon = "Interface\\Icons\\Spell_Fire_FireBolt02"},
-            {name = "Frost", role = "dps", icon = "Interface\\Icons\\Spell_Frost_FrostBolt02"},
+            {name = "Arcane", short = "Arcane", role = "rdps", icon = "Interface\\Icons\\Spell_Holy_MagicalSentry"},
+            {name = "Fire", short = "FireMage", role = "rdps", icon = "Interface\\Icons\\Spell_Fire_FireBolt02"},
+            {name = "Frost", short = "FrostMage", role = "rdps", icon = "Interface\\Icons\\Spell_Frost_FrostBolt02"},
         },
     },
     WARLOCK = {
         roles = {"DPS"},
         specs = {
-            {name = "Affliction", role = "dps", icon = "Interface\\Icons\\Spell_Shadow_DeathCoil"},
-            {name = "Demonology", role = "dps", icon = "Interface\\Icons\\Spell_Shadow_Metamorphosis"},
-            {name = "Destruction", role = "dps", icon = "Interface\\Icons\\Spell_Shadow_RainOfFire"},
+            {name = "Affliction", short = "Affly", role = "rdps", icon = "Interface\\Icons\\Spell_Shadow_DeathCoil"},
+            {name = "Demonology", short = "Demo", role = "rdps", icon = "Interface\\Icons\\Spell_Shadow_Metamorphosis"},
+            {name = "Destruction", short = "Destro", role = "rdps", icon = "Interface\\Icons\\Spell_Shadow_RainOfFire"},
         },
     },
     DRUID = {
         roles = {"Tank", "Healer", "DPS"},
         specs = {
-            {name = "Balance", role = "dps", icon = "Interface\\Icons\\Spell_Nature_StarFall"},
-            {name = "Feral Bear", role = "tank", icon = "Interface\\Icons\\Ability_Racial_BearForm"},
-            {name = "Feral Cat", role = "dps", icon = "Interface\\Icons\\Ability_Druid_CatForm"},
-            {name = "Restoration", role = "healer", icon = "Interface\\Icons\\Spell_Nature_HealingTouch"},
+            {name = "Balance", short = "Boomie", role = "rdps", icon = "Interface\\Icons\\Spell_Nature_StarFall"},
+            {name = "Feral Bear", short = "Bear", role = "tank", icon = "Interface\\Icons\\Ability_Racial_BearForm"},
+            {name = "Feral Cat", short = "Cat", role = "mdps", icon = "Interface\\Icons\\Ability_Druid_CatForm"},
+            {name = "Restoration", short = "RDudu", role = "healer", icon = "Interface\\Icons\\Spell_Nature_HealingTouch"},
         },
     },
 }
