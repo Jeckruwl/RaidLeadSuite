@@ -67,7 +67,7 @@ end
 
 function MB:BeginShiftDrag()
     local p = self:PhaseSettings()
-    if p and p.locked then return end
+    if p and p.locked and not (RLSuiteDB and RLSuiteDB.anchorMode) then return end
     if not self.frame then return end
     self._shiftDrag = true
     self.frame:StartMoving()
@@ -86,6 +86,42 @@ function MB:AttachShiftDrag(fr)
             MB:EndShiftDrag()
         end
     end)
+end
+
+-- Anchor mode (stile ElvUI): la HUD diventa trascinabile anche da
+-- bloccata, quando "Toggle Anchors" e' attivo in Config.
+function MB:SetAnchorMode(on)
+    local f = self.frame
+    if not f then return end
+    on = on and true or false
+    local function start(self2)
+        if not (RLSuiteDB and RLSuiteDB.anchorMode) then return end
+        self2:StartMoving()
+    end
+    local function stop(self2)
+        self2:StopMovingOrSizing()
+        MB:SaveHolderPosition()
+    end
+    if on then
+        f:SetMovable(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", start)
+        f:SetScript("OnDragStop", stop)
+        if self.macroHost then
+            self.macroHost:RegisterForDrag("LeftButton")
+            self.macroHost:SetScript("OnDragStart", start)
+            self.macroHost:SetScript("OnDragStop", stop)
+        end
+    else
+        f:SetScript("OnDragStart", nil)
+        f:SetScript("OnDragStop", nil)
+        if self.macroHost then
+            self.macroHost:SetScript("OnDragStart", nil)
+            self.macroHost:SetScript("OnDragStop", nil)
+        end
+        local p = self:PhaseSettings()
+        f:SetMovable(not p.locked)
+    end
 end
 
 function MB:CreateFrame()
@@ -189,7 +225,7 @@ MB.phaseList = { "preraid", "preboss", "infight" }
 function MB:PhaseDefaults()
     return {
         enabled = true,
-        locked = false,
+        locked = true,
         scale = 1,
         point = "CENTER",
         relPoint = "CENTER",
@@ -356,7 +392,7 @@ function MB:ApplyLayout()
     end
 
     self.frame:EnableMouse(true)
-    self.frame:SetMovable(not p.locked)
+    self.frame:SetMovable((not p.locked) or (RLSuiteDB and RLSuiteDB.anchorMode == true))
     if self.macroHost then
         self.macroHost:EnableMouse(true)
     end

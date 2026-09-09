@@ -9,9 +9,11 @@ local defaults = {
     profile = "",
     difficulty = "10",
     debug = false,
+    anchorMode = false,
+    savedRaids = {},
     macrobar = {
         enabled = true,
-        locked = false,
+        locked = true,
         scale = 1.0,
         point = "CENTER",
         relPoint = "CENTER",
@@ -58,7 +60,7 @@ local defaults = {
         showBuffs = true,
         showFlask = true,
         showFood = true,
-        locked = false,
+        locked = true,
         scale = 1.0,
         width = 350,
         height = 400,
@@ -94,6 +96,8 @@ local defaults = {
         main = { width = 660, height = 700, scale = 1 },
         groupmaking = { scale = 1 },
         whisplist = { scale = 1 },
+        macro = { scale = 1 },
+        raidframe = { scale = 1 },
         ms = { scale = 1 },
         loot = { scale = 1 },
         config = { scale = 1 },
@@ -355,16 +359,10 @@ frame:SetScript("OnEvent", function(self, event, ...)
         RLSuite:UpdateRaidContext()
     elseif event == "PLAYER_REGEN_ENABLED" then
         RLSuite.context = "preboss"
-        if RLSuite.macrobar and RLSuite.macrobar.UpdatePhase then
-            RLSuite.macrobar:UpdatePhase()
-            RLSuite.macrobar:ShowKeypad(true)
-        end
+        RLSuite:UpdatePhaseUI()
     elseif event == "PLAYER_REGEN_DISABLED" then
         RLSuite.context = "infight"
-        if RLSuite.macrobar and RLSuite.macrobar.UpdatePhase then
-            RLSuite.macrobar:UpdatePhase()
-            RLSuite.macrobar:ShowKeypad(false)
-        end
+        RLSuite:UpdatePhaseUI()
     elseif event == "CHAT_MSG_WHISPER" then
         local msg, sender = ...
         if RLSuite.groupmaking and RLSuite.groupmaking.OnWhisper then
@@ -470,20 +468,13 @@ function RLSuite:ApplyDebugMode()
             self.raidFrame:Rebuild()
             if self.raidFrame.UpdateAll then self.raidFrame:UpdateAll() end
         end
-        if self.macrobar and self.macrobar.UpdatePhase then
-            self.macrobar:UpdatePhase()
-            self.macrobar:ShowKeypad(self.context == "preboss")
-        end
     else
         self.utils:Print("Debug mode OFF.")
         if self.raidFrame and self.raidFrame.Rebuild then
             self.raidFrame:Rebuild()
         end
-        if self.macrobar and self.macrobar.UpdatePhase then
-            self.macrobar:UpdatePhase()
-            self.macrobar:ShowKeypad(self.context == "preboss")
-        end
     end
+    self:UpdatePhaseUI()
 end
 
 function RLSuite:UpdateRaidContext()
@@ -496,9 +487,231 @@ function RLSuite:UpdateRaidContext()
     else
         self.context = "preboss"
     end
-    if self.macrobar and self.macrobar.UpdatePhase then
-        self.macrobar:UpdatePhase()
-        self.macrobar:ShowKeypad(self.context == "preboss")
+    self:UpdatePhaseUI()
+end
+
+-- Forza la fase dell'addon (preraid / preboss / infight) dai bottoni
+-- della barra. Il contesto automatico torna a prevalere al prossimo
+-- evento (roster/regen), come prima.
+function RLSuite:SetContextPhase(phase)
+    if phase ~= "preraid" and phase ~= "preboss" and phase ~= "infight" then return end
+    self.context = phase
+    self:UpdatePhaseUI()
+    self.utils:Print("Fase impostata: " .. phase)
+end
+
+-- Sincronizza tutta la UI dipendente dal contesto (barra, MacroBar, keypad).
+function RLSuite:UpdatePhaseUI()
+    if self.mainWindow and self.mainWindow.UpdatePhaseButtons then
+        self.mainWindow:UpdatePhaseButtons()
+    end
+    if self.macrobar then
+        if self.macrobar.UpdatePhase then
+            self.macrobar:UpdatePhase()
+        end
+        if self.macrobar.ShowKeypad then
+            self.macrobar:ShowKeypad(self.context == "preboss")
+        end
+    end
+end
+
+-- ============================================================
+-- Saved Raids (SaveRaid)
+-- Salva: Comp (groupmaking + whisplist), MacroBar e i pannelli di
+-- Config esclusa la categoria General (quindi scale delle finestre e
+-- impostazioni macrobar/raidframe, non aspetto/font/finestra/debug).
+-- ============================================================
+
+local SAVED_RAID_BRANCHES = { "groupmaking", "whisplist", "macrobar", "raidframe" }
+local SAVED_RAID_LAYOUT_KEYS = { "groupmaking", "whisplist", "macro", "raidframe", "ms", "loot", "config" }
+
+function RLSuite:SaveRaid(title)
+    title = title or ""
+    title = string.gsub(title, "^%s+", "")
+    title = string.gsub(title, "%s+$", "")
+    if title == "" then
+        self.utils:Print("Salvataggio annullato: titolo vuoto.")
+        return nil
+    end
+    RLSuiteDB.savedRaids = RLSuiteDB.savedRaids or {}
+    if self.groupmaking and self.groupmaking.SaveComp then
+        self.groupmaking:SaveComp()
+    end
+    local data = {}
+    for _, k in ipairs(SAVED_RAID_BRANCHES) do
+        if RLSuiteDB[k] then
+            data[k] = self.utils:CopyTable(RLSuiteDB[k])
+        end
+    end
+    local scales = {}
+    for _, k in ipairs(SAVED_RAID_LAYOUT_KEYS) do
+        local L = RLSuiteDB.layout and RLSuiteDB.layout[k]
+        if L and L.scale then scales[k] = L.scale end
+    end
+    data.layout = scales
+    local id = 1
+    for _, e in ipairs(RLSuiteDB.savedRaids) do
+        if (e.id or 0) >= id then id = e.id + 1 end
+    end
+    local entry = { id = id, title = title, time = time(), data = data }
+    table.insert(RLSuiteDB.savedRaids, entry)
+    self:RefreshSavedRaidsPanel()
+    self.utils:Print("SaveRaid \"" .. title .. "\" salvato (" .. #RLSuiteDB.savedRaids .. " totali).")
+    return id
+end
+
+function RLSuite:RefreshSavedRaidsPanel()
+    local cfg = self.config
+    if cfg and cfg.frame and cfg.frame:IsShown() and cfg.currentCat == "savedraids"
+        and cfg.RebuildPanel then
+        cfg:RebuildPanel()
+    end
+end
+
+function RLSuite:GetSavedRaid(id)
+    for _, e in ipairs(RLSuiteDB.savedRaids or {}) do
+        if e.id == id then return e end
+    end
+    return nil
+end
+
+function RLSuite:DeleteSavedRaid(id)
+    for i, e in ipairs(RLSuiteDB.savedRaids or {}) do
+        if e.id == id then
+            table.remove(RLSuiteDB.savedRaids, i)
+            self:RefreshSavedRaidsPanel()
+            self.utils:Print("SaveRaid \"" .. (e.title or "?") .. "\" eliminato.")
+            return true
+        end
+    end
+    return false
+end
+
+function RLSuite:LoadRaid(id)
+    local entry = self:GetSavedRaid(id)
+    if not entry then
+        self.utils:Print("Salvataggio non trovato (id " .. tostring(id) .. ").")
+        return false
+    end
+    local d = entry.data or {}
+    for _, k in ipairs(SAVED_RAID_BRANCHES) do
+        if d[k] then
+            RLSuiteDB[k] = self.utils:CopyTable(d[k])
+        end
+    end
+    if d.layout then
+        RLSuiteDB.layout = RLSuiteDB.layout or {}
+        for k, s in pairs(d.layout) do
+            if not RLSuiteDB.layout[k] then RLSuiteDB.layout[k] = {} end
+            RLSuiteDB.layout[k].scale = s
+        end
+    end
+    self:ApplySavedRaidToUI()
+    self.utils:Print("SaveRaid \"" .. (entry.title or "?") .. "\" caricato.")
+    return true
+end
+
+function RLSuite:ApplySavedRaidToUI()
+    -- GroupMaking
+    if self.groupmaking then
+        local gm = self.groupmaking
+        gm.db = RLSuiteDB.groupmaking
+        gm.whisperDB = RLSuiteDB.whisplist
+        if gm.mainFrame then
+            local comp = {}
+            if RLSuiteDB.groupmaking and RLSuiteDB.groupmaking.comp then
+                for i, c in pairs(RLSuiteDB.groupmaking.comp) do
+                    comp[i] = self.utils:CopyTable(c)
+                end
+            end
+            local difficulty = RLSuiteDB.groupmaking and RLSuiteDB.groupmaking.difficulty or "10"
+            if gm.SetDifficulty then gm:SetDifficulty(difficulty) end
+            for i, c in pairs(comp) do
+                if gm.FillSlot then
+                    gm:FillSlot(tonumber(i), c.class, c.role, c.playerName, c.spec)
+                end
+            end
+            if RLSuiteDB.groupmaking then
+                local reserved = ""
+                if type(RLSuiteDB.groupmaking.reservedText) == "string" then
+                    reserved = RLSuiteDB.groupmaking.reservedText
+                elseif type(RLSuiteDB.groupmaking.reserved) == "string" then
+                    reserved = RLSuiteDB.groupmaking.reserved
+                end
+                if gm.reservedEdit then gm.reservedEdit:SetText(reserved) end
+                if gm.otherEdit then gm.otherEdit:SetText(RLSuiteDB.groupmaking.otherReq or "") end
+                gm.db.comp = {}
+                if gm.SaveComp then gm:SaveComp() end
+                if gm.UpdateMessagePreview then gm:UpdateMessagePreview() end
+                if gm.PopulateRaidDropdown then gm:PopulateRaidDropdown() end
+            end
+        end
+    end
+    -- Whisplist
+    if self.groupmaking and self.groupmaking.whisplistFrame and self.groupmaking.whisplistFrame:IsShown() then
+        if self.groupmaking.UpdateWhisplist then
+            self.groupmaking:UpdateWhisplist()
+        end
+    end
+    -- MacroBar
+    if self.macrobar and self.macrobar.frame then
+        local mb = self.macrobar
+        mb.db = RLSuiteDB.macrobar
+        if mb.EnsurePhases then mb:EnsurePhases() end
+        if mb.ApplyLayout then mb:ApplyLayout() end
+        if mb.UpdatePhase then mb:UpdatePhase() end
+    end
+    -- Raid Frame
+    if self.raidFrame and self.raidFrame.frame then
+        local rf = self.raidFrame
+        rf.db = RLSuiteDB.raidframe
+        if rf.ApplyLayout then rf:ApplyLayout() end
+        if rf.Rebuild then rf:Rebuild() end
+        if rf.UpdateAll then rf:UpdateAll() end
+    end
+    -- Macro editor (se visibile)
+    if self.mainWindow and self.mainWindow.frame and self.mainWindow.tabPanels
+        and self.mainWindow.tabPanels.macro and self.mainWindow.tabPanels.macro:IsShown() then
+        local mw = self.mainWindow
+        if mw.RefreshMacroTab then mw:RefreshMacroTab() end
+        if mw.OpenMacroEditor then
+            mw:OpenMacroEditor(mw.macroEditIndex or 1)
+        end
+    end
+    -- Config apply (scale finestre)
+    if self.config and self.config.ApplyAll then
+        self.config:ApplyAll()
+    end
+    self:ApplyAnchorMode(RLSuiteDB.anchorMode == true)
+end
+
+-- ============================================================
+-- Anchors stile ElvUI per le HUD (Raid Frame + MacroBar)
+-- ============================================================
+function RLSuite:ApplyAnchorMode(on)
+    RLSuiteDB.anchorMode = on and true or false
+    local u = self.utils
+    if self.raidFrame and self.raidFrame.frame then
+        u:SetAnchorVisual(self.raidFrame.frame, RLSuiteDB.anchorMode)
+        if RLSuiteDB.anchorMode and RLSuiteDB.raidframe and RLSuiteDB.raidframe.enabled ~= false then
+            if not self.raidFrame.frame:IsShown() then
+                self.raidFrame.frame:Show()
+                if self.raidFrame.ApplyLayout then self.raidFrame:ApplyLayout() end
+            end
+        end
+    end
+    if self.macrobar and self.macrobar.frame then
+        u:SetAnchorVisual(self.macrobar.frame, RLSuiteDB.anchorMode)
+        if self.macrobar.SetAnchorMode then
+            self.macrobar:SetAnchorMode(RLSuiteDB.anchorMode)
+        end
+        if RLSuiteDB.anchorMode and RLSuiteDB.macrobar and RLSuiteDB.macrobar.enabled ~= false then
+            self.macrobar.frame:Show()
+            if self.macrobar.ApplyLayout then self.macrobar:ApplyLayout() end
+        end
+    end
+    if self.config and self.config.frame and self.config.UpdateAnchorCheck then
+        self.config:UpdateAnchorCheck()
     end
 end
 

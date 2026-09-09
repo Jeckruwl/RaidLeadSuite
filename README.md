@@ -38,7 +38,7 @@ Se lasci il nome `RaidLeadSuite` (clone GitHub senza rinomina), è comunque supp
 
 | Comando | Finestra |
 |---|---|
-| `/rls` o `/rlsuite` | Finestra principale (tutte le tab) |
+| `/rls` o `/rlsuite` | Barra principale (tab 4×2 + fase) |
 | `/rls help` | Elenco comandi |
 | `/rls group` | Tab Groupmaking |
 | `/rls whisplist` | Tab Whisplist |
@@ -50,6 +50,14 @@ Se lasci il nome `RaidLeadSuite` (clone GitHub senza rinomina), è comunque supp
 | `/rls loot` | Tab Loot Manager |
 | `/rls config` | Tab Config |
 
+## Interfaccia
+
+- **Barra in alto**: matrice **4×2** di tab (Groupmaking, Whisplist, Macrobar, Raid Frame, MS, Loot, Config + **SaveRaid**), con sotto, centrati, i **3 tasti di fase** (`Pre-raid` / `Pre-boss` / `In-fight`). I tab sono bistabili; le finestre si aprono come **pannelli liberi, spostabili** (posizione ricordata).
+- **SaveRaid**: salva un setup con un titolo richiesto da un prompt → **Comp** (composizione, raid, riservati, messaggio, whisplist), **MacroBar** (macro e layout) e **Config esclusa la categoria General**.
+- **Config → Saved Raids** (voce sotto General): elenco dei salvataggi con il titolo e pulsante **Load** per ripristinare tutto.
+- **Anchors stile ElvUI** in *Config → General → Finestra → Toggle Anchors*: le HUD **Raid Frame** e **MacroBar** sono bloccate di default; con Toggle Anchors compaiono come placeholder spostabili evidenziati. Le altre finestre restano normali.
+- **Ridimensionabili** (maniglia in basso a destra): Groupmaking, Whisplist, MS Manager e Loot Manager; le dimensioni vengono ricordate.
+
 ## Moduli
 
 - **Group Making** — composizione 10/25, messaggio LFG, spam canali, whisplist con invite
@@ -57,7 +65,7 @@ Se lasci il nome `RaidLeadSuite` (clone GitHub senza rinomina), è comunque supp
 - **Raid Frame** — HP/mana, alert flask/food/buff, cooldown raid via combat log
 - **MS Manager** — legge `ms <spec>` in raid chat e genera il pre-messaggio loot
 - **Loot Manager** — history drop, roll, tie/reroll
-- **Config** — tab stile ElvUI (lista a sinistra, pannello + sottotab a destra): aspetto, bordi, font, dimensioni e ancoraggi. Non cambia le funzionalità (es. testi macro restano nella tab Macrobar)
+- **Config** — tab stile ElvUI (lista a sinistra, pannello + sottotab a destra): aspetto, bordi, font, dimensioni, ancoraggi e Saved Raids. Non cambia le funzionalità (es. testi macro restano nella tab Macrobar)
 
 ## Requisiti
 

@@ -569,3 +569,130 @@ function Utils:ToggleDropdownMenu(dd)
 
     self.activeMenu = menu
 end
+
+-- ============================================================
+-- Window layout helpers (finestre staccabili / anchors)
+-- ============================================================
+
+-- Ritorna (creandola se serve) la sottotabella layout per una finestra.
+function Utils:WindowLayout(key)
+    RLSuiteDB.layout = RLSuiteDB.layout or {}
+    local t = RLSuiteDB.layout[key]
+    if not t then
+        t = {}
+        RLSuiteDB.layout[key] = t
+    end
+    return t
+end
+
+-- Salva la posizione corrente di un frame nella layout della finestra.
+function Utils:PersistFramePos(frame, key)
+    if not frame then return end
+    local point, _, relPoint, x, y = frame:GetPoint()
+    local L = self:WindowLayout(key)
+    L.point = point
+    L.relPoint = relPoint
+    L.x = x
+    L.y = y
+end
+
+-- Applica la posizione salvata a una finestra; se non c'e', la ancora
+-- sotto la barra principale (comportamento dock-like iniziale).
+function Utils:ApplySavedPos(frame, key)
+    if not frame then return end
+    frame:ClearAllPoints()
+    local L = self:WindowLayout(key)
+    if L.point then
+        frame:SetPoint(L.point, L.relPoint or "UIParent", L.x or 0, L.y or 0)
+    else
+        local bar = RLSuite.mainWindow and RLSuite.mainWindow.frame
+        if bar then
+            frame:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -2)
+        else
+            frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        end
+    end
+end
+
+-- Rende un frame trascinabile e salva la posizione nel layout.
+-- NOTA: non sovrascrive script gia' presenti: si aggancia solo se il
+-- frame non ha gia' un comportamento di trascinamento registrato.
+function Utils:MakeDraggable(frame, key)
+    if not frame then return end
+    if frame._rlsDraggable then return end
+    frame._rlsDraggable = true
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", function(self2)
+        self2:StopMovingOrSizing()
+        Utils:PersistFramePos(self2, key)
+    end)
+end
+
+-- Grip di ridimensionamento in basso a destra. Salva width/height nel
+-- layout e (se fornita) invoca la callback dopo il ridimensionamento.
+function Utils:AddResizeGrip(frame, key, minW, minH, onResized)
+    if not frame or frame._rlsGrip then return end
+    minW = minW or 300
+    minH = minH or 200
+    frame._rlsGrip = true
+    frame:SetResizable(true)
+    local L = self:WindowLayout(key)
+
+    local grip = CreateFrame("Button", nil, frame)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
+    grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    grip:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
+    grip:SetFrameLevel((frame:GetFrameLevel() or 1) + 20)
+    grip:EnableMouse(true)
+
+    local sizing = false
+    grip:SetScript("OnMouseDown", function(self2, button)
+        if button ~= "LeftButton" then return end
+        sizing = true
+        frame:StartSizing("BOTTOMRIGHT")
+    end)
+    grip:SetScript("OnMouseUp", function()
+        if not sizing then return end
+        sizing = false
+        frame:StopMovingOrSizing()
+        local w = math.max(minW, frame:GetWidth() or minW)
+        local h = math.max(minH, frame:GetHeight() or minH)
+        frame:SetSize(w, h)
+        L.width = w
+        L.height = h
+        if onResized then onResized(w, h) end
+    end)
+    return grip
+end
+
+-- Overlay "anchor" (bordo evidenziato) per le HUD quando si usa
+-- toggle anchors in Config.
+function Utils:SetAnchorVisual(frame, on)
+    if not frame then return end
+    if not frame.rlsAnchorBox then
+        local box = CreateFrame("Frame", nil, frame)
+        box:SetAllPoints(frame)
+        box:SetFrameLevel((frame:GetFrameLevel() or 1) + 5)
+        box:EnableMouse(false)
+        box:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 12,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        box:SetBackdropColor(0, 0, 0, 0.25)
+        box:SetBackdropBorderColor(1, 0.82, 0, 0.9)
+        box:Hide()
+        frame.rlsAnchorBox = box
+    end
+    if on then
+        frame.rlsAnchorBox:Show()
+    else
+        frame.rlsAnchorBox:Hide()
+    end
+end

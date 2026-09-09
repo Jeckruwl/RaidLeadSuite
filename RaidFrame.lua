@@ -34,7 +34,7 @@ function RF:CreateFrame()
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", function(self2)
-        if not RLSuiteDB.raidframe.locked then
+        if not RLSuiteDB.raidframe.locked or (RLSuiteDB.anchorMode == true) then
             self2:StartMoving()
         end
     end)

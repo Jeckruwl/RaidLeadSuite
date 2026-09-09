@@ -60,6 +60,7 @@ function CFG:CreateFrame()
 
     self.categories = {
         { key = "general",     label = "General" },
+        { key = "savedraids",  label = "Saved Raids" },
         { key = "groupmaking", label = "Groupmaking" },
         { key = "whisplist",   label = "Whisplist" },
         { key = "macrobar",    label = "Macrobar" },
@@ -108,6 +109,8 @@ function CFG:SubtabsFor(key)
             { key = "window", label = "Finestra" },
             { key = "debug", label = "Debug" },
         }
+    elseif key == "savedraids" then
+        return { { key = "main", label = "Saved Raids" } }
     elseif key == "raidframe" then
         return {
             { key = "layout", label = "Layout" },
@@ -227,6 +230,8 @@ function CFG:RebuildPanel()
         self:PanelMain()
     elseif cat == "general" and sub == "debug" then
         self:PanelGeneralDebug()
+    elseif cat == "savedraids" then
+        self:PanelSavedRaids()
     elseif cat == "groupmaking" then
         self:PanelScale("groupmaking", "Groupmaking")
     elseif cat == "whisplist" then
@@ -926,11 +931,34 @@ function CFG:PanelMain()
     L.width = L.width or 660
     L.height = L.height or 700
     L.scale = L.scale or 1
-    self:Header("Barra e finestra tab")
-    self:Note("Larghezza della barra (e della tab agganciata). Altezza della finestra tab sotto la barra.")
-    self:AddSlider("Larghezza", 500, 900, 20, function() return L.width end, function(v) L.width = v end, 220)
-    self:AddSlider("Altezza tab", 400, 900, 20, function() return L.height end, function(v) L.height = v end, 220)
+    self:Header("Barra e finestre tab")
+    self:Note("Larghezza e scala della barra. Le schede si aprono come finestre libere e spostabili; qui imposti la dimensione di default per quelle mai ridimensionate.")
+    self:AddSlider("Larghezza barra", 500, 900, 20, function() return L.width end, function(v) L.width = v end, 220)
+    self:AddSlider("Altezza default finestre", 400, 900, 20, function() return L.height end, function(v) L.height = v end, 220)
     self:AddSlider("Scala", 0.70, 1.30, 0.05, function() return L.scale end, function(v) L.scale = v end, 220)
+
+    self:Header("Anchors HUD (stile ElvUI)")
+    self:Note("Sblocca e mostra come placeholder spostabili le HUD Raid Frame e MacroBar. Le altre finestre restano normali.")
+    local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
+    cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, self:NextY(24))
+    cb:SetChecked(RLSuiteDB.anchorMode and 1 or nil)
+    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetPoint("LEFT", cb, "RIGHT", 2, 0)
+    fs:SetText("Toggle Anchors")
+    fs:SetTextColor(1, 0.82, 0)
+    cb:SetScript("OnClick", function(s)
+        local on = s:GetChecked() and true or false
+        if RLSuite.ApplyAnchorMode then
+            RLSuite:ApplyAnchorMode(on)
+        end
+    end)
+    self.anchorCheck = cb
+end
+
+function CFG:UpdateAnchorCheck()
+    if self.anchorCheck then
+        self.anchorCheck:SetChecked(RLSuiteDB.anchorMode and 1 or nil)
+    end
 end
 
 function CFG:PanelScale(key, title)
@@ -946,7 +974,7 @@ function CFG:RestoreMacroBar()
     end
     local mb = RLSuiteDB.macrobar
     mb.enabled = true
-    mb.locked = false
+    mb.locked = true
     mb.backdrop = true
     mb.showEmpty = true
     mb.mouseover = false
@@ -1075,6 +1103,56 @@ function CFG:PanelRaidPos()
 end
 
 -- ============================================================
+-- Saved Raids
+-- ============================================================
+
+function CFG:PanelSavedRaids()
+    self:Header("Saved Raids")
+    self:Note("Salvataggi creati con il tasto SaveRaid nella barra in alto. Clicca Load per ripristinare Comp, MacroBar e Config (esclusa General).")
+    local list = RLSuiteDB.savedRaids or {}
+    if #list == 0 then
+        self:Note("Nessun salvataggio presente.")
+        return
+    end
+    for i, e in ipairs(list) do
+        local y = self:NextY(30)
+        local row = CreateFrame("Frame", nil, self.content)
+        row:SetHeight(24)
+        row:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
+        row:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y)
+        RLSuite.utils:SkinRow(row, false)
+
+        local title = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        title:SetPoint("LEFT", row, "LEFT", 8, 0)
+        title:SetPoint("RIGHT", row, "RIGHT", -150, 0)
+        title:SetJustifyH("LEFT")
+        title:SetText(e.title or ("Salvataggio #" .. i))
+        if e.title then title:SetTextColor(0.9, 0.9, 0.9) end
+
+        local loadBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        loadBtn:SetSize(60, 20)
+        loadBtn:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+        loadBtn:SetText("Load")
+        loadBtn:SetScript("OnClick", function()
+            if RLSuite.LoadRaid then
+                RLSuite:LoadRaid(e.id)
+            end
+        end)
+
+        local delBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        delBtn:SetSize(60, 20)
+        delBtn:SetPoint("RIGHT", loadBtn, "LEFT", -6, 0)
+        delBtn:SetText("Delete")
+        delBtn:SetScript("OnClick", function()
+            if RLSuite.DeleteSavedRaid then
+                RLSuite:DeleteSavedRaid(e.id)
+            end
+            self:RebuildPanel()
+        end)
+    end
+end
+
+-- ============================================================
 -- Apply
 -- ============================================================
 
@@ -1110,6 +1188,11 @@ function CFG:ApplyAll()
     scale(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame, "whisplist")
     scale(RLSuite.msManager and RLSuite.msManager.frame, "ms")
     scale(RLSuite.lootManager and RLSuite.lootManager.frame, "loot")
+    local mw = RLSuite.mainWindow
+    if mw and mw.tabPanels then
+        scale(mw.tabPanels.macro, "macro")
+        scale(mw.tabPanels.raidframe, "raidframe")
+    end
     local font, size = RLSuite.utils:GetUIFont()
     if self.titleFS then self.titleFS:SetFont(font, size + 2) end
     if RLSuite.mainWindow and RLSuite.mainWindow.frame then

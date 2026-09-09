@@ -7,10 +7,12 @@ local MW = RLSuite.mainWindow
 
 function MW:Init()
     self:CreateFrame()
+    self:RegisterAllWindows()
 end
 
 function MW:BarHeight()
-    return 72
+    -- top pad + 2 righe di bottoni + gap righe + gap sezione + riga fase + bottom pad
+    return 8 + 24 + 4 + 24 + 8 + 24 + 6
 end
 
 function MW:PaneSize()
@@ -45,7 +47,7 @@ function MW:OnTabClick(key)
 end
 
 function MW:CloseTab()
-    self:HideDocked()
+    self:HideAllWindows()
     self.currentTab = nil
     for _, tab in pairs(self.tabs or {}) do
         tab:UnlockHighlight()
@@ -66,10 +68,7 @@ function MW:CreateFrame()
     self.frame = f
     RLSuite.utils:SkinFrame(f)
 
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", f, "TOP", 0, -14)
-    title:SetText("RLSuite v" .. RLSuite.version)
-    self.titleFS = title
+    -- Niente titolo: la barra contiene solo i bottoni (matrice 4x2 + fase)
 
     self.tabDefs = {
         { key = "group",     label = "Groupmaking" },
@@ -82,16 +81,44 @@ function MW:CreateFrame()
     }
     self.tabs = {}
     self.tabPanels = {}
-    self.currentTab = "group"
+    self.currentTab = nil
 
+    -- Matrice 4 colonne x 2 righe: 7 tab + tasto SaveRaid
+    self.matrixButtons = {}
     for i, def in ipairs(self.tabDefs) do
         local tab = CreateFrame("Button", "RLSuiteTab" .. def.key, f, "UIPanelButtonTemplate")
-        tab:SetSize(84, 22)
-        tab:SetPoint("TOPLEFT", f, "TOPLEFT", 16 + (i - 1) * 90, -40)
+        tab:SetSize(90, 22)
         tab:SetText(def.label)
         tab.tabKey = def.key
         tab:SetScript("OnClick", function() self:OnTabClick(def.key) end)
         self.tabs[def.key] = tab
+        table.insert(self.matrixButtons, tab)
+    end
+    local saveBtn = CreateFrame("Button", "RLSuiteSaveRaidBtn", f, "UIPanelButtonTemplate")
+    saveBtn:SetSize(90, 22)
+    saveBtn:SetText("SaveRaid")
+    saveBtn:SetScript("OnClick", function() self:OnSaveRaid() end)
+    self.saveRaidBtn = saveBtn
+    table.insert(self.matrixButtons, saveBtn)
+
+    -- 3 tasti fase sotto la matrice, centrati
+    self.phaseButtons = {}
+    local phases = {
+        { key = "preraid", label = "Pre-raid" },
+        { key = "preboss", label = "Pre-boss" },
+        { key = "infight", label = "In-fight" },
+    }
+    for i, pdata in ipairs(phases) do
+        local btn = CreateFrame("Button", "RLSuitePhaseBtn" .. pdata.key, f, "UIPanelButtonTemplate")
+        btn:SetSize(90, 22)
+        btn:SetText(pdata.label)
+        btn.phaseKey = pdata.key
+        btn:SetScript("OnClick", function()
+            if RLSuite.SetContextPhase then
+                RLSuite:SetContextPhase(pdata.key)
+            end
+        end)
+        self.phaseButtons[pdata.key] = btn
     end
 
     self:CreateMacrobarSubTab()
@@ -99,9 +126,11 @@ function MW:CreateFrame()
 
     self.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     self.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    self.closeBtn:SetScript("OnClick", function() f:Hide() end)
+    self.closeBtn:SetScript("OnClick", function()
+        self:CloseTab()
+        f:Hide()
+    end)
 
-    self.currentTab = nil
     self:ApplyLayout()
 end
 
@@ -112,18 +141,32 @@ function MW:ApplyLayout()
     local w = L.width or 660
     self.frame:SetSize(w, self:BarHeight())
     self.frame:SetScale(L.scale or 1)
-    local font, size = RLSuite.utils:GetUIFont()
-    if self.titleFS then
-        self.titleFS:SetFont(font, size + 2)
-        self.titleFS:SetText("RLSuite v" .. RLSuite.version)
+
+    local bw, bh, gapX, gapY = 90, 22, 8, 4
+    local x0 = math.max(8, (w - (4 * bw + 3 * gapX)) / 2)
+    local topY = -10
+    for i, btn in ipairs(self.matrixButtons or {}) do
+        local col = (i - 1) % 4
+        local row = math.floor((i - 1) / 4)
+        btn:ClearAllPoints()
+        btn:SetSize(bw, bh)
+        btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", x0 + col * (bw + gapX), topY - row * (bh + gapY))
     end
-    RLSuite.utils:SkinFrame(self.frame)
-    if self.currentTab then
-        local pane = self:PaneForTab(self.currentTab)
-        if pane then
-            pane:SetHeight(L.height or 700)
+
+    local pw, pgap = 90, 8
+    local px0 = math.max(8, (w - (3 * pw + 2 * pgap)) / 2)
+    local py = topY - 2 * (bh + gapY) - 8
+    for i, key in ipairs({ "preraid", "preboss", "infight" }) do
+        local btn = self.phaseButtons and self.phaseButtons[key]
+        if btn then
+            btn:ClearAllPoints()
+            btn:SetSize(pw, 22)
+            btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", px0 + (i - 1) * (pw + pgap), py)
         end
     end
+
+    RLSuite.utils:SkinFrame(self.frame)
+    self:UpdatePhaseButtons()
 end
 
 function MW:SkinInner()
@@ -155,46 +198,78 @@ function MW:PaneForTab(key)
     return nil
 end
 
-function MW:Dock(frame)
-    if not frame or not self.frame then return end
-    local w, h = self:PaneSize()
-    frame:SetParent(self.frame)
-    frame:ClearAllPoints()
-    frame:SetPoint("TOPLEFT", self.frame, "BOTTOMLEFT", 0, -2)
-    frame:SetPoint("TOPRIGHT", self.frame, "BOTTOMRIGHT", 0, -2)
-    frame:SetHeight(h)
-    frame:SetScale(1)
-    frame:SetFrameStrata(self.frame:GetFrameStrata())
-    frame:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 2)
-    frame:SetMovable(false)
-    frame:EnableMouse(true)
-    frame:SetScript("OnDragStart", nil)
-    frame:SetScript("OnDragStop", nil)
-    if frame.rlsBgFill then frame.rlsBgFill:Hide() end
-    if not frame.closeBtn then
-        frame.closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-        frame.closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -4)
-    end
-    frame.closeBtn:Show()
-    frame.closeBtn:SetScript("OnClick", function()
-        MW:CloseTab()
-    end)
-    RLSuite.utils:SkinFrame(frame)
-    frame:Show()
+-- Layout key usato per salvare posizione/dimensione di ogni tab.
+function MW:LayoutKeyForTab(key)
+    if key == "group" then return "groupmaking" end
+    if key == "whisplist" then return "whisplist" end
+    if key == "macro" then return "macro" end
+    if key == "raidframe" then return "raidframe" end
+    return key -- ms / loot / config
 end
 
-function MW:HideDocked()
-    local frames = {
-        RLSuite.groupmaking and RLSuite.groupmaking.mainFrame,
-        RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame,
-        RLSuite.msManager and RLSuite.msManager.frame,
-        RLSuite.lootManager and RLSuite.lootManager.frame,
-        RLSuite.config and RLSuite.config.frame,
-        self.tabPanels and self.tabPanels.macro,
-        self.tabPanels and self.tabPanels.raidframe,
+function MW:HideAllWindows()
+    local keys = { "group", "whisplist", "macro", "raidframe", "ms", "loot", "config" }
+    for _, k in ipairs(keys) do
+        local pane = self:PaneForTab(k)
+        if pane then pane:Hide() end
+    end
+end
+
+function MW:RegisterAllWindows()
+    -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
+    local layoutKeys = {
+        group = "groupmaking",
+        whisplist = "whisplist",
+        macro = "macro",
+        raidframe = "raidframe",
+        ms = "ms",
+        loot = "loot",
+        config = "config",
     }
-    for _, fr in ipairs(frames) do
-        if fr then fr:Hide() end
+    for key, lkey in pairs(layoutKeys) do
+        local pane = self:PaneForTab(key)
+        if pane and not pane._rlsWindow then
+            pane._rlsWindow = true
+            RLSuite.utils:MakeDraggable(pane, lkey)
+            -- la X della finestra chiude anche lo stato del tab nella barra
+            if pane.closeBtn then
+                local oldClick = pane.closeBtn:GetScript("OnClick")
+                pane.closeBtn:SetScript("OnClick", function()
+                    pane:Hide()
+                    if MW.currentTab == key then
+                        MW:CloseTab()
+                    end
+                    if oldClick then oldClick() end
+                end)
+            end
+        end
+    end
+
+    -- Grip di resize per Groupmaking, Whisplist, MS e Loot
+    local resizable = {
+        group = { "groupmaking", 420, 380, "groupmaking" },
+        whisplist = { "whisplist", 360, 300, "whisplist" },
+        ms = { "ms", 320, 260, "ms" },
+        loot = { "loot", 440, 300, "loot" },
+    }
+    for key, cfg in pairs(resizable) do
+        local pane = self:PaneForTab(key)
+        if pane then
+            RLSuite.utils:AddResizeGrip(pane, cfg[1], cfg[2], cfg[3], function()
+                if key == "group" and RLSuite.groupmaking then
+                    if RLSuite.groupmaking.LayoutGroupPanels then RLSuite.groupmaking:LayoutGroupPanels() end
+                end
+                if key == "whisplist" and RLSuite.groupmaking then
+                    if RLSuite.groupmaking.UpdateWhisplist then RLSuite.groupmaking:UpdateWhisplist() end
+                end
+                if key == "ms" and RLSuite.msManager then
+                    if RLSuite.msManager.UpdateList then RLSuite.msManager:UpdateList() end
+                end
+                if key == "loot" and RLSuite.lootManager then
+                    if RLSuite.lootManager.UpdateHistory then RLSuite.lootManager:UpdateHistory() end
+                end
+            end)
+        end
     end
 end
 
@@ -203,7 +278,11 @@ function MW:SelectTab(key)
         local def = self.tabDefs and self.tabDefs[key]
         key = def and def.key or "group"
     end
-    self.currentTab = key or "group"
+    if key ~= "group" and key ~= "whisplist" and key ~= "macro"
+        and key ~= "raidframe" and key ~= "ms" and key ~= "loot" and key ~= "config" then
+        key = "group"
+    end
+    self.currentTab = key
     for k, tab in pairs(self.tabs or {}) do
         if k == self.currentTab then
             tab:LockHighlight()
@@ -212,9 +291,30 @@ function MW:SelectTab(key)
         end
     end
 
-    self:HideDocked()
-    self:Dock(self:PaneForTab(self.currentTab))
+    -- Finestre a schede: si aprono come pannelli indipendenti e spostabili.
+    self:HideAllWindows()
+    local pane = self:PaneForTab(key)
+    if pane then
+        -- panes creati come figli della barra (macro/raidframe) tornano a UIParent
+        if pane:GetParent() == self.frame then
+            pane:SetParent(UIParent)
+        end
+        local lkey = self:LayoutKeyForTab(key)
+        local L = RLSuite.utils:WindowLayout(lkey)
+        -- Default: come quando i pannelli erano agganciati sotto la barra
+        -- (larghezza/altezza della tab in Config -> General -> Finestra).
+        local mL = (RLSuiteDB.layout and RLSuiteDB.layout.main) or {}
+        local pw = L.width or mL.width or 660
+        local ph = L.height or mL.height or 700
+        pane:SetSize(pw, ph)
+        RLSuite.utils:ApplySavedPos(pane, lkey)
+        pane:SetFrameStrata("HIGH")
+        pane:Show()
+        self:RefreshTabContents(key)
+    end
+end
 
+function MW:RefreshTabContents(key)
     if key == "group" then
         if RLSuite.groupmaking and RLSuite.groupmaking.UpdateMessagePreview then
             RLSuite.groupmaking:UpdateMessagePreview()
@@ -228,6 +328,7 @@ function MW:SelectTab(key)
         end
     elseif key == "macro" then
         self:RefreshMacroTab()
+        self:OpenMacroEditor(self.macroEditIndex or 1)
     elseif key == "ms" then
         if RLSuite.msManager and RLSuite.msManager.UpdateList then
             RLSuite.msManager:UpdateList()
@@ -235,6 +336,19 @@ function MW:SelectTab(key)
     elseif key == "loot" then
         if RLSuite.lootManager and RLSuite.lootManager.UpdateHistory then
             RLSuite.lootManager:UpdateHistory()
+        end
+    end
+end
+
+function MW:UpdatePhaseButtons()
+    local phase = RLSuite.context or "preraid"
+    for key, btn in pairs(self.phaseButtons or {}) do
+        if btn then
+            if key == phase then
+                btn:LockHighlight()
+            else
+                btn:UnlockHighlight()
+            end
         end
     end
 end
@@ -865,3 +979,86 @@ function MW:CreateRaidFrameSubTab()
     end
 end
 
+
+-- ============================================================
+-- SaveRaid: prompt titolo + salvataggio
+-- ============================================================
+function MW:OnSaveRaid()
+    self:AskRaidTitle(function(title)
+        if not title or title == "" then
+            RLSuite.utils:Print("SaveRaid annullato: nessun titolo inserito.")
+            return
+        end
+        if RLSuite.SaveRaid then
+            RLSuite:SaveRaid(title)
+        end
+    end)
+end
+
+function MW:AskRaidTitle(callback)
+    if self.savePrompt then
+        self.savePrompt:Show()
+        local edit = self.savePrompt.edit
+        edit:SetText("")
+        edit:SetFocus()
+        self.savePrompt._cb = callback
+        return
+    end
+
+    local f = CreateFrame("Frame", "RLSuiteSaveRaidPrompt", UIParent)
+    f:SetSize(340, 110)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("DIALOG")
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 16,
+        insets = {left = 4, right = 4, top = 4, bottom = 4},
+    })
+    RLSuite.utils:SkinFrame(f)
+    f:Hide()
+
+    local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -14)
+    label:SetText("Titolo del SaveRaid:")
+
+    local edit = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+    edit:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -40)
+    edit:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -40)
+    edit:SetHeight(20)
+    edit:SetAutoFocus(false)
+    edit:SetMaxLetters(64)
+    f.edit = edit
+
+    local ok = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    ok:SetSize(90, 22)
+    ok:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
+    ok:SetText("Salva")
+    ok:SetScript("OnClick", function()
+        local cb = f._cb
+        f:Hide()
+        if cb then cb(edit:GetText() or "") end
+    end)
+
+    local cancel = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    cancel:SetSize(90, 22)
+    cancel:SetPoint("RIGHT", ok, "LEFT", -8, 0)
+    cancel:SetText("Annulla")
+    cancel:SetScript("OnClick", function()
+        f:Hide()
+    end)
+
+    edit:SetScript("OnEnterPressed", ok.GetScript(ok, "OnClick"))
+    edit:SetScript("OnEscapePressed", function(s) s:ClearFocus() f:Hide() end)
+    f.edit = edit
+    f._cb = callback
+
+    self.savePrompt = f
+    f:Show()
+    edit:SetFocus()
+end
