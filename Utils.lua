@@ -453,7 +453,7 @@ function Utils:CreateDropdown(parent, name, width, height)
         insets = {left=0, right=0, top=0, bottom=0}
     })
     dd:SetBackdropColor(0.05, 0.05, 0.07, 1)
-    dd.text = dd:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    dd.text = RLSuite.utils:CreateFontString(dd, nil, "OVERLAY", "GameFontNormalSmall")
     dd.text:SetPoint("LEFT", dd, "LEFT", 5, 0)
     dd.text:SetPoint("RIGHT", dd, "RIGHT", -18, 0)
     dd.text:SetJustifyH("LEFT")
@@ -549,7 +549,7 @@ function Utils:ToggleDropdownMenu(dd)
         local btn = CreateFrame("Button", nil, menu)
         btn:SetSize(width - 8, 18)
         btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - (i - 1) * 20)
-        local txt = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local txt = RLSuite.utils:CreateFontString(btn, nil, "OVERLAY", "GameFontNormalSmall")
         txt:SetAllPoints(btn)
         txt:SetJustifyH("LEFT")
         txt:SetText(opt.text)
@@ -792,4 +792,156 @@ function Utils:StartDbmTimer(seconds, label, icon)
         self:Debug("DBM/BigWigs non disponibile: timer \"" .. label .. "\" non avviato.")
     end
     return false
+end
+
+-- ============================================================
+-- Fonts dalla Config: tutta l'UI dell'addon usa font + dimensione
+-- impostati in Config -> General -> Font. Le dimensioni "storiche"
+-- (8/9/10/12/14) sono ora frazioni del fontSize configurato:
+--   tiny 2/3 | hotkey 3/4 | small 5/6 | normal 1 | large 7/6
+-- Con fontSize=12 si ottengono esattamente 8/9/10/12/14.
+-- ============================================================
+local FONT_DEFAULT = "Fonts\\FRIZQT__.TTF"
+local KIND_FRACTION = {
+    tiny = 2 / 3,
+    hotkey = 3 / 4,
+    small = 5 / 6,
+    normal = 1,
+    large = 7 / 6,
+}
+local TEMPLATE_KIND = {
+    GameFontNormalLarge = "large",
+    GameFontNormal = "normal",
+    GameFontNormalSmall = "small",
+    ChatFontNormal = "normal",
+}
+
+function Utils:FontBase()
+    local a = RLSuiteDB and RLSuiteDB.appearance or {}
+    return (a.font or FONT_DEFAULT), (a.fontSize or 12)
+end
+
+function Utils:FontSizeFor(kind)
+    local _, F = self:FontBase()
+    local frac = KIND_FRACTION[kind] or 1
+    local s = math.floor(F * frac + 0.5)
+    if s < 6 then s = 6 end
+    return s
+end
+
+-- Applica il font della Config a un FontString (o EditBox).
+function Utils:ApplyFont(fs, kind, flags)
+    if not fs or not fs.SetFont then return fs end
+    kind = kind or "normal"
+    local font = self:FontBase()
+    local size = self:FontSizeFor(kind)
+    fs.rlsFontKind = kind
+    fs.rlsFontFlags = flags or ""
+    fs:SetFont(font, size, flags or "")
+    return fs
+end
+
+-- Crea un FontString col font della Config, in base al template usato.
+-- Firma: (target, name, layer, template) come il CreateFontString nativo,
+-- ma il primo argomento e' il frame su cui creare.
+function RLSuite.utils:CreateFontString(target, name, layer, template)
+    if not target then return nil end
+    local fs = target.CreateFontString(target, name or nil, layer or "OVERLAY", template or "GameFontNormal")
+    if not fs then return nil end
+    local kind = TEMPLATE_KIND[template] or "normal"
+    return self:ApplyFont(fs, kind)
+end
+
+function Utils:KindForSize(size)
+    local F = self:FontSizeFor("normal")
+    if size == self:FontSizeFor("tiny") then return "tiny" end
+    if size == self:FontSizeFor("hotkey") then return "hotkey" end
+    if size == self:FontSizeFor("small") then return "small" end
+    if size == self:FontSizeFor("normal") then return "normal" end
+    if size == self:FontSizeFor("large") then return "large" end
+    if size and F and F > 0 then
+        return nil -- scala proporzionale gestita sotto
+    end
+    return "normal"
+end
+
+-- Riapplica i font a un intero albero di frame. I FontString creati dal
+-- helper hanno il "kind" registrato e vengono rifontati con precisione;
+-- gli altri (es. label dei bottoni coi template UI) vengono rifontati
+-- scalando proporzionalmente: nuovo = arrotonda(size * F / 12).
+function Utils:ApplyFontsToFrame(root)
+    if not root then return end
+    local F = self:FontSizeFor("normal")
+    local seen = {}
+    local function walk(f)
+        if not f or seen[f] then return end
+        seen[f] = true
+
+        local objType = f.GetObjectType and f:GetObjectType() or nil
+        if (objType == "EditBox" or objType == "ScrollingMessageFrame") and f.SetFont then
+            local curFont, curSize, curFlags = f.GetFont and f:GetFont() or nil
+            local kind = f.rlsFontKind or self:KindForSize(curSize) or "normal"
+            self:ApplyFont(f, kind, f.rlsFontFlags or curFlags or "")
+        end
+
+        if f.GetRegions then
+            for _, reg in ipairs({ f:GetRegions() }) do
+                if reg and reg.SetFont then
+                    if reg.rlsFontKind then
+                        self:ApplyFont(reg, reg.rlsFontKind, reg.rlsFontFlags or "")
+                    else
+                        local curFont, curSize, curFlags = reg.GetFont and reg:GetFont() or nil
+                        if curSize and F and F > 0 and curSize ~= 0 then
+                            local kind = self:KindForSize(curSize) or "normal"
+                            if kind == "normal" and curSize ~= self:FontSizeFor("normal") then
+                                -- dimensione anomala (es. template): scala proporzionale
+                                local newSize = math.floor(curSize * F / 12 + 0.5)
+                                if newSize < 6 then newSize = 6 end
+                                local font = self:FontBase()
+                                reg:SetFont(font, newSize, curFlags or "")
+                                reg.rlsFontKind = "normal"
+                                reg.rlsFontFlags = curFlags or ""
+                            else
+                                self:ApplyFont(reg, kind, reg.rlsFontFlags or curFlags or "")
+                            end
+                        else
+                            self:ApplyFont(reg, "normal", reg.rlsFontFlags or "")
+                        end
+                    end
+                end
+            end
+        end
+
+        if f.GetChildren then
+            for _, child in ipairs({ f:GetChildren() }) do
+                walk(child)
+            end
+        end
+    end
+    walk(root)
+end
+
+function Utils:FontRoots()
+    local roots = {}
+    local function add(fr)
+        if fr then table.insert(roots, fr) end
+    end
+    local u = self
+    for _, fr in ipairs(u:AllWindows()) do add(fr) end
+    for _, fr in ipairs(u:AllTabPanes()) do add(fr) end
+    add(RLSuite.mainWindow and RLSuite.mainWindow.frame)
+    add(RLSuite.macrobar and RLSuite.macrobar.frame)
+    add(RLSuite.macrobar and RLSuite.macrobar.macroHost)
+    add(RLSuite.macrobar and RLSuite.macrobar.keypadFrame)
+    add(RLSuite.raidFrame and RLSuite.raidFrame.frame)
+    add(RLSuite.config and RLSuite.config.left)
+    add(RLSuite.config and RLSuite.config.right)
+    add(RLSuite.mainWindow and RLSuite.mainWindow.savePrompt)
+    return roots
+end
+
+function Utils:ApplyAllFonts()
+    for _, root in ipairs(self:FontRoots()) do
+        self:ApplyFontsToFrame(root)
+    end
 end

@@ -420,7 +420,7 @@ function MW:CreateMacrobarSubTab()
     self.macroEditIndex = nil
     self.macroEditIcon = nil
 
-    local phaseLabel = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local phaseLabel = RLSuite.utils:CreateFontString(sc, nil, "OVERLAY", "GameFontNormal")
     phaseLabel:SetPoint("TOPLEFT", sc, "TOPLEFT", 10, -10)
     phaseLabel:SetText("Fase:")
 
@@ -451,7 +451,7 @@ function MW:CreateMacrobarSubTab()
         end
     end)
 
-    local hudLabel = sc:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local hudLabel = RLSuite.utils:CreateFontString(sc, nil, "OVERLAY", "GameFontNormalSmall")
     hudLabel:SetPoint("TOPLEFT", phaseLabel, "BOTTOMLEFT", 0, -12)
     hudLabel:SetText("Anteprima HUD (clic sinistro = editor):")
 
@@ -473,9 +473,9 @@ function MW:CreateMacrobarSubTab()
         btn:SetScript("OnClick", function()
             MW:OpenMacroEditor(i)
         end)
-        local num = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local num = RLSuite.utils:CreateFontString(btn, nil, "OVERLAY", "GameFontNormalSmall")
         num:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 2, 2)
-        num:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
+        RLSuite.utils:ApplyFont(num, "tiny", "OUTLINE")
         num:SetText(i)
         self.macroPreviewBtns[i] = btn
     end
@@ -494,7 +494,7 @@ function MW:CreateMacrobarSubTab()
     RLSuite.utils:SkinBox(list)
     self.macroListFrame = list
 
-    local listTitle = list:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local listTitle = RLSuite.utils:CreateFontString(list, nil, "OVERLAY", "GameFontNormal")
     listTitle:SetPoint("TOPLEFT", list, "TOPLEFT", 8, -8)
     listTitle:SetText("Tutte le macro")
 
@@ -504,12 +504,12 @@ function MW:CreateMacrobarSubTab()
         row:SetHeight(20)
         row:SetPoint("TOPLEFT", list, "TOPLEFT", 6, -26 - (i - 1) * 22)
         row:SetPoint("RIGHT", list, "RIGHT", -6, 0)
-        local num = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local num = RLSuite.utils:CreateFontString(row, nil, "OVERLAY", "GameFontNormalSmall")
         num:SetPoint("LEFT", row, "LEFT", 2, 0)
         num:SetWidth(16)
         num:SetJustifyH("LEFT")
         num:SetText(tostring(i))
-        local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local fs = RLSuite.utils:CreateFontString(row, nil, "OVERLAY", "GameFontNormalSmall")
         fs:SetPoint("LEFT", num, "RIGHT", 4, 0)
         fs:SetPoint("RIGHT", row, "RIGHT", -2, 0)
         fs:SetJustifyH("LEFT")
@@ -522,12 +522,12 @@ function MW:CreateMacrobarSubTab()
         self.macroListRows[i] = row
     end
 
-    local slotFS = editor:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local slotFS = RLSuite.utils:CreateFontString(editor, nil, "OVERLAY", "GameFontNormal")
     slotFS:SetPoint("TOPLEFT", editor, "TOPLEFT", 12, -10)
     slotFS:SetText("Macro")
     self.macroSlotFS = slotFS
 
-    local nameLabel = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local nameLabel = RLSuite.utils:CreateFontString(editor, nil, "OVERLAY", "GameFontNormalSmall")
     nameLabel:SetPoint("TOPLEFT", slotFS, "BOTTOMLEFT", 0, -10)
     nameLabel:SetText("Nome:")
 
@@ -555,7 +555,7 @@ function MW:CreateMacrobarSubTab()
     end)
     self.macroIconBtn = iconBtn
 
-    local iconHint = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local iconHint = RLSuite.utils:CreateFontString(editor, nil, "OVERLAY", "GameFontNormalSmall")
     iconHint:SetPoint("LEFT", iconBtn, "RIGHT", 8, 0)
     iconHint:SetText("Clic = scegli icona")
 
@@ -575,7 +575,7 @@ function MW:CreateMacrobarSubTab()
     local body = CreateFrame("EditBox", "RLSuiteMacroBodyEdit", bodyFrame)
     body:SetMultiLine(true)
     body:SetAutoFocus(false)
-    body:SetFontObject(ChatFontNormal)
+    RLSuite.utils:ApplyFont(body, "normal")
     body:SetTextInsets(6, 6, 6, 6)
     body:SetMaxLetters(1024)
     body:SetPoint("TOPLEFT", bodyFrame, "TOPLEFT", 6, -6)
@@ -647,7 +647,7 @@ function MW:CreateMacroIconPicker(parent)
     picker:EnableMouse(true)
     self.macroIconPicker = picker
 
-    local title = picker:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local title = RLSuite.utils:CreateFontString(picker, nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOPLEFT", picker, "TOPLEFT", 10, -8)
     title:SetText("Icona macro")
 
@@ -947,7 +947,7 @@ function MW:CreateRaidFrameSubTab()
     self.tabPanels = self.tabPanels or {}
     self.tabPanels.raidframe = sc
 
-    local rfLabel = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local rfLabel = RLSuite.utils:CreateFontString(sc, nil, "OVERLAY", "GameFontNormal")
     rfLabel:SetPoint("TOPLEFT", sc, "TOPLEFT", 10, -10)
     rfLabel:SetText("Raid Frame Appearance:")
 
@@ -977,7 +977,7 @@ function MW:CreateRaidFrameSubTab()
     alert:SetPoint("LEFT", example, "LEFT")
     alert:SetTexture("Interface\Icons\INV_Alchemy_EndlessFlask_01")
 
-    local name = example:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local name = RLSuite.utils:CreateFontString(example, nil, "OVERLAY", "GameFontNormalSmall")
     name:SetPoint("LEFT", alert, "RIGHT", 5, 0)
     name:SetText("PlayerName")
     name:SetTextColor(1, 0.8, 0.2)
@@ -990,7 +990,7 @@ function MW:CreateRaidFrameSubTab()
     hpBar:SetMinMaxValues(0, 100)
     hpBar:SetValue(75)
 
-    local hpText = hpBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local hpText = RLSuite.utils:CreateFontString(hpBar, nil, "OVERLAY", "GameFontNormalSmall")
     hpText:SetPoint("CENTER", hpBar, "CENTER")
     hpText:SetText("75%")
 
@@ -1007,14 +1007,14 @@ function MW:CreateRaidFrameSubTab()
     RLSuite.utils:SkinBox(alertBox)
     self.rfAlertBox = alertBox
 
-    local alertLabel = alertBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local alertLabel = RLSuite.utils:CreateFontString(alertBox, nil, "OVERLAY", "GameFontNormal")
     alertLabel:SetPoint("TOPLEFT", alertBox, "TOPLEFT", 10, -10)
     alertLabel:SetText("Alert Messages")
     alertLabel:SetTextColor(1, 0.82, 0)
 
     local alertTypes = {"flask", "food", "buff"}
     for i, atype in ipairs(alertTypes) do
-        local aLabel = alertBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local aLabel = RLSuite.utils:CreateFontString(alertBox, nil, "OVERLAY", "GameFontNormalSmall")
         aLabel:SetPoint("TOPLEFT", alertBox, "TOPLEFT", 10, -32 - (i-1)*30)
         aLabel:SetWidth(50)
         aLabel:SetText(string.upper(atype) .. ":")
@@ -1077,7 +1077,7 @@ function MW:AskRaidTitle(callback)
     RLSuite.utils:SkinFrame(f)
     f:Hide()
 
-    local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local label = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -14)
     label:SetText("Titolo del SaveRaid:")
 
@@ -1113,6 +1113,7 @@ function MW:AskRaidTitle(callback)
     f._cb = callback
 
     self.savePrompt = f
+    RLSuite.utils:ApplyFontsToFrame(f)
     f:Show()
     edit:SetFocus()
 end

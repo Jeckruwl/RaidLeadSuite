@@ -41,22 +41,22 @@ function LM:CreateFrame()
     self.frame = f
     RLSuite.utils:SkinFrame(f)
 
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local title = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
     title:SetText("Loot Manager")
     self.titleFS = title
 
-    self.preMsgText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.preMsgText = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormalSmall")
     self.preMsgText:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -32)
     self.preMsgText:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -32)
     self.preMsgText:SetJustifyH("LEFT")
     self.preMsgText:SetText("")
 
-    local histLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local histLabel = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormal")
     histLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -50)
     histLabel:SetText("Loot History")
 
-    local filterFS = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local filterFS = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormalSmall")
     filterFS:SetPoint("TOPRIGHT", f, "TOPRIGHT", -152, -54)
     filterFS:SetText("Rarity threshold")
 
@@ -117,7 +117,7 @@ function LM:CreateFrame()
     self.selectedItemIcon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
     self.selectedItemIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-    self.selectedItemText = self.selBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    self.selectedItemText = RLSuite.utils:CreateFontString(self.selBox, nil, "OVERLAY", "GameFontNormal")
     self.selectedItemText:SetPoint("LEFT", self.selectedItemIcon, "RIGHT", 8, 0)
     self.selectedItemText:SetPoint("RIGHT", self.selBox, "RIGHT", -8, 0)
     self.selectedItemText:SetJustifyH("LEFT")
@@ -187,7 +187,7 @@ end
 function LM:PaintHeader(header)
     self.histHeads = {}
     local function add(key, text)
-        local fs = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local fs = RLSuite.utils:CreateFontString(header, nil, "OVERLAY", "GameFontNormalSmall")
         fs:SetText(text)
         fs:SetTextColor(1, 0.82, 0)
         self.histHeads[key] = fs
@@ -431,7 +431,7 @@ function LM:UpdateHistory()
             row.entry = entry
             RLSuite.utils:SkinRow(row, self.selectedItem == entry)
 
-            local num = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local num = RLSuite.utils:CreateFontString(row, nil, "OVERLAY", "GameFontNormalSmall")
             num:SetPoint("LEFT", row, "LEFT", 6, 0)
             num:SetWidth(28)
             num:SetJustifyH("LEFT")
@@ -446,7 +446,7 @@ function LM:UpdateHistory()
             local m = self:HistMetrics(w)
             self:LayoutHeader()
 
-            local name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local name = RLSuite.utils:CreateFontString(row, nil, "OVERLAY", "GameFontNormalSmall")
             name:SetPoint("LEFT", row, "LEFT", m.itemX, 0)
             name:SetWidth(m.itemW)
             name:SetJustifyH("LEFT")
@@ -457,25 +457,25 @@ function LM:UpdateHistory()
                 name:SetTextColor(r or 1, g or 1, b or 1)
             end
 
-            local boss = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local boss = RLSuite.utils:CreateFontString(row, nil, "OVERLAY", "GameFontNormalSmall")
             boss:SetPoint("LEFT", row, "LEFT", m.bossX, 0)
             boss:SetWidth(m.bossW)
             boss:SetJustifyH("LEFT")
             boss:SetText(entry.boss or "Unknown")
 
-            local itype = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local itype = RLSuite.utils:CreateFontString(row, nil, "OVERLAY", "GameFontNormalSmall")
             itype:SetPoint("LEFT", row, "LEFT", m.typeX, 0)
             itype:SetWidth(m.typeW)
             itype:SetJustifyH("LEFT")
             itype:SetText(entry.itemType or "BOP")
 
-            local remain = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local remain = RLSuite.utils:CreateFontString(row, nil, "OVERLAY", "GameFontNormalSmall")
             remain:SetPoint("RIGHT", row, "RIGHT", -m.padR, 0)
             remain:SetWidth(m.timeW)
             remain:SetJustifyH("RIGHT")
             remain:SetText(self:TradeRemaining(entry))
 
-            local assigned = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local assigned = RLSuite.utils:CreateFontString(row, nil, "OVERLAY", "GameFontNormalSmall")
             assigned:SetPoint("LEFT", row, "LEFT", m.assignedX, 0)
             assigned:SetWidth(m.assignedW)
             assigned:SetJustifyH("LEFT")
@@ -713,7 +713,7 @@ function LM:ShowTradeWindow(item)
     icon:SetPoint("TOP", f, "TOP", 0, -15)
     icon:SetTexture(item.itemTexture or "Interface\Icons\INV_Misc_QuestionMark")
 
-    local text = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local text = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormal")
     text:SetPoint("TOP", icon, "BOTTOM", 0, -5)
     text:SetText("Click to pick up item")
 
@@ -732,4 +732,5 @@ function LM:ShowTradeWindow(item)
     f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
     f.closeBtn:SetScript("OnClick", function() f:Hide() end)
+    RLSuite.utils:ApplyFontsToFrame(f)
 end

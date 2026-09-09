@@ -144,7 +144,7 @@ function MB:CreateFrame()
     self.macroHost = host
     self:AttachShiftDrag(host)
 
-    self.phaseText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.phaseText = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormalSmall")
     self.phaseText:SetPoint("BOTTOM", host, "TOP", 0, 2)
     self.phaseText:SetText("MacroBar")
 end
@@ -197,14 +197,14 @@ function MB:CreateButtons()
         btn.index = i
         self:WireButtonClicks(btn, i)
 
-        btn.hotkey = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        btn.hotkey = RLSuite.utils:CreateFontString(btn, nil, "OVERLAY", "GameFontNormalSmall")
         btn.hotkey:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -2, -2)
-        btn.hotkey:SetFont("Fonts\FRIZQT__.TTF", 9, "OUTLINE")
+        RLSuite.utils:ApplyFont(btn.hotkey, "hotkey", "OUTLINE")
         btn.hotkey:SetText("")
 
-        btn.numText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        btn.numText = RLSuite.utils:CreateFontString(btn, nil, "OVERLAY", "GameFontNormalSmall")
         btn.numText:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 2, 2)
-        btn.numText:SetFont("Fonts\FRIZQT__.TTF", 8, "OUTLINE")
+        RLSuite.utils:ApplyFont(btn.numText, "tiny", "OUTLINE")
         btn.numText:SetText(i)
 
         RLSuite.utils:SkinMacroButton(btn)
@@ -647,20 +647,20 @@ function MB:OpenMacroEdit(index)
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
 
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local title = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -10)
     title:SetText("Modifica Macro " .. index)
 
-    local phaseLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local phaseLabel = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormal")
     phaseLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 15, -40)
     phaseLabel:SetText("Fase:")
 
     local phase = RLSuite.context or "preraid"
-    local phaseText = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local phaseText = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormal")
     phaseText:SetPoint("LEFT", phaseLabel, "RIGHT", 5, 0)
     phaseText:SetText(phase)
 
-    local macroLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local macroLabel = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormal")
     macroLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 15, -65)
     macroLabel:SetText("Macro (max 10 righe):")
 
@@ -668,7 +668,7 @@ function MB:OpenMacroEdit(index)
     edit:SetMultiLine(true)
     edit:SetSize(270, 100)
     edit:SetPoint("TOPLEFT", macroLabel, "BOTTOMLEFT", 0, -5)
-    edit:SetFontObject("ChatFontNormal")
+    RLSuite.utils:ApplyFont(edit, "normal")
     edit:SetBackdrop({
         bgFile = "Interface\Tooltips\UI-Tooltip-Background",
         tile = true, tileSize = 16,
@@ -706,6 +706,7 @@ function MB:OpenMacroEdit(index)
     closeBtn:SetScript("OnClick", function() f:Hide() end)
 
     RLSuite.utils:SkinFrame(f)
+    RLSuite.utils:ApplyFontsToFrame(f)
     self.editFrame = f
     f:Show()
 end
@@ -855,9 +856,10 @@ function MB:OpenKeybindUI(phase)
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     RLSuite.utils:SkinFrame(f)
+    RLSuite.utils:ApplyFontsToFrame(f)
     self.bindFrame = f
 
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local title = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -10)
     title:SetText("Macrobar Keybinds")
     self.bindTitle = title
@@ -869,7 +871,7 @@ function MB:OpenKeybindUI(phase)
         f:Hide()
     end)
 
-    local hint = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local hint = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormalSmall")
     hint:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -28)
     hint:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -28)
     hint:SetJustifyH("LEFT")
@@ -883,10 +885,10 @@ function MB:OpenKeybindUI(phase)
         row:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -48 - (i - 1) * 26)
         row:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -48 - (i - 1) * 26)
         RLSuite.utils:SkinRow(row, false)
-        local left = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local left = RLSuite.utils:CreateFontString(row, nil, "OVERLAY", "GameFontNormalSmall")
         left:SetPoint("LEFT", row, "LEFT", 8, 0)
         left:SetText("Macro " .. i)
-        local right = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local right = RLSuite.utils:CreateFontString(row, nil, "OVERLAY", "GameFontNormalSmall")
         right:SetPoint("RIGHT", row, "RIGHT", -8, 0)
         right:SetText("-")
         row.right = right

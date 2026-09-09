@@ -38,7 +38,7 @@ function CFG:CreateFrame()
     self.frame = f
     RLSuite.utils:SkinFrame(f)
 
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local title = RLSuite.utils:CreateFontString(f, nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -12)
     title:SetText("Config")
     self.titleFS = title
@@ -255,7 +255,7 @@ end
 -- ============================================================
 
 function CFG:Header(text)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local fs = RLSuite.utils:CreateFontString(self.content, nil, "OVERLAY", "GameFontNormal")
     fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, self:NextY(22))
     fs:SetText(text)
     return fs
@@ -263,7 +263,7 @@ end
 
 function CFG:Note(text)
     local y = self:NextY(18)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = RLSuite.utils:CreateFontString(self.content, nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
     fs:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y)
     fs:SetJustifyH("LEFT")
@@ -286,7 +286,7 @@ end
 
 function CFG:AddSlider(label, minV, maxV, step, getValue, setValue, sliderWidth)
     local y = self:NextY(42)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = RLSuite.utils:CreateFontString(self.content, nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
     fs:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -64, y)
     fs:SetJustifyH("LEFT")
@@ -371,7 +371,7 @@ function CFG:AddCheck(label, getValue, setValue)
     local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
     cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", 4, y)
     cb:SetChecked(getValue() and 1 or nil)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = RLSuite.utils:CreateFontString(self.content, nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("LEFT", cb, "RIGHT", 4, 0)
     fs:SetText(label)
     cb:SetScript("OnClick", function(s)
@@ -394,7 +394,7 @@ function CFG:AddCheckGrid(items)
         local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
         cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", 4 + col * 210, y)
         cb:SetChecked(it.get() and 1 or nil)
-        local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local fs = RLSuite.utils:CreateFontString(self.content, nil, "OVERLAY", "GameFontNormalSmall")
         fs:SetPoint("LEFT", cb, "RIGHT", 4, 0)
         fs:SetText(it.label)
         cb:SetScript("OnClick", function(s)
@@ -422,7 +422,7 @@ function CFG:AddTextArea(label, height, getValue, setValue)
     local edit = CreateFrame("EditBox", "RLSuiteCfgArea" .. self.widgetId, box)
     edit:SetMultiLine(true)
     edit:SetAutoFocus(false)
-    edit:SetFontObject(ChatFontNormal)
+    RLSuite.utils:ApplyFont(edit, "normal")
     edit:SetTextInsets(4, 4, 4, 4)
     edit:SetPoint("TOPLEFT", box, "TOPLEFT", 6, -6)
     edit:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -6, 6)
@@ -443,7 +443,7 @@ end
 
 function CFG:AddColor(label, colorTbl)
     local y = self:NextY(28)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = RLSuite.utils:CreateFontString(self.content, nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
     fs:SetText(label)
 
@@ -482,7 +482,7 @@ end
 
 function CFG:AddDropdown(label, options, getValue, setValue)
     local y = self:NextY(42)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = RLSuite.utils:CreateFontString(self.content, nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
     fs:SetText(label)
     fs:SetTextColor(1, 0.82, 0)
@@ -522,7 +522,7 @@ function CFG:AddInline(items)
                 cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", 4, y + 2)
             end
             cb:SetChecked(it.get() and 1 or nil)
-            local lfs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local lfs = RLSuite.utils:CreateFontString(self.content, nil, "OVERLAY", "GameFontNormalSmall")
             lfs:SetPoint("LEFT", cb, "RIGHT", 2, 0)
             lfs:SetText(it.label)
             cb:SetScript("OnClick", function(s)
@@ -572,7 +572,7 @@ function CFG:CellCheck(cell, label, getValue, setValue)
     local cb = CreateFrame("CheckButton", nil, cell, "UICheckButtonTemplate")
     cb:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, 2)
     cb:SetChecked(getValue() and 1 or nil)
-    local fs = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = RLSuite.utils:CreateFontString(cell, nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("LEFT", cb, "RIGHT", 2, 0)
     fs:SetPoint("RIGHT", cell, "RIGHT", 0, 0)
     fs:SetJustifyH("LEFT")
@@ -624,7 +624,7 @@ end
 
 function CFG:CellDropdown(cell, label, options, getValue, setValue)
     if not cell then return end
-    local fs = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = RLSuite.utils:CreateFontString(cell, nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("TOPLEFT", cell, "TOPLEFT", 2, -2)
     fs:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, -2)
     fs:SetJustifyH("LEFT")
@@ -645,7 +645,7 @@ end
 
 function CFG:CellSlider(cell, label, minV, maxV, step, getValue, setValue)
     if not cell then return end
-    local fs = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = RLSuite.utils:CreateFontString(cell, nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("TOPLEFT", cell, "TOPLEFT", 2, -2)
     fs:SetPoint("TOPRIGHT", cell, "TOPRIGHT", -42, -2)
     fs:SetJustifyH("LEFT")
@@ -717,7 +717,7 @@ function CFG:PlaceCheck(x, y, label, getValue, setValue)
     local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
     cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y)
     cb:SetChecked(getValue() and 1 or nil)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = RLSuite.utils:CreateFontString(self.content, nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("LEFT", cb, "RIGHT", 2, 0)
     fs:SetText(label)
     cb:SetScript("OnClick", function(s)
@@ -728,7 +728,7 @@ function CFG:PlaceCheck(x, y, label, getValue, setValue)
 end
 
 function CFG:PlaceCompactSlider(x, y, width, label, minV, maxV, step, getValue, setValue)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = RLSuite.utils:CreateFontString(self.content, nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y)
     fs:SetText(label)
     fs:SetTextColor(1, 0.82, 0)
@@ -791,7 +791,7 @@ function CFG:PlaceCompactSlider(x, y, width, label, minV, maxV, step, getValue, 
 end
 
 function CFG:PlaceDropdown(x, y, width, label, options, getValue, setValue)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = RLSuite.utils:CreateFontString(self.content, nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y)
     fs:SetText(label)
     fs:SetTextColor(1, 0.82, 0)
@@ -806,7 +806,7 @@ function CFG:PlaceDropdown(x, y, width, label, options, getValue, setValue)
 end
 
 function CFG:PlaceTextArea(x, y, width, height, label, getValue, setValue)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local fs = RLSuite.utils:CreateFontString(self.content, nil, "OVERLAY", "GameFontNormal")
     fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y)
     fs:SetText(label)
     fs:SetTextColor(1, 0.82, 0)
@@ -829,7 +829,7 @@ function CFG:PlaceTextArea(x, y, width, height, label, getValue, setValue)
     local edit = CreateFrame("EditBox", "RLSuiteCfgArea" .. self.widgetId, box)
     edit:SetMultiLine(true)
     edit:SetAutoFocus(false)
-    edit:SetFontObject(ChatFontNormal)
+    RLSuite.utils:ApplyFont(edit, "normal")
     edit:SetTextInsets(4, 4, 4, 4)
     edit:SetPoint("TOPLEFT", box, "TOPLEFT", 4, -4)
     edit:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -4, 4)
@@ -888,6 +888,7 @@ end
 function CFG:PanelGeneralFont()
     local a = self:EnsureAppearance()
     self:Header("Font")
+    self:Note("Applicato a tutta l'interfaccia dell'addon: titoli, etichette, liste, HUD e menu. Le dimensioni sono frazioni della grandezza impostata qui.")
     self:AddDropdown("Font:", {
         { text = "Friz Quadrata", value = "Fonts\\FRIZQT__.TTF" },
         { text = "Arial Narrow", value = "Fonts\\ARIALN.TTF" },
@@ -940,7 +941,7 @@ function CFG:PanelMain()
     local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
     cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, self:NextY(24))
     cb:SetChecked(RLSuiteDB.anchorMode and 1 or nil)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fs = RLSuite.utils:CreateFontString(self.content, nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("LEFT", cb, "RIGHT", 2, 0)
     fs:SetText("Toggle Anchors")
     fs:SetTextColor(1, 0.82, 0)
@@ -1120,7 +1121,7 @@ function CFG:PanelSavedRaids()
         row:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y)
         RLSuite.utils:SkinRow(row, false)
 
-        local title = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local title = RLSuite.utils:CreateFontString(row, nil, "OVERLAY", "GameFontNormalSmall")
         title:SetPoint("LEFT", row, "LEFT", 8, 0)
         title:SetPoint("RIGHT", row, "RIGHT", -150, 0)
         title:SetJustifyH("LEFT")
@@ -1191,10 +1192,10 @@ function CFG:ApplyAll()
         scale(mw.tabPanels.macro, "macro")
         scale(mw.tabPanels.raidframe, "raidframe")
     end
-    local font, size = RLSuite.utils:GetUIFont()
-    if self.titleFS then self.titleFS:SetFont(font, size + 2) end
-    if RLSuite.mainWindow and RLSuite.mainWindow.frame then
-        -- title is first fontstring-ish; skip if missing
+    if self.titleFS then RLSuite.utils:ApplyFont(self.titleFS, "large") end
+    -- font/dimensione della Config su tutta l'interfaccia
+    if RLSuite.utils and RLSuite.utils.ApplyAllFonts then
+        RLSuite.utils:ApplyAllFonts()
     end
 end
 

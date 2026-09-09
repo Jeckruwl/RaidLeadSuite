@@ -66,7 +66,7 @@ Se lasci il nome `RaidLeadSuite` (clone GitHub senza rinomina), è comunque supp
 - **Raid Frame** — HP/mana, alert flask/food/buff, cooldown raid via combat log
 - **MS Manager** — legge `ms <spec>` in raid chat e genera il pre-messaggio loot
 - **Loot Manager** — history drop, roll, tie/reroll
-- **Config** — tab stile ElvUI (lista a sinistra, pannello + sottotab a destra): aspetto, bordi, font, dimensioni, ancoraggi e Saved Raids. Non cambia le funzionalità (es. testi macro restano nella tab Macrobar)
+- **Config** — tab stile ElvUI (lista a sinistra, pannello + sottotab a destra): aspetto, bordi, font, dimensioni, ancoraggi e Saved Raids. Font e grandezza impostati in *General → Font* vengono applicati a tutta l'interfaccia dell'addon (le dimensioni interne sono frazioni della grandezza scelta). Non cambia le funzionalità (es. testi macro restano nella tab Macrobar)
 
 ## Requisiti
 
