@@ -453,30 +453,55 @@ function GM:LayoutClassBar()
     local COLS = 3
     local ICON_COLS = 3
     local GAP = 2
-    local ROW_GAP = 4
-    local NAME_H = 14
+    local ROW_GAP = 0
+    local NAME_H = 12
     local iconGap = 1
     local colW = math.floor((w - GAP * (COLS - 1)) / COLS)
     if colW < 40 then colW = 40 end
 
-    local maxSpecs = 1
+    local maxInRow = 3
     for _, cell in ipairs(self.specCells) do
-        if #cell.buttons > maxSpecs then maxSpecs = #cell.buttons end
+        if #cell.buttons > 0 and #cell.buttons < maxInRow then
+            maxInRow = #cell.buttons
+        end
     end
-    local perRow = math.min(ICON_COLS, maxSpecs)
-    local iconSize = math.floor((colW - 2 - (perRow - 1) * iconGap) / perRow)
+    if maxInRow < 1 then maxInRow = 1 end
+    local iconSize = math.floor((colW - 2 - (maxInRow - 1) * iconGap) / maxInRow)
     if iconSize > 36 then iconSize = 36 end
     if iconSize < 24 then iconSize = 24 end
-    local iconRows = math.ceil(maxSpecs / ICON_COLS)
-    local cellH = NAME_H + iconRows * iconSize + (iconRows - 1) * iconGap + 4
 
+    local function cellHeight(n)
+        local n = n or 1
+        if n < 1 then n = 1 end
+        local ir = math.ceil(n / ICON_COLS)
+        return NAME_H + ir * iconSize + (ir - 1) * iconGap
+    end
+
+    local rows = math.ceil(#self.specCells / COLS)
+    local rowH = {}
+    for r = 1, rows do
+        local h = 0
+        for c = 1, COLS do
+            local cell = self.specCells[(r - 1) * COLS + c]
+            if cell then
+                local ch = cellHeight(#cell.buttons)
+                if ch > h then h = ch end
+            end
+        end
+        rowH[r] = h
+    end
+
+    local y = 0
     for i, cell in ipairs(self.specCells) do
         local col = (i - 1) % COLS
         local row = math.floor((i - 1) / COLS)
+        if col == 0 and row > 0 then
+            y = y - (rowH[row] + ROW_GAP)
+        end
         local x = col * (colW + GAP)
-        local y = -row * (cellH + ROW_GAP)
+        local ch = rowH[row + 1]
         cell.frame:ClearAllPoints()
-        cell.frame:SetSize(colW, cellH)
+        cell.frame:SetSize(colW, ch)
         cell.frame:SetPoint("TOPLEFT", self.classBar, "TOPLEFT", x, y)
         for j, btn in ipairs(cell.buttons) do
             local ic = (j - 1) % ICON_COLS
@@ -486,8 +511,12 @@ function GM:LayoutClassBar()
             btn:SetPoint("TOPLEFT", cell.frame, "TOPLEFT", ic * (iconSize + iconGap), -(NAME_H + ir * (iconSize + iconGap)))
         end
     end
-    local rows = math.ceil(#self.specCells / COLS)
-    self._specBarHeight = rows * (cellH + ROW_GAP) - ROW_GAP
+    local total = 0
+    for r = 1, rows do
+        total = total + rowH[r]
+        if r < rows then total = total + ROW_GAP end
+    end
+    self._specBarHeight = total
 end
 
 function GM:OnClassBarClick(class, role, spec)
