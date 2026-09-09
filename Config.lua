@@ -108,9 +108,7 @@ function CFG:SubtabsFor(key)
             { key = "window", label = "Finestra" },
         }
     elseif key == "macrobar" then
-        return {
-            { key = "layout", label = "Barra" },
-        }
+        return {}
     elseif key == "raidframe" then
         return {
             { key = "layout", label = "Layout" },
@@ -118,6 +116,19 @@ function CFG:SubtabsFor(key)
         }
     end
     return { { key = "layout", label = "Layout" } }
+end
+
+function CFG:LayoutPanelForSubtabs(showBar)
+    if not self.panel then return end
+    self.panel:ClearAllPoints()
+    if showBar then
+        self.subTabBar:Show()
+        self.panel:SetPoint("TOPLEFT", self.subTabBar, "BOTTOMLEFT", 0, -6)
+    else
+        self.subTabBar:Hide()
+        self.panel:SetPoint("TOPLEFT", self.right, "TOPLEFT", 8, -8)
+    end
+    self.panel:SetPoint("BOTTOMRIGHT", self.right, "BOTTOMRIGHT", -8, 8)
 end
 
 function CFG:BuildSubtabs(subs)
@@ -128,6 +139,9 @@ function CFG:BuildSubtabs(subs)
         end
     end
     self.subTabBtns = {}
+    local show = subs and #subs > 1
+    self:LayoutPanelForSubtabs(show)
+    if not show then return end
     for i, s in ipairs(subs) do
         local btn = CreateFrame("Button", nil, self.subTabBar, "UIPanelButtonTemplate")
         btn:SetSize(90, 20)
@@ -148,14 +162,49 @@ function CFG:SelectSubtab(key)
 end
 
 function CFG:WipePanel()
+    if self.scroll then
+        self.scroll:Hide()
+        self.scroll:SetParent(nil)
+    end
     if self.content then
         self.content:Hide()
         self.content:SetParent(nil)
     end
-    self.content = CreateFrame("Frame", nil, self.panel)
-    self.content:SetAllPoints(self.panel)
+    self.widgetId = (self.widgetId or 0) + 1
+    local scroll = CreateFrame("ScrollFrame", "RLSuiteCfgScroll" .. self.widgetId, self.panel)
+    scroll:SetAllPoints(self.panel)
+    scroll:EnableMouse(true)
+    scroll:EnableMouseWheel(true)
+    local content = CreateFrame("Frame", "RLSuiteCfgContent" .. self.widgetId, scroll)
+    content:SetWidth(400)
+    content:SetHeight(400)
+    scroll:SetScrollChild(content)
+    local function fit()
+        local w = scroll:GetWidth() or 0
+        if w < 80 then w = 80 end
+        content:SetWidth(w)
+        local need = math.abs(self.y or 0) + 24
+        local vis = scroll:GetHeight() or 0
+        if need < vis then need = vis end
+        if need < 80 then need = 80 end
+        content:SetHeight(need)
+    end
+    scroll:SetScript("OnSizeChanged", function() fit() end)
+    scroll:SetScript("OnMouseWheel", function(s, delta)
+        local max = s:GetVerticalScrollRange() or 0
+        local nxt = (s:GetVerticalScroll() or 0) - delta * 28
+        if nxt < 0 then nxt = 0 end
+        if nxt > max then nxt = max end
+        s:SetVerticalScroll(nxt)
+    end)
+    self._fitPanel = fit
+    self.scroll = scroll
+    self.content = content
     self.y = -4
-    self.widgetId = self.widgetId or 0
+end
+
+function CFG:FinishPanel()
+    if self._fitPanel then self._fitPanel() end
 end
 
 function CFG:NextY(h)
@@ -188,6 +237,7 @@ function CFG:RebuildPanel()
     elseif cat == "loot" then
         self:PanelScale("loot", "Loot Manager")
     end
+    self:FinishPanel()
 end
 
 -- ============================================================
@@ -202,9 +252,10 @@ function CFG:Header(text)
 end
 
 function CFG:Note(text)
+    local y = self:NextY(18)
     local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, self:NextY(18))
-    fs:SetWidth(420)
+    fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
+    fs:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y)
     fs:SetJustifyH("LEFT")
     fs:SetText(text)
     return fs
@@ -223,28 +274,62 @@ function CFG:SnapSlider(val, minV, maxV, step)
     return tonumber(string.format("%.2f", val))
 end
 
-function CFG:AddSlider(label, minV, maxV, step, getValue, setValue, sliderWidth)
-    local y = self:NextY(36)
+function CFG:AddSliderPair(a, b)
+    local y = self:NextY(46)
+    self:AddSlider(a[1], a[2], a[3], a[4], a[5], a[6], nil, "left", y)
+    if b then
+        self:AddSlider(b[1], b[2], b[3], b[4], b[5], b[6], nil, "right", y)
+    end
+end
+
+function CFG:AddSlider(label, minV, maxV, step, getValue, setValue, sliderWidth, col, y)
+    col = col or "full"
+    if not y then
+        y = self:NextY(46)
+    end
     local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
+    fs:SetJustifyH("LEFT")
     fs:SetText(label)
+    fs:SetTextColor(1, 0.82, 0)
 
     self.widgetId = self.widgetId + 1
-    local sl = CreateFrame("Slider", "RLSuiteCfgSlider" .. self.widgetId, self.content, "OptionsSliderTemplate")
-    sl:SetSize(sliderWidth or 200, 16)
-    sl:SetPoint("LEFT", fs, "LEFT", 150, 0)
-    sl:SetMinMaxValues(minV, maxV)
-    sl:SetValueStep(step)
-    getglobal(sl:GetName() .. "Low"):SetText(tostring(minV))
-    getglobal(sl:GetName() .. "High"):SetText(tostring(maxV))
-
     local edit = CreateFrame("EditBox", "RLSuiteCfgSliderEdit" .. self.widgetId, self.content, "InputBoxTemplate")
-    edit:SetSize(48, 18)
-    edit:SetPoint("LEFT", sl, "RIGHT", 12, 0)
+    edit:SetSize(52, 18)
     edit:SetAutoFocus(false)
     edit:SetMaxLetters(6)
+    edit:SetJustifyH("CENTER")
+    edit:SetFrameLevel((self.content:GetFrameLevel() or 1) + 8)
     if step >= 1 and minV >= 0 then
         edit:SetNumeric(true)
+    end
+
+    local sl = CreateFrame("Slider", "RLSuiteCfgSlider" .. self.widgetId, self.content, "OptionsSliderTemplate")
+    sl:SetHeight(16)
+    sl:SetMinMaxValues(minV, maxV)
+    sl:SetValueStep(step)
+    local low = getglobal(sl:GetName() .. "Low")
+    local high = getglobal(sl:GetName() .. "High")
+    if low then low:Hide() end
+    if high then high:Hide() end
+
+    if col == "left" then
+        fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
+        fs:SetPoint("RIGHT", self.content, "CENTER", -40, 0)
+        edit:SetPoint("TOPRIGHT", self.content, "CENTER", -8, y + 2)
+        sl:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y - 18)
+        sl:SetPoint("TOPRIGHT", self.content, "CENTER", -8, y - 18)
+    elseif col == "right" then
+        fs:SetPoint("TOPLEFT", self.content, "CENTER", 8, y)
+        fs:SetPoint("RIGHT", self.content, "RIGHT", -64, 0)
+        edit:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y + 2)
+        sl:SetPoint("TOPLEFT", self.content, "CENTER", 8, y - 18)
+        sl:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y - 18)
+    else
+        fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
+        fs:SetPoint("RIGHT", self.content, "RIGHT", -64, 0)
+        edit:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y + 2)
+        sl:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y - 18)
+        sl:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y - 18)
     end
 
     local function fmt(v)
@@ -340,7 +425,8 @@ function CFG:AddTextArea(label, height, getValue, setValue)
     local y = self:NextY(height + 6)
     local box = CreateFrame("Frame", nil, self.content)
     box:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
-    box:SetSize(410, height)
+    box:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y)
+    box:SetHeight(height)
     box:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -411,18 +497,57 @@ function CFG:AddColor(label, colorTbl)
 end
 
 function CFG:AddDropdown(label, options, getValue, setValue)
-    local y = self:NextY(30)
+    local y = self:NextY(42)
     local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
     fs:SetText(label)
+    fs:SetTextColor(1, 0.82, 0)
     self.widgetId = self.widgetId + 1
     local dd = RLSuite.utils:CreateDropdown(self.content, "RLSuiteCfgDD" .. self.widgetId, 180, 22)
-    dd:SetPoint("LEFT", fs, "LEFT", 150, 0)
+    dd:ClearAllPoints()
+    dd:SetHeight(22)
+    dd:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y - 16)
+    dd:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y - 16)
     RLSuite.utils:SetupDropdown(dd, options, getValue(), function(value)
         setValue(value)
         self:ApplyAll()
     end)
     return dd
+end
+
+function CFG:AddInline(items)
+    local y = self:NextY(26)
+    local prev
+    for _, it in ipairs(items) do
+        if it.type == "button" then
+            local btn = CreateFrame("Button", nil, self.content, "UIPanelButtonTemplate")
+            btn:SetSize(it.width or 100, 20)
+            if prev then
+                btn:SetPoint("LEFT", prev, "RIGHT", 12, 0)
+            else
+                btn:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y - 2)
+            end
+            btn:SetText(it.label)
+            btn:SetScript("OnClick", it.click)
+            prev = btn
+        else
+            local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
+            if prev then
+                cb:SetPoint("LEFT", prev, "RIGHT", 12, 0)
+            else
+                cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", 4, y + 2)
+            end
+            cb:SetChecked(it.get() and 1 or nil)
+            local lfs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            lfs:SetPoint("LEFT", cb, "RIGHT", 2, 0)
+            lfs:SetText(it.label)
+            cb:SetScript("OnClick", function(s)
+                it.set(s:GetChecked() and true or false)
+                self:ApplyAll()
+            end)
+            prev = lfs
+        end
+    end
 end
 
 function CFG:PlaceCheck(x, y, label, getValue, setValue)
@@ -445,21 +570,24 @@ function CFG:PlaceCompactSlider(x, y, width, label, minV, maxV, step, getValue, 
     fs:SetText(label)
     fs:SetTextColor(1, 0.82, 0)
     self.widgetId = (self.widgetId or 0) + 1
+    local edit = CreateFrame("EditBox", "RLSuiteCfgSliderEdit" .. self.widgetId, self.content, "InputBoxTemplate")
+    edit:SetSize(40, 16)
+    edit:SetPoint("TOPRIGHT", self.content, "TOPLEFT", x + width, y + 2)
+    edit:SetAutoFocus(false)
+    edit:SetMaxLetters(6)
+    edit:SetJustifyH("CENTER")
+    edit:SetFrameLevel((self.content:GetFrameLevel() or 1) + 6)
+    if step >= 1 and minV >= 0 then edit:SetNumeric(true) end
     local sl = CreateFrame("Slider", "RLSuiteCfgSlider" .. self.widgetId, self.content, "OptionsSliderTemplate")
-    sl:SetSize(width, 16)
-    sl:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y - 14)
+    sl:SetHeight(16)
+    sl:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y - 16)
+    sl:SetPoint("TOPRIGHT", self.content, "TOPLEFT", x + width, y - 16)
     sl:SetMinMaxValues(minV, maxV)
     sl:SetValueStep(step)
     local low = getglobal(sl:GetName() .. "Low")
     local high = getglobal(sl:GetName() .. "High")
-    if low then low:SetText(tostring(minV)) end
-    if high then high:SetText(tostring(maxV)) end
-    local edit = CreateFrame("EditBox", "RLSuiteCfgSliderEdit" .. self.widgetId, self.content, "InputBoxTemplate")
-    edit:SetSize(36, 16)
-    edit:SetPoint("CENTER", sl, "CENTER", 0, 0)
-    edit:SetAutoFocus(false)
-    edit:SetMaxLetters(6)
-    if step >= 1 and minV >= 0 then edit:SetNumeric(true) end
+    if low then low:Hide() end
+    if high then high:Hide() end
     local function fmt(v)
         if step < 1 then return string.format("%.2f", v) end
         return tostring(math.floor(v + 0.5))
@@ -521,7 +649,12 @@ function CFG:PlaceTextArea(x, y, width, height, label, getValue, setValue)
     fs:SetTextColor(1, 0.82, 0)
     local box = CreateFrame("Frame", nil, self.content)
     box:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y - 16)
-    box:SetSize(width, height)
+    if width then
+        box:SetSize(width, height)
+    else
+        box:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y - 16)
+        box:SetHeight(height)
+    end
     box:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -667,18 +800,17 @@ function CFG:PanelMacroLayout()
     mb.actionPaging = mb.actionPaging or ""
     mb.visibility = mb.visibility or ""
 
-    self:PlaceCheck(4, -4, "Enable", function() return mb.enabled ~= false end, function(v) mb.enabled = v end)
-    local restore = CreateFrame("Button", nil, self.content, "UIPanelButtonTemplate")
-    restore:SetSize(110, 20)
-    restore:SetPoint("TOPLEFT", self.content, "TOPLEFT", 160, -6)
-    restore:SetText("Restore Bar")
-    restore:SetScript("OnClick", function() self:RestoreMacroBar() end)
-    self:PlaceCheck(280, -4, "Lock", function() return mb.locked end, function(v) mb.locked = v end)
-
-    self:PlaceCheck(4, -28, "Backdrop", function() return mb.backdrop ~= false end, function(v) mb.backdrop = v end)
-    self:PlaceCheck(110, -28, "Show Empty Buttons", function() return mb.showEmpty ~= false end, function(v) mb.showEmpty = v end)
-    self:PlaceCheck(250, -28, "Mouse Over", function() return mb.mouseover end, function(v) mb.mouseover = v end)
-    self:PlaceCheck(4, -50, "Inherit Global Fade", function() return mb.inheritGlobalFade end, function(v) mb.inheritGlobalFade = v end)
+    self:AddInline({
+        { type = "check", label = "Enable", get = function() return mb.enabled ~= false end, set = function(v) mb.enabled = v end },
+        { type = "button", label = "Restore Bar", width = 110, click = function() self:RestoreMacroBar() end },
+        { type = "check", label = "Lock", get = function() return mb.locked end, set = function(v) mb.locked = v end },
+    })
+    self:AddInline({
+        { type = "check", label = "Backdrop", get = function() return mb.backdrop ~= false end, set = function(v) mb.backdrop = v end },
+        { type = "check", label = "Show Empty Buttons", get = function() return mb.showEmpty ~= false end, set = function(v) mb.showEmpty = v end },
+        { type = "check", label = "Mouse Over", get = function() return mb.mouseover end, set = function(v) mb.mouseover = v end },
+        { type = "check", label = "Inherit Global Fade", get = function() return mb.inheritGlobalFade end, set = function(v) mb.inheritGlobalFade = v end },
+    })
 
     local anchors = {
         { text = "TOPLEFT", value = "TOPLEFT" },
@@ -691,25 +823,29 @@ function CFG:PanelMacroLayout()
         { text = "BOTTOM", value = "BOTTOM" },
         { text = "BOTTOMRIGHT", value = "BOTTOMRIGHT" },
     }
-    local col, gap = 104, 4
-    self:PlaceDropdown(4, -76, col - 4, "Anchor Point", anchors, function() return mb.point or "CENTER" end, function(v)
+    self:AddDropdown("Anchor Point", anchors, function() return mb.point or "CENTER" end, function(v)
         mb.point = v
         mb.relPoint = v
     end)
-    self:PlaceCompactSlider(4 + col, -76, col - gap, "Buttons", 1, 12, 1, function() return mb.buttons end, function(v) mb.buttons = v end)
-    self:PlaceCompactSlider(4 + col * 2, -76, col - gap, "Buttons Per Row", 1, 12, 1, function() return mb.columns end, function(v) mb.columns = v end)
-    self:PlaceCompactSlider(4 + col * 3, -76, col - gap, "Button Size", 15, 60, 1, function() return mb.buttonSize end, function(v) mb.buttonSize = v end)
-
-    self:PlaceCompactSlider(4, -128, col - gap, "Button Spacing", -3, 20, 1, function() return mb.spacing end, function(v) mb.spacing = v end)
-    self:PlaceCompactSlider(4 + col, -128, col - gap, "Backdrop Spacing", 0, 10, 1, function() return mb.backdropSpacing end, function(v) mb.backdropSpacing = v end)
-    self:PlaceCompactSlider(4 + col * 2, -128, col - gap, "Height Multiplier", 1, 5, 1, function() return mb.heightMult end, function(v) mb.heightMult = v end)
-    self:PlaceCompactSlider(4 + col * 3, -128, col - gap, "Width Multiplier", 1, 5, 1, function() return mb.widthMult end, function(v) mb.widthMult = v end)
-
-    self:PlaceCompactSlider(4, -180, col - gap, "Alpha", 0, 100, 1, function() return math.floor((mb.alpha or 1) * 100 + 0.5) end, function(v) mb.alpha = v / 100 end)
-    self:PlaceCompactSlider(4 + col, -180, col - gap, "Scale", 0.50, 2.00, 0.05, function() return mb.scale or 1 end, function(v) mb.scale = v end)
-
-    self:PlaceTextArea(4, -232, 410, 48, "Action Paging", function() return mb.actionPaging end, function(v) mb.actionPaging = v end)
-    self:PlaceTextArea(4, -318, 410, 48, "Visibility State", function() return mb.visibility end, function(v) mb.visibility = v end)
+    self:AddSliderPair(
+        { "Buttons", 1, 12, 1, function() return mb.buttons end, function(v) mb.buttons = v end },
+        { "Buttons Per Row", 1, 12, 1, function() return mb.columns end, function(v) mb.columns = v end }
+    )
+    self:AddSliderPair(
+        { "Button Size", 15, 60, 1, function() return mb.buttonSize end, function(v) mb.buttonSize = v end },
+        { "Button Spacing", -3, 20, 1, function() return mb.spacing end, function(v) mb.spacing = v end }
+    )
+    self:AddSliderPair(
+        { "Backdrop Spacing", 0, 10, 1, function() return mb.backdropSpacing end, function(v) mb.backdropSpacing = v end },
+        { "Height Multiplier", 1, 5, 1, function() return mb.heightMult end, function(v) mb.heightMult = v end }
+    )
+    self:AddSliderPair(
+        { "Width Multiplier", 1, 5, 1, function() return mb.widthMult end, function(v) mb.widthMult = v end },
+        { "Alpha", 0, 100, 1, function() return math.floor((mb.alpha or 1) * 100 + 0.5) end, function(v) mb.alpha = v / 100 end }
+    )
+    self:AddSlider("Scale", 0.50, 2.00, 0.05, function() return mb.scale or 1 end, function(v) mb.scale = v end)
+    self:AddTextArea("Action Paging", 52, function() return mb.actionPaging end, function(v) mb.actionPaging = v end)
+    self:AddTextArea("Visibility State", 52, function() return mb.visibility end, function(v) mb.visibility = v end)
 end
 
 function CFG:PanelRaidLayout()
