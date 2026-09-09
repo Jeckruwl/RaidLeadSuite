@@ -109,7 +109,8 @@ function CFG:SubtabsFor(key)
         }
     elseif key == "macrobar" then
         return {
-            { key = "layout", label = "Layout" },
+            { key = "layout", label = "Barra" },
+            { key = "paging", label = "Paging" },
             { key = "pos", label = "Posizione" },
         }
     elseif key == "raidframe" then
@@ -180,6 +181,8 @@ function CFG:RebuildPanel()
         self:PanelScale("whisplist", "Whisplist")
     elseif cat == "macrobar" and sub == "layout" then
         self:PanelMacroLayout()
+    elseif cat == "macrobar" and sub == "paging" then
+        self:PanelMacroPaging()
     elseif cat == "macrobar" and sub == "pos" then
         self:PanelMacroPos()
     elseif cat == "raidframe" and sub == "layout" then
@@ -246,7 +249,7 @@ function CFG:AddSlider(label, minV, maxV, step, getValue, setValue, sliderWidth)
     edit:SetPoint("LEFT", sl, "RIGHT", 12, 0)
     edit:SetAutoFocus(false)
     edit:SetMaxLetters(6)
-    if step >= 1 then
+    if step >= 1 and minV >= 0 then
         edit:SetNumeric(true)
     end
 
@@ -313,6 +316,65 @@ function CFG:AddCheck(label, getValue, setValue)
         self:ApplyAll()
     end)
     return cb
+end
+
+function CFG:AddCheckGrid(items)
+    for i, it in ipairs(items) do
+        local col = (i - 1) % 2
+        local y
+        if col == 0 then
+            y = self:NextY(26)
+            self._gridY = y
+        else
+            y = self._gridY or self.y
+        end
+        local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
+        cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", 4 + col * 210, y)
+        cb:SetChecked(it.get() and 1 or nil)
+        local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+        fs:SetText(it.label)
+        cb:SetScript("OnClick", function(s)
+            it.set(s:GetChecked() and true or false)
+            self:ApplyAll()
+        end)
+    end
+end
+
+function CFG:AddTextArea(label, height, getValue, setValue)
+    self:Header(label)
+    local y = self:NextY(height + 6)
+    local box = CreateFrame("Frame", nil, self.content)
+    box:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
+    box:SetSize(410, height)
+    box:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = {left = 4, right = 4, top = 4, bottom = 4},
+    })
+    box:SetBackdropColor(0, 0, 0, 0.85)
+    self.widgetId = self.widgetId + 1
+    local edit = CreateFrame("EditBox", "RLSuiteCfgArea" .. self.widgetId, box)
+    edit:SetMultiLine(true)
+    edit:SetAutoFocus(false)
+    edit:SetFontObject(ChatFontNormal)
+    edit:SetTextInsets(4, 4, 4, 4)
+    edit:SetPoint("TOPLEFT", box, "TOPLEFT", 6, -6)
+    edit:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -6, 6)
+    edit:EnableMouse(true)
+    edit:SetText(getValue() or "")
+    edit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+    local ay = self:NextY(26)
+    local acc = CreateFrame("Button", nil, self.content, "UIPanelButtonTemplate")
+    acc:SetSize(70, 20)
+    acc:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, ay)
+    acc:SetText("Accept")
+    acc:SetScript("OnClick", function()
+        setValue(edit:GetText() or "")
+        self:ApplyAll()
+    end)
+    return edit
 end
 
 function CFG:AddColor(label, colorTbl)
@@ -443,20 +505,95 @@ function CFG:PanelScale(key, title)
     self:AddSlider("Scala", 0.70, 1.30, 0.05, function() return L.scale end, function(v) L.scale = v end, 220)
 end
 
+function CFG:RestoreMacroBar()
+    local mb = self.db.macrobar
+    mb.enabled = true
+    mb.backdrop = true
+    mb.showEmpty = true
+    mb.mouseover = false
+    mb.inheritGlobalFade = false
+    mb.buttons = 12
+    mb.columns = 12
+    mb.buttonSize = 32
+    mb.spacing = 2
+    mb.backdropSpacing = 2
+    mb.heightMult = 1
+    mb.widthMult = 1
+    mb.alpha = 1
+    mb.scale = 1
+    mb.point, mb.relPoint, mb.x, mb.y = "BOTTOMLEFT", "BOTTOMLEFT", 4, 4
+    mb.actionPaging = "[bonusbar:1,nostealth] 7; [bonusbar:1,stealth] 8; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10;"
+    mb.visibility = ""
+    if RLSuite.macrobar and RLSuite.macrobar.frame then
+        RLSuite.macrobar.frame:ClearAllPoints()
+        RLSuite.macrobar.frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 4, 4)
+    end
+    self:ApplyAll()
+    self:RebuildPanel()
+end
+
 function CFG:PanelMacroLayout()
     local mb = self.db.macrobar
     mb.buttons = mb.buttons or 12
-    mb.columns = mb.columns or 6
-    mb.buttonSize = mb.buttonSize or 36
-    mb.spacing = mb.spacing or 4
+    mb.columns = mb.columns or 12
+    mb.buttonSize = mb.buttonSize or 32
+    mb.spacing = mb.spacing or 2
+    mb.backdropSpacing = mb.backdropSpacing or 2
+    mb.heightMult = mb.heightMult or 1
+    mb.widthMult = mb.widthMult or 1
+    mb.alpha = mb.alpha or 1
     mb.scale = mb.scale or 1
-    self:Header("Macrobar — layout HUD")
-    self:Note("Numero bottoni, griglia, dimensioni. I testi delle macro stanno nella tab Macrobar.")
-    self:AddSlider("Numero bottoni", 6, 12, 1, function() return mb.buttons end, function(v) mb.buttons = v end)
-    self:AddSlider("Colonne", 3, 12, 1, function() return mb.columns end, function(v) mb.columns = v end)
-    self:AddSlider("Dimensione bottone", 24, 48, 1, function() return mb.buttonSize end, function(v) mb.buttonSize = v end)
-    self:AddSlider("Spaziatura", 0, 12, 1, function() return mb.spacing end, function(v) mb.spacing = v end)
-    self:AddSlider("Scala", 0.70, 1.50, 0.05, function() return mb.scale end, function(v) mb.scale = v end, 220)
+    self:Header("Macrobar")
+    self:AddCheck("Enable", function() return mb.enabled ~= false end, function(v) mb.enabled = v end)
+    local y = self:NextY(26)
+    local restore = CreateFrame("Button", nil, self.content, "UIPanelButtonTemplate")
+    restore:SetSize(120, 22)
+    restore:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
+    restore:SetText("Restore Bar")
+    restore:SetScript("OnClick", function() self:RestoreMacroBar() end)
+    self:AddCheckGrid({
+        { label = "Backdrop", get = function() return mb.backdrop ~= false end, set = function(v) mb.backdrop = v end },
+        { label = "Show Empty Buttons", get = function() return mb.showEmpty ~= false end, set = function(v) mb.showEmpty = v end },
+        { label = "Mouse Over", get = function() return mb.mouseover end, set = function(v) mb.mouseover = v end },
+        { label = "Inherit Global Fade", get = function() return mb.inheritGlobalFade end, set = function(v) mb.inheritGlobalFade = v end },
+    })
+    self:AddDropdown("Anchor Point", {
+        { text = "TOPLEFT", value = "TOPLEFT" },
+        { text = "TOP", value = "TOP" },
+        { text = "TOPRIGHT", value = "TOPRIGHT" },
+        { text = "LEFT", value = "LEFT" },
+        { text = "CENTER", value = "CENTER" },
+        { text = "RIGHT", value = "RIGHT" },
+        { text = "BOTTOMLEFT", value = "BOTTOMLEFT" },
+        { text = "BOTTOM", value = "BOTTOM" },
+        { text = "BOTTOMRIGHT", value = "BOTTOMRIGHT" },
+    }, function() return mb.point or "CENTER" end, function(v)
+        mb.point = v
+        mb.relPoint = v
+        if RLSuite.macrobar and RLSuite.macrobar.frame then
+            RLSuite.macrobar.frame:ClearAllPoints()
+            RLSuite.macrobar.frame:SetPoint(v, UIParent, v, mb.x or 0, mb.y or 0)
+        end
+    end)
+    self:AddSlider("Buttons", 1, 12, 1, function() return mb.buttons end, function(v) mb.buttons = v end)
+    self:AddSlider("Buttons Per Row", 1, 12, 1, function() return mb.columns end, function(v) mb.columns = v end)
+    self:AddSlider("Button Size", 15, 60, 1, function() return mb.buttonSize end, function(v) mb.buttonSize = v end)
+    self:AddSlider("Button Spacing", -3, 20, 1, function() return mb.spacing end, function(v) mb.spacing = v end)
+    self:AddSlider("Backdrop Spacing", 0, 10, 1, function() return mb.backdropSpacing end, function(v) mb.backdropSpacing = v end)
+    self:AddSlider("Height Multiplier", 1, 5, 1, function() return mb.heightMult end, function(v) mb.heightMult = v end)
+    self:AddSlider("Width Multiplier", 1, 5, 1, function() return mb.widthMult end, function(v) mb.widthMult = v end)
+    self:AddSlider("Alpha", 0, 100, 1, function() return math.floor((mb.alpha or 1) * 100 + 0.5) end, function(v) mb.alpha = v / 100 end)
+    self:AddSlider("Scala", 0.70, 1.50, 0.05, function() return mb.scale end, function(v) mb.scale = v end, 180)
+end
+
+function CFG:PanelMacroPaging()
+    local mb = self.db.macrobar
+    mb.actionPaging = mb.actionPaging or ""
+    mb.visibility = mb.visibility or ""
+    self:Header("Action Paging / Visibility")
+    self:Note("Come ElvUI. Visibility: state driver 3.3.5 (es. [combat] show; hide). Accept per applicare.")
+    self:AddTextArea("Action Paging", 70, function() return mb.actionPaging end, function(v) mb.actionPaging = v end)
+    self:AddTextArea("Visibility State", 70, function() return mb.visibility end, function(v) mb.visibility = v end)
 end
 
 function CFG:PanelMacroPos()

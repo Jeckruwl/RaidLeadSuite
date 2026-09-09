@@ -18,11 +18,16 @@ function MB:Init()
 end
 
 function MB:Toggle()
-    if self.frame and self.frame:IsShown() then
+    if not self.frame then return end
+    if self.frame:IsShown() then
         self.frame:Hide()
-    elseif self.frame then
-        self.frame:Show()
+        return
     end
+    if self.db and self.db.enabled == false then
+        RLSuite.utils:Print("Macrobar disabilitata in Config.")
+        return
+    end
+    self.frame:Show()
 end
 
 function MB:CreateFrame()
@@ -229,6 +234,9 @@ function MB:LoadMacrosForPhase(phase)
                 btn.icon:SetTexture("Interface\Icons\INV_Misc_QuestionMark")
             end
         end
+    end
+    if self.UpdateEmptyButtons then
+        self:UpdateEmptyButtons()
     end
     if RLSuite.mainWindow and RLSuite.mainWindow.RefreshMacroPreview then
         if RLSuite.mainWindow.macroPhase == phase then
