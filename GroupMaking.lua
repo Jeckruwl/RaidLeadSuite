@@ -319,6 +319,10 @@ function GM:SetDifficulty(diff)
     self:LayoutGroupPanels()
     self:UpdateMessagePreview()
     self:SaveComp()
+    -- la composizione 25 occupa piu' spazio: riallinea la finestra
+    if self.mainFrame then
+        RLSuite.utils:EnforceWindowMin(self.mainFrame, "groupmaking")
+    end
 end
 
 function GM:LayoutGroupPanels(rowW)

@@ -635,6 +635,10 @@ end
 
 -- Grip di ridimensionamento in basso a destra. Salva width/height nel
 -- layout e (se fornita) invoca la callback dopo il ridimensionamento.
+-- I limiti minimi vengono ricalcolati a ogni drag da RLSuite.windowMins
+-- (fallback: i valori minW/minH passati qui), cosi' la finestra non puo'
+-- diventare piu' piccola del contenuto: SetMinResize blocca durante il
+-- trascinamento e OnMouseUp ri-clampa a sicurezza.
 function Utils:AddResizeGrip(frame, key, minW, minH, onResized)
     if not frame or frame._rlsGrip then return end
     minW = minW or 300
@@ -642,6 +646,17 @@ function Utils:AddResizeGrip(frame, key, minW, minH, onResized)
     frame._rlsGrip = true
     frame:SetResizable(true)
     local L = self:WindowLayout(key)
+
+    local function currentMin()
+        local fn = RLSuite.windowMins and RLSuite.windowMins[key]
+        local mw, mh
+        if fn then
+            mw, mh = fn(frame)
+        end
+        if not mw or not (mw > 0) then mw = minW end
+        if not mh or not (mh > 0) then mh = minH end
+        return mw, mh
+    end
 
     local grip = CreateFrame("Button", nil, frame)
     grip:SetSize(16, 16)
@@ -656,20 +671,61 @@ function Utils:AddResizeGrip(frame, key, minW, minH, onResized)
     grip:SetScript("OnMouseDown", function(self2, button)
         if button ~= "LeftButton" then return end
         sizing = true
+        local mw, mh = currentMin()
+        if frame.SetMinResize then
+            frame:SetMinResize(mw, mh)
+        end
         frame:StartSizing("BOTTOMRIGHT")
     end)
     grip:SetScript("OnMouseUp", function()
         if not sizing then return end
         sizing = false
         frame:StopMovingOrSizing()
-        local w = math.max(minW, frame:GetWidth() or minW)
-        local h = math.max(minH, frame:GetHeight() or minH)
+        local mw, mh = currentMin()
+        local w = math.max(mw, frame:GetWidth() or mw)
+        local h = math.max(mh, frame:GetHeight() or mh)
         frame:SetSize(w, h)
         L.width = w
         L.height = h
+        if frame.SetMinResize then
+            frame:SetMinResize(mw, mh)
+        end
         if onResized then onResized(w, h) end
     end)
     return grip
+end
+
+-- Minimo attuale per una finestra, dalla tabella registrata in
+-- RLSuite.windowMins (funzioni per-chiave che leggono il contenuto).
+function Utils:WindowMin(key, frame)
+    local fn = RLSuite.windowMins and RLSuite.windowMins[key]
+    if not fn then return nil end
+    local mw, mh = fn(frame)
+    if mw and mw > 0 and mh and mh > 0 then
+        return mw, mh
+    end
+    return nil
+end
+
+-- Allinea una finestra ridimensionabile ai suoi minimi: se la
+-- dimensione attuale (o salvata) e' piu' piccola del contenuto,
+-- la porta almeno al minimo. Ritorna mw, mh.
+function Utils:EnforceWindowMin(frame, key)
+    if not frame then return nil end
+    local mw, mh = self:WindowMin(key, frame)
+    if not mw then return nil end
+    local w = math.max(mw, frame:GetWidth() or mw)
+    local h = math.max(mh, frame:GetHeight() or mh)
+    if w ~= frame:GetWidth() or h ~= frame:GetHeight() then
+        frame:SetSize(w, h)
+    end
+    local L = self:WindowLayout(key)
+    if L.width and L.width < mw then L.width = mw end
+    if L.height and L.height < mh then L.height = mh end
+    if frame.SetMinResize then
+        frame:SetMinResize(mw, mh)
+    end
+    return mw, mh
 end
 
 -- Overlay "anchor" (bordo evidenziato) per le HUD quando si usa

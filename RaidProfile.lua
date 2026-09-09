@@ -216,6 +216,34 @@ function MW:HideAllWindows()
 end
 
 function MW:RegisterAllWindows()
+    -- Minimi di contenuto per le finestre ridimensionabili.
+    -- Vengono ri-calcolati a ogni drag; quello di Groupmaking dipende
+    -- dalla composizione corrente (10/25), gli altri sono fissi perche'
+    -- i loro layout interni non cambiano con la difficolta'.
+    RLSuite.windowMins = RLSuite.windowMins or {}
+    RLSuite.windowMins.groupmaking = function()
+        -- Larghezza minima: fila di controlli in basso (3 bottoni +
+        -- checkbox "Show specs in message") e le due colonne comp/class.
+        -- Altezza: pila verticale title+dropdowns, gruppo slot (topRow),
+        -- box "richieste" e blocco basso anteprima+bottoni.
+        local topH = 156
+        local gm = RLSuite.groupmaking
+        if gm and gm.topRow then
+            local th = gm.topRow:GetHeight()
+            if th and th > 60 then topH = th end
+        end
+        return 500, topH + 274
+    end
+    RLSuite.windowMins.whisplist = function()
+        return 500, 380
+    end
+    RLSuite.windowMins.ms = function()
+        return 350, 280
+    end
+    RLSuite.windowMins.loot = function()
+        return 480, 340
+    end
+
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
     local layoutKeys = {
         group = "groupmaking",
@@ -269,6 +297,9 @@ function MW:RegisterAllWindows()
                     if RLSuite.lootManager.UpdateHistory then RLSuite.lootManager:UpdateHistory() end
                 end
             end)
+            -- Se una dimensione salvata in passato era sotto il minimo,
+            -- riportala subito a una dimensione che non sovrappone i contenuti.
+            RLSuite.utils:EnforceWindowMin(pane, cfg[1])
         end
     end
 end
@@ -306,6 +337,12 @@ function MW:SelectTab(key)
         local mL = (RLSuiteDB.layout and RLSuiteDB.layout.main) or {}
         local pw = L.width or mL.width or 660
         local ph = L.height or mL.height or 700
+        -- mai piu' piccolo del contenuto della finestra
+        local mw, mh = RLSuite.utils:WindowMin(lkey, pane)
+        if mw then
+            pw = math.max(pw, mw)
+            ph = math.max(ph, mh)
+        end
         pane:SetSize(pw, ph)
         RLSuite.utils:ApplySavedPos(pane, lkey)
         pane:SetFrameStrata("HIGH")

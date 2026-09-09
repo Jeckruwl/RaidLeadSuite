@@ -682,6 +682,14 @@ function RLSuite:ApplySavedRaidToUI()
     if self.config and self.config.ApplyAll then
         self.config:ApplyAll()
     end
+    -- dopo un load le finestre non devono restare sotto il minimo di contenuto
+    local u = self.utils
+    if u and u.EnforceWindowMin then
+        u:EnforceWindowMin(self.groupmaking and self.groupmaking.mainFrame, "groupmaking")
+        u:EnforceWindowMin(self.groupmaking and self.groupmaking.whisplistFrame, "whisplist")
+        u:EnforceWindowMin(self.msManager and self.msManager.frame, "ms")
+        u:EnforceWindowMin(self.lootManager and self.lootManager.frame, "loot")
+    end
     self:ApplyAnchorMode(RLSuiteDB.anchorMode == true)
 end
 
