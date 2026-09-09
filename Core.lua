@@ -77,6 +77,8 @@ local defaults = {
         history = {},
         rollDuration = 10,
         rerollDuration = 5,
+        rarityFilter = "all",
+        tradeWindow = 7200,
     },
     appearance = {
         theme = "default",
