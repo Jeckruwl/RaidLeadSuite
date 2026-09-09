@@ -117,7 +117,25 @@ function MSM:SkinInner()
     RLSuite.utils:SkinBox(self.addBox)
 end
 
+function MSM:IsListening()
+    return self.listening == true
+end
+
+function MSM:StopListening(announce)
+    self.listening = false
+    self.listenUntil = nil
+    if self.listenFrame then
+        self.listenFrame:SetScript("OnUpdate", nil)
+        self.listenFrame:Hide()
+        self.listenFrame = nil
+    end
+    if announce then
+        RLSuite.utils:SendChat("MS CHANGES closed, no more MS changes will be saved", "RAID")
+    end
+end
+
 function MSM:ParseMSMessage(sender, msg)
+    if not self.listening then return end
     local lower = string.lower(msg or "")
     if string.find(lower, "^ms%s+changes") then
         return
@@ -197,12 +215,24 @@ function MSM:UpdateList()
 end
 
 function MSM:RequestChanges()
-    local msg = "Requesting MS changes — whisper me: ms <spec>"
+    self:StopListening(false)
+    self.listening = true
+    local dur = 40
+    self.listenUntil = GetTime() + dur
+    local msg = "Requesting MS changes — type in raid: ms <spec> you have only 40s"
     RLSuite.utils:SendChat(msg, "RAID")
-    RLSuite.utils:Print("Richiesta MS change inviata.")
-    if RLSuite.DebugMode and RLSuite:DebugMode() then
-        RLSuite.utils:Print("Debug: whisper a te stesso 'ms <spec>' per verificare che il parser lo legga.")
-    end
+    local f = CreateFrame("Frame")
+    f:SetScript("OnUpdate", function(self2, elapsed)
+        if not MSM.listening or not MSM.listenUntil then
+            MSM:StopListening(false)
+            return
+        end
+        if GetTime() >= MSM.listenUntil then
+            MSM:StopListening(true)
+        end
+    end)
+    f:Show()
+    self.listenFrame = f
 end
 
 function MSM:GenerateMessage()
@@ -220,7 +250,4 @@ function MSM:GenerateMessage()
     end
     RLSuite.utils:SendChat(msg, "RAID")
     RLSuite.utils:Print("Announce Changes: " .. msg)
-    if RLSuite.DebugMode and RLSuite:DebugMode() then
-        RLSuite.utils:Print("Debug: inviato in whisper a te. Whisper 'ms <spec>' a te stesso per testare il parser.")
-    end
 end
