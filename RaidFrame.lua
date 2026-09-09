@@ -8,8 +8,10 @@ local RF = RLSuite.raidFrame
 function RF:Init()
     self.db = RLSuiteDB.raidframe
     self.rows = {}
+    self.cdTracker = {}
     self:CreateFrame()
     self:RegisterEvents()
+    self:ApplyLayout()
 end
 
 function RF:Toggle()
@@ -23,14 +25,27 @@ end
 
 function RF:CreateFrame()
     local f = CreateFrame("Frame", "RLSuiteRaidFrame", UIParent)
-    f:SetSize(350, 400)
-    f:SetPoint("LEFT", UIParent, "LEFT", 10, 0)
+    local w = (self.db and self.db.width) or 350
+    local h = (self.db and self.db.height) or 400
+    f:SetSize(w, h)
+    f:SetPoint(self.db.point or "LEFT", UIParent, self.db.relPoint or "LEFT", self.db.x or 10, self.db.y or 0)
     f:SetFrameStrata("LOW")
     f:SetMovable(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetScript("OnDragStart", function(self2)
+        if not RLSuiteDB.raidframe.locked then
+            self2:StartMoving()
+        end
+    end)
+    f:SetScript("OnDragStop", function(self2)
+        self2:StopMovingOrSizing()
+        local point, _, relPoint, x, y = self2:GetPoint()
+        RLSuiteDB.raidframe.point = point
+        RLSuiteDB.raidframe.relPoint = relPoint
+        RLSuiteDB.raidframe.x = x
+        RLSuiteDB.raidframe.y = y
+    end)
     f:SetBackdrop({
         bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
         edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
@@ -39,6 +54,7 @@ function RF:CreateFrame()
     })
     f:Hide()
     self.frame = f
+    RLSuite.utils:SkinFrame(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -10)
@@ -46,11 +62,11 @@ function RF:CreateFrame()
 
     self.content = CreateFrame("Frame", nil, f)
     self.content:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -35)
-    self.content:SetSize(330, 360)
+    self.content:SetSize(w - 20, h - 40)
 
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
-    closeBtn:SetScript("OnClick", function() f:Hide() end)
+    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
+    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 end
 
 function RF:RegisterEvents()
@@ -59,12 +75,19 @@ function RF:RegisterEvents()
     f:RegisterEvent("UNIT_HEALTH")
     f:RegisterEvent("UNIT_MANA")
     f:RegisterEvent("UNIT_AURA")
+    f:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     f:SetScript("OnEvent", function(self2, event, ...)
         if event == "RAID_ROSTER_UPDATE" then
             RF:Rebuild()
         elseif event == "UNIT_HEALTH" or event == "UNIT_MANA" or event == "UNIT_AURA" then
             local unit = ...
             RF:UpdateUnit(unit)
+        elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
+            -- 3.3.5: timestamp, subEvent, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, ...
+            local _, subEvent, _, sourceName, _, _, _, _, spellId = ...
+            if subEvent == "SPELL_CAST_SUCCESS" then
+                RF:OnSpellCast(sourceName, spellId)
+            end
         end
     end)
     f:SetScript("OnUpdate", function(self2, elapsed)
@@ -76,13 +99,59 @@ function RF:RegisterEvents()
     end)
 end
 
+function RF:GetRoster()
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        local me = UnitName("player") or "Player"
+        local myClass = select(2, UnitClass("player")) or "WARRIOR"
+        local list = { { unit = "player", name = me, class = myClass, fake = false } }
+        local fakes = {
+            { name = "Thrallbot", class = "SHAMAN" },
+            { name = "Jainabot", class = "MAGE" },
+            { name = "Utherbot", class = "PALADIN" },
+            { name = "Sylbot", class = "ROGUE" },
+            { name = "Bolvarbot", class = "WARRIOR" },
+            { name = "Tyrandebot", class = "DRUID" },
+            { name = "Anduinbot", class = "PRIEST" },
+            { name = "Valeerabot", class = "HUNTER" },
+            { name = "Guldanbot", class = "WARLOCK" },
+        }
+        local n = tonumber(RLSuiteDB.groupmaking and RLSuiteDB.groupmaking.difficulty) or 10
+        if n < 2 then n = 10 end
+        if n > 10 then
+            for i = 1, n - 10 do
+                table.insert(fakes, { name = "Raider" .. i, class = "WARRIOR" })
+            end
+        end
+        for i = 1, n - 1 do
+            local f = fakes[i]
+            if f then
+                table.insert(list, { unit = nil, name = f.name, class = f.class, fake = true })
+            end
+        end
+        return list
+    end
+    local list = {}
+    local num = GetNumRaidMembers() or 0
+    for i = 1, num do
+        local unit = "raid" .. i
+        table.insert(list, {
+            unit = unit,
+            name = UnitName(unit) or "Unknown",
+            class = select(2, UnitClass(unit)) or "WARRIOR",
+            fake = false,
+        })
+    end
+    return list
+end
+
 function RF:Rebuild()
     for _, row in ipairs(self.rows) do
         row:Hide()
     end
     self.rows = {}
 
-    local numMembers = GetNumRaidMembers()
+    local roster = self:GetRoster()
+    local numMembers = #roster
     if numMembers == 0 then return end
 
     local barHeight = self.db.appearance.barHeight or 20
@@ -90,9 +159,10 @@ function RF:Rebuild()
     local rowHeight = math.max(barHeight, iconSize) + 2
 
     for i = 1, numMembers do
-        local unit = "raid" .. i
-        local name = UnitName(unit) or "Unknown"
-        local class = select(2, UnitClass(unit)) or "WARRIOR"
+        local info = roster[i]
+        local unit = info.unit
+        local name = info.name or "Unknown"
+        local class = info.class or "WARRIOR"
 
         local row = CreateFrame("Button", "RLSuiteRaidRow" .. i, self.content)
         row:SetSize(330, rowHeight)
@@ -100,6 +170,8 @@ function RF:Rebuild()
         row.unit = unit
         row.name = name
         row.class = class
+        row.fake = info.fake
+        row.fakeHP = 70 + ((i * 13) % 31)
 
         row.alert = row:CreateTexture(nil, "OVERLAY")
         row.alert:SetSize(iconSize, iconSize)
@@ -146,9 +218,15 @@ function RF:Rebuild()
             local cd = row:CreateTexture(nil, "OVERLAY")
             cd:SetSize(iconSize, iconSize)
             cd:SetPoint("LEFT", row.manaBar, "RIGHT", 10 + (j-1)*(iconSize+2), 0)
-            cd:SetTexture("Interface\Icons\INV_Misc_QuestionMark")
+            local meta = RLSuite.abilityByName and RLSuite.abilityByName[ability]
+            cd:SetTexture((meta and meta.icon) or "Interface\Icons\INV_Misc_QuestionMark")
             cd:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             cd.ability = ability
+            local timer = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            timer:SetPoint("CENTER", cd, "CENTER", 0, 0)
+            timer:SetFont("Fonts\FRIZQT__.TTF", 8, "OUTLINE")
+            timer:SetText("")
+            cd.timer = timer
             row.cdIcons[j] = cd
         end
 
@@ -175,6 +253,32 @@ function RF:UpdateAll()
 end
 
 function RF:UpdateRow(row)
+    if row.fake then
+        local pct = row.fakeHP or 100
+        row.healthBar:SetMinMaxValues(0, 100)
+        row.healthBar:SetValue(pct)
+        row.healthText:SetText(pct .. "%")
+        if pct > 60 then
+            row.healthBar:SetStatusBarColor(0, 1, 0)
+        elseif pct > 30 then
+            row.healthBar:SetStatusBarColor(1, 1, 0)
+        else
+            row.healthBar:SetStatusBarColor(1, 0, 0)
+        end
+        row.manaBar:SetMinMaxValues(0, 100)
+        row.manaBar:SetValue(80)
+        if self.db.showFlask then
+            row.alert:SetTexture(self:GetAlertIcon("flask"))
+            row.alert:Show()
+            row.alertFrame:Show()
+            row.alertType = "flask"
+        else
+            row.alert:Hide()
+            row.alertFrame:Hide()
+            row.alertType = nil
+        end
+        return
+    end
     local unit = row.unit
     if not unit or not UnitExists(unit) then return end
 
@@ -221,19 +325,46 @@ function RF:UpdateRow(row)
 
     for _, cd in ipairs(row.cdIcons) do
         if cd and cd.ability then
-            local start, duration, enabled = GetSpellCooldown(cd.ability)
-            if start and duration and duration > 0 then
-                local remaining = start + duration - GetTime()
-                if remaining > 0 then
-                    cd:SetVertexColor(0.3, 0.3, 0.3)
-                else
-                    cd:SetVertexColor(1, 1, 1)
+            local remaining = self:GetAbilityRemaining(row.name, unit, cd.ability)
+            if remaining and remaining > 0 then
+                cd:SetVertexColor(0.35, 0.35, 0.35)
+                if cd.timer then
+                    cd.timer:SetText(RLSuite.utils:FormatCD(remaining))
                 end
             else
                 cd:SetVertexColor(1, 1, 1)
+                if cd.timer then cd.timer:SetText("") end
             end
         end
     end
+end
+
+-- GetSpellCooldown only works for the player. Raid members are tracked via combat log + known CD.
+function RF:GetAbilityRemaining(playerName, unit, ability)
+    if unit and UnitIsUnit(unit, "player") then
+        local start, duration = GetSpellCooldown(ability)
+        if start and duration and duration > 1.5 then
+            local rem = start + duration - GetTime()
+            if rem > 0 then return rem end
+        end
+    end
+    local expire = self.cdTracker and self.cdTracker[playerName] and self.cdTracker[playerName][ability]
+    if expire then
+        local rem = expire - GetTime()
+        if rem > 0 then return rem end
+    end
+    return 0
+end
+
+function RF:OnSpellCast(sourceName, spellId)
+    if not sourceName or not spellId then return end
+    local ability = RLSuite.abilityBySpellId and RLSuite.abilityBySpellId[spellId]
+    if not ability then return end
+    local meta = RLSuite.abilityByName and RLSuite.abilityByName[ability]
+    if not meta or not meta.cd then return end
+    self.cdTracker = self.cdTracker or {}
+    self.cdTracker[sourceName] = self.cdTracker[sourceName] or {}
+    self.cdTracker[sourceName][ability] = GetTime() + meta.cd
 end
 
 function RF:CheckAlerts(unit)
@@ -281,7 +412,7 @@ function RF:OnAlertClick(row)
     local msg = alerts[row.alertType] or self:GetDefaultAlertMessage(row.alertType)
     if msg and name then
         msg = string.gsub(msg, "$name", name)
-        SendChatMessage(msg, "WHISPER", nil, name)
+        RLSuite.utils:Whisper(name, msg)
     end
 end
 
@@ -292,6 +423,24 @@ function RF:GetDefaultAlertMessage(alertType)
         buff = "Hey $name, you're missing some raid buffs!",
     }
     return msgs[alertType]
+end
+
+function RF:ApplyLayout()
+    local db = self.db
+    if not db or not self.frame then return end
+    local w = db.width or 350
+    local h = db.height or 400
+    self.frame:SetSize(w, h)
+    self.frame:SetScale(db.scale or 1)
+    if self.content then
+        self.content:SetWidth(w - 20)
+        self.content:SetHeight(h - 40)
+    end
+    RLSuite.utils:SkinFrame(self.frame)
+    if (RLSuite.InRaid and RLSuite:InRaid()) or (GetNumRaidMembers and GetNumRaidMembers() > 0) then
+        self:Rebuild()
+        self:UpdateAll()
+    end
 end
 
 function RF:Update()
