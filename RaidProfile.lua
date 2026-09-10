@@ -74,6 +74,7 @@ end
 
 -- Chiude una singola finestra e aggiorna l'evidenziazione del suo tab.
 function MW:CloseOneTab(key)
+    if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
     local pane = self:PaneForTab(key)
     if pane then pane:Hide() end
     if self.currentTab == key then self.currentTab = nil end
@@ -364,6 +365,7 @@ function MW:LayoutKeyForTab(key)
 end
 
 function MW:HideAllWindows()
+    if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
     local keys = { "group", "whisplist", "raidframe", "ms", "loot", "config" }
     for _, k in ipairs(keys) do
         local pane = self:PaneForTab(k)

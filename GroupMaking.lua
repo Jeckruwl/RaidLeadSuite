@@ -1034,6 +1034,7 @@ end
 
 function GM:UpdateWhisplist()
     if not self.wlContent then return end
+    if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
     if self.SkinInner then self:SkinInner() end
     for _, child in ipairs(self.wlRows or {}) do
         child:Hide()
@@ -1075,7 +1076,7 @@ function GM:UpdateWhisplist()
 
         row:SetScript("OnClick", function()
             self:SelectWhisperEntry(i)
-            self:UpdateWhisplist()
+            self:RefreshWhisperHighlight()
         end)
 
         y = y + 26
@@ -1098,6 +1099,17 @@ function GM:SelectWhisperEntry(index)
     if entry.gs then info = info .. "GS: " .. entry.gs .. "\n" end
     if self.wlDetailInfo then self.wlDetailInfo:SetText(info) end
     if self.wlChatText then self.wlChatText:SetText("Whisper: " .. (entry.rawMsg or "")) end
+end
+
+-- Aggiorna solo l'evidenziazione delle righe gia' presenti (niente rebuild):
+-- ricostruire la lista dentro il click distrugge il bottone cliccato e
+-- puo' bloccare i click successivi nelle altre finestre.
+function GM:RefreshWhisperHighlight()
+    for i, row in ipairs(self.wlRows or {}) do
+        if row and row.SetBackdrop then
+            RLSuite.utils:SkinRow(row, self.selectedEntryIndex == i)
+        end
+    end
 end
 
 function GM:InviteSelected()

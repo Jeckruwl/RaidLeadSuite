@@ -403,6 +403,7 @@ end
 
 function LM:UpdateHistory()
     if not self.histContent then return end
+    if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
     self:SkinBox(self.histBox)
     self:SkinBox(self.selBox)
     for _, child in ipairs(self.histRows or {}) do
@@ -488,7 +489,7 @@ function LM:UpdateHistory()
 
             row:SetScript("OnClick", function()
                 self:SelectItem(entry)
-                self:UpdateHistory()
+                self:RefreshHistoryHighlight()
             end)
             row:SetScript("OnEnter", function(s)
                 if entry.itemLink then
@@ -515,6 +516,16 @@ function LM:SelectItem(entry)
     end
     if self.selectedItemText then
         self.selectedItemText:SetText(entry.itemName or "Unknown")
+    end
+end
+
+-- Evidenzia la riga selezionata senza ricostruire la lista (vedi note su
+-- RefreshWhisperHighlight: il rebuild dentro il click rompe i click futuri).
+function LM:RefreshHistoryHighlight()
+    for _, row in ipairs(self.histRows or {}) do
+        if row and row.SetBackdrop then
+            RLSuite.utils:SkinRow(row, self.selectedItem == row.entry)
+        end
     end
 end
 
