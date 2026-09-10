@@ -9,28 +9,29 @@ Versione: **1.3.0**
 WoW carica l’addon dal **nome della cartella**, che deve coincidere con il file `.toc`.
 
 1. Scarica o clona questa repository.
-2. Rinomina la cartella in **`RLSuite`** (se cloni da GitHub si chiama `RaidLeadSuite`).
+2. La cartella deve chiamarsi **`RaidLeadSuite`** (è già il nome del clone GitHub: non rinominare).
 3. Copiala in:
 
 ```
-World of Warcraft/_classic_ o WotLK/Interface/AddOns/RLSuite
+World of Warcraft/_classic_ o WotLK/Interface/AddOns/RaidLeadSuite
 ```
 
 Su Warmane / client 3.3.5 il percorso tipico è:
 
 ```
-<WoW 3.3.5>/Interface/AddOns/RLSuite
+<WoW 3.3.5>/Interface/AddOns/RaidLeadSuite
 ```
 
 Dentro quella cartella devono esserci:
 
-- `RLSuite.toc`
+- `RaidLeadSuite.toc`
 - i file `.lua` (`Core.lua`, `Utils.lua`, …)
+- la cartella `Libs` (librerie Ace3)
 
 4. Riavvia il client (o `/reload` se l’addon era già presente).
 5. In gioco: `/rls`
 
-Se lasci il nome `RaidLeadSuite` (clone GitHub senza rinomina), è comunque supportato: è incluso `RaidLeadSuite.toc` e `ADDON_LOADED` accetta entrambi i nomi. **Consigliato: cartella `RLSuite`.**
+`ADDON_LOADED` riconosce il nome cartella `RaidLeadSuite`; le librerie Ace3 sono caricate dal `.toc` (LibStub per primo).
 
 ## Comandi
 

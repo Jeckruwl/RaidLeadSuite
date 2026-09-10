@@ -336,7 +336,7 @@ frame:RegisterEvent("CHAT_MSG_LOOT")
 frame:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
         local addon = ...
-        -- Folder name is the addon name. Canonical: RLSuite. GitHub clone: RaidLeadSuite.
+        -- Folder name is the addon name. Canonical: RaidLeadSuite (RLSuite kept for backward compatibility).
         if addon == "RLSuite" or addon == "RaidLeadSuite" then
             RLSuite.addonFolder = addon
             RLSuiteDB = RLSuiteDB or {}
@@ -453,7 +453,7 @@ end
 -- Percorso di una risorsa dentro la cartella dell'addon, usando il nome
 -- cartella reale (RLSuite o RaidLeadSuite a seconda di come e' installato).
 function RLSuite:AddonTexture(rel)
-    local folder = self.addonFolder or "RLSuite"
+    local folder = self.addonFolder or "RaidLeadSuite"
     return "Interface\\AddOns\\" .. folder .. "\\" .. rel
 end
 
