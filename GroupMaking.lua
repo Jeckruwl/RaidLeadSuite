@@ -7,8 +7,8 @@ local GM = RLSuite.groupmaking
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
-local SLOT_SIZE = 32
-local SLOT_SPACING = 4
+local SLOT_SIZE = 36
+local SLOT_SPACING = 2
 local GROUP_LABEL_H = 14
 
 local ROLE_COLORS = {
@@ -113,7 +113,7 @@ function GM:CreateMainWindow()
     self.compBox = CreateFrame("Frame", nil, self.topRow)
     self.compBox:SetPoint("TOPLEFT", self.topRow, "TOPLEFT", 0, 0)
     self.compBox:SetPoint("BOTTOMLEFT", self.topRow, "BOTTOMLEFT", 0, 0)
-    self.compBox:SetWidth(192)
+    self.compBox:SetWidth(204)
     RLSuite.utils:SkinBox(self.compBox)
 
     local compLabel = self.compBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -366,7 +366,7 @@ function GM:LayoutGroupPanels(rowW)
     if self._layoutLock then return end
     self._layoutLock = true
     local w = rowW or self.topRow:GetWidth() or 400
-    local COMP_W = 192
+    local COMP_W = 204
     local GAP = 8
     if self.compBox then self.compBox:SetWidth(COMP_W) end
     if self.classBox then
