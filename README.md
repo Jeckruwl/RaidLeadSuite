@@ -62,7 +62,7 @@ Se lasci il nome `RaidLeadSuite` (clone GitHub senza rinomina), è comunque supp
 ## Moduli
 
 - **Group Making** — composizione 10/25, messaggio LFG, spam canali, whisplist con invite
-- **MacroBar** — 12 macro per fase (`preraid` / `preboss` / `infight`); keypad dipendente dalla fase: **ready check** in pre-raid, **pull 15/20/30 + ready + break 5m/3m/2m** in pre-boss. L'editor 12 slot sta in **Config → Macros → Macro Editor**.
+- **MacroBar** — 12 macro per fase (`preraid` / `preboss` / `infight`); keypad su due righe e dipendente dalla fase: **ready check** in pre-raid; in pre-boss prima riga **pull 15/20/30**, seconda riga **ready + break 5m/3m/2m**. L'editor 12 slot sta in **Config → Macros → Macro Editor**.
 - **Raid Frame** — HP/mana, alert flask/food/buff, cooldown raid via combat log
 - **MS Manager** — legge `ms <spec>` in raid chat e genera il pre-messaggio loot
 - **Loot Manager** — history drop, roll, tie/reroll

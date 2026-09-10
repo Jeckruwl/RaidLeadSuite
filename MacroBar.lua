@@ -9,6 +9,7 @@ local KEYPAD_BTN_W = 75
 local KEYPAD_BTN_H = 22
 local KEYPAD_GAP = 6
 local KEYPAD_PAD = 8
+local KEYPAD_VGAP = 4
 
 function MB:Init()
     self.db = RLSuiteDB.macrobar
@@ -43,9 +44,11 @@ function MB:Toggle()
 end
 
 function MB:KeypadSize()
-    local n = #(self:KeypadButtonsForPhase())
-    local w = KEYPAD_PAD * 2 + n * KEYPAD_BTN_W + (n > 1 and (n - 1) or 0) * KEYPAD_GAP
-    local h = KEYPAD_PAD * 2 + KEYPAD_BTN_H
+    local counts, maxPerRow = self:KeypadRowsForPhase()
+    local activeRows = 0
+    for _ in pairs(counts) do activeRows = activeRows + 1 end
+    local w = KEYPAD_PAD * 2 + maxPerRow * KEYPAD_BTN_W + (maxPerRow > 1 and (maxPerRow - 1) or 0) * KEYPAD_GAP
+    local h = KEYPAD_PAD * 2 + activeRows * KEYPAD_BTN_H + (activeRows > 1 and (activeRows - 1) or 0) * KEYPAD_VGAP
     return w, h
 end
 
@@ -388,14 +391,25 @@ function MB:ApplyLayout()
             if self.keypadFrame.rlsBgFill then self.keypadFrame.rlsBgFill:Hide() end
             self.keypadFrame:SetBackdrop(nil)
         end
+        local kcounts = self:KeypadRowsForPhase()
+        local activeRows = {}
+        for r in pairs(kcounts) do table.insert(activeRows, r) end
+        table.sort(activeRows)
+        local renderIdx = {}
+        for i, r in ipairs(activeRows) do renderIdx[r] = i end
         local kpad = KEYPAD_PAD
-        local kvis = 0
+        local colCount = {}
         for i, kbtn in ipairs(self.keypadButtons or {}) do
-            if kbtn:IsShown() then
-                kvis = kvis + 1
-                kbtn:ClearAllPoints()
-                kbtn:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
-                kbtn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", kpad + (kvis - 1) * (KEYPAD_BTN_W + KEYPAD_GAP), -kpad)
+            if kbtn:IsShown() and kbtn.def then
+                local r = renderIdx[kbtn.def.row or 1]
+                if r then
+                    colCount[r] = (colCount[r] or 0) + 1
+                    local col = colCount[r]
+                    local y = -(kpad + (r - 1) * (KEYPAD_BTN_H + KEYPAD_VGAP))
+                    kbtn:ClearAllPoints()
+                    kbtn:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
+                    kbtn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", kpad + (col - 1) * (KEYPAD_BTN_W + KEYPAD_GAP), y)
+                end
             end
         end
     end
@@ -479,17 +493,17 @@ end
 
 -- Bottoni del keypad, mostrati a seconda della fase corrente.
 MB.KeypadDefs = {
-    { key = "pull15", text = "Pull 15", phases = { preboss = true }, func = function() MB:StartPullTimer(15) end },
-    { key = "pull20", text = "Pull 20", phases = { preboss = true }, func = function() MB:StartPullTimer(20) end },
-    { key = "pull30", text = "Pull 30", phases = { preboss = true }, func = function() MB:StartPullTimer(30) end },
-    { key = "ready",  text = "Ready",    phases = { preraid = true, preboss = true }, func = function() MB:DoReadyCheck() end },
-    { key = "break5", text = "Break 5m", phases = { preboss = true }, func = function() MB:StartBreakTimer(300) end },
-    { key = "break3", text = "Break 3m", phases = { preboss = true }, func = function() MB:StartBreakTimer(180) end },
-    { key = "break2", text = "Break 2m", phases = { preboss = true }, func = function() MB:StartBreakTimer(120) end },
+    { key = "pull15", text = "Pull 15", row = 1, phases = { preboss = true }, func = function() MB:StartPullTimer(15) end },
+    { key = "pull20", text = "Pull 20", row = 1, phases = { preboss = true }, func = function() MB:StartPullTimer(20) end },
+    { key = "pull30", text = "Pull 30", row = 1, phases = { preboss = true }, func = function() MB:StartPullTimer(30) end },
+    { key = "ready",  text = "Ready",    row = 2, phases = { preraid = true, preboss = true }, func = function() MB:DoReadyCheck() end },
+    { key = "break5", text = "Break 5m", row = 2, phases = { preboss = true }, func = function() MB:StartBreakTimer(300) end },
+    { key = "break3", text = "Break 3m", row = 2, phases = { preboss = true }, func = function() MB:StartBreakTimer(180) end },
+    { key = "break2", text = "Break 2m", row = 2, phases = { preboss = true }, func = function() MB:StartBreakTimer(120) end },
 }
 
 function MB:KeypadButtonsForPhase(phase)
-    phase = phase or RLSuite.context or "preraid"
+    phase = phase or self.keypadPhase or RLSuite.context or "preraid"
     local list = {}
     for _, def in ipairs(MB.KeypadDefs or {}) do
         if def.phases and def.phases[phase] then
@@ -497,6 +511,22 @@ function MB:KeypadButtonsForPhase(phase)
         end
     end
     return list
+end
+
+-- Conta i bottoni visibili per riga (le righe vuote restano assenti).
+-- Ritorna: counts[row] = n bottoni, maxPerRow = riga piu' piena.
+function MB:KeypadRowsForPhase(phase)
+    phase = phase or self.keypadPhase or RLSuite.context or "preraid"
+    local counts = {}
+    local maxPerRow = 0
+    for _, def in ipairs(MB.KeypadDefs or {}) do
+        if def.phases and def.phases[phase] then
+            local r = def.row or 1
+            counts[r] = (counts[r] or 0) + 1
+            if counts[r] > maxPerRow then maxPerRow = counts[r] end
+        end
+    end
+    return counts, maxPerRow
 end
 
 function MB:CreateKeypad()
@@ -510,7 +540,8 @@ function MB:CreateKeypad()
     for i, def in ipairs(MB.KeypadDefs) do
         local btn = CreateFrame("Button", nil, self.keypadFrame, "UIPanelButtonTemplate")
         btn:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
-        btn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", KEYPAD_PAD + (i - 1) * (KEYPAD_BTN_W + KEYPAD_GAP), -KEYPAD_PAD)
+        local r = def.row or 1
+        btn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", KEYPAD_PAD, -(KEYPAD_PAD + (r - 1) * (KEYPAD_BTN_H + KEYPAD_VGAP)))
         btn:SetText(def.text)
         btn.def = def
         btn:SetScript("OnClick", function()
@@ -536,6 +567,7 @@ end
 function MB:UpdateKeypad(phase)
     if not self.keypadFrame then return end
     phase = phase or RLSuite.context or "preraid"
+    self.keypadPhase = phase
     local visible = self:KeypadButtonsForPhase(phase)
     local shown = {}
     for _, def in ipairs(visible) do
