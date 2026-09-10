@@ -405,10 +405,11 @@ function LM:UpdateHistory()
     if not self.histContent then return end
     self:SkinBox(self.histBox)
     self:SkinBox(self.selBox)
-    for _, child in ipairs(self.histContent:GetChildren()) do
+    for _, child in ipairs(self.histRows or {}) do
         child:Hide()
         child:SetParent(nil)
     end
+    self.histRows = {}
     self.remainTexts = {}
 
     local w = self.histContent:GetWidth() or 420
@@ -425,6 +426,7 @@ function LM:UpdateHistory()
         local entry = self.history[i]
         if self:MatchesFilter(entry) then
             local row = CreateFrame("Button", nil, self.histContent)
+            self.histRows[#self.histRows + 1] = row
             row:SetHeight(26)
             row:SetPoint("TOPLEFT", self.histContent, "TOPLEFT", 0, -y)
             row:SetPoint("TOPRIGHT", self.histContent, "TOPRIGHT", 0, -y)

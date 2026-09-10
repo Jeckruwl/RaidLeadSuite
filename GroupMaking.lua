@@ -997,10 +997,11 @@ end
 function GM:UpdateWhisplist()
     if not self.wlContent then return end
     if self.SkinInner then self:SkinInner() end
-    for _, child in ipairs(self.wlContent:GetChildren()) do
+    for _, child in ipairs(self.wlRows or {}) do
         child:Hide()
         child:SetParent(nil)
     end
+    self.wlRows = {}
     if self.wlScroll then
         local w = self.wlScroll:GetWidth()
         if w and w > 40 then self.wlContent:SetWidth(w) end
@@ -1010,6 +1011,7 @@ function GM:UpdateWhisplist()
     local y = 0
     for i, entry in ipairs(entries) do
         local row = CreateFrame("Button", nil, self.wlContent)
+        self.wlRows[#self.wlRows + 1] = row
         row:SetHeight(24)
         row:SetPoint("TOPLEFT", self.wlContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.wlContent, "TOPRIGHT", 0, -y)

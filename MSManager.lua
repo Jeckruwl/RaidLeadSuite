@@ -178,10 +178,11 @@ end
 function MSM:UpdateList()
     if not self.listContent then return end
     self:SkinInner()
-    for _, child in ipairs(self.listContent:GetChildren()) do
+    for _, child in ipairs(self.listRows or {}) do
         child:Hide()
         child:SetParent(nil)
     end
+    self.listRows = {}
     if self.listScroll then
         local w = self.listScroll:GetWidth()
         if w and w > 40 then self.listContent:SetWidth(w) end
@@ -190,6 +191,7 @@ function MSM:UpdateList()
     local y = 0
     for i, entry in ipairs(self.db) do
         local row = CreateFrame("Frame", nil, self.listContent)
+        self.listRows[#self.listRows + 1] = row
         row:SetHeight(24)
         row:SetPoint("TOPLEFT", self.listContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.listContent, "TOPRIGHT", 0, -y)
