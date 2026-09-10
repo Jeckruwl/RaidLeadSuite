@@ -382,7 +382,7 @@ function MW:RegisterAllWindows()
             local th = gm.topRow:GetHeight()
             if th and th > 60 then topH = th end
         end
-        return 500, topH + 274
+        return 500, topH + 286
     end
     RLSuite.windowMins.whisplist = function()
         -- La meta' destra (wlDetailBox) deve contenere la riga di bottoni

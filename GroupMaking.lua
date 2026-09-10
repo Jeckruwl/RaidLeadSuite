@@ -17,6 +17,21 @@ local ROLE_COLORS = {
     dps    = {r=1.0, g=0.2, b=0.2},
 }
 
+-- Icone di ruolo di default WotLK (LFG frame, quadranti tank/healer/dps).
+local ROLE_ICON_TEXTURE = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"
+local ROLE_ICON_COORDS = {
+    tank   = { 0,       0.296875, 0.34375, 0.640625 },
+    healer = { 0.3125,  0.609375, 0.015625, 0.3125 },
+    dps    = { 0.3125,  0.609375, 0.34375, 0.640625 },
+}
+ROLE_ICON_COORDS.mdps = ROLE_ICON_COORDS.dps
+ROLE_ICON_COORDS.rdps = ROLE_ICON_COORDS.dps
+
+local function RoleIconCoords(role)
+    role = role or "dps"
+    return ROLE_ICON_COORDS[role] or ROLE_ICON_COORDS.dps
+end
+
 function GM:Init()
     self.db = RLSuiteDB.groupmaking
     self.whisperDB = RLSuiteDB.whisplist
@@ -96,7 +111,7 @@ function GM:CreateMainWindow()
     self.compBox = CreateFrame("Frame", nil, self.topRow)
     self.compBox:SetPoint("TOPLEFT", self.topRow, "TOPLEFT", 0, 0)
     self.compBox:SetPoint("BOTTOMLEFT", self.topRow, "BOTTOMLEFT", 0, 0)
-    self.compBox:SetWidth(200)
+    self.compBox:SetWidth(192)
     RLSuite.utils:SkinBox(self.compBox)
 
     local compLabel = self.compBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -131,7 +146,7 @@ function GM:CreateMainWindow()
     self.reqBox = CreateFrame("Frame", nil, f)
     self.reqBox:SetPoint("TOPLEFT", self.topRow, "BOTTOMLEFT", 0, -8)
     self.reqBox:SetPoint("TOPRIGHT", self.topRow, "BOTTOMRIGHT", 0, -8)
-    self.reqBox:SetHeight(88)
+    self.reqBox:SetHeight(100)
     RLSuite.utils:SkinBox(self.reqBox)
 
     local reservedLabel = self.reqBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -139,16 +154,9 @@ function GM:CreateMainWindow()
     reservedLabel:SetText("Pezzi riservati")
     reservedLabel:SetTextColor(1, 0.82, 0)
 
-    self.atlasBtn = CreateFrame("Button", nil, self.reqBox, "UIPanelButtonTemplate")
-    self.atlasBtn:SetSize(80, 20)
-    self.atlasBtn:SetPoint("TOPRIGHT", self.reqBox, "TOPRIGHT", -10, -28)
-    self.atlasBtn:SetText("AtlasLoot")
-    self.atlasBtn:SetScript("OnClick", function() self:OpenAtlasLoot() end)
-
     self.reservedEdit = CreateFrame("EditBox", "RLSuiteReservedEdit", self.reqBox, "InputBoxTemplate")
     self.reservedEdit:SetHeight(20)
     self.reservedEdit:SetPoint("TOPLEFT", reservedLabel, "BOTTOMLEFT", 4, -4)
-    self.reservedEdit:SetPoint("RIGHT", self.atlasBtn, "LEFT", -6, 0)
     self.reservedEdit:SetAutoFocus(false)
     self.reservedEdit:SetMaxLetters(250)
     self.reservedEdit:SetScript("OnTextChanged", function() self:SaveComp() end)
@@ -158,6 +166,14 @@ function GM:CreateMainWindow()
         GM:SaveComp()
         GM:UpdateMessagePreview()
     end)
+
+    self.atlasBtn = CreateFrame("Button", nil, self.reqBox, "UIPanelButtonTemplate")
+    self.atlasBtn:SetSize(80, 20)
+    self.atlasBtn:SetPoint("TOPRIGHT", self.reqBox, "TOPRIGHT", -10, 0)
+    self.atlasBtn:SetPoint("TOP", self.reservedEdit, "TOP", 0, 0)
+    self.atlasBtn:SetText("AtlasLoot")
+    self.atlasBtn:SetScript("OnClick", function() self:OpenAtlasLoot() end)
+    self.reservedEdit:SetPoint("RIGHT", self.atlasBtn, "LEFT", -6, 0)
 
     local otherLabel = self.reqBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     otherLabel:SetPoint("TOPLEFT", self.reservedEdit, "BOTTOMLEFT", -4, -6)
@@ -169,7 +185,14 @@ function GM:CreateMainWindow()
     self.otherEdit:SetPoint("TOPLEFT", otherLabel, "BOTTOMLEFT", 4, -4)
     self.otherEdit:SetPoint("RIGHT", self.reqBox, "RIGHT", -12, 0)
     self.otherEdit:SetAutoFocus(false)
+    self.otherEdit:SetMaxLetters(250)
     self.otherEdit:SetScript("OnTextChanged", function() self:SaveComp() end)
+    self.otherEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+    self.otherEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
+    RLSuite.utils:RegisterInsertLink(self.otherEdit, function()
+        GM:SaveComp()
+        GM:UpdateMessagePreview()
+    end)
 
     self.previewBox = CreateFrame("Frame", nil, f)
     self.previewBox:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 16)
@@ -278,9 +301,11 @@ function GM:BuildCompSlots()
         slot.roleBorder:SetPoint("CENTER", slot, "CENTER")
         slot.roleBorder:Hide()
 
-        slot.roleText = slot:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        slot.roleText:SetPoint("BOTTOM", slot, "BOTTOM", 0, 2)
-        slot.roleText:SetFont("Fonts\FRIZQT__.TTF", 8, "OUTLINE")
+        slot.roleIcon = slot:CreateTexture(nil, "OVERLAY")
+        slot.roleIcon:SetSize(12, 12)
+        slot.roleIcon:SetPoint("TOPRIGHT", slot, "TOPRIGHT", -1, -1)
+        slot.roleIcon:SetTexture(ROLE_ICON_TEXTURE)
+        slot.roleIcon:Hide()
 
         slot.index = i
         slot.class = nil
@@ -330,9 +355,14 @@ function GM:LayoutGroupPanels(rowW)
     if self._layoutLock then return end
     self._layoutLock = true
     local w = rowW or self.topRow:GetWidth() or 400
-    local half = math.max(80, math.floor((w - 8) / 2))
-    if self.compBox then self.compBox:SetWidth(half) end
-    if self.classBox then self.classBox:SetWidth(half) end
+    local COMP_W = 192
+    local GAP = 8
+    if self.compBox then self.compBox:SetWidth(COMP_W) end
+    if self.classBox then
+        local classW = w - COMP_W - GAP
+        if classW < 160 then classW = 160 end
+        self.classBox:SetWidth(classW)
+    end
 
     local numSlots = tonumber(self.db and self.db.difficulty or "10") or 10
     local slotRows = math.ceil(numSlots / 5)
@@ -358,7 +388,7 @@ function GM:ClearSlot(index)
     slot.playerName = nil
     if slot.icon then slot.icon:Hide() end
     if slot.roleBorder then slot.roleBorder:Hide() end
-    if slot.roleText then slot.roleText:SetText("") end
+    if slot.roleIcon then slot.roleIcon:Hide() end
     self:UpdateMessagePreview()
     self:SaveComp()
 end
@@ -381,8 +411,10 @@ function GM:FillSlot(index, class, role, playerName, spec)
         slot.roleBorder:SetVertexColor(r, g, b)
         slot.roleBorder:Show()
     end
-    if slot.roleText then
-        slot.roleText:SetText((slot.role or "dps"):sub(1,1):upper())
+    if slot.roleIcon then
+        local coords = RoleIconCoords(slot.role)
+        slot.roleIcon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+        slot.roleIcon:Show()
     end
     self:UpdateMessagePreview()
     self:SaveComp()
