@@ -6,7 +6,7 @@
 RLSuite.config = {}
 local CFG = RLSuite.config
 
-local L = RLSuite.L
+local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
 function CFG:Init()
     self.db = RLSuiteDB

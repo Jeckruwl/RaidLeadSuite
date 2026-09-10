@@ -6,7 +6,7 @@ RLSuite = RLSuite or {}
 RLSuite.utils = {}
 local Utils = RLSuite.utils
 
-local L = RLSuite.L
+local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
 function Utils:Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[RLSuite]|r " .. tostring(msg))

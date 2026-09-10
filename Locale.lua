@@ -1,16 +1,26 @@
 -- ============================================================
--- RLSuite - Locale (AceLocale-3.0)
--- enUS is the primary/default locale. Every user-facing string is
--- looked up through RLSuite.L so other locales can be added later
--- by registering the same keys (e.g. NewLocale("RLSuite", "itIT")).
+-- RLSuite - Locale
+-- enUS is the primary/default locale. Every user-facing string is looked up
+-- through RLSuite.L. RLSuite.L is a self-contained table with no dependency
+-- on external libraries (a foreign/missing AceLocale copy must never break
+-- the addon): writing `true` stores the key itself as the value, and any
+-- missing key resolves to its own text, so lookups always return English.
+-- Other locales can be added later by overwriting keys, e.g.
+--   RLSuite.L["Save"] = "Salva"
 -- ============================================================
 
 RLSuite = RLSuite or {}
 
-local AL = LibStub("AceLocale-3.0")
-local L = AL:NewLocale("RLSuite", "enUS", true, true)
+local L = setmetatable({}, {
+    __index = function(_, key)
+        return key
+    end,
+    __newindex = function(t, key, value)
+        rawset(t, key, value == true and key or value)
+    end,
+})
 
-if L then
+do
     -- Core
     L["v%s loaded. Type /rls to open."] = true
     L["Available commands:"] = true
@@ -145,6 +155,4 @@ if L then
     L['DBM/BigWigs not available: timer "%s" not started.'] = true
 end
 
--- Expose the locale table so every module can look strings up without
--- depending on file load order.
-RLSuite.L = AL:GetLocale("RLSuite", true)
+RLSuite.L = L

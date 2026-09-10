@@ -5,7 +5,7 @@
 RLSuite.mainWindow = {}
 local MW = RLSuite.mainWindow
 
-local L = RLSuite.L
+local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
 function MW:Init()
     self:CreateFrame()

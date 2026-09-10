@@ -5,7 +5,7 @@
 RLSuite = RLSuite or {}
 RLSuite.version = "1.3.0"
 
-local L = RLSuite.L
+local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
 local defaults = {
     profile = "",

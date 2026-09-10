@@ -5,7 +5,7 @@
 RLSuite.lootManager = {}
 local LM = RLSuite.lootManager
 
-local L = RLSuite.L
+local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
 -- Non-overlapping roll/reroll countdowns (AceTimer named timers):
 -- restarting a roll cancels the previous timer instead of stacking a

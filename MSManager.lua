@@ -5,7 +5,7 @@
 RLSuite.msManager = {}
 local MSM = RLSuite.msManager
 
-local L = RLSuite.L
+local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
 function MSM:Init()
     self.db = RLSuiteDB.mschanges or {}

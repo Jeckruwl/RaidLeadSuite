@@ -5,7 +5,7 @@
 RLSuite.groupmaking = {}
 local GM = RLSuite.groupmaking
 
-local L = RLSuite.L
+local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
 local SLOT_SIZE = 32
 local SLOT_SPACING = 4

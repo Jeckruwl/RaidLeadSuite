@@ -5,7 +5,7 @@
 RLSuite.macrobar = {}
 local MB = RLSuite.macrobar
 
-local L = RLSuite.L
+local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
 -- Non-overlapping pull/break countdowns (AceTimer named timers): starting a
 -- new pull/break cancels the previous one instead of stacking a second

@@ -5,7 +5,7 @@
 RLSuite.raidFrame = {}
 local RF = RLSuite.raidFrame
 
-local L = RLSuite.L
+local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
 function RF:Init()
     self.db = RLSuiteDB.raidframe
