@@ -48,8 +48,8 @@ end
 
 function MW:OnTabClick(key)
     if not self.frame then return end
-    if self.frame:IsShown() and self.currentTab == key then
-        self:CloseTab()
+    if self:IsTabOpen(key) then
+        self:CloseOneTab(key)
         return
     end
     self.frame:Show()
@@ -59,9 +59,51 @@ end
 function MW:CloseTab()
     self:HideAllWindows()
     self.currentTab = nil
-    for _, tab in pairs(self.tabs or {}) do
+    self:RefreshTabHighlights()
+end
+
+-- Una finestra e' "aperta" quando il suo pannello e' visibile.
+function MW:IsTabOpen(key)
+    local pane = self:PaneForTab(key)
+    return pane ~= nil and pane:IsShown()
+end
+
+-- Chiude una singola finestra e aggiorna l'evidenziazione del suo tab.
+function MW:CloseOneTab(key)
+    local pane = self:PaneForTab(key)
+    if pane then pane:Hide() end
+    if self.currentTab == key then self.currentTab = nil end
+    self:UpdateTabHighlight(key)
+end
+
+-- Il tab resta evidenziato finche' la sua finestra e' aperta.
+function MW:UpdateTabHighlight(key)
+    local tab = self.tabs and self.tabs[key]
+    if not tab then return end
+    if self:IsTabOpen(key) then
+        tab:LockHighlight()
+    else
         tab:UnlockHighlight()
     end
+end
+
+function MW:RefreshTabHighlights()
+    for _, def in ipairs(self.tabDefs or {}) do
+        self:UpdateTabHighlight(def.key)
+    end
+end
+
+-- Offset a cascata per le finestre senza posizione salvata: cosi'
+-- aprendone piu' d'una non si sovrappongono tutte nello stesso punto.
+function MW:DefaultCascadeOffset(ignoreKey)
+    local n = 0
+    for _, def in ipairs(self.tabDefs or {}) do
+        if def.key ~= ignoreKey and self:IsTabOpen(def.key) then
+            n = n + 1
+        end
+    end
+    local m = n % 6
+    return m * 26, -(m * 26)
 end
 
 function MW:CreateFrame()
@@ -281,8 +323,9 @@ function MW:RegisterAllWindows()
                 local oldClick = pane.closeBtn:GetScript("OnClick")
                 pane.closeBtn:SetScript("OnClick", function()
                     pane:Hide()
+                    MW:UpdateTabHighlight(key)
                     if MW.currentTab == key then
-                        MW:CloseTab()
+                        MW.currentTab = nil
                     end
                     if oldClick then oldClick() end
                 end)
@@ -331,16 +374,9 @@ function MW:SelectTab(key)
         key = "group"
     end
     self.currentTab = key
-    for k, tab in pairs(self.tabs or {}) do
-        if k == self.currentTab then
-            tab:LockHighlight()
-        else
-            tab:UnlockHighlight()
-        end
-    end
 
-    -- Finestre a schede: si aprono come pannelli indipendenti e spostabili.
-    self:HideAllWindows()
+    -- Finestre a schede: si aprono come pannelli indipendenti e spostabili,
+    -- e possono restare aperte piu' d'una alla volta.
     local pane = self:PaneForTab(key)
     if pane then
         -- panes creati come figli della barra (macro/raidframe) tornano a UIParent
@@ -361,10 +397,15 @@ function MW:SelectTab(key)
             ph = math.max(ph, mh)
         end
         pane:SetSize(pw, ph)
-        RLSuite.utils:ApplySavedPos(pane, lkey)
+        RLSuite.utils:ApplySavedPos(pane, lkey, function()
+            return self:DefaultCascadeOffset(key)
+        end)
         pane:SetFrameStrata("HIGH")
         pane:Show()
         self:RefreshTabContents(key)
+        -- evidenzia i tab dopo l'apertura: il tab resta acceso finche'
+        -- la sua finestra e' visibile (anche con piu' finestre aperte)
+        self:RefreshTabHighlights()
     end
 end
 

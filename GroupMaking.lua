@@ -997,7 +997,7 @@ end
 function GM:UpdateWhisplist()
     if not self.wlContent then return end
     if self.SkinInner then self:SkinInner() end
-    for _, child in ipairs({self.wlContent:GetChildren()}) do
+    for _, child in ipairs(self.wlContent:GetChildren()) do
         child:Hide()
         child:SetParent(nil)
     end

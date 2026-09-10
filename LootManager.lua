@@ -405,7 +405,7 @@ function LM:UpdateHistory()
     if not self.histContent then return end
     self:SkinBox(self.histBox)
     self:SkinBox(self.selBox)
-    for _, child in ipairs({self.histContent:GetChildren()}) do
+    for _, child in ipairs(self.histContent:GetChildren()) do
         child:Hide()
         child:SetParent(nil)
     end

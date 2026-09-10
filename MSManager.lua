@@ -178,7 +178,7 @@ end
 function MSM:UpdateList()
     if not self.listContent then return end
     self:SkinInner()
-    for _, child in ipairs({self.listContent:GetChildren()}) do
+    for _, child in ipairs(self.listContent:GetChildren()) do
         child:Hide()
         child:SetParent(nil)
     end

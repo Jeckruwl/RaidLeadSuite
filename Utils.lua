@@ -597,21 +597,26 @@ function Utils:PersistFramePos(frame, key)
 end
 
 -- Applica la posizione salvata a una finestra; se non c'e', la ancora
--- sotto la barra principale (comportamento dock-like iniziale).
+-- sotto la barra principale (comportamento dock-like iniziale) e, se
+-- passata, applica un offset a cascata per non sovrapporre le finestre.
 -- NOTA: SetPoint(point, relativeTo, relativePoint, x, y): relativeTo
 -- deve essere un frame (o il suo nome), relativePoint un punto valido.
-function Utils:ApplySavedPos(frame, key)
+function Utils:ApplySavedPos(frame, key, cascadeOffset)
     if not frame then return end
     frame:ClearAllPoints()
     local L = self:WindowLayout(key)
     if L.point then
         frame:SetPoint(L.point, UIParent, L.relPoint or L.point, L.x or 0, L.y or 0)
     else
+        local dx, dy = 0, 0
+        if type(cascadeOffset) == "function" then
+            dx, dy = cascadeOffset()
+        end
         local bar = RLSuite.mainWindow and RLSuite.mainWindow.frame
         if bar then
-            frame:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -2)
+            frame:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", dx, -2 + dy)
         else
-            frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+            frame:SetPoint("CENTER", UIParent, "CENTER", dx, dy)
         end
     end
 end
