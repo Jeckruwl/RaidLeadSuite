@@ -338,6 +338,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         local addon = ...
         -- Folder name is the addon name. Canonical: RLSuite. GitHub clone: RaidLeadSuite.
         if addon == "RLSuite" or addon == "RaidLeadSuite" then
+            RLSuite.addonFolder = addon
             RLSuiteDB = RLSuiteDB or {}
             RLSuiteCharDB = RLSuiteCharDB or {}
             for k, v in pairs(defaults) do
@@ -445,6 +446,13 @@ end
 
 function RLSuite:DebugMode()
     return RLSuiteDB and RLSuiteDB.debug == true
+end
+
+-- Percorso di una risorsa dentro la cartella dell'addon, usando il nome
+-- cartella reale (RLSuite o RaidLeadSuite a seconda di come e' installato).
+function RLSuite:AddonTexture(rel)
+    local folder = self.addonFolder or "RLSuite"
+    return "Interface\\AddOns\\" .. folder .. "\\" .. rel
 end
 
 function RLSuite:InRaid()
