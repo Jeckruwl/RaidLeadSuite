@@ -307,13 +307,13 @@ function GM:BuildCompSlots()
         -- spec icons. It lives on ARTWORK (above the spec icon, below the
         -- OVERLAY glyph) so it can never cover the role icon.
         slot.roleIconBg = slot:CreateTexture(nil, "ARTWORK")
-        slot.roleIconBg:SetSize(16, 16)
+        slot.roleIconBg:SetSize(20, 20)
         slot.roleIconBg:SetPoint("TOPRIGHT", slot, "TOPRIGHT", -1, -1)
         slot.roleIconBg:SetTexture(0, 0, 0, 0.6)
         slot.roleIconBg:Hide()
 
         slot.roleIcon = slot:CreateTexture(nil, "OVERLAY")
-        slot.roleIcon:SetSize(14, 14)
+        slot.roleIcon:SetSize(18, 18)
         slot.roleIcon:SetPoint("TOPRIGHT", slot, "TOPRIGHT", -2, -2)
         slot.roleIcon:SetTexture(ROLE_ICON_TEXTURE)
         slot.roleIcon:Hide()
