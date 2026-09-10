@@ -52,7 +52,7 @@ Se lasci il nome `RaidLeadSuite` (clone GitHub senza rinomina), è comunque supp
 
 ## Interfaccia
 
-- **Barra in alto**: matrice di bottoni **configurabile** (default **2×4**) con Groupmaking, Whisplist, Macrobar, Raid Frame, MS, Loot + **SaveRaid**. **Config** è una **rotellina sotto la X rossa**. Sotto la rotellina c'è una **singola icona fase** che cambia in base alla fase corrente (**occhio LFG animato** = pre-raid, **clessidra** = pre-boss, **spade** = in-fight); cliccandola si passa alla fase successiva. I tab sono bistabili; le finestre si aprono come **pannelli liberi, spostabili** (posizione ricordata).
+- **Barra in alto**: matrice di bottoni **configurabile** (default **2×4**) con Groupmaking, Whisplist, Macrobar, Raid Frame, MS, Loot. A destra, impilate sotto la **X rossa**: **rotellina Config**, **icona save (SaveRaid)** e **icona fase** che cambia in base alla fase corrente (**occhio LFG animato** = pre-raid, **clessidra** = pre-boss, **spade** = in-fight); cliccando l'icona fase si passa alla fase successiva. I tab sono bistabili; le finestre si aprono come **pannelli liberi, spostabili** (posizione ricordata).
 - **SaveRaid**: salva un setup con un titolo richiesto da un prompt → **Comp** (composizione, raid, riservati, messaggio, whisplist), **MacroBar** (macro e layout) e **Config esclusa la categoria General**.
 - **Config → Saved Raids** (voce sotto General): elenco dei salvataggi con il titolo e pulsante **Load** per ripristinare tutto.
 - **Anchors stile ElvUI** in *Config → General → Finestra → Toggle Anchors*: le HUD **Raid Frame** e **MacroBar** sono bloccate di default; con Toggle Anchors compaiono come placeholder spostabili evidenziati. Le altre finestre restano normali.
