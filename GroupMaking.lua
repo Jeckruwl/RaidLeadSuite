@@ -169,11 +169,13 @@ function GM:CreateMainWindow()
 
     self.atlasBtn = CreateFrame("Button", nil, self.reqBox, "UIPanelButtonTemplate")
     self.atlasBtn:SetSize(80, 20)
-    self.atlasBtn:SetPoint("TOPRIGHT", self.reqBox, "TOPRIGHT", -10, 0)
+    self.atlasBtn:SetPoint("RIGHT", self.reqBox, "RIGHT", -10, 0)
     self.atlasBtn:SetPoint("TOP", self.reservedEdit, "TOP", 0, 0)
     self.atlasBtn:SetText("AtlasLoot")
     self.atlasBtn:SetScript("OnClick", function() self:OpenAtlasLoot() end)
-    self.reservedEdit:SetPoint("RIGHT", self.atlasBtn, "LEFT", -6, 0)
+    -- Il bordo destro di "Pezzi riservati" si ferma a sinistra del tasto AtlasLoot
+    -- (margine 10 + larghezza tasto 80 + spazio 6), senza creare dipendenze circolari.
+    self.reservedEdit:SetPoint("RIGHT", self.reqBox, "RIGHT", -96, 0)
 
     local otherLabel = self.reqBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     otherLabel:SetPoint("TOPLEFT", self.reservedEdit, "BOTTOMLEFT", -4, -6)
