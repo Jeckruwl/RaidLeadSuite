@@ -303,13 +303,8 @@ function GM:BuildCompSlots()
         slot.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         slot.icon:Hide()
 
-        -- Dark backing so the role glyph stays readable on any spec icon.
-        slot.roleIconBg = slot:CreateTexture(nil, "OVERLAY")
-        slot.roleIconBg:SetSize(16, 16)
-        slot.roleIconBg:SetPoint("TOPRIGHT", slot, "TOPRIGHT", -1, -1)
-        slot.roleIconBg:SetTexture(0, 0, 0, 0.6)
-        slot.roleIconBg:Hide()
-
+        -- Role glyph in the top-right corner (no backing: the glyph is drawn
+        -- directly over the spec icon).
         slot.roleIcon = slot:CreateTexture(nil, "OVERLAY")
         slot.roleIcon:SetSize(14, 14)
         slot.roleIcon:SetPoint("TOPRIGHT", slot, "TOPRIGHT", -2, -2)
@@ -397,7 +392,6 @@ function GM:ClearSlot(index)
     slot.playerName = nil
     if slot.icon then slot.icon:Hide() end
     slot:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
-    if slot.roleIconBg then slot.roleIconBg:Hide() end
     if slot.roleIcon then slot.roleIcon:Hide() end
     self:UpdateMessagePreview()
     self:SaveComp()
@@ -418,7 +412,6 @@ function GM:FillSlot(index, class, role, playerName, spec)
     end
     local r, g, b = RLSuite.utils:GetClassColor(class)
     slot:SetBackdropBorderColor(r, g, b, 1)
-    if slot.roleIconBg then slot.roleIconBg:Show() end
     if slot.roleIcon then
         local coords = RoleIconCoords(slot.role)
         slot.roleIcon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
