@@ -38,7 +38,7 @@ Se lasci il nome `RaidLeadSuite` (clone GitHub senza rinomina), è comunque supp
 
 | Comando | Finestra |
 |---|---|
-| `/rls` o `/rlsuite` | Barra principale (tab 4×2 + fase) |
+| `/rls` o `/rlsuite` | Barra principale (matrice bottoni + fase) |
 | `/rls help` | Elenco comandi |
 | `/rls group` | Tab Groupmaking |
 | `/rls whisplist` | Tab Whisplist |
@@ -52,7 +52,7 @@ Se lasci il nome `RaidLeadSuite` (clone GitHub senza rinomina), è comunque supp
 
 ## Interfaccia
 
-- **Barra in alto**: matrice **4×2** di tab (Groupmaking, Whisplist, Macrobar, Raid Frame, MS, Loot, Config + **SaveRaid**), con sotto, centrati, i **3 tasti di fase** (`Pre-raid` / `Pre-boss` / `In-fight`). I tab sono bistabili; le finestre si aprono come **pannelli liberi, spostabili** (posizione ricordata).
+- **Barra in alto**: matrice di bottoni **configurabile** (default **2×4**) con Groupmaking, Whisplist, Macrobar, Raid Frame, MS, Loot + **SaveRaid**. **Config** è una **rotellina sotto la X rossa**. I **3 tasti di fase** sono icone (**occhio LFG** = pre-raid, **clessidra** = pre-boss, **spade** = in-fight) e si dispongono **sotto** la matrice (se è più larga che alta) o **a destra** (se è più alta che larga). I tab sono bistabili; le finestre si aprono come **pannelli liberi, spostabili** (posizione ricordata).
 - **SaveRaid**: salva un setup con un titolo richiesto da un prompt → **Comp** (composizione, raid, riservati, messaggio, whisplist), **MacroBar** (macro e layout) e **Config esclusa la categoria General**.
 - **Config → Saved Raids** (voce sotto General): elenco dei salvataggi con il titolo e pulsante **Load** per ripristinare tutto.
 - **Anchors stile ElvUI** in *Config → General → Finestra → Toggle Anchors*: le HUD **Raid Frame** e **MacroBar** sono bloccate di default; con Toggle Anchors compaiono come placeholder spostabili evidenziati. Le altre finestre restano normali.

@@ -10,11 +10,6 @@ function MW:Init()
     self:RegisterAllWindows()
 end
 
-function MW:BarHeight()
-    -- top pad + 2 righe di bottoni + gap righe + gap sezione + riga fase + bottom pad
-    return 8 + 24 + 4 + 24 + 8 + 24 + 6
-end
-
 function MW:Toggle()
     if self.frame and self.frame:IsShown() then
         self:CloseTab()
@@ -96,9 +91,10 @@ end
 -- Offset a cascata per le finestre senza posizione salvata: cosi'
 -- aprendone piu' d'una non si sovrappongono tutte nello stesso punto.
 function MW:DefaultCascadeOffset(ignoreKey)
+    local ALL_KEYS = { "group", "whisplist", "macro", "raidframe", "ms", "loot", "config" }
     local n = 0
-    for _, def in ipairs(self.tabDefs or {}) do
-        if def.key ~= ignoreKey and self:IsTabOpen(def.key) then
+    for _, k in ipairs(ALL_KEYS) do
+        if k ~= ignoreKey and self:IsTabOpen(k) then
             n = n + 1
         end
     end
@@ -108,7 +104,7 @@ end
 
 function MW:CreateFrame()
     local f = CreateFrame("Frame", "RLSuiteMainWindow", UIParent)
-    f:SetSize(660, self:BarHeight())
+    f:SetSize(240, 150)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
     f:SetMovable(true)
@@ -120,7 +116,8 @@ function MW:CreateFrame()
     self.frame = f
     RLSuite.utils:SkinFrame(f)
 
-    -- Niente titolo: la barra contiene solo i bottoni (matrice 4x2 + fase)
+    -- Niente titolo: la barra contiene solo i bottoni (matrice + fase +
+    -- X di chiusura e rotellina Config). Il tab Config e' la rotellina.
 
     self.tabDefs = {
         { key = "group",     label = "Groupmaking" },
@@ -129,13 +126,12 @@ function MW:CreateFrame()
         { key = "raidframe", label = "Raid Frame" },
         { key = "ms",        label = "MS" },
         { key = "loot",      label = "Loot" },
-        { key = "config",    label = "Config" },
     }
     self.tabs = {}
     self.tabPanels = {}
     self.currentTab = nil
 
-    -- Matrice 4 colonne x 2 righe: 7 tab + tasto SaveRaid
+    -- Matrice colonne x righe configurabile: 6 tab + tasto SaveRaid
     self.matrixButtons = {}
     for i, def in ipairs(self.tabDefs) do
         local tab = CreateFrame("Button", "RLSuiteTab" .. def.key, f, "UIPanelButtonTemplate")
@@ -153,22 +149,65 @@ function MW:CreateFrame()
     self.saveRaidBtn = saveBtn
     table.insert(self.matrixButtons, saveBtn)
 
-    -- 3 tasti fase sotto la matrice, centrati
+    -- 3 tasti fase: icone che rappresentano la fase (occhio LFG animato /
+    -- clessidra / spade da combattimento)
     self.phaseButtons = {}
     local phases = {
-        { key = "preraid", label = "Pre-raid" },
-        { key = "preboss", label = "Pre-boss" },
-        { key = "infight", label = "In-fight" },
+        { key = "preraid", label = "Pre-raid",
+          file = "Interface\\LFGFrame\\LFG-Eye",
+          static = { 0, 0.125, 0, 0.25 },
+          anim = { frames = 29, cols = 8, rows = 4, delay = 0.1 } },
+        { key = "preboss", label = "Pre-boss",
+          file = "Interface\\LFGFrame\\WaitAnim",
+          static = { 0, 0.5, 0, 0.5 } },
+        { key = "infight", label = "In-fight",
+          file = "Interface\\CharacterFrame\\UI-StateIcon",
+          static = { 0.5, 1.0, 0, 0.5 } },
     }
     for i, pdata in ipairs(phases) do
-        local btn = CreateFrame("Button", "RLSuitePhaseBtn" .. pdata.key, f, "UIPanelButtonTemplate")
-        btn:SetSize(90, 22)
-        btn:SetText(pdata.label)
+        local btn = CreateFrame("Button", "RLSuitePhaseBtn" .. pdata.key, f)
+        btn:SetSize(26, 26)
         btn.phaseKey = pdata.key
+        RLSuite.utils:SkinBox(btn)
+
+        local icon = btn:CreateTexture(nil, "ARTWORK")
+        icon:SetPoint("TOPLEFT", btn, "TOPLEFT", 3, -3)
+        icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 3)
+        icon:SetTexture(pdata.file)
+        if pdata.static then
+            icon:SetTexCoord(pdata.static[1], pdata.static[2], pdata.static[3], pdata.static[4])
+        end
+        btn.icon = icon
+
+        if pdata.anim then
+            btn._anim = { frames = pdata.anim.frames, cols = pdata.anim.cols,
+                          rows = pdata.anim.rows, delay = pdata.anim.delay, t = 0, frame = 0 }
+            btn:SetScript("OnUpdate", function(s, elapsed)
+                local a = s._anim
+                a.t = a.t + elapsed
+                while a.t >= a.delay do
+                    a.t = a.t - a.delay
+                    a.frame = a.frame + 1
+                    if a.frame >= a.frames then a.frame = 0 end
+                end
+                local col = a.frame % a.cols
+                local row = math.floor(a.frame / a.cols)
+                s.icon:SetTexCoord(col / a.cols, (col + 1) / a.cols, row / a.rows, (row + 1) / a.rows)
+            end)
+        end
+
         btn:SetScript("OnClick", function()
             if RLSuite.SetContextPhase then
                 RLSuite:SetContextPhase(pdata.key)
             end
+        end)
+        btn:SetScript("OnEnter", function(s)
+            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+            GameTooltip:SetText(pdata.label)
+            GameTooltip:Show()
+        end)
+        btn:SetScript("OnLeave", function()
+            GameTooltip:Hide()
         end)
         self.phaseButtons[pdata.key] = btn
     end
@@ -183,6 +222,22 @@ function MW:CreateFrame()
         f:Hide()
     end)
 
+    -- Config: icona a rotellina sotto la X rossa (sostituisce il tab Config)
+    self.configBtn = CreateFrame("Button", nil, f)
+    self.configBtn:SetSize(26, 26)
+    RLSuite.utils:SkinBox(self.configBtn)
+    local gear = self.configBtn:CreateTexture(nil, "ARTWORK")
+    gear:SetPoint("TOPLEFT", self.configBtn, "TOPLEFT", 3, -3)
+    gear:SetPoint("BOTTOMRIGHT", self.configBtn, "BOTTOMRIGHT", -3, 3)
+    gear:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
+    self.configBtn:SetScript("OnClick", function() self:ShowTab("config") end)
+    self.configBtn:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Config")
+        GameTooltip:Show()
+    end)
+    self.configBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
     self:ApplyLayout()
 end
 
@@ -190,38 +245,81 @@ function MW:ApplyLayout()
     local L = RLSuiteDB and RLSuiteDB.layout and RLSuiteDB.layout.main
     if not self.frame then return end
     L = L or {}
+    local cols = math.max(1, math.min(8, tonumber(L.matrixCols) or 2))
+    local rows = math.max(1, math.min(8, tonumber(L.matrixRows) or 4))
+    -- la matrice deve sempre contenere tutti i bottoni (6 tab + SaveRaid):
+    -- se le colonne sono poche, le righe minime crescono per non sforare
+    local nButtons = #(self.matrixButtons or {})
+    if nButtons > 0 then
+        rows = math.max(rows, math.ceil(nButtons / cols))
+    end
 
-    -- La barra si adatta ai bottoni: matrice 4x2 + margini + spazio per la
-    -- X di chiusura. La larghezza non viene piu' letta dal DB.
+    -- Bottoni matrice: colonne x righe configurabili dalla Config.
     local bw, bh, gapX, gapY = 90, 22, 8, 4
     local PAD = 12
-    local matrixW = 4 * bw + 3 * gapX
-    local closeW = 36
-    local w = PAD + matrixW + 8 + closeW
-    self.frame:SetSize(w, self:BarHeight())
+    local ps, pgap = 26, 6                    -- icone fase
+    local xSize = 32                          -- X di chiusura
+    local gearH = 26                          -- rotellina Config
+    local gearGap = 4                         -- spazio X -> rotellina
+
+    local matrixW = cols * bw + (cols - 1) * gapX
+    local matrixH = rows * bh + (rows - 1) * gapY
+
+    -- Fase: se la matrice e' piu' larga che alta i 3 tasti stanno sotto,
+    -- uno affianco all'altro; se e' piu' alta che larga stanno a destra,
+    -- uno sotto l'altro.
+    local horizontal = matrixW >= matrixH
+    local phaseW = horizontal and (3 * ps + 2 * pgap) or ps
+    local phaseH = horizontal and ps or (3 * ps + 2 * pgap)
+
+    local contentW = matrixW + (horizontal and 0 or (phaseW + 10))
+    local contentH = horizontal and (matrixH + 8 + phaseH) or math.max(matrixH, phaseH)
+
+    -- colonna destra (X + rotellina) sempre presente
+    local closeColH = xSize + gearGap + gearH
+    local h = math.max(contentH, closeColH) + 2 * PAD
+    local w = PAD + contentW + 10 + 36 + PAD
+
+    self.frame:SetSize(w, h)
     self.frame:SetScale(L.scale or 1)
 
+    -- matrice (in alto a sinistra)
     local x0 = PAD
-    local topY = -10
+    local topY = -PAD
     for i, btn in ipairs(self.matrixButtons or {}) do
-        local col = (i - 1) % 4
-        local row = math.floor((i - 1) / 4)
+        local col = (i - 1) % cols
+        local row = math.floor((i - 1) / cols)
         btn:ClearAllPoints()
         btn:SetSize(bw, bh)
         btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", x0 + col * (bw + gapX), topY - row * (bh + gapY))
     end
 
-    local pw, pgap = 90, 8
-    local phaseW = 3 * pw + 2 * pgap
-    local px0 = PAD + (matrixW - phaseW) / 2
-    local py = topY - 2 * (bh + gapY) - 8
+    -- tasti fase (icone)
     for i, key in ipairs({ "preraid", "preboss", "infight" }) do
         local btn = self.phaseButtons and self.phaseButtons[key]
         if btn then
             btn:ClearAllPoints()
-            btn:SetSize(pw, 22)
-            btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", px0 + (i - 1) * (pw + pgap), py)
+            btn:SetSize(ps, ps)
+            if horizontal then
+                local px0 = x0 + (matrixW - phaseW) / 2
+                local py = topY - matrixH - 8
+                btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", px0 + (i - 1) * (ps + pgap), py)
+            else
+                local px = x0 + matrixW + 10
+                local py = topY - (i - 1) * (ps + pgap)
+                btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", px, py)
+            end
         end
+    end
+
+    -- X di chiusura + rotellina Config (in alto a destra)
+    if self.closeBtn then
+        self.closeBtn:ClearAllPoints()
+        self.closeBtn:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", -6, -6)
+    end
+    if self.configBtn then
+        self.configBtn:ClearAllPoints()
+        self.configBtn:SetPoint("TOP", self.closeBtn or self.frame, "BOTTOM", 0, -gearGap)
     end
 
     RLSuite.utils:SkinFrame(self.frame)
@@ -456,12 +554,13 @@ end
 
 function MW:UpdatePhaseButtons()
     local phase = RLSuite.context or "preraid"
+    local c = RLSuite.utils:GetThemeColors()
     for key, btn in pairs(self.phaseButtons or {}) do
         if btn then
             if key == phase then
-                btn:LockHighlight()
+                btn:SetBackdropBorderColor(0.85, 0.70, 0.20, 1)
             else
-                btn:UnlockHighlight()
+                btn:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
             end
         end
     end

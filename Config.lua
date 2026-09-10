@@ -930,10 +930,17 @@ function CFG:PanelMain()
     local L = self:Layout("main")
     L.height = L.height or 700
     L.scale = L.scale or 1
+    L.matrixCols = L.matrixCols or 2
+    L.matrixRows = L.matrixRows or 4
     self:Header("Barra e finestre tab")
-    self:Note("La barra si adatta automaticamente alla larghezza dei bottoni (4x2 + riga fase). Qui imposti l'altezza di default delle finestre tab e la scala della barra.")
+    self:Note("La barra si adatta automaticamente a matrice, tasti fase e rotellina Config. Qui imposti l'altezza di default delle finestre tab e la scala della barra.")
     self:AddSlider("Altezza default finestre", 400, 900, 20, function() return L.height end, function(v) L.height = v end, 220)
     self:AddSlider("Scala barra", 0.70, 1.30, 0.05, function() return L.scale end, function(v) L.scale = v end, 220)
+
+    self:Header("Matrice bottoni (solo barra)")
+    self:Note("Quante colonne e quanti tasti per colonna usare per i bottoni della barra. I tasti fase si dispongono sotto (se la matrice e' larga) o a destra (se e' alta).")
+    self:AddSlider("Colonne", 1, 8, 1, function() return L.matrixCols end, function(v) L.matrixCols = v end, 220)
+    self:AddSlider("Tasti per colonna", 1, 8, 1, function() return L.matrixRows end, function(v) L.matrixRows = v end, 220)
 
     self:Header("Anchors HUD (stile ElvUI)")
     self:Note("Sblocca e mostra come placeholder spostabili le HUD Raid Frame e MacroBar. Le altre finestre restano normali.")
