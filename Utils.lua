@@ -65,9 +65,42 @@ function Utils:FormatCD(seconds)
     return tostring(seconds)
 end
 
+-- Protegge SendChatMessage (3.3.5): una "|" non seguita da una sequenza di
+-- escape valida (|c colore, |H..|h link oggetti/incantesimi, |T..|t texture,
+-- |r reset, |n newline, |1..|4 forme grammaticali, || pipe letterale) fa
+-- scattare "Invalid escape code in chat message". Raddoppia solo le pipe
+-- "orfane", lasciando intatti i link degli oggetti (|c..|H..|h..|r).
+function Utils:SanitizeChat(text)
+    if type(text) ~= "string" then return text end
+    local valid = { c=true, C=true, r=true, R=true, h=true, H=true, t=true, T=true,
+                    n=true, N=true, ["1"]=true, ["2"]=true, ["3"]=true, ["4"]=true,
+                    ["|"]=true }
+    local out = {}
+    local i = 1
+    while i <= #text do
+        local c = text:sub(i, i)
+        if c == "|" then
+            local nxt = text:sub(i + 1, i + 1)
+            if nxt ~= "" and valid[nxt] then
+                out[#out + 1] = "|"
+                out[#out + 1] = nxt
+                i = i + 2
+            else
+                out[#out + 1] = "||"
+                i = i + 1
+            end
+        else
+            out[#out + 1] = c
+            i = i + 1
+        end
+    end
+    return table.concat(out)
+end
+
 function Utils:SendChat(msg, channel)
     if not msg or msg == "" then return end
     channel = channel or "RAID"
+    msg = self:SanitizeChat(msg)
     if RLSuiteDB and RLSuiteDB.debug then
         local me = UnitName("player")
         if me then
@@ -83,6 +116,7 @@ end
 
 function Utils:Whisper(name, msg)
     if not msg or msg == "" then return end
+    msg = self:SanitizeChat(msg)
     local dest = name
     if RLSuiteDB and RLSuiteDB.debug then
         dest = UnitName("player")

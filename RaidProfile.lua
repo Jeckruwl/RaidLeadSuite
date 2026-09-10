@@ -176,6 +176,13 @@ function MW:CreateFrame()
     end)
     self.phaseBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
+    -- Testo con il nome della fase, mostrato accanto all'icona fase
+    -- quando c'e' spazio sufficiente fino alla X di chiusura.
+    self.phaseText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.phaseText:SetTextColor(1, 0.82, 0)
+    self.phaseText:SetJustifyH("LEFT")
+    self.phaseText:Hide()
+
     self:CreateMacrobarSubTab()
     self:CreateRaidFrameSubTab()
 
@@ -237,26 +244,31 @@ function MW:ApplyLayout()
     -- Bottoni matrice: colonne x righe configurabili dalla Config.
     local bw, bh, gapX, gapY = 90, 22, 8, 4
     local PAD = 12
+    local iconSize = 26                       -- icone (rotellina/save/fase)
+    local iconGap = 4                         -- spazio tra le icone
     local xSize = 32                          -- X di chiusura
-    local gearH = 26                          -- rotellina Config
-    local saveH = 26                          -- icona SaveRaid
-    local phaseH = 26                         -- icona fase
-    local gearGap = 4                         -- spazio tra X/rotellina/save/fase
+    local rowGap = 6                          -- spazio tra riga icone e matrice
 
     local matrixW = cols * bw + (cols - 1) * gapX
     local matrixH = rows * bh + (rows - 1) * gapY
 
-    -- colonna destra: X + rotellina + save + icona fase impilate
-    local closeColH = xSize + gearGap + gearH + gearGap + saveH + gearGap + phaseH
-    local h = math.max(matrixH, closeColH) + 2 * PAD
-    local w = PAD + matrixW + 10 + 36 + PAD
+    -- Riga icone in alto, larga quanto la matrice: le 3 icone a sinistra,
+    -- spazio vuoto, X rossa a destra. Se la matrice e' piu' stretta delle
+    -- icone, riga e barra si allargano al minimo per contenerle.
+    local iconRowH = math.max(iconSize, xSize)
+    local iconsW = 3 * iconSize + 2 * iconGap
+    local minRowW = iconsW + iconGap + xSize
+    local contentW = math.max(matrixW, minRowW)
+
+    local h = 2 * PAD + iconRowH + rowGap + matrixH
+    local w = 2 * PAD + contentW
 
     self.frame:SetSize(w, h)
     self.frame:SetScale(L.scale or 1)
 
-    -- matrice (in alto a sinistra)
+    -- matrice (sotto la riga icone, allineata a sinistra)
     local x0 = PAD
-    local topY = -PAD
+    local topY = -PAD - iconRowH - rowGap
     for i, btn in ipairs(self.matrixButtons or {}) do
         local col = (i - 1) % cols
         local row = math.floor((i - 1) / cols)
@@ -265,22 +277,35 @@ function MW:ApplyLayout()
         btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", x0 + col * (bw + gapX), topY - row * (bh + gapY))
     end
 
-    -- X di chiusura + rotellina Config + icona fase (in alto a destra)
-    if self.closeBtn then
-        self.closeBtn:ClearAllPoints()
-        self.closeBtn:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", -6, -6)
-    end
+    -- riga icone in alto: rotellina -> save -> fase a sinistra, X a destra
+    local iconY = -(iconRowH - iconSize) / 2
     if self.configBtn then
         self.configBtn:ClearAllPoints()
-        self.configBtn:SetPoint("TOP", self.closeBtn or self.frame, "BOTTOM", 0, -gearGap)
+        self.configBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", PAD, -PAD + iconY)
     end
     if self.saveRaidBtn then
         self.saveRaidBtn:ClearAllPoints()
-        self.saveRaidBtn:SetPoint("TOP", self.configBtn or self.closeBtn or self.frame, "BOTTOM", 0, -gearGap)
+        self.saveRaidBtn:SetPoint("TOPLEFT", self.configBtn or self.frame, "TOPRIGHT", iconGap, 0)
     end
     if self.phaseBtn then
         self.phaseBtn:ClearAllPoints()
-        self.phaseBtn:SetPoint("TOP", self.saveRaidBtn or self.configBtn or self.closeBtn or self.frame, "BOTTOM", 0, -gearGap)
+        self.phaseBtn:SetPoint("TOPLEFT", self.saveRaidBtn or self.configBtn or self.frame, "TOPRIGHT", iconGap, 0)
+    end
+    if self.closeBtn then
+        self.closeBtn:ClearAllPoints()
+        self.closeBtn:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", -PAD, -PAD)
+    end
+
+    -- nome della fase accanto all'icona, solo se c'e' spazio fino alla X
+    if self.phaseText and self.phaseBtn then
+        self.phaseText:ClearAllPoints()
+        self.phaseText:SetPoint("LEFT", self.phaseBtn, "RIGHT", iconGap + 2, 0)
+        local available = contentW - iconsW - xSize - iconGap
+        if available >= 58 then
+            self.phaseText:Show()
+        else
+            self.phaseText:Hide()
+        end
     end
 
     RLSuite.utils:SkinFrame(self.frame)
@@ -520,6 +545,9 @@ function MW:UpdatePhaseButtons()
     if not btn or not def then return end
 
     btn.label = def.label
+    if self.phaseText then
+        self.phaseText:SetText(def.label or "")
+    end
     btn.icon:SetTexture(def.file)
     if def.static then
         btn.icon:SetTexCoord(def.static[1], def.static[2], def.static[3], def.static[4])

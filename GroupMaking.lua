@@ -751,7 +751,7 @@ function GM:DoSpam()
     for _, ch in ipairs(channels) do
         local chNum = GetChannelName(ch)
         if chNum and chNum > 0 then
-            SendChatMessage(msg, "CHANNEL", nil, chNum)
+            SendChatMessage(RLSuite.utils:SanitizeChat(msg), "CHANNEL", nil, chNum)
         end
     end
 end

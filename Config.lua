@@ -199,6 +199,15 @@ function CFG:WipePanel()
         if nxt > max then nxt = max end
         s:SetVerticalScroll(nxt)
     end)
+    -- Lo ScrollFrame cattura i click sull'area impostazioni: riporta il
+    -- Config in primo piano anche quando si clicca qui (non solo sul titolo
+    -- o sulla colonna delle categorie), cosi' con piu' finestre aperte non
+    -- resta mai coperto dal background di un'altra finestra.
+    scroll:SetScript("OnMouseDown", function()
+        if CFG.frame and RLSuite.utils and RLSuite.utils.RaiseWindow then
+            RLSuite.utils:RaiseWindow(CFG.frame)
+        end
+    end)
     self._fitPanel = fit
     self._rowLayouts = {}
     self.scroll = scroll
@@ -933,12 +942,12 @@ function CFG:PanelMain()
     L.matrixCols = L.matrixCols or 2
     L.matrixRows = L.matrixRows or 4
     self:Header("Barra e finestre tab")
-    self:Note("La barra si adatta automaticamente a matrice, tasti fase e rotellina Config. Qui imposti l'altezza di default delle finestre tab e la scala della barra.")
+    self:Note("La barra si adatta automaticamente alla matrice e alla riga di icone in alto (Config, SaveRaid, fase). Qui imposti l'altezza di default delle finestre tab e la scala della barra.")
     self:AddSlider("Altezza default finestre", 400, 900, 20, function() return L.height end, function(v) L.height = v end, 220)
     self:AddSlider("Scala barra", 0.70, 1.30, 0.05, function() return L.scale end, function(v) L.scale = v end, 220)
 
     self:Header("Matrice bottoni (solo barra)")
-    self:Note("Quante colonne e quanti tasti per colonna usare per i bottoni della barra. L'icona della fase (sotto la rotellina Config) mostra la fase corrente e al clic passa alla successiva.")
+    self:Note("Quante colonne e quanti tasti per colonna usare per i bottoni della barra. In alto, sopra la matrice, stanno in fila le icone (Config, SaveRaid, fase); l'icona della fase mostra la fase corrente e al clic passa alla successiva.")
     self:AddSlider("Colonne", 1, 8, 1, function() return L.matrixCols end, function(v) L.matrixCols = v end, 220)
     self:AddSlider("Tasti per colonna", 1, 8, 1, function() return L.matrixRows end, function(v) L.matrixRows = v end, 220)
 
