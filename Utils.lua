@@ -621,6 +621,33 @@ function Utils:ApplySavedPos(frame, key, cascadeOffset)
     end
 end
 
+-- Porta una finestra in primo piano sopra le altre (stessa strata).
+-- Assegna un frame level esplicito e distanziato (passo 50): cosi' i
+-- figli con frameLevel relativo (+5..+20: grip di resize, editbox, ecc.)
+-- restano dentro la "fascia" della loro finestra e non sbucano sopra le
+-- finestre vicine, evitando le sovrapposizioni parziali (parti di una
+-- finestra sopra e parti sotto un'altra) quando si spostano le finestre.
+function Utils:RaiseWindow(frame)
+    if not frame then return end
+    RLSuite.windowLevel = (RLSuite.windowLevel or 10) + 50
+    frame:SetFrameStrata("HIGH")
+    frame:SetFrameLevel(RLSuite.windowLevel)
+end
+
+-- Clic su una finestra = portala in primo piano. Vale per i click che
+-- arrivano al frame (sfondo/titolo): i bottoni figli continuano a fare
+-- il loro lavoro. Preserva un eventuale OnMouseDown gia' presente.
+function Utils:MakeClickToFront(frame)
+    if not frame or frame._rlsFront then return end
+    frame._rlsFront = true
+    frame:EnableMouse(true)
+    local old = frame:GetScript("OnMouseDown")
+    frame:SetScript("OnMouseDown", function(self2, button)
+        Utils:RaiseWindow(frame)
+        if old then old(self2, button) end
+    end)
+end
+
 -- Rende un frame trascinabile e salva la posizione nel layout.
 -- NOTA: non sovrascrive script gia' presenti: si aggancia solo se il
 -- frame non ha gia' un comportamento di trascinamento registrato.
@@ -631,7 +658,10 @@ function Utils:MakeDraggable(frame, key)
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStart", function(self2)
+        Utils:RaiseWindow(frame)
+        self2:StartMoving()
+    end)
     frame:SetScript("OnDragStop", function(self2)
         self2:StopMovingOrSizing()
         Utils:PersistFramePos(self2, key)

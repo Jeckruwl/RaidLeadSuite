@@ -294,13 +294,28 @@ function MW:RegisterAllWindows()
         return 500, topH + 274
     end
     RLSuite.windowMins.whisplist = function()
-        return 500, 380
+        -- La meta' destra (wlDetailBox) deve contenere la riga di bottoni
+        -- Invite / Ask GS / Ask Achi: se i bottoni sono piu' larghi del
+        -- box, la larghezza minima cresce per non farli uscire.
+        local gm = RLSuite.groupmaking
+        local btnW = 66
+        if gm and gm.wlInviteBtn then
+            btnW = gm.wlInviteBtn:GetWidth() or 66
+        end
+        local rowW = 10 + 3 * btnW + 2 * 4 + 10
+        local minW = math.max(500, (rowW + 22) * 2)
+        return minW, 380
     end
     RLSuite.windowMins.ms = function()
         return 350, 280
     end
     RLSuite.windowMins.loot = function()
         return 480, 340
+    end
+    RLSuite.windowMins.raidframe = function()
+        -- label+bottono HUD, box anteprima (100) e box Alert Messages
+        -- con 3 righe di edit: larghezza/altezza minime per il pannello tab.
+        return 420, 320
     end
 
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
@@ -318,6 +333,7 @@ function MW:RegisterAllWindows()
         if pane and not pane._rlsWindow then
             pane._rlsWindow = true
             RLSuite.utils:MakeDraggable(pane, lkey)
+            RLSuite.utils:MakeClickToFront(pane)
             -- la X della finestra chiude anche lo stato del tab nella barra
             if pane.closeBtn then
                 local oldClick = pane.closeBtn:GetScript("OnClick")
@@ -333,12 +349,13 @@ function MW:RegisterAllWindows()
         end
     end
 
-    -- Grip di resize per Groupmaking, Whisplist, MS e Loot
+    -- Grip di resize per Groupmaking, Whisplist, MS, Loot e Raid Frame tab
     local resizable = {
         group = { "groupmaking", 420, 380, "groupmaking" },
         whisplist = { "whisplist", 360, 300, "whisplist" },
         ms = { "ms", 320, 260, "ms" },
         loot = { "loot", 440, 300, "loot" },
+        raidframe = { "raidframe", 420, 320, "raidframe" },
     }
     for key, cfg in pairs(resizable) do
         local pane = self:PaneForTab(key)
@@ -400,7 +417,9 @@ function MW:SelectTab(key)
         RLSuite.utils:ApplySavedPos(pane, lkey, function()
             return self:DefaultCascadeOffset(key)
         end)
-        pane:SetFrameStrata("HIGH")
+        -- porta la finestra in primo piano sopra le altre (strata HIGH +
+        -- frame level distanziato: niente sovrapposizioni parziali)
+        RLSuite.utils:RaiseWindow(pane)
         pane:Show()
         self:RefreshTabContents(key)
         -- evidenzia i tab dopo l'apertura: il tab resta acceso finche'
