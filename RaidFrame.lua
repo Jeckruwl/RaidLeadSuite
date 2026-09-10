@@ -47,8 +47,8 @@ function RF:CreateFrame()
         RLSuiteDB.raidframe.y = y
     end)
     f:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true, tileSize = 32, edgeSize = 16,
         insets = {left=4, right=4, top=4, bottom=4}
     })
@@ -176,7 +176,7 @@ function RF:Rebuild()
         row.alert = row:CreateTexture(nil, "OVERLAY")
         row.alert:SetSize(iconSize, iconSize)
         row.alert:SetPoint("LEFT", row, "LEFT", 2, 0)
-        row.alert:SetTexture("Interface\Icons\INV_Misc_QuestionMark")
+        row.alert:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
         row.alert:Hide()
         row.alertFrame = CreateFrame("Button", nil, row)
         row.alertFrame:SetSize(iconSize, iconSize)
@@ -196,20 +196,20 @@ function RF:Rebuild()
         row.healthBar = CreateFrame("StatusBar", nil, row)
         row.healthBar:SetSize(120, barHeight - 4)
         row.healthBar:SetPoint("LEFT", row.nameText, "RIGHT", 5, 0)
-        row.healthBar:SetStatusBarTexture("Interface\TargetingFrame\UI-StatusBar")
+        row.healthBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
         row.healthBar:SetStatusBarColor(0, 1, 0)
         row.healthBar:SetMinMaxValues(0, 100)
         row.healthBar:SetValue(100)
 
         row.healthText = row.healthBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         row.healthText:SetPoint("CENTER", row.healthBar, "CENTER")
-        row.healthText:SetFont("Fonts\FRIZQT__.TTF", 8)
+        row.healthText:SetFont("Fonts\\FRIZQT__.TTF", 8)
         row.healthText:SetText("100%")
 
         row.manaBar = CreateFrame("StatusBar", nil, row)
         row.manaBar:SetSize(120, 4)
         row.manaBar:SetPoint("TOP", row.healthBar, "BOTTOM", 0, -1)
-        row.manaBar:SetStatusBarTexture("Interface\TargetingFrame\UI-StatusBar")
+        row.manaBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
         row.manaBar:SetStatusBarColor(0, 0.5, 1)
         row.manaBar:SetMinMaxValues(0, 100)
         row.manaBar:SetValue(100)
@@ -221,12 +221,12 @@ function RF:Rebuild()
             cd:SetSize(iconSize, iconSize)
             cd:SetPoint("LEFT", row.manaBar, "RIGHT", 10 + (j-1)*(iconSize+2), 0)
             local meta = RLSuite.abilityByName and RLSuite.abilityByName[ability]
-            cd:SetTexture((meta and meta.icon) or "Interface\Icons\INV_Misc_QuestionMark")
+            cd:SetTexture((meta and meta.icon) or "Interface\\Icons\\INV_Misc_QuestionMark")
             cd:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             cd.ability = ability
             local timer = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             timer:SetPoint("CENTER", cd, "CENTER", 0, 0)
-            timer:SetFont("Fonts\FRIZQT__.TTF", 8, "OUTLINE")
+            timer:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
             timer:SetText("")
             cd.timer = timer
             row.cdIcons[j] = cd
@@ -399,11 +399,11 @@ end
 
 function RF:GetAlertIcon(alertType)
     local icons = {
-        flask = "Interface\Icons\INV_Alchemy_EndlessFlask_01",
-        food = "Interface\Icons\INV_Misc_Food_15",
-        buff = "Interface\Icons\Spell_Magic_GreaterBlessingofKings",
+        flask = "Interface\\Icons\\INV_Alchemy_EndlessFlask_01",
+        food = "Interface\\Icons\\INV_Misc_Food_15",
+        buff = "Interface\\Icons\\Spell_Magic_GreaterBlessingofKings",
     }
-    return icons[alertType] or "Interface\Icons\INV_Misc_QuestionMark"
+    return icons[alertType] or "Interface\\Icons\\INV_Misc_QuestionMark"
 end
 
 function RF:OnAlertClick(row)

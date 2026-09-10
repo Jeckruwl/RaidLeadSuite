@@ -85,7 +85,7 @@ local defaults = {
     },
     appearance = {
         theme = "default",
-        font = "Fonts\FRIZQT__.TTF",
+        font = "Fonts\\FRIZQT__.TTF",
         fontSize = 12,
         edgeSize = 32,
         bg = { r = 0.08, g = 0.08, b = 0.10, a = 1 },

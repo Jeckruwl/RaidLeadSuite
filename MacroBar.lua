@@ -174,8 +174,8 @@ function MB:CreateButtons()
 
         -- Background visibile
         btn:SetBackdrop({
-            bgFile = "Interface\Buttons\UI-Quickslot",
-            edgeFile = "Interface\Buttons\UI-Quickslot",
+            bgFile = "Interface\\Buttons\\UI-Quickslot",
+            edgeFile = "Interface\\Buttons\\UI-Quickslot",
             tile = false, tileSize = 32, edgeSize = 32,
         })
         btn:SetBackdropColor(0.2, 0.2, 0.2, 0.8)
@@ -183,13 +183,13 @@ function MB:CreateButtons()
         -- Icon texture (CREATA MANUALMENTE)
         btn.icon = btn:CreateTexture(nil, "ARTWORK")
         btn.icon:SetAllPoints(btn)
-        btn.icon:SetTexture("Interface\Icons\INV_Misc_QuestionMark")
+        btn.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
         -- Highlight
         btn.highlight = btn:CreateTexture(nil, "HIGHLIGHT")
         btn.highlight:SetAllPoints(btn)
-        btn.highlight:SetTexture("Interface\Buttons\ButtonHilight-Square")
+        btn.highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
         btn.highlight:SetBlendMode("ADD")
         btn.highlight:Hide()
         btn:SetHighlightTexture(btn.highlight)
@@ -197,7 +197,7 @@ function MB:CreateButtons()
         -- Pushed
         btn.pushed = btn:CreateTexture(nil, "OVERLAY")
         btn.pushed:SetAllPoints(btn)
-        btn.pushed:SetTexture("Interface\Buttons\UI-Quickslot-Depress")
+        btn.pushed:SetTexture("Interface\\Buttons\\UI-Quickslot-Depress")
         btn.pushed:Hide()
         btn:SetPushedTexture(btn.pushed)
 
@@ -207,12 +207,12 @@ function MB:CreateButtons()
 
         btn.hotkey = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         btn.hotkey:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -2, -2)
-        btn.hotkey:SetFont("Fonts\FRIZQT__.TTF", 9, "OUTLINE")
+        btn.hotkey:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
         btn.hotkey:SetText("")
 
         btn.numText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         btn.numText:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 2, 2)
-        btn.numText:SetFont("Fonts\FRIZQT__.TTF", 8, "OUTLINE")
+        btn.numText:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
         btn.numText:SetText(i)
 
         RLSuite.utils:SkinMacroButton(btn)
@@ -712,8 +712,8 @@ function MB:OpenMacroEdit(index)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true, tileSize = 32, edgeSize = 16,
     })
     f:SetMovable(true)
@@ -745,7 +745,7 @@ function MB:OpenMacroEdit(index)
     edit:SetPoint("TOPLEFT", macroLabel, "BOTTOMLEFT", 0, -5)
     edit:SetFontObject("ChatFontNormal")
     edit:SetBackdrop({
-        bgFile = "Interface\Tooltips\UI-Tooltip-Background",
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         tile = true, tileSize = 16,
     })
     edit:SetBackdropColor(0, 0, 0, 0.8)
@@ -764,7 +764,7 @@ function MB:OpenMacroEdit(index)
         self.db.macros[phase] = self.db.macros[phase] or {}
         self.db.macros[phase][index] = {
             text = edit:GetText(),
-            icon = current.icon or "Interface\Icons\INV_Misc_QuestionMark",
+            icon = current.icon or "Interface\\Icons\\INV_Misc_QuestionMark",
         }
         self:LoadMacrosForPhase(phase)
         if RLSuite.config and RLSuite.config.RefreshMacroTab then

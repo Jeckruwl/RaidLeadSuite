@@ -339,7 +339,7 @@ function LM:AddToHistory(itemLink, itemName, itemTexture, quality)
         id = #self.history + 1,
         itemLink = itemLink,
         itemName = itemName,
-        itemTexture = itemTexture or "Interface\Icons\INV_Misc_QuestionMark",
+        itemTexture = itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark",
         boss = "Unknown",
         itemType = self:DetectItemType(itemLink, itemName),
         quality = quality,
@@ -445,7 +445,7 @@ function LM:UpdateHistory()
             local icon = row:CreateTexture(nil, "ARTWORK")
             icon:SetSize(18, 18)
             icon:SetPoint("LEFT", row, "LEFT", 36, 0)
-            icon:SetTexture(entry.itemTexture or "Interface\Icons\INV_Misc_QuestionMark")
+            icon:SetTexture(entry.itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
             icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
             local m = self:HistMetrics(w)
@@ -512,7 +512,7 @@ end
 function LM:SelectItem(entry)
     self.selectedItem = entry
     if self.selectedItemIcon then
-        self.selectedItemIcon:SetTexture(entry.itemTexture or "Interface\Icons\INV_Misc_QuestionMark")
+        self.selectedItemIcon:SetTexture(entry.itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
     end
     if self.selectedItemText then
         self.selectedItemText:SetText(entry.itemName or "Unknown")
@@ -726,7 +726,7 @@ function LM:ShowTradeWindow(item)
     local icon = f:CreateTexture(nil, "ARTWORK")
     icon:SetSize(40, 40)
     icon:SetPoint("TOP", f, "TOP", 0, -15)
-    icon:SetTexture(item.itemTexture or "Interface\Icons\INV_Misc_QuestionMark")
+    icon:SetTexture(item.itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
 
     local text = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     text:SetPoint("TOP", icon, "BOTTOM", 0, -5)

@@ -72,8 +72,8 @@ function GM:CreateMainWindow()
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     f:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true, tileSize = 32, edgeSize = 16,
         insets = {left=4, right=4, top=4, bottom=4}
     })
@@ -278,8 +278,8 @@ function GM:BuildCompSlots()
         slot:SetPoint("TOPLEFT", self.compFrame, "TOPLEFT", col * (SLOT_SIZE + SLOT_SPACING), y)
         -- Sfondo slot visibile
         slot:SetBackdrop({
-            bgFile = "Interface\Buttons\UI-Quickslot",
-            edgeFile = "Interface\Buttons\UI-Quickslot",
+            bgFile = "Interface\\Buttons\\UI-Quickslot",
+            edgeFile = "Interface\\Buttons\\UI-Quickslot",
             tile = false, tileSize = 32, edgeSize = 32,
             insets = {left=0, right=0, top=0, bottom=0}
         })
@@ -298,7 +298,7 @@ function GM:BuildCompSlots()
         slot.icon:Hide()
 
         slot.roleBorder = slot:CreateTexture(nil, "OVERLAY")
-        slot.roleBorder:SetTexture("Interface\Buttons\UI-ActionButton-Border")
+        slot.roleBorder:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
         slot.roleBorder:SetSize(SLOT_SIZE + 12, SLOT_SIZE + 12)
         slot.roleBorder:SetPoint("CENTER", slot, "CENTER")
         slot.roleBorder:Hide()
@@ -991,7 +991,7 @@ function GM:BuildWLCompSlots()
         local row = math.floor((i - 1) / 5)
         slot:SetPoint("TOPLEFT", self.wlCompFrame, "TOPLEFT", col * 24, -row * 24)
         slot:SetBackdrop({
-            bgFile = "Interface\Buttons\UI-Quickslot",
+            bgFile = "Interface\\Buttons\\UI-Quickslot",
             tile = false, tileSize = 20, edgeSize = 20,
         })
         slot.index = i
