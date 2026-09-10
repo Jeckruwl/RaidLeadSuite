@@ -427,6 +427,8 @@ function LM:UpdateHistory()
         if self:MatchesFilter(entry) then
             local row = CreateFrame("Button", nil, self.histContent)
             self.histRows[#self.histRows + 1] = row
+            row:EnableMouse(true)
+            row:RegisterForClicks("LeftButtonUp")
             row:SetHeight(26)
             row:SetPoint("TOPLEFT", self.histContent, "TOPLEFT", 0, -y)
             row:SetPoint("TOPRIGHT", self.histContent, "TOPRIGHT", 0, -y)
@@ -721,6 +723,8 @@ function LM:ShowTradeWindow(item)
 
     local btn = CreateFrame("Button", nil, f)
     btn:SetAllPoints(icon)
+    btn:EnableMouse(true)
+    btn:RegisterForClicks("LeftButtonUp")
     btn:SetScript("OnClick", function()
         if item.itemLink then
             PickupItem(item.itemLink)

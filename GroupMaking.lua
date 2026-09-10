@@ -480,6 +480,8 @@ function GM:BuildClassBar()
                 btn.class = class
                 btn.spec = spec.name
                 btn.role = spec.role
+                btn:EnableMouse(true)
+                btn:RegisterForClicks("LeftButtonUp")
                 btn:SetScript("OnClick", function(s)
                     self:OnClassBarClick(s.class, s.role, s.spec)
                 end)
@@ -993,6 +995,8 @@ function GM:BuildWLCompSlots()
             tile = false, tileSize = 20, edgeSize = 20,
         })
         slot.index = i
+        slot:EnableMouse(true)
+        slot:RegisterForClicks("LeftButtonUp")
         slot:SetScript("OnClick", function(s)
             if self.selectedEntry then
                 self:InvitePlayerToSlot(self.selectedEntry, s.index)
@@ -1046,6 +1050,8 @@ function GM:UpdateWhisplist()
     for i, entry in ipairs(entries) do
         local row = CreateFrame("Button", nil, self.wlContent)
         self.wlRows[#self.wlRows + 1] = row
+        row:EnableMouse(true)
+        row:RegisterForClicks("LeftButtonUp")
         row:SetHeight(24)
         row:SetPoint("TOPLEFT", self.wlContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.wlContent, "TOPRIGHT", 0, -y)
