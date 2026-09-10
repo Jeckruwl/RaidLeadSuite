@@ -278,14 +278,17 @@ function GM:BuildCompSlots()
         local row = math.floor((i - 1) / 5)
         local y = -(row * self:GroupRowHeight() + GROUP_LABEL_H)
         slot:SetPoint("TOPLEFT", self.compFrame, "TOPLEFT", col * (SLOT_SIZE + SLOT_SPACING), y)
-        -- Sfondo slot visibile
+        -- Slot background + thin border (the class color is applied to the
+        -- border on fill). No oversized overlay texture: it used to cover the
+        -- spec icon and poke into the "Group N" labels.
         slot:SetBackdrop({
             bgFile = "Interface\\Buttons\\UI-Quickslot",
-            edgeFile = "Interface\\Buttons\\UI-Quickslot",
-            tile = false, tileSize = 32, edgeSize = 32,
-            insets = {left=0, right=0, top=0, bottom=0}
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = false, tileSize = 32, edgeSize = 8,
+            insets = {left=2, right=2, top=2, bottom=2}
         })
-        slot:SetBackdropColor(0.3, 0.3, 0.3, 0.9)
+        slot:SetBackdropColor(0.2, 0.2, 0.2, 0.9)
+        slot:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
         slot:Show()
         slot:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         slot:SetScript("OnClick", function(s, button)
@@ -295,19 +298,21 @@ function GM:BuildCompSlots()
         end)
 
         slot.icon = slot:CreateTexture(nil, "ARTWORK")
-        slot.icon:SetAllPoints(slot)
+        slot.icon:SetPoint("TOPLEFT", slot, "TOPLEFT", 3, -3)
+        slot.icon:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -3, 3)
         slot.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         slot.icon:Hide()
 
-        slot.roleBorder = slot:CreateTexture(nil, "OVERLAY")
-        slot.roleBorder:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
-        slot.roleBorder:SetSize(SLOT_SIZE + 12, SLOT_SIZE + 12)
-        slot.roleBorder:SetPoint("CENTER", slot, "CENTER")
-        slot.roleBorder:Hide()
+        -- Dark backing so the role glyph stays readable on any spec icon.
+        slot.roleIconBg = slot:CreateTexture(nil, "OVERLAY")
+        slot.roleIconBg:SetSize(16, 16)
+        slot.roleIconBg:SetPoint("TOPRIGHT", slot, "TOPRIGHT", -1, -1)
+        slot.roleIconBg:SetTexture(0, 0, 0, 0.6)
+        slot.roleIconBg:Hide()
 
         slot.roleIcon = slot:CreateTexture(nil, "OVERLAY")
-        slot.roleIcon:SetSize(12, 12)
-        slot.roleIcon:SetPoint("TOPRIGHT", slot, "TOPRIGHT", -1, -1)
+        slot.roleIcon:SetSize(14, 14)
+        slot.roleIcon:SetPoint("TOPRIGHT", slot, "TOPRIGHT", -2, -2)
         slot.roleIcon:SetTexture(ROLE_ICON_TEXTURE)
         slot.roleIcon:Hide()
 
@@ -391,7 +396,8 @@ function GM:ClearSlot(index)
     slot.filled = false
     slot.playerName = nil
     if slot.icon then slot.icon:Hide() end
-    if slot.roleBorder then slot.roleBorder:Hide() end
+    slot:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
+    if slot.roleIconBg then slot.roleIconBg:Hide() end
     if slot.roleIcon then slot.roleIcon:Hide() end
     self:UpdateMessagePreview()
     self:SaveComp()
@@ -411,10 +417,8 @@ function GM:FillSlot(index, class, role, playerName, spec)
         slot.icon:Show()
     end
     local r, g, b = RLSuite.utils:GetClassColor(class)
-    if slot.roleBorder then
-        slot.roleBorder:SetVertexColor(r, g, b)
-        slot.roleBorder:Show()
-    end
+    slot:SetBackdropBorderColor(r, g, b, 1)
+    if slot.roleIconBg then slot.roleIconBg:Show() end
     if slot.roleIcon then
         local coords = RoleIconCoords(slot.role)
         slot.roleIcon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
