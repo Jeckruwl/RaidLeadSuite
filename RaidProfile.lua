@@ -158,8 +158,7 @@ function MW:CreateFrame()
             static = { 0, 0.125, 0, 0.25 },
             anim = { frames = 29, cols = 8, rows = 4, delay = 0.1 } },
         preboss = { label = "Pre-boss",
-            file = "Interface\\LFGFrame\\WaitAnim",
-            static = { 0, 0.5, 0, 0.5 } },
+            file = "Interface\\Icons\\Spell_Holy_BorrowedTime" },
         infight = { label = "In-fight",
             file = "Interface\\CharacterFrame\\UI-StateIcon",
             static = { 0.5, 1.0, 0, 0.5 } },
@@ -509,6 +508,9 @@ function MW:UpdatePhaseButtons()
     btn.icon:SetTexture(def.file)
     if def.static then
         btn.icon:SetTexCoord(def.static[1], def.static[2], def.static[3], def.static[4])
+    elseif not def.anim then
+        -- icona intera: azzera il ritaglio lasciato da una fase precedente
+        btn.icon:SetTexCoord(0, 1, 0, 1)
     end
 
     if def.anim then
