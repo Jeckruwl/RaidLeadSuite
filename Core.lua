@@ -500,6 +500,18 @@ function RLSuite:SetContextPhase(phase)
     self.utils:Print("Fase impostata: " .. phase)
 end
 
+-- Cicla preraid -> preboss -> infight -> preraid (usato dall'icona fase).
+function RLSuite:CycleContextPhase()
+    local order = { "preraid", "preboss", "infight" }
+    local cur = self.context or "preraid"
+    local idx
+    for i, k in ipairs(order) do
+        if k == cur then idx = i break end
+    end
+    idx = (idx or 1) % 3 + 1
+    self:SetContextPhase(order[idx])
+end
+
 -- Sincronizza tutta la UI dipendente dal contesto (barra, MacroBar, keypad).
 function RLSuite:UpdatePhaseUI()
     if self.mainWindow and self.mainWindow.UpdatePhaseButtons then

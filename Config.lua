@@ -938,7 +938,7 @@ function CFG:PanelMain()
     self:AddSlider("Scala barra", 0.70, 1.30, 0.05, function() return L.scale end, function(v) L.scale = v end, 220)
 
     self:Header("Matrice bottoni (solo barra)")
-    self:Note("Quante colonne e quanti tasti per colonna usare per i bottoni della barra. I tasti fase si dispongono sotto (se la matrice e' larga) o a destra (se e' alta).")
+    self:Note("Quante colonne e quanti tasti per colonna usare per i bottoni della barra. L'icona della fase (sotto la rotellina Config) mostra la fase corrente e al clic passa alla successiva.")
     self:AddSlider("Colonne", 1, 8, 1, function() return L.matrixCols end, function(v) L.matrixCols = v end, 220)
     self:AddSlider("Tasti per colonna", 1, 8, 1, function() return L.matrixRows end, function(v) L.matrixRows = v end, 220)
 

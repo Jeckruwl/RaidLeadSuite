@@ -149,68 +149,39 @@ function MW:CreateFrame()
     self.saveRaidBtn = saveBtn
     table.insert(self.matrixButtons, saveBtn)
 
-    -- 3 tasti fase: icone che rappresentano la fase (occhio LFG animato /
-    -- clessidra / spade da combattimento)
-    self.phaseButtons = {}
-    local phases = {
-        { key = "preraid", label = "Pre-raid",
-          file = "Interface\\LFGFrame\\LFG-Eye",
-          static = { 0, 0.125, 0, 0.25 },
-          anim = { frames = 29, cols = 8, rows = 4, delay = 0.1 } },
-        { key = "preboss", label = "Pre-boss",
-          file = "Interface\\LFGFrame\\WaitAnim",
-          static = { 0, 0.5, 0, 0.5 } },
-        { key = "infight", label = "In-fight",
-          file = "Interface\\CharacterFrame\\UI-StateIcon",
-          static = { 0.5, 1.0, 0, 0.5 } },
+    -- Icona fase singola: sotto la rotellina Config, cambia in base alla
+    -- fase (occhio LFG animato / clessidra / spade da combattimento).
+    -- Clic = passa alla fase successiva.
+    self.phaseDefs = {
+        preraid = { label = "Pre-raid",
+            file = "Interface\\LFGFrame\\LFG-Eye",
+            static = { 0, 0.125, 0, 0.25 },
+            anim = { frames = 29, cols = 8, rows = 4, delay = 0.1 } },
+        preboss = { label = "Pre-boss",
+            file = "Interface\\LFGFrame\\WaitAnim",
+            static = { 0, 0.5, 0, 0.5 } },
+        infight = { label = "In-fight",
+            file = "Interface\\CharacterFrame\\UI-StateIcon",
+            static = { 0.5, 1.0, 0, 0.5 } },
     }
-    for i, pdata in ipairs(phases) do
-        local btn = CreateFrame("Button", "RLSuitePhaseBtn" .. pdata.key, f)
-        btn:SetSize(26, 26)
-        btn.phaseKey = pdata.key
-        RLSuite.utils:SkinBox(btn)
-
-        local icon = btn:CreateTexture(nil, "ARTWORK")
-        icon:SetPoint("TOPLEFT", btn, "TOPLEFT", 3, -3)
-        icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 3)
-        icon:SetTexture(pdata.file)
-        if pdata.static then
-            icon:SetTexCoord(pdata.static[1], pdata.static[2], pdata.static[3], pdata.static[4])
+    self.phaseBtn = CreateFrame("Button", "RLSuitePhaseBtn", f)
+    self.phaseBtn:SetSize(26, 26)
+    RLSuite.utils:SkinBox(self.phaseBtn)
+    local phaseIcon = self.phaseBtn:CreateTexture(nil, "ARTWORK")
+    phaseIcon:SetPoint("TOPLEFT", self.phaseBtn, "TOPLEFT", 3, -3)
+    phaseIcon:SetPoint("BOTTOMRIGHT", self.phaseBtn, "BOTTOMRIGHT", -3, 3)
+    self.phaseBtn.icon = phaseIcon
+    self.phaseBtn:SetScript("OnClick", function()
+        if RLSuite.CycleContextPhase then
+            RLSuite:CycleContextPhase()
         end
-        btn.icon = icon
-
-        if pdata.anim then
-            btn._anim = { frames = pdata.anim.frames, cols = pdata.anim.cols,
-                          rows = pdata.anim.rows, delay = pdata.anim.delay, t = 0, frame = 0 }
-            btn:SetScript("OnUpdate", function(s, elapsed)
-                local a = s._anim
-                a.t = a.t + elapsed
-                while a.t >= a.delay do
-                    a.t = a.t - a.delay
-                    a.frame = a.frame + 1
-                    if a.frame >= a.frames then a.frame = 0 end
-                end
-                local col = a.frame % a.cols
-                local row = math.floor(a.frame / a.cols)
-                s.icon:SetTexCoord(col / a.cols, (col + 1) / a.cols, row / a.rows, (row + 1) / a.rows)
-            end)
-        end
-
-        btn:SetScript("OnClick", function()
-            if RLSuite.SetContextPhase then
-                RLSuite:SetContextPhase(pdata.key)
-            end
-        end)
-        btn:SetScript("OnEnter", function(s)
-            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
-            GameTooltip:SetText(pdata.label)
-            GameTooltip:Show()
-        end)
-        btn:SetScript("OnLeave", function()
-            GameTooltip:Hide()
-        end)
-        self.phaseButtons[pdata.key] = btn
-    end
+    end)
+    self.phaseBtn:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+        GameTooltip:SetText(s.label or "Fase")
+        GameTooltip:Show()
+    end)
+    self.phaseBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     self:CreateMacrobarSubTab()
     self:CreateRaidFrameSubTab()
@@ -257,28 +228,18 @@ function MW:ApplyLayout()
     -- Bottoni matrice: colonne x righe configurabili dalla Config.
     local bw, bh, gapX, gapY = 90, 22, 8, 4
     local PAD = 12
-    local ps, pgap = 26, 6                    -- icone fase
     local xSize = 32                          -- X di chiusura
     local gearH = 26                          -- rotellina Config
-    local gearGap = 4                         -- spazio X -> rotellina
+    local phaseH = 26                         -- icona fase (sotto la rotellina)
+    local gearGap = 4                         -- spazio tra X/rotellina/fase
 
     local matrixW = cols * bw + (cols - 1) * gapX
     local matrixH = rows * bh + (rows - 1) * gapY
 
-    -- Fase: se la matrice e' piu' larga che alta i 3 tasti stanno sotto,
-    -- uno affianco all'altro; se e' piu' alta che larga stanno a destra,
-    -- uno sotto l'altro.
-    local horizontal = matrixW >= matrixH
-    local phaseW = horizontal and (3 * ps + 2 * pgap) or ps
-    local phaseH = horizontal and ps or (3 * ps + 2 * pgap)
-
-    local contentW = matrixW + (horizontal and 0 or (phaseW + 10))
-    local contentH = horizontal and (matrixH + 8 + phaseH) or math.max(matrixH, phaseH)
-
-    -- colonna destra (X + rotellina) sempre presente
-    local closeColH = xSize + gearGap + gearH
-    local h = math.max(contentH, closeColH) + 2 * PAD
-    local w = PAD + contentW + 10 + 36 + PAD
+    -- colonna destra: X + rotellina + icona fase impilate
+    local closeColH = xSize + gearGap + gearH + gearGap + phaseH
+    local h = math.max(matrixH, closeColH) + 2 * PAD
+    local w = PAD + matrixW + 10 + 36 + PAD
 
     self.frame:SetSize(w, h)
     self.frame:SetScale(L.scale or 1)
@@ -294,25 +255,7 @@ function MW:ApplyLayout()
         btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", x0 + col * (bw + gapX), topY - row * (bh + gapY))
     end
 
-    -- tasti fase (icone)
-    for i, key in ipairs({ "preraid", "preboss", "infight" }) do
-        local btn = self.phaseButtons and self.phaseButtons[key]
-        if btn then
-            btn:ClearAllPoints()
-            btn:SetSize(ps, ps)
-            if horizontal then
-                local px0 = x0 + (matrixW - phaseW) / 2
-                local py = topY - matrixH - 8
-                btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", px0 + (i - 1) * (ps + pgap), py)
-            else
-                local px = x0 + matrixW + 10
-                local py = topY - (i - 1) * (ps + pgap)
-                btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", px, py)
-            end
-        end
-    end
-
-    -- X di chiusura + rotellina Config (in alto a destra)
+    -- X di chiusura + rotellina Config + icona fase (in alto a destra)
     if self.closeBtn then
         self.closeBtn:ClearAllPoints()
         self.closeBtn:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", -6, -6)
@@ -320,6 +263,10 @@ function MW:ApplyLayout()
     if self.configBtn then
         self.configBtn:ClearAllPoints()
         self.configBtn:SetPoint("TOP", self.closeBtn or self.frame, "BOTTOM", 0, -gearGap)
+    end
+    if self.phaseBtn then
+        self.phaseBtn:ClearAllPoints()
+        self.phaseBtn:SetPoint("TOP", self.configBtn or self.closeBtn or self.frame, "BOTTOM", 0, -gearGap)
     end
 
     RLSuite.utils:SkinFrame(self.frame)
@@ -554,15 +501,39 @@ end
 
 function MW:UpdatePhaseButtons()
     local phase = RLSuite.context or "preraid"
-    local c = RLSuite.utils:GetThemeColors()
-    for key, btn in pairs(self.phaseButtons or {}) do
-        if btn then
-            if key == phase then
-                btn:SetBackdropBorderColor(0.85, 0.70, 0.20, 1)
-            else
-                btn:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
+    local def = self.phaseDefs and self.phaseDefs[phase]
+    local btn = self.phaseBtn
+    if not btn or not def then return end
+
+    btn.label = def.label
+    btn.icon:SetTexture(def.file)
+    if def.static then
+        btn.icon:SetTexCoord(def.static[1], def.static[2], def.static[3], def.static[4])
+    end
+
+    if def.anim then
+        local a = btn._anim or {}
+        a.frames = def.anim.frames
+        a.cols = def.anim.cols
+        a.rows = def.anim.rows
+        a.delay = def.anim.delay
+        a.t = 0
+        a.frame = 0
+        btn._anim = a
+        btn:SetScript("OnUpdate", function(s, elapsed)
+            local aa = s._anim
+            aa.t = aa.t + elapsed
+            while aa.t >= aa.delay do
+                aa.t = aa.t - aa.delay
+                aa.frame = aa.frame + 1
+                if aa.frame >= aa.frames then aa.frame = 0 end
             end
-        end
+            local col = aa.frame % aa.cols
+            local row = math.floor(aa.frame / aa.cols)
+            s.icon:SetTexCoord(col / aa.cols, (col + 1) / aa.cols, row / aa.rows, (row + 1) / aa.rows)
+        end)
+    else
+        btn:SetScript("OnUpdate", nil)
     end
 end
 
