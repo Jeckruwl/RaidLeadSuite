@@ -393,7 +393,7 @@ function RLSuite:PrintHelp()
     p("  /rls help         Questo elenco")
     p("  /rls group        Tab Groupmaking")
     p("  /rls whisplist    Tab Whisplist")
-    p("  /rls macro        Tab Macrobar (editor)")
+    p("  /rls macro        Config -> Macros (editor)")
     p("  /rls macrobar     HUD MacroBar")
     p("  /rls raidframe    Tab Raid Frame (impostazioni)")
     p("  /rls rfhud        HUD Raid Frame")
@@ -418,7 +418,9 @@ SlashCmdList["RLSUITE"] = function(msg)
     elseif msg == "whisplist" or msg == "wl" then
         if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("whisplist") end
     elseif msg == "macro" then
-        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("macro") end
+        if RLSuite.config and RLSuite.config.OpenMacroEditorPanel then
+            RLSuite.config:OpenMacroEditorPanel()
+        end
     elseif msg == "raidframe" or msg == "rf" then
         if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("raidframe") end
     elseif msg == "ms" then
@@ -529,8 +531,8 @@ function RLSuite:UpdatePhaseUI()
         if self.macrobar.UpdatePhase then
             self.macrobar:UpdatePhase()
         end
-        if self.macrobar.ShowKeypad then
-            self.macrobar:ShowKeypad(self.context == "preboss")
+        if self.macrobar.UpdateKeypad then
+            self.macrobar:UpdateKeypad(self.context)
         end
     end
 end
@@ -543,7 +545,7 @@ end
 -- ============================================================
 
 local SAVED_RAID_BRANCHES = { "groupmaking", "whisplist", "macrobar", "raidframe" }
-local SAVED_RAID_LAYOUT_KEYS = { "groupmaking", "whisplist", "macro", "raidframe", "ms", "loot", "config" }
+local SAVED_RAID_LAYOUT_KEYS = { "groupmaking", "whisplist", "raidframe", "ms", "loot", "config" }
 
 function RLSuite:SaveRaid(title)
     title = title or ""
@@ -690,12 +692,11 @@ function RLSuite:ApplySavedRaidToUI()
         if rf.UpdateAll then rf:UpdateAll() end
     end
     -- Macro editor (se visibile)
-    if self.mainWindow and self.mainWindow.frame and self.mainWindow.tabPanels
-        and self.mainWindow.tabPanels.macro and self.mainWindow.tabPanels.macro:IsShown() then
-        local mw = self.mainWindow
-        if mw.RefreshMacroTab then mw:RefreshMacroTab() end
-        if mw.OpenMacroEditor then
-            mw:OpenMacroEditor(mw.macroEditIndex or 1)
+    if self.config and self.config.RefreshMacroTab and self.config.macroEditorPanel
+        and self.config.macroEditorPanel:IsShown() then
+        self.config:RefreshMacroTab()
+        if self.config.OpenMacroEditor then
+            self.config:OpenMacroEditor(self.config.macroEditIndex or 1)
         end
     end
     -- Config apply (scale finestre)

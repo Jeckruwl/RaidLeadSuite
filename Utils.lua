@@ -396,7 +396,6 @@ function Utils:AllTabPanes()
     add(RLSuite.lootManager and RLSuite.lootManager.frame)
     add(RLSuite.config and RLSuite.config.frame)
     if RLSuite.mainWindow and RLSuite.mainWindow.tabPanels then
-        add(RLSuite.mainWindow.tabPanels.macro)
         add(RLSuite.mainWindow.tabPanels.raidframe)
     end
     return list

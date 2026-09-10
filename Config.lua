@@ -63,7 +63,7 @@ function CFG:CreateFrame()
         { key = "savedraids",  label = "Saved Raids" },
         { key = "groupmaking", label = "Groupmaking" },
         { key = "whisplist",   label = "Whisplist" },
-        { key = "macrobar",    label = "Macrobar" },
+        { key = "macros",      label = "Macros" },
         { key = "raidframe",   label = "Raid Frame" },
         { key = "ms",          label = "MS" },
         { key = "loot",        label = "Loot" },
@@ -111,6 +111,11 @@ function CFG:SubtabsFor(key)
         }
     elseif key == "savedraids" then
         return { { key = "main", label = "Saved Raids" } }
+    elseif key == "macros" then
+        return {
+            { key = "layout", label = "Bar Layout" },
+            { key = "editor", label = "Macro Editor" },
+        }
     elseif key == "raidframe" then
         return {
             { key = "layout", label = "Layout" },
@@ -230,8 +235,12 @@ end
 
 function CFG:RebuildPanel()
     self:WipePanel()
+    self:HideMacroEditor()
     local cat, sub = self.currentCat, self.currentSub
-    if cat == "general" and sub == "look" then
+    if cat == "macros" and sub == "editor" then
+        self:ShowMacroEditor()
+        return
+    elseif cat == "general" and sub == "look" then
         self:PanelGeneralLook()
     elseif cat == "general" and sub == "font" then
         self:PanelGeneralFont()
@@ -245,8 +254,8 @@ function CFG:RebuildPanel()
         self:PanelScale("groupmaking", "Groupmaking")
     elseif cat == "whisplist" then
         self:PanelScale("whisplist", "Whisplist")
-    elseif cat == "macrobar" then
-        self:PanelMacroLayout(sub)
+    elseif cat == "macros" and sub == "layout" then
+        self:PanelMacroLayout()
     elseif cat == "raidframe" and sub == "layout" then
         self:PanelRaidLayout()
     elseif cat == "raidframe" and sub == "pos" then
@@ -1167,6 +1176,581 @@ function CFG:PanelSavedRaids()
 end
 
 -- ============================================================
+-- Macros: editor 12 slot (spostato qui dalla finestra principale)
+-- ============================================================
+
+-- Apre il Config sulla categoria Macros -> Macro Editor.
+function CFG:OpenMacroEditorPanel()
+    if self.frame then
+        self.frame:Show()
+        if RLSuite.utils and RLSuite.utils.RaiseWindow then
+            RLSuite.utils:RaiseWindow(self.frame)
+        end
+    end
+    self:SelectCategory("macros")
+    self:SelectSubtab("editor")
+end
+
+function CFG:HideMacroEditor()
+    if self.macroEditorPanel then
+        self.macroEditorPanel:Hide()
+    end
+    if self.macroIconPicker then
+        self.macroIconPicker:Hide()
+    end
+end
+
+function CFG:ShowMacroEditor()
+    if not self.macroEditorPanel then
+        self:CreateMacroEditor()
+    end
+    if self.scroll then self.scroll:Hide() end
+    if self.content then self.content:Hide() end
+    self.macroEditorPanel:Show()
+    self:RefreshMacroTab()
+    self:OpenMacroEditor(self.macroEditIndex or 1)
+end
+
+function CFG:CreateMacroEditor()
+    local ed = CreateFrame("Frame", "RLSuiteCfgMacroEditor", self.panel)
+    ed:SetAllPoints(self.panel)
+    ed:Hide()
+    ed:EnableMouse(true)
+    ed:SetScript("OnMouseDown", function()
+        if CFG.frame and RLSuite.utils and RLSuite.utils.RaiseWindow then
+            RLSuite.utils:RaiseWindow(CFG.frame)
+        end
+    end)
+    self.macroEditorPanel = ed
+
+    self.macroPhase = RLSuite.context or "preraid"
+    self.macroPreviewBtns = {}
+    self.macroPhaseBtns = {}
+    self.macroLoading = false
+    self.macroEditIndex = nil
+    self.macroEditIcon = nil
+
+    -- riga 1: selezione fase + toggle HUD
+    local phaseLabel = ed:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    phaseLabel:SetPoint("TOPLEFT", ed, "TOPLEFT", 10, -8)
+    phaseLabel:SetText("Fase:")
+
+    local phases = {
+        {key = "preraid", label = "Pre-raid"},
+        {key = "preboss", label = "Pre-boss"},
+        {key = "infight", label = "In-fight"},
+    }
+    for i, pdata in ipairs(phases) do
+        local btn = CreateFrame("Button", nil, ed, "UIPanelButtonTemplate")
+        btn:SetSize(70, 20)
+        btn:SetPoint("LEFT", phaseLabel, "RIGHT", 6 + (i - 1) * 76, 0)
+        btn:SetText(pdata.label)
+        btn.phaseKey = pdata.key
+        btn:SetScript("OnClick", function()
+            self:SelectMacroPhase(pdata.key)
+        end)
+        self.macroPhaseBtns[pdata.key] = btn
+    end
+
+    local hudBtn = CreateFrame("Button", nil, ed, "UIPanelButtonTemplate")
+    hudBtn:SetSize(120, 20)
+    hudBtn:SetPoint("TOPRIGHT", ed, "TOPRIGHT", -8, -6)
+    hudBtn:SetText("HUD on/off")
+    hudBtn:SetScript("OnClick", function()
+        if RLSuite.macrobar and RLSuite.macrobar.Toggle then
+            RLSuite.macrobar:Toggle()
+        end
+    end)
+
+    -- riga 2: anteprima 12 slot (2 righe x 6)
+    local preview = CreateFrame("Frame", nil, ed)
+    preview:SetPoint("TOPLEFT", phaseLabel, "BOTTOMLEFT", 0, -8)
+    preview:SetPoint("TOPRIGHT", ed, "TOPRIGHT", -8, -30)
+    preview:SetHeight(90)
+    RLSuite.utils:SkinBox(preview)
+    self.macroPreview = preview
+
+    for i = 1, 12 do
+        local btn = CreateFrame("Button", nil, preview)
+        btn:SetSize(36, 36)
+        local col = (i - 1) % 6
+        local row = math.floor((i - 1) / 6)
+        btn:SetPoint("TOPLEFT", preview, "TOPLEFT", 8 + col * 44, -8 - row * 42)
+        btn.icon = btn:CreateTexture(nil, "ARTWORK")
+        btn.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+        btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        RLSuite.utils:SkinMacroButton(btn)
+        btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        btn:SetScript("OnClick", function()
+            self:OpenMacroEditor(i)
+        end)
+        local num = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        num:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 2, 2)
+        num:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
+        num:SetText(i)
+        self.macroPreviewBtns[i] = btn
+    end
+
+    -- area editor sotto l'anteprima
+    local editor = CreateFrame("Frame", "RLSuiteCfgMacroEditorBox", ed)
+    editor:SetPoint("TOPLEFT", preview, "BOTTOMLEFT", 0, -6)
+    editor:SetPoint("BOTTOMRIGHT", ed, "BOTTOMRIGHT", -8, 8)
+    RLSuite.utils:SkinBox(editor)
+    editor:Show()
+    self.macroEditor = editor
+
+    -- elenco macro a destra
+    local list = CreateFrame("Frame", nil, editor)
+    list:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -6, -6)
+    list:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -6, 6)
+    list:SetWidth(150)
+    RLSuite.utils:SkinBox(list)
+    self.macroListFrame = list
+
+    local listTitle = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    listTitle:SetPoint("TOPLEFT", list, "TOPLEFT", 6, -5)
+    listTitle:SetText("Tutte le macro")
+
+    self.macroListRows = {}
+    for i = 1, 12 do
+        local row = CreateFrame("Button", nil, list)
+        row:SetHeight(16)
+        row:SetPoint("TOPLEFT", list, "TOPLEFT", 4, -20 - (i - 1) * 17)
+        row:SetPoint("RIGHT", list, "RIGHT", -4, 0)
+        local num = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        num:SetPoint("LEFT", row, "LEFT", 2, 0)
+        num:SetWidth(12)
+        num:SetJustifyH("LEFT")
+        num:SetText(tostring(i))
+        local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("LEFT", num, "RIGHT", 2, 0)
+        fs:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+        fs:SetJustifyH("LEFT")
+        fs:SetText("")
+        row.fs = fs
+        row.idx = i
+        row:SetScript("OnClick", function()
+            self:OpenMacroEditor(i)
+        end)
+        self.macroListRows[i] = row
+    end
+
+    -- lato sinistro: titolo slot, nome, icona
+    local slotFS = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    slotFS:SetPoint("TOPLEFT", editor, "TOPLEFT", 8, -6)
+    slotFS:SetText("Macro")
+    self.macroSlotFS = slotFS
+
+    local nameLabel = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    nameLabel:SetPoint("TOPLEFT", slotFS, "BOTTOMLEFT", 0, -6)
+    nameLabel:SetText("Nome:")
+
+    local nameEdit = CreateFrame("EditBox", "RLSuiteCfgMacroNameEdit", editor, "InputBoxTemplate")
+    nameEdit:SetSize(110, 18)
+    nameEdit:SetPoint("LEFT", nameLabel, "RIGHT", 4, 0)
+    nameEdit:SetAutoFocus(false)
+    nameEdit:SetMaxLetters(32)
+    nameEdit:SetScript("OnTextChanged", function()
+        self:SaveMacroSlot()
+    end)
+    nameEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
+    nameEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+    self.macroNameEdit = nameEdit
+
+    local iconBtn = CreateFrame("Button", nil, editor)
+    iconBtn:SetSize(30, 30)
+    iconBtn:SetPoint("LEFT", nameEdit, "RIGHT", 8, 0)
+    iconBtn.icon = iconBtn:CreateTexture(nil, "ARTWORK")
+    iconBtn.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    iconBtn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    RLSuite.utils:SkinMacroButton(iconBtn)
+    iconBtn:SetScript("OnClick", function()
+        self:ToggleMacroIconPicker()
+    end)
+    self.macroIconBtn = iconBtn
+
+    -- corpo della macro
+    local bodyFrame = CreateFrame("Frame", nil, editor)
+    bodyFrame:SetPoint("TOPLEFT", nameLabel, "BOTTOMLEFT", 0, -6)
+    bodyFrame:SetPoint("BOTTOMLEFT", editor, "BOTTOMLEFT", 8, 26)
+    bodyFrame:SetPoint("RIGHT", list, "LEFT", -6, 0)
+    bodyFrame:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = {left = 4, right = 4, top = 4, bottom = 4},
+    })
+    bodyFrame:SetBackdropColor(0, 0, 0, 0.85)
+    self.macroBodyFrame = bodyFrame
+
+    local body = CreateFrame("EditBox", "RLSuiteCfgMacroBodyEdit", bodyFrame)
+    body:SetMultiLine(true)
+    body:SetAutoFocus(false)
+    body:SetFontObject(ChatFontNormal)
+    body:SetTextInsets(6, 6, 6, 6)
+    body:SetMaxLetters(1024)
+    body:SetPoint("TOPLEFT", bodyFrame, "TOPLEFT", 6, -6)
+    body:SetPoint("BOTTOMRIGHT", bodyFrame, "BOTTOMRIGHT", -6, 6)
+    body:EnableMouse(true)
+    body:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+    body:SetScript("OnTextChanged", function()
+        self:SaveMacroSlot()
+    end)
+    self.macroBodyEdit = body
+
+    -- barra utility: target marker + CAPS
+    local util = CreateFrame("Frame", nil, editor)
+    util:SetPoint("BOTTOMLEFT", editor, "BOTTOMLEFT", 8, 5)
+    util:SetPoint("RIGHT", list, "LEFT", -6, 0)
+    util:SetHeight(20)
+    self.macroUtilBar = util
+
+    local raidIcons = {
+        { token = "{rt1}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1" },
+        { token = "{rt2}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_2" },
+        { token = "{rt3}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_3" },
+        { token = "{rt4}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_4" },
+        { token = "{rt5}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_5" },
+        { token = "{rt6}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_6" },
+        { token = "{rt7}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_7" },
+        { token = "{rt8}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8" },
+    }
+    for i, data in ipairs(raidIcons) do
+        local ib = CreateFrame("Button", nil, util)
+        ib:SetSize(18, 18)
+        ib:SetPoint("LEFT", util, "LEFT", (i - 1) * 22, 0)
+        local tex = ib:CreateTexture(nil, "ARTWORK")
+        tex:SetAllPoints(ib)
+        tex:SetTexture(data.tex)
+        ib:SetScript("OnClick", function()
+            self:InsertMacroText(data.token)
+        end)
+    end
+
+    local capsBtn = CreateFrame("Button", nil, util, "UIPanelButtonTemplate")
+    capsBtn:SetSize(56, 18)
+    capsBtn:SetPoint("LEFT", util, "LEFT", 8 * 22 + 6, 0)
+    capsBtn:SetText("CAPS")
+    capsBtn:SetScript("OnClick", function()
+        self:ToggleMacroCaps()
+    end)
+
+    self:HookMacroInsertLink()
+    self:CreateMacroIconPicker(editor)
+end
+
+function CFG:HookMacroInsertLink()
+    if self._insertLinkHooked then return end
+    self._insertLinkHooked = true
+    RLSuite.utils:RegisterInsertLink(self.macroBodyEdit, function()
+        CFG:SaveMacroSlot()
+    end)
+end
+
+function CFG:CreateMacroIconPicker(parent)
+    local picker = CreateFrame("Frame", "RLSuiteCfgMacroIconPicker", parent)
+    picker:SetSize(280, 220)
+    picker:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 12, 44)
+    picker:SetFrameStrata("FULLSCREEN_DIALOG")
+    RLSuite.utils:SkinFrame(picker)
+    picker:Hide()
+    picker:EnableMouse(true)
+    self.macroIconPicker = picker
+
+    local title = picker:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", picker, "TOPLEFT", 10, -8)
+    title:SetText("Icona macro")
+
+    local close = CreateFrame("Button", nil, picker, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", picker, "TOPRIGHT", -2, -2)
+    close:SetScript("OnClick", function() picker:Hide() end)
+
+    local scroll = CreateFrame("ScrollFrame", "RLSuiteCfgMacroIconScroll", picker, "FauxScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", picker, "TOPLEFT", 8, -28)
+    scroll:SetPoint("BOTTOMRIGHT", picker, "BOTTOMRIGHT", -28, 8)
+    scroll:SetScript("OnVerticalScroll", function(s, offset)
+        FauxScrollFrame_OnVerticalScroll(s, offset, 32, function()
+            CFG:UpdateMacroIconPicker()
+        end)
+    end)
+    self.macroIconScroll = scroll
+
+    self.macroIconBtns = {}
+    local cols, rows, size, gap = 10, 6, 28, 2
+    for i = 1, cols * rows do
+        local btn = CreateFrame("Button", nil, picker)
+        btn:SetSize(size, size)
+        local col = (i - 1) % cols
+        local row = math.floor((i - 1) / cols)
+        btn:SetPoint("TOPLEFT", scroll, "TOPLEFT", col * (size + gap), -row * (size + gap))
+        btn.icon = btn:CreateTexture(nil, "ARTWORK")
+        btn.icon:SetAllPoints(btn)
+        btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        btn:SetScript("OnClick", function(s)
+            if s.texPath then
+                CFG:SetMacroIcon(s.texPath)
+            end
+        end)
+        self.macroIconBtns[i] = btn
+    end
+end
+
+function CFG:GetMacroIconList()
+    if self.macroIconList then return self.macroIconList end
+    local list = {}
+    if GetNumMacroIcons and GetMacroIconInfo then
+        local n = GetNumMacroIcons() or 0
+        for i = 1, n do
+            local tex = GetMacroIconInfo(i)
+            if tex then table.insert(list, tex) end
+        end
+    end
+    if #list == 0 then
+        table.insert(list, "Interface\\Icons\\INV_Misc_QuestionMark")
+        if RLSuite.abilityByName then
+            for _, meta in pairs(RLSuite.abilityByName) do
+                if meta.icon then table.insert(list, meta.icon) end
+            end
+        end
+    end
+    self.macroIconList = list
+    return list
+end
+
+function CFG:ToggleMacroIconPicker()
+    if not self.macroIconPicker then return end
+    if self.macroIconPicker:IsShown() then
+        self.macroIconPicker:Hide()
+        return
+    end
+    self:GetMacroIconList()
+    self.macroIconPicker:Show()
+    self:UpdateMacroIconPicker()
+end
+
+function CFG:UpdateMacroIconPicker()
+    local list = self:GetMacroIconList()
+    local cols, rows = 10, 6
+    local per = cols * rows
+    local numRows = math.ceil(#list / cols)
+    FauxScrollFrame_Update(self.macroIconScroll, numRows, rows, 32)
+    local offset = FauxScrollFrame_GetOffset(self.macroIconScroll) or 0
+    for i = 1, per do
+        local idx = offset * cols + i
+        local btn = self.macroIconBtns[i]
+        local tex = list[idx]
+        if tex then
+            btn.icon:SetTexture(tex)
+            btn.texPath = tex
+            btn:Show()
+        else
+            btn.texPath = nil
+            btn:Hide()
+        end
+    end
+end
+
+function CFG:SetMacroIcon(tex)
+    self.macroEditIcon = tex
+    if self.macroIconBtn and self.macroIconBtn.icon then
+        self.macroIconBtn.icon:SetTexture(tex)
+    end
+    if self.macroIconPicker then self.macroIconPicker:Hide() end
+    self:SaveMacroSlot()
+end
+
+function CFG:OpenMacroEditor(index)
+    self.macroEditIndex = index
+    if self.macroEditor then self.macroEditor:Show() end
+    if self.macroIconPicker then self.macroIconPicker:Hide() end
+    for i, btn in ipairs(self.macroPreviewBtns or {}) do
+        if btn and not btn.sel then
+            btn.sel = btn:CreateTexture(nil, "OVERLAY")
+            btn.sel:SetAllPoints(btn)
+            btn.sel:SetTexture("Interface\\Buttons\\CheckButtonHilight")
+            btn.sel:SetBlendMode("ADD")
+            btn.sel:Hide()
+        end
+        if btn and btn.sel then
+            if i == index then btn.sel:Show() else btn.sel:Hide() end
+        end
+    end
+    if self.macroSlotFS then
+        self.macroSlotFS:SetText("Macro " .. tostring(index))
+    end
+    local macros = self:GetMacroDB()
+    local data = macros[index] or {}
+    self.macroLoading = true
+    self.macroEditIcon = data.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+    if self.macroNameEdit then
+        self.macroNameEdit:SetText(data.name or "")
+    end
+    if self.macroBodyEdit then
+        self.macroBodyEdit:SetText(data.text or "")
+        self.macroBodyEdit:SetFocus()
+    end
+    if self.macroIconBtn and self.macroIconBtn.icon then
+        self.macroIconBtn.icon:SetTexture(self.macroEditIcon)
+    end
+    self.macroLoading = false
+    self:RefreshMacroList()
+end
+
+function CFG:InsertMacroText(token)
+    if not self.macroBodyEdit then return end
+    self.macroBodyEdit:SetFocus()
+    self.macroBodyEdit:Insert(token)
+    self:SaveMacroSlot()
+end
+
+function CFG:ToggleMacroCaps()
+    local edit = self.macroBodyEdit
+    if not edit then return end
+    local full = edit:GetText() or ""
+    if full == "" then return end
+    edit:SetFocus()
+    edit:Insert("\001")
+    local after = edit:GetText() or ""
+    local pos = string.find(after, "\001", 1, true)
+    local selected, s, e
+    if not pos then
+        selected, s, e = full, 1, string.len(full)
+        edit:SetText(full)
+    else
+        local prefix = string.sub(after, 1, pos - 1)
+        local suffix = string.sub(after, pos + 1)
+        s = string.len(prefix) + 1
+        e = string.len(full) - string.len(suffix)
+        if e < s then
+            selected, s, e = full, 1, string.len(full)
+        else
+            selected = string.sub(full, s, e)
+            if selected == "" then
+                selected, s, e = full, 1, string.len(full)
+            end
+        end
+    end
+    local repl
+    if selected == string.upper(selected) then
+        repl = string.lower(selected)
+    else
+        repl = string.upper(selected)
+    end
+    local newText = string.sub(full, 1, s - 1) .. repl .. string.sub(full, e + 1)
+    self.macroLoading = true
+    edit:SetText(newText)
+    self.macroLoading = false
+    self:SaveMacroSlot()
+end
+
+function CFG:SelectMacroPhase(phase)
+    self.macroPhase = phase or "preraid"
+    for key, btn in pairs(self.macroPhaseBtns or {}) do
+        if key == self.macroPhase then
+            btn:LockHighlight()
+        else
+            btn:UnlockHighlight()
+        end
+    end
+    self:RefreshMacroTab()
+    if self.macroEditIndex then
+        self:OpenMacroEditor(self.macroEditIndex)
+    end
+end
+
+function CFG:GetMacroDB(phase)
+    phase = phase or self.macroPhase or "preraid"
+    if not RLSuiteDB or not RLSuiteDB.macrobar then return {} end
+    RLSuiteDB.macrobar.macros = RLSuiteDB.macrobar.macros or {}
+    RLSuiteDB.macrobar.macros[phase] = RLSuiteDB.macrobar.macros[phase] or {}
+    return RLSuiteDB.macrobar.macros[phase]
+end
+
+function CFG:SaveMacroSlot()
+    if self.macroLoading then return end
+    local index = self.macroEditIndex
+    if not index then return end
+    local macros = self:GetMacroDB()
+    local current = macros[index] or {}
+    current.text = (self.macroBodyEdit and self.macroBodyEdit:GetText()) or current.text or ""
+    current.name = (self.macroNameEdit and self.macroNameEdit:GetText()) or current.name or ""
+    current.icon = self.macroEditIcon or current.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+    macros[index] = current
+    local phase = self.macroPhase or "preraid"
+    if RLSuite.macrobar and RLSuite.macrobar.LoadMacrosForPhase then
+        if (RLSuite.context or "preraid") == phase then
+            RLSuite.macrobar:LoadMacrosForPhase(phase)
+        end
+    end
+    self:RefreshMacroPreview()
+end
+
+function CFG:SaveMacroLine(index, text)
+    local macros = self:GetMacroDB()
+    local current = macros[index] or {text = "", icon = "Interface\\Icons\\INV_Misc_QuestionMark"}
+    current.text = text or ""
+    current.icon = current.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+    macros[index] = current
+    local phase = self.macroPhase or "preraid"
+    if RLSuite.macrobar and RLSuite.macrobar.LoadMacrosForPhase then
+        if (RLSuite.context or "preraid") == phase then
+            RLSuite.macrobar:LoadMacrosForPhase(phase)
+        end
+    end
+    self:RefreshMacroPreview()
+end
+
+function CFG:RefreshMacroTab()
+    self:RefreshMacroPreview()
+end
+
+function CFG:MacroPreviewText(data)
+    if not data then return "" end
+    local name = data.name or ""
+    local text = data.text or ""
+    text = string.gsub(text, "\n", " | ")
+    if name ~= "" and text ~= "" then
+        return name .. "  " .. text
+    end
+    if name ~= "" then return name end
+    return text
+end
+
+function CFG:RefreshMacroList()
+    local macros = self:GetMacroDB(self.macroPhase)
+    local sel = self.macroEditIndex
+    for i, row in ipairs(self.macroListRows or {}) do
+        local data = macros[i]
+        if row.fs then
+            local line = self:MacroPreviewText(data)
+            if line == "" then line = " " end
+            row.fs:SetText(line)
+            if sel == i then
+                row.fs:SetTextColor(1, 0.82, 0)
+            else
+                row.fs:SetTextColor(0.9, 0.9, 0.9)
+            end
+        end
+    end
+end
+
+function CFG:RefreshMacroPreview()
+    local macros = self:GetMacroDB(self.macroPhase)
+    for i, btn in ipairs(self.macroPreviewBtns or {}) do
+        local data = macros[i]
+        if btn and btn.icon then
+            local icon = (data and data.icon) or "Interface\\Icons\\INV_Misc_QuestionMark"
+            if data and ((data.text and data.text ~= "") or (data.name and data.name ~= "") or data.icon) then
+                btn.icon:SetTexture(icon)
+            else
+                btn.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+            end
+        end
+    end
+    self:RefreshMacroList()
+end
+
+-- ============================================================
 -- Apply
 -- ============================================================
 
@@ -1204,7 +1788,6 @@ function CFG:ApplyAll()
     scale(RLSuite.lootManager and RLSuite.lootManager.frame, "loot")
     local mw = RLSuite.mainWindow
     if mw and mw.tabPanels then
-        scale(mw.tabPanels.macro, "macro")
         scale(mw.tabPanels.raidframe, "raidframe")
     end
     local font, size = RLSuite.utils:GetUIFont()
