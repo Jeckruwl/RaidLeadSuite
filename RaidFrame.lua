@@ -5,6 +5,8 @@
 RLSuite.raidFrame = {}
 local RF = RLSuite.raidFrame
 
+local L = RLSuite.L
+
 function RF:Init()
     self.db = RLSuiteDB.raidframe
     self.rows = {}
@@ -342,12 +344,20 @@ function RF:UpdateRow(row)
 end
 
 -- GetSpellCooldown only works for the player. Raid members are tracked via combat log + known CD.
+-- Queries are made by spellId (locale-safe): the name form of GetSpellCooldown
+-- requires the spell to be in the player's spellbook and uses localized names.
 function RF:GetAbilityRemaining(playerName, unit, ability)
     if unit and UnitIsUnit(unit, "player") then
-        local start, duration = GetSpellCooldown(ability)
-        if start and duration and duration > 1.5 then
-            local rem = start + duration - GetTime()
-            if rem > 0 then return rem end
+        -- Query every known rank by spellId and take the longest remaining
+        -- cooldown: ranks share a cooldown category, but the player only has
+        -- one rank in their spellbook, so scanning the full list is safe.
+        local ids = RLSuite.abilitySpellIdByName and RLSuite.abilitySpellIdByName[ability]
+        for _, spellId in ipairs(ids or {}) do
+            local start, duration = GetSpellCooldown(spellId)
+            if start and duration and duration > 1.5 then
+                local rem = start + duration - GetTime()
+                if rem > 0 then return rem end
+            end
         end
     end
     local expire = self.cdTracker and self.cdTracker[playerName] and self.cdTracker[playerName][ability]
@@ -369,11 +379,25 @@ function RF:OnSpellCast(sourceName, spellId)
     self.cdTracker[sourceName][ability] = GetTime() + meta.cd
 end
 
+-- Locale-safe aura check: resolve the localized buff name from the spellId,
+-- then verify the aura's returned spellId matches what we asked for. On a
+-- non-English client UnitBuff(unit, EnglishName) would silently fail, so the
+-- name always comes from GetSpellInfo(spellId).
+function RF:UnitHasSpellBuff(unit, spellId)
+    if not unit or not spellId then return false end
+    local name = GetSpellInfo(spellId)
+    if not name then return false end
+    local buffName, _, _, _, _, _, _, _, _, _, buffSpellId = UnitBuff(unit, name)
+    if not buffName then return false end
+    if buffSpellId and buffSpellId ~= spellId then return false end
+    return true
+end
+
 function RF:CheckAlerts(unit)
     if self.db.showFlask then
         local hasFlask = false
         for _, flask in ipairs(RLSuite.buffData.flask) do
-            if UnitBuff(unit, flask) then hasFlask = true break end
+            if self:UnitHasSpellBuff(unit, flask) then hasFlask = true break end
         end
         if not hasFlask then return "flask" end
     end
@@ -381,7 +405,7 @@ function RF:CheckAlerts(unit)
     if self.db.showFood then
         local hasFood = false
         for _, food in ipairs(RLSuite.buffData.food) do
-            if UnitBuff(unit, food) then hasFood = true break end
+            if self:UnitHasSpellBuff(unit, food) then hasFood = true break end
         end
         if not hasFood then return "food" end
     end
@@ -389,7 +413,7 @@ function RF:CheckAlerts(unit)
     if self.db.showBuffs then
         local hasBuff = false
         for _, buff in ipairs(RLSuite.buffData.buffs) do
-            if UnitBuff(unit, buff) then hasBuff = true break end
+            if self:UnitHasSpellBuff(unit, buff) then hasBuff = true break end
         end
         if not hasBuff then return "buff" end
     end
@@ -413,16 +437,16 @@ function RF:OnAlertClick(row)
     local alerts = self.db.alerts or {}
     local msg = alerts[row.alertType] or self:GetDefaultAlertMessage(row.alertType)
     if msg and name then
-        msg = string.gsub(msg, "$name", name)
+        msg = string.gsub(msg, "%$name", name)
         RLSuite.utils:Whisper(name, msg)
     end
 end
 
 function RF:GetDefaultAlertMessage(alertType)
     local msgs = {
-        flask = "Hey $name, you're missing a flask!",
-        food = "Hey $name, you're missing food buff!",
-        buff = "Hey $name, you're missing some raid buffs!",
+        flask = L["Hey $name, you're missing a flask!"],
+        food = L["Hey $name, you're missing food buff!"],
+        buff = L["Hey $name, you're missing some raid buffs!"],
     }
     return msgs[alertType]
 end

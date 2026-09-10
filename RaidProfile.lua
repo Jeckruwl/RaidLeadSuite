@@ -5,6 +5,8 @@
 RLSuite.mainWindow = {}
 local MW = RLSuite.mainWindow
 
+local L = RLSuite.L
+
 function MW:Init()
     self:CreateFrame()
     self:RegisterAllWindows()
@@ -189,7 +191,7 @@ function MW:CreateFrame()
     end)
     self.phaseBtn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
-        GameTooltip:SetText(s.label or "Fase")
+        GameTooltip:SetText(s.label or L["Phase"])
         GameTooltip:Show()
     end)
     self.phaseBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -607,7 +609,7 @@ function MW:CreateRaidFrameSubTab()
     local hudBtn = CreateFrame("Button", nil, sc, "UIPanelButtonTemplate")
     hudBtn:SetSize(160, 22)
     hudBtn:SetPoint("LEFT", rfLabel, "RIGHT", 16, 0)
-    hudBtn:SetText("Mostra/Nascondi HUD")
+    hudBtn:SetText(L["Show/Hide HUD"])
     hudBtn:SetScript("OnClick", function()
         if RLSuite.raidFrame and RLSuite.raidFrame.Toggle then
             RLSuite.raidFrame:Toggle()
@@ -693,7 +695,7 @@ end
 function MW:OnSaveRaid()
     self:AskRaidTitle(function(title)
         if not title or title == "" then
-            RLSuite.utils:Print("SaveRaid annullato: nessun titolo inserito.")
+            RLSuite.utils:Print(L["SaveRaid cancelled: no title entered."])
             return
         end
         if RLSuite.SaveRaid then
@@ -732,7 +734,7 @@ function MW:AskRaidTitle(callback)
 
     local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -14)
-    label:SetText("Titolo del SaveRaid:")
+    label:SetText(L["SaveRaid title:"])
 
     local edit = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
     edit:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -40)
@@ -745,7 +747,7 @@ function MW:AskRaidTitle(callback)
     local ok = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     ok:SetSize(90, 22)
     ok:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
-    ok:SetText("Salva")
+    ok:SetText(L["Save"])
     ok:SetScript("OnClick", function()
         local cb = f._cb
         f:Hide()
@@ -755,7 +757,7 @@ function MW:AskRaidTitle(callback)
     local cancel = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     cancel:SetSize(90, 22)
     cancel:SetPoint("RIGHT", ok, "LEFT", -8, 0)
-    cancel:SetText("Annulla")
+    cancel:SetText(L["Cancel"])
     cancel:SetScript("OnClick", function()
         f:Hide()
     end)

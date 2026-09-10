@@ -5,6 +5,8 @@
 RLSuite.groupmaking = {}
 local GM = RLSuite.groupmaking
 
+local L = RLSuite.L
+
 local SLOT_SIZE = 32
 local SLOT_SPACING = 4
 local GROUP_LABEL_H = 14
@@ -116,7 +118,7 @@ function GM:CreateMainWindow()
 
     local compLabel = self.compBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     compLabel:SetPoint("TOPLEFT", self.compBox, "TOPLEFT", 8, -6)
-    compLabel:SetText("Composizione")
+    compLabel:SetText(L["Composition"])
     compLabel:SetTextColor(1, 0.82, 0)
 
     self.compFrame = CreateFrame("Frame", nil, self.compBox)
@@ -131,7 +133,7 @@ function GM:CreateMainWindow()
 
     local classBarLabel = self.classBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     classBarLabel:SetPoint("TOPLEFT", self.classBox, "TOPLEFT", 8, -6)
-    classBarLabel:SetText("Clicca spec per aggiungere")
+    classBarLabel:SetText(L["Click a spec to add"])
     classBarLabel:SetTextColor(1, 0.82, 0)
 
     self.classBar = CreateFrame("Frame", nil, self.classBox)
@@ -151,7 +153,7 @@ function GM:CreateMainWindow()
 
     local reservedLabel = self.reqBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     reservedLabel:SetPoint("TOPLEFT", self.reqBox, "TOPLEFT", 8, -8)
-    reservedLabel:SetText("Pezzi riservati")
+    reservedLabel:SetText(L["Reserved items"])
     reservedLabel:SetTextColor(1, 0.82, 0)
 
     self.reservedEdit = CreateFrame("EditBox", "RLSuiteReservedEdit", self.reqBox, "InputBoxTemplate")
@@ -179,7 +181,7 @@ function GM:CreateMainWindow()
 
     local otherLabel = self.reqBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     otherLabel:SetPoint("TOPLEFT", self.reservedEdit, "BOTTOMLEFT", -4, -6)
-    otherLabel:SetText("Altre richieste")
+    otherLabel:SetText(L["Other requirements"])
     otherLabel:SetTextColor(1, 0.82, 0)
 
     self.otherEdit = CreateFrame("EditBox", "RLSuiteOtherEdit", self.reqBox, "InputBoxTemplate")
@@ -207,7 +209,7 @@ function GM:CreateMainWindow()
     self.previewText:SetPoint("BOTTOMRIGHT", self.previewBox, "BOTTOMRIGHT", -8, 8)
     self.previewText:SetJustifyH("LEFT")
     self.previewText:SetJustifyV("TOP")
-    self.previewText:SetText("Anteprima messaggio...")
+    self.previewText:SetText(L["Message preview..."])
 
     self.spamBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     self.spamBtn:SetSize(100, 24)
@@ -585,7 +587,7 @@ function GM:OnClassBarClick(class, role, spec)
     if slotIndex then
         self:FillSlot(slotIndex, class, role, nil, spec)
     else
-        RLSuite.utils:Print("Nessuno slot disponibile per " .. (spec or class or "?"))
+        RLSuite.utils:Print(string.format(L["No available slot for %s"], (spec or class or "?")))
     end
 end
 
@@ -711,7 +713,7 @@ end
 function GM:ShowMessagePreview()
     self:UpdateMessagePreview()
     if self.previewText then
-        RLSuite.utils:Print("Messaggio: " .. (self.previewText:GetText() or ""))
+        RLSuite.utils:Print(string.format(L["Message: %s"], (self.previewText:GetText() or "")))
     end
 end
 
@@ -732,7 +734,7 @@ function GM:OpenAtlasLoot()
         end
         return
     end
-    RLSuite.utils:Print("AtlasLoot non e' caricato.")
+    RLSuite.utils:Print(L["AtlasLoot is not loaded."])
 end
 
 -- ============================================================
@@ -763,7 +765,7 @@ function GM:StartSpam()
         end
     end)
     self.spamFrame:Show()
-    RLSuite.utils:Print("Spammer attivato.")
+    RLSuite.utils:Print(L["Spammer started."])
 end
 
 function GM:StopSpam()
@@ -773,7 +775,7 @@ function GM:StopSpam()
         self.spamFrame:SetScript("OnUpdate", nil)
         self.spamFrame:Hide()
     end
-    RLSuite.utils:Print("Spammer fermato.")
+    RLSuite.utils:Print(L["Spammer stopped."])
 end
 
 function GM:DoSpam()
@@ -818,19 +820,53 @@ function GM:OnWhisper(sender, msg)
     }
     table.insert(self.whisperDB.entries, 1, entry)
     self:UpdateWhisplist()
-    RLSuite.utils:Print("Whisper da " .. sender .. " ricevuto.")
+    RLSuite.utils:Print(string.format(L["Whisper from %s received."], sender))
+end
+
+-- Cached class keywords: English plus the localized male/female class names
+-- of the current client, so whispers like "guerriero" or "Krieger" are
+-- recognized as well as "warrior".
+function GM:ClassKeywords()
+    if self._classKeywords then return self._classKeywords end
+    local map = {
+        WARRIOR     = { "warrior" },
+        PALADIN     = { "paladin" },
+        HUNTER      = { "hunter" },
+        ROGUE       = { "rogue" },
+        PRIEST      = { "priest" },
+        DEATHKNIGHT = { "dk", "deathknight", "death knight" },
+        SHAMAN      = { "shaman" },
+        MAGE        = { "mage" },
+        WARLOCK     = { "warlock" },
+        DRUID       = { "druid" },
+    }
+    local function addLocalized(tblName)
+        local tbl = _G[tblName]
+        if type(tbl) ~= "table" then return end
+        for class, words in pairs(map) do
+            local name = tbl[class]
+            if type(name) == "string" and name ~= "" then
+                local lower = string.lower(name)
+                local dup = false
+                for _, w in ipairs(words) do
+                    if w == lower then dup = true break end
+                end
+                if not dup then table.insert(words, lower) end
+            end
+        end
+    end
+    addLocalized("LOCALIZED_CLASS_NAMES_MALE")
+    addLocalized("LOCALIZED_CLASS_NAMES_FEMALE")
+    self._classKeywords = map
+    return map
 end
 
 function GM:ExtractClassFromWhisper(msg)
     local lower = string.lower(msg or "")
-    local classMap = {
-        warrior = "WARRIOR", paladin = "PALADIN", hunter = "HUNTER",
-        rogue = "ROGUE", priest = "PRIEST", dk = "DEATHKNIGHT",
-        deathknight = "DEATHKNIGHT", shaman = "SHAMAN", mage = "MAGE",
-        warlock = "WARLOCK", druid = "DRUID",
-    }
-    for key, class in pairs(classMap) do
-        if string.find(lower, key) then return class end
+    for class, words in pairs(self:ClassKeywords()) do
+        for _, word in ipairs(words) do
+            if string.find(lower, word, 1, true) then return class end
+        end
     end
     return nil
 end
@@ -843,12 +879,22 @@ function GM:ExtractRoleFromWhisper(msg)
 end
 
 function GM:ExtractSpecFromWhisper(msg)
+    -- "spec fury", "spec: fury", "fury spec" ("spec" is universal WoW slang).
     local spec = string.match(msg or "", "[Ss]pec[:%-]?%s*(%a+)")
+    if not spec then
+        spec = string.match(msg or "", "(%a+)%s+[Ss]pec")
+    end
     return spec
 end
 
 function GM:ExtractGSFromWhisper(msg)
-    local gs = string.match(msg or "", "(%d%d%d?%d?)%s*[Gg][Ss]")
+    if not msg then return nil end
+    -- "GS" is locale-neutral (GearScore). Accept both "5500 gs" and "gs 5500",
+    -- with optional colon/dash separators.
+    local gs = string.match(msg, "(%d%d%d%d%d?%d?)%s*[Gg][Ss]")
+    if not gs then
+        gs = string.match(msg, "[Gg][Ss]%s*[:%-]?%s*(%d%d%d%d%d?%d?)")
+    end
     return gs and tonumber(gs) or nil
 end
 
@@ -895,7 +941,7 @@ function GM:CreateWhisplistWindow()
 
     local listLabel = self.wlListBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     listLabel:SetPoint("TOPLEFT", self.wlListBox, "TOPLEFT", 8, -6)
-    listLabel:SetText("Whispers ricevuti")
+    listLabel:SetText(L["Received whispers"])
     listLabel:SetTextColor(1, 0.82, 0)
 
     self.wlScroll = CreateFrame("ScrollFrame", "RLSuiteWLScroll", self.wlListBox, "UIPanelScrollFrameTemplate")
@@ -922,7 +968,7 @@ function GM:CreateWhisplistWindow()
     self.wlDetailName:SetPoint("TOPLEFT", self.wlDetailBox, "TOPLEFT", 10, -10)
     self.wlDetailName:SetPoint("TOPRIGHT", self.wlDetailBox, "TOPRIGHT", -10, -10)
     self.wlDetailName:SetJustifyH("LEFT")
-    self.wlDetailName:SetText("Seleziona un giocatore")
+    self.wlDetailName:SetText(L["Select a player"])
     self.wlDetailName:SetTextColor(1, 0.82, 0)
 
     self.wlDetailInfo = self.wlDetailBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -1145,12 +1191,12 @@ function GM:InvitePlayerToSlot(entry, slotIndex)
     if not entry or not slotIndex then return end
     local slot = self.compSlots[slotIndex]
     if not slot or slot.playerName then
-        RLSuite.utils:Print("Slot già occupato!")
+        RLSuite.utils:Print(L["Slot already taken!"])
         return
     end
     local class = entry.class or slot.class
     if not class then
-        RLSuite.utils:Print("Classe non riconosciuta per " .. (entry.name or "?"))
+        RLSuite.utils:Print(string.format(L["Class not recognized for %s"], (entry.name or "?")))
         return
     end
     local spec = entry.spec or slot.spec
@@ -1164,7 +1210,7 @@ function GM:InvitePlayerToSlot(entry, slotIndex)
     end
     self:UpdateWhisplist()
     self:UpdateMessagePreview()
-    RLSuite.utils:Print((entry.name or "?") .. " invitato nello slot " .. slotIndex)
+    RLSuite.utils:Print(string.format(L["%s invited to slot %d"], (entry.name or "?"), slotIndex))
 end
 
 -- ============================================================

@@ -5,6 +5,13 @@
 RLSuite.macrobar = {}
 local MB = RLSuite.macrobar
 
+local L = RLSuite.L
+
+-- Non-overlapping pull/break countdowns (AceTimer named timers): starting a
+-- new pull/break cancels the previous one instead of stacking a second
+-- OnUpdate timer (which used to double the announcements).
+LibStub("AceTimer-3.0"):Embed(MB)
+
 local KEYPAD_BTN_W = 75
 local KEYPAD_BTN_H = 22
 local KEYPAD_GAP = 6
@@ -31,7 +38,7 @@ function MB:Toggle()
     else
         local pset = self:PhaseSettings()
         if pset and pset.enabled == false then
-            RLSuite.utils:Print("Macrobar disabilitata in Config.")
+            RLSuite.utils:Print(L["Macrobar is disabled in Config."])
             return
         end
         self.frame:Show()
@@ -513,8 +520,8 @@ function MB:KeypadButtonsForPhase(phase)
     return list
 end
 
--- Conta i bottoni visibili per riga (le righe vuote restano assenti).
--- Ritorna: counts[row] = n bottoni, maxPerRow = riga piu' piena.
+-- Counts the visible buttons per row (empty rows stay absent).
+-- Returns: counts[row] = n buttons, maxPerRow = fullest row.
 function MB:KeypadRowsForPhase(phase)
     phase = phase or self.keypadPhase or RLSuite.context or "preraid"
     local counts = {}
@@ -593,7 +600,7 @@ end
 function MB:UpdatePhase()
     local phase = RLSuite.context or "preraid"
     if self.phaseText then
-        self.phaseText:SetText("Fase: " .. string.upper(phase))
+        self.phaseText:SetText(string.format(L["Phase: %s"], string.upper(phase)))
     end
     self:LoadMacrosForPhase(phase)
     self:LoadKeybinds(phase)
@@ -698,7 +705,7 @@ function MB:RunMacroLine(line)
             edit:SetText(line)
             ChatEdit_SendText(edit, 1)
         else
-            RLSuite.utils:Print("Chat edit box non trovato.")
+            RLSuite.utils:Print(L["Chat edit box not found."])
         end
     else
         RLSuite.utils:SendChat(line, "RAID_WARNING")
@@ -724,11 +731,11 @@ function MB:OpenMacroEdit(index)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -10)
-    title:SetText("Modifica Macro " .. index)
+    title:SetText(string.format(L["Edit Macro %d"], index))
 
     local phaseLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     phaseLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 15, -40)
-    phaseLabel:SetText("Fase:")
+    phaseLabel:SetText(L["Phase:"])
 
     local phase = RLSuite.context or "preraid"
     local phaseText = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -737,7 +744,7 @@ function MB:OpenMacroEdit(index)
 
     local macroLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     macroLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 15, -65)
-    macroLabel:SetText("Macro (max 10 righe):")
+    macroLabel:SetText(L["Macro (max 10 lines):"])
 
     local edit = CreateFrame("EditBox", "RLSuiteMacroEditBox", f)
     edit:SetMultiLine(true)
@@ -759,7 +766,7 @@ function MB:OpenMacroEdit(index)
     local saveBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     saveBtn:SetSize(80, 22)
     saveBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 20, 15)
-    saveBtn:SetText("Salva")
+    saveBtn:SetText(L["Save"])
     saveBtn:SetScript("OnClick", function()
         self.db.macros[phase] = self.db.macros[phase] or {}
         self.db.macros[phase][index] = {
@@ -771,13 +778,13 @@ function MB:OpenMacroEdit(index)
             RLSuite.config:RefreshMacroTab()
         end
         f:Hide()
-        RLSuite.utils:Print("Macro " .. index .. " salvata per fase " .. phase)
+        RLSuite.utils:Print(string.format(L["Macro %d saved for phase %s"], index, phase))
     end)
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     closeBtn:SetSize(80, 22)
     closeBtn:SetPoint("LEFT", saveBtn, "RIGHT", 10, 0)
-    closeBtn:SetText("Annulla")
+    closeBtn:SetText(L["Cancel"])
     closeBtn:SetScript("OnClick", function() f:Hide() end)
 
     RLSuite.utils:SkinFrame(f)
@@ -818,7 +825,7 @@ function MB:WireButtonClicks(btn, index)
         if txt ~= "" then
             GameTooltip:AddLine(txt, 0.9, 0.9, 0.9, true)
         elseif name == "" then
-            GameTooltip:AddLine("Vuota", 0.6, 0.6, 0.6)
+            GameTooltip:AddLine(L["Empty"], 0.6, 0.6, 0.6)
         end
         GameTooltip:Show()
         if MB._hoverEnter then MB._hoverEnter() end
@@ -948,7 +955,7 @@ function MB:OpenKeybindUI(phase)
     hint:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -28)
     hint:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -28)
     hint:SetJustifyH("LEFT")
-    hint:SetText("Clicca una riga, poi premi un tasto. Backspace o click destro: togli.")
+    hint:SetText(L["Click a row, then press a key. Backspace or right-click to clear."])
     self.bindHint = hint
 
     self.bindRows = {}
@@ -1031,40 +1038,44 @@ function MB:RefreshKeybindUI()
     end
     if self.bindHint then
         if self.bindingIndex then
-            self.bindHint:SetText("Premi un tasto per Macro " .. self.bindingIndex .. " (Esc annulla).")
+            self.bindHint:SetText(string.format(L["Press a key for Macro %d (Esc cancels)."], self.bindingIndex))
         else
-            self.bindHint:SetText("Clicca una riga, poi premi un tasto. Backspace o click destro: togli.")
+            self.bindHint:SetText(L["Click a row, then press a key. Backspace or right-click to clear."])
         end
     end
 end
 
 function MB:StartPullTimer(seconds)
     if not (RLSuite.IsOfficer and RLSuite:IsOfficer()) then
-        RLSuite.utils:Print("Devi essere RL o assist per il pull timer.")
+        RLSuite.utils:Print(L["You must be raid leader or assist to use the pull timer."])
         return
     end
-    RLSuite.utils:SendChat("Pull in " .. seconds .. " seconds!", "RAID_WARNING")
+    RLSuite.utils:SendChat(string.format(L["Pull in %d seconds!"], seconds), "RAID_WARNING")
     -- barra-timer in DBM/BigWigs se installati
     RLSuite.utils:StartDbmTimer(seconds, "Pull", "Interface\\Icons\\Ability_Warrior_Charge")
-    local remaining = seconds
-    local timerFrame = CreateFrame("Frame")
-    timerFrame:SetScript("OnUpdate", function(self2, elapsed)
-        self2.elapsed = (self2.elapsed or 0) + elapsed
-        if self2.elapsed >= 1 then
-            self2.elapsed = 0
-            remaining = remaining - 1
-            if remaining <= 0 then
-                RLSuite.utils:SendChat("PULL NOW!", "RAID_WARNING")
-                self2:SetScript("OnUpdate", nil)
-                self2:Hide()
-                return
-            end
-            if remaining <= 5 or remaining == 10 or remaining == 15 or remaining == 20 then
-                RLSuite.utils:SendChat("Pull in " .. remaining .. "...", "RAID")
-            end
-        end
-    end)
-    timerFrame:Show()
+    -- Non-overlapping: a second click replaces the running countdown.
+    self:CancelPullTimer()
+    self.pullRemaining = seconds
+    self.pullTimer = self:ScheduleRepeatingTimer("PullTick", 1)
+end
+
+function MB:CancelPullTimer()
+    if self.pullTimer then
+        self:CancelTimer(self.pullTimer, true)
+        self.pullTimer = nil
+    end
+end
+
+function MB:PullTick()
+    self.pullRemaining = (self.pullRemaining or 0) - 1
+    if self.pullRemaining <= 0 then
+        self:CancelPullTimer()
+        RLSuite.utils:SendChat(L["PULL NOW!"], "RAID_WARNING")
+        return
+    end
+    if self.pullRemaining <= 5 or self.pullRemaining == 10 or self.pullRemaining == 15 or self.pullRemaining == 20 then
+        RLSuite.utils:SendChat(string.format(L["Pull in %d..."], self.pullRemaining), "RAID")
+    end
 end
 
 function MB:FormatDuration(seconds)
@@ -1080,32 +1091,36 @@ end
 -- finale, come lo StartPullTimer.
 function MB:StartBreakTimer(seconds)
     if not (RLSuite.IsOfficer and RLSuite:IsOfficer()) then
-        RLSuite.utils:Print("Devi essere RL o assist per il break timer.")
+        RLSuite.utils:Print(L["You must be raid leader or assist to use the break timer."])
         return
     end
-    RLSuite.utils:SendChat("BREAK TIME - " .. self:FormatDuration(seconds) .. "!", "RAID_WARNING")
+    RLSuite.utils:SendChat(string.format(L["BREAK TIME - %s!"], self:FormatDuration(seconds)), "RAID_WARNING")
     RLSuite.utils:StartDbmTimer(seconds, "Break", "Interface\\Icons\\INV_Drink_05")
-    local remaining = seconds
-    local timerFrame = CreateFrame("Frame")
-    timerFrame:SetScript("OnUpdate", function(self2, elapsed)
-        self2.elapsed = (self2.elapsed or 0) + elapsed
-        if self2.elapsed >= 1 then
-            self2.elapsed = 0
-            remaining = remaining - 1
-            if remaining <= 0 then
-                RLSuite.utils:SendChat("BREAK OVER - back in position!", "RAID_WARNING")
-                self2:SetScript("OnUpdate", nil)
-                self2:Hide()
-                return
-            end
-            if remaining <= 5 then
-                RLSuite.utils:SendChat("Break ends in " .. remaining .. "...", "RAID_WARNING")
-            elseif remaining % 60 == 0 then
-                RLSuite.utils:SendChat("Break ends in " .. (remaining / 60) .. " min...", "RAID")
-            end
-        end
-    end)
-    timerFrame:Show()
+    -- Non-overlapping: a second click replaces the running countdown.
+    self:CancelBreakTimer()
+    self.breakRemaining = seconds
+    self.breakTimer = self:ScheduleRepeatingTimer("BreakTick", 1)
+end
+
+function MB:CancelBreakTimer()
+    if self.breakTimer then
+        self:CancelTimer(self.breakTimer, true)
+        self.breakTimer = nil
+    end
+end
+
+function MB:BreakTick()
+    self.breakRemaining = (self.breakRemaining or 0) - 1
+    if self.breakRemaining <= 0 then
+        self:CancelBreakTimer()
+        RLSuite.utils:SendChat(L["BREAK OVER - back in position!"], "RAID_WARNING")
+        return
+    end
+    if self.breakRemaining <= 5 then
+        RLSuite.utils:SendChat(string.format(L["Break ends in %d..."], self.breakRemaining), "RAID_WARNING")
+    elseif self.breakRemaining % 60 == 0 then
+        RLSuite.utils:SendChat(string.format(L["Break ends in %d min..."], self.breakRemaining / 60), "RAID")
+    end
 end
 
 function MB:DoReadyCheck()

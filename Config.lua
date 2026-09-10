@@ -1,10 +1,12 @@
 -- ============================================================
 -- RLSuite - Config (ElvUI-style: left categories, right subtabs)
--- Appearance / layout only — no feature settings.
+-- Appearance / layout only - no feature settings.
 -- ============================================================
 
 RLSuite.config = {}
 local CFG = RLSuite.config
+
+local L = RLSuite.L
 
 function CFG:Init()
     self.db = RLSuiteDB
@@ -104,9 +106,9 @@ end
 function CFG:SubtabsFor(key)
     if key == "general" then
         return {
-            { key = "look", label = "Aspetto" },
+            { key = "look", label = L["Appearance"] },
             { key = "font", label = "Font" },
-            { key = "window", label = "Finestra" },
+            { key = "window", label = L["Window"] },
             { key = "debug", label = "Debug" },
         }
     elseif key == "savedraids" then
@@ -119,7 +121,7 @@ function CFG:SubtabsFor(key)
     elseif key == "raidframe" then
         return {
             { key = "layout", label = "Layout" },
-            { key = "pos", label = "Posizione" },
+            { key = "pos", label = L["Position"] },
         }
     end
     return { { key = "layout", label = "Layout" } }
@@ -881,9 +883,9 @@ end
 
 function CFG:PanelGeneralLook()
     local a = self:EnsureAppearance()
-    self:Header("Aspetto generale")
-    self:Note("Preset, colori sfondo/bordo. Non cambia le funzionalita'.")
-    self:AddDropdown("Tema:", {
+    self:Header(L["General Appearance"])
+    self:Note(L["Presets and background/border colors. Does not change functionality."])
+    self:AddDropdown(L["Theme:"], {
         { text = "Default", value = "default" },
         { text = "Dark", value = "dark" },
         { text = "Gold", value = "gold" },
@@ -899,10 +901,10 @@ function CFG:PanelGeneralLook()
             end
         end
     end)
-    self:AddColor("Sfondo:", a.fill)
-    self:AddColor("Sfondo pannelli:", a.bg)
-    self:AddColor("Bordi:", a.border)
-    self:AddSlider("Spessore bordo", 8, 48, 2, function() return a.edgeSize or 32 end, function(v) a.edgeSize = v end)
+    self:AddColor(L["Background:"], a.fill)
+    self:AddColor(L["Panel background:"], a.bg)
+    self:AddColor(L["Borders:"], a.border)
+    self:AddSlider(L["Border thickness"], 8, 48, 2, function() return a.edgeSize or 32 end, function(v) a.edgeSize = v end)
 end
 
 function CFG:PanelGeneralFont()
@@ -914,7 +916,7 @@ function CFG:PanelGeneralFont()
         { text = "Morpheus", value = "Fonts\\MORPHEUS.TTF" },
         { text = "Skurri", value = "Fonts\\SKURRI.TTF" },
     }, function() return a.font or "Fonts\\FRIZQT__.TTF" end, function(v) a.font = v end)
-    self:AddSlider("Grandezza font", 8, 20, 1, function() return a.fontSize or 12 end, function(v) a.fontSize = v end)
+    self:AddSlider(L["Font size"], 8, 20, 1, function() return a.fontSize or 12 end, function(v) a.fontSize = v end)
 end
 
 function CFG:Layout(key)
@@ -925,8 +927,8 @@ end
 
 function CFG:PanelGeneralDebug()
     self:Header("Debug mode")
-    self:Note("Simula un raid group. Macro, LFM, roll, loot e MS vanno in whisper a te. Il loot finto usa il raid selezionato in Groupmaking.")
-    self:AddCheck("Attiva debug mode", function()
+    self:Note(L["Simulates a raid group. Macros, LFM, rolls, loot and MS changes are whispered to you. Fake loot uses the raid selected in Groupmaking."])
+    self:AddCheck(L["Enable debug mode"], function()
         return RLSuiteDB.debug == true
     end, function(v)
         RLSuiteDB.debug = v and true or false
@@ -938,7 +940,7 @@ function CFG:PanelGeneralDebug()
     local btn = CreateFrame("Button", nil, self.content, "UIPanelButtonTemplate")
     btn:SetSize(160, 22)
     btn:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
-    btn:SetText("Riempi loot finto")
+    btn:SetText(L["Fill fake loot"])
     btn:SetScript("OnClick", function()
         if RLSuite.lootManager and RLSuite.lootManager.SpawnDebugLoot then
             RLSuite.lootManager:SpawnDebugLoot()
@@ -947,23 +949,23 @@ function CFG:PanelGeneralDebug()
 end
 
 function CFG:PanelMain()
-    local L = self:Layout("main")
-    L.height = L.height or 700
-    L.scale = L.scale or 1
-    L.matrixCols = L.matrixCols or 2
-    L.matrixRows = L.matrixRows or 4
-    self:Header("Barra e finestre tab")
-    self:Note("La barra si adatta automaticamente alla matrice e alla riga di icone in alto (Config, SaveRaid, fase). Qui imposti l'altezza di default delle finestre tab e la scala della barra.")
-    self:AddSlider("Altezza default finestre", 400, 900, 20, function() return L.height end, function(v) L.height = v end, 220)
-    self:AddSlider("Scala barra", 0.70, 1.30, 0.05, function() return L.scale end, function(v) L.scale = v end, 220)
+    local lay = self:Layout("main")
+    lay.height = lay.height or 700
+    lay.scale = lay.scale or 1
+    lay.matrixCols = lay.matrixCols or 2
+    lay.matrixRows = lay.matrixRows or 4
+    self:Header(L["Bar and tab windows"])
+    self:Note(L["The bar automatically adapts to the matrix and the top icon row (Config, SaveRaid, phase). Here you set the default height of the tab windows and the bar scale."])
+    self:AddSlider(L["Default window height"], 400, 900, 20, function() return lay.height end, function(v) lay.height = v end, 220)
+    self:AddSlider(L["Bar scale"], 0.70, 1.30, 0.05, function() return lay.scale end, function(v) lay.scale = v end, 220)
 
-    self:Header("Matrice bottoni (solo barra)")
-    self:Note("Quante colonne e quanti tasti per colonna usare per i bottoni della barra. In alto, sopra la matrice, stanno in fila le icone (Config, SaveRaid, fase); l'icona della fase mostra la fase corrente e al clic passa alla successiva.")
-    self:AddSlider("Colonne", 1, 8, 1, function() return L.matrixCols end, function(v) L.matrixCols = v end, 220)
-    self:AddSlider("Tasti per colonna", 1, 8, 1, function() return L.matrixRows end, function(v) L.matrixRows = v end, 220)
+    self:Header(L["Button matrix (bar only)"])
+    self:Note(L["How many columns and buttons per column to use for the bar buttons. Above the matrix sit the icons (Config, SaveRaid, phase); the phase icon shows the current phase and cycles to the next on click."])
+    self:AddSlider(L["Columns"], 1, 8, 1, function() return lay.matrixCols end, function(v) lay.matrixCols = v end, 220)
+    self:AddSlider(L["Buttons per column"], 1, 8, 1, function() return lay.matrixRows end, function(v) lay.matrixRows = v end, 220)
 
-    self:Header("Anchors HUD (stile ElvUI)")
-    self:Note("Sblocca e mostra come placeholder spostabili le HUD Raid Frame e MacroBar. Le altre finestre restano normali.")
+    self:Header(L["HUD anchors (ElvUI style)"])
+    self:Note(L["Unlocks the Raid Frame and MacroBar HUDs and shows them as movable placeholders. Other windows stay as usual."])
     local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
     cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, self:NextY(24))
     cb:SetChecked(RLSuiteDB.anchorMode and 1 or nil)
@@ -987,10 +989,10 @@ function CFG:UpdateAnchorCheck()
 end
 
 function CFG:PanelScale(key, title)
-    local L = self:Layout(key)
-    L.scale = L.scale or 1
+    local lay = self:Layout(key)
+    lay.scale = lay.scale or 1
     self:Header(title)
-    self:AddSlider("Scala", 0.70, 1.30, 0.05, function() return L.scale end, function(v) L.scale = v end, 220)
+    self:AddSlider(L["Scale"], 0.70, 1.30, 0.05, function() return lay.scale end, function(v) lay.scale = v end, 220)
 end
 
 function CFG:RestoreMacroBar()
@@ -1044,7 +1046,7 @@ function CFG:PanelMacroLayout()
     mb.visibility = mb.visibility or ""
 
     self:Header("Macrobar")
-    self:Note("I bottoni visibili sulla HUD sono tanti quante le macro compilate nella fase corrente.")
+    self:Note(L["The visible HUD buttons match the macros filled in the current phase."])
 
     local c1, c2, c3 = self:Row3(26)
     self:CellCheck(c1, "Enable", function() return mb.enabled ~= false end, function(v) mb.enabled = v end)
@@ -1102,22 +1104,22 @@ function CFG:PanelRaidLayout()
     rf.appearance = rf.appearance or {}
     rf.width = rf.width or 350
     rf.scale = rf.scale or 1
-    self:Header("Raid Frame — layout HUD")
-    self:AddSlider("Larghezza", 220, 500, 20, function() return rf.width end, function(v) rf.width = v end, 220)
-    self:AddSlider("Altezza barra HP", 12, 32, 1, function() return rf.appearance.barHeight or 20 end, function(v) rf.appearance.barHeight = v end)
-    self:AddSlider("Dimensione icone", 10, 24, 1, function() return rf.appearance.iconSize or 16 end, function(v) rf.appearance.iconSize = v end)
-    self:AddSlider("Scala", 0.70, 1.50, 0.05, function() return rf.scale end, function(v) rf.scale = v end, 220)
+    self:Header(L["Raid Frame - HUD layout"])
+    self:AddSlider(L["Width"], 220, 500, 20, function() return rf.width end, function(v) rf.width = v end, 220)
+    self:AddSlider(L["HP bar height"], 12, 32, 1, function() return rf.appearance.barHeight or 20 end, function(v) rf.appearance.barHeight = v end)
+    self:AddSlider(L["Icon size"], 10, 24, 1, function() return rf.appearance.iconSize or 16 end, function(v) rf.appearance.iconSize = v end)
+    self:AddSlider(L["Scale"], 0.70, 1.50, 0.05, function() return rf.scale end, function(v) rf.scale = v end, 220)
 end
 
 function CFG:PanelRaidPos()
     local rf = self.db.raidframe
-    self:Header("Raid Frame — posizione")
-    self:AddCheck("Blocca posizione", function() return rf.locked end, function(v) rf.locked = v end)
+    self:Header(L["Raid Frame - position"])
+    self:AddCheck(L["Lock position"], function() return rf.locked end, function(v) rf.locked = v end)
     local y = self:NextY(28)
     local btn = CreateFrame("Button", nil, self.content, "UIPanelButtonTemplate")
     btn:SetSize(160, 22)
     btn:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
-    btn:SetText("Reset posizione")
+    btn:SetText(L["Reset position"])
     btn:SetScript("OnClick", function()
         rf.point, rf.relPoint, rf.x, rf.y = "LEFT", "LEFT", 10, 0
         if RLSuite.raidFrame and RLSuite.raidFrame.frame then
@@ -1133,10 +1135,10 @@ end
 
 function CFG:PanelSavedRaids()
     self:Header("Saved Raids")
-    self:Note("Salvataggi creati con il tasto SaveRaid nella barra in alto. Clicca Load per ripristinare Comp, MacroBar e Config (esclusa General).")
+    self:Note(L["Saves created with the SaveRaid button in the top bar. Click Load to restore Comp, MacroBar and Config (except General)."])
     local list = RLSuiteDB.savedRaids or {}
     if #list == 0 then
-        self:Note("Nessun salvataggio presente.")
+        self:Note(L["No saves yet."])
         return
     end
     for i, e in ipairs(list) do
@@ -1151,7 +1153,7 @@ function CFG:PanelSavedRaids()
         title:SetPoint("LEFT", row, "LEFT", 8, 0)
         title:SetPoint("RIGHT", row, "RIGHT", -150, 0)
         title:SetJustifyH("LEFT")
-        title:SetText(e.title or ("Salvataggio #" .. i))
+        title:SetText(e.title or string.format(L["Save #%d"], i))
         if e.title then title:SetTextColor(0.9, 0.9, 0.9) end
 
         local loadBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
@@ -1235,7 +1237,7 @@ function CFG:CreateMacroEditor()
     -- riga 1: selezione fase + toggle HUD
     local phaseLabel = ed:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     phaseLabel:SetPoint("TOPLEFT", ed, "TOPLEFT", 10, -8)
-    phaseLabel:SetText("Fase:")
+    phaseLabel:SetText(L["Phase:"])
 
     local phases = {
         {key = "preraid", label = "Pre-raid"},
@@ -1311,7 +1313,7 @@ function CFG:CreateMacroEditor()
 
     local listTitle = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     listTitle:SetPoint("TOPLEFT", list, "TOPLEFT", 6, -5)
-    listTitle:SetText("Tutte le macro")
+    listTitle:SetText(L["All macros"])
 
     self.macroListRows = {}
     for i = 1, 12 do
@@ -1342,12 +1344,12 @@ function CFG:CreateMacroEditor()
     -- lato sinistro: titolo slot, nome, icona
     local slotFS = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     slotFS:SetPoint("TOPLEFT", editor, "TOPLEFT", 8, -6)
-    slotFS:SetText("Macro")
+    slotFS:SetText(L["Macro"])
     self.macroSlotFS = slotFS
 
     local nameLabel = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     nameLabel:SetPoint("TOPLEFT", slotFS, "BOTTOMLEFT", 0, -6)
-    nameLabel:SetText("Nome:")
+    nameLabel:SetText(L["Name:"])
 
     local nameEdit = CreateFrame("EditBox", "RLSuiteCfgMacroNameEdit", editor, "InputBoxTemplate")
     nameEdit:SetSize(110, 18)
@@ -1467,7 +1469,7 @@ function CFG:CreateMacroIconPicker(parent)
 
     local title = picker:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOPLEFT", picker, "TOPLEFT", 10, -8)
-    title:SetText("Icona macro")
+    title:SetText(L["Macro icon"])
 
     local close = CreateFrame("Button", nil, picker, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", picker, "TOPRIGHT", -2, -2)
@@ -1782,15 +1784,15 @@ function CFG:ApplyAll()
     if RLSuite.mainWindow and RLSuite.mainWindow.ApplyLayout then
         RLSuite.mainWindow:ApplyLayout()
     end
-    local L = self.db.layout or {}
+    local lay = self.db.layout or {}
     local function scale(fr, key)
-        if not fr or not L[key] or not L[key].scale then return end
+        if not fr or not lay[key] or not lay[key].scale then return end
         local parent = fr.GetParent and fr:GetParent()
         if RLSuite.mainWindow and RLSuite.mainWindow.frame and parent == RLSuite.mainWindow.frame then
             fr:SetScale(1)
             return
         end
-        fr:SetScale(L[key].scale)
+        fr:SetScale(lay[key].scale)
     end
     scale(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame, "groupmaking")
     scale(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame, "whisplist")

@@ -5,6 +5,8 @@
 RLSuite.msManager = {}
 local MSM = RLSuite.msManager
 
+local L = RLSuite.L
+
 function MSM:Init()
     self.db = RLSuiteDB.mschanges or {}
     RLSuiteDB.mschanges = self.db
@@ -81,13 +83,13 @@ function MSM:CreateFrame()
     self.addName:SetSize(100, 20)
     self.addName:SetPoint("LEFT", addLabel, "RIGHT", 8, 0)
     self.addName:SetAutoFocus(false)
-    self.addName:SetText("Nome")
+    self.addName:SetText(L["Name"])
 
     self.addSpec = CreateFrame("EditBox", "RLSuiteMSAddSpec", self.addBox, "InputBoxTemplate")
     self.addSpec:SetSize(100, 20)
     self.addSpec:SetPoint("LEFT", self.addName, "RIGHT", 8, 0)
     self.addSpec:SetAutoFocus(false)
-    self.addSpec:SetText("Spec")
+    self.addSpec:SetText(L["Spec"])
 
     local addBtn = CreateFrame("Button", nil, self.addBox, "UIPanelButtonTemplate")
     addBtn:SetSize(60, 22)
@@ -145,7 +147,7 @@ function MSM:ParseMSMessage(sender, msg)
         spec = string.gsub(string.gsub(spec, "^%s+", ""), "%s+$", "")
         if spec == "" then return end
         self:AddEntry(sender, spec)
-        RLSuite.utils:Print("MS change rilevato: " .. sender .. " -> " .. spec)
+        RLSuite.utils:Print(string.format(L["MS change detected: %s -> %s"], sender, spec))
     end
 end
 
@@ -163,10 +165,10 @@ end
 function MSM:AddManual()
     local name = self.addName and self.addName:GetText() or ""
     local spec = self.addSpec and self.addSpec:GetText() or ""
-    if name ~= "" and name ~= "Nome" and spec ~= "" and spec ~= "Spec" then
+    if name ~= "" and name ~= L["Name"] and spec ~= "" and spec ~= L["Spec"] then
         self:AddEntry(name, spec)
-        self.addName:SetText("Nome")
-        self.addSpec:SetText("Spec")
+        self.addName:SetText(L["Name"])
+        self.addSpec:SetText(L["Spec"])
     end
 end
 
@@ -223,9 +225,9 @@ function MSM:RequestChanges()
     self.listening = true
     local dur = 40
     self.listenUntil = GetTime() + dur
-    local msg = "Requesting MS changes — type in raid: ms <spec> you have only 40s"
+    local msg = L["Requesting MS changes - type in raid: ms <spec> you have only 40s"]
     RLSuite.utils:SendChat(msg, "RAID")
-    -- barra-timer in DBM/BigWigs se installati
+    -- bar timer in DBM/BigWigs if installed
     RLSuite.utils:StartDbmTimer(dur, "MS Changes", "Interface\\Icons\\Spell_Nature_AstralRecall")
     local f = CreateFrame("Frame")
     f:SetScript("OnUpdate", function(self2, elapsed)
@@ -243,7 +245,7 @@ end
 
 function MSM:GenerateMessage()
     if #self.db == 0 then
-        RLSuite.utils:Print("Nessun MS change registrato.")
+        RLSuite.utils:Print(L["No MS changes recorded."])
         return
     end
     local parts = {}

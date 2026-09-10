@@ -6,6 +6,8 @@ RLSuite = RLSuite or {}
 RLSuite.utils = {}
 local Utils = RLSuite.utils
 
+local L = RLSuite.L
+
 function Utils:Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[RLSuite]|r " .. tostring(msg))
 end
@@ -857,7 +859,7 @@ function Utils:StartDbmTimer(seconds, label, icon)
     end
 
     if RLSuiteDB and RLSuiteDB.debug then
-        self:Debug("DBM/BigWigs non disponibile: timer \"" .. label .. "\" non avviato.")
+        self:Debug(string.format(L['DBM/BigWigs not available: timer "%s" not started.'], label))
     end
     return false
 end

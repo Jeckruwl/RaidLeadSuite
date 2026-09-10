@@ -5,6 +5,8 @@
 RLSuite = RLSuite or {}
 RLSuite.version = "1.3.0"
 
+local L = RLSuite.L
+
 local defaults = {
     profile = "",
     difficulty = "10",
@@ -301,23 +303,60 @@ RLSuite.abilityBySpellId = {
     [22812] = "Barkskin", [29166] = "Innervate",
 }
 
+-- Reverse lookup: ability name -> list of spell IDs. GetSpellCooldown(spellId)
+-- is locale-safe (the name form requires the spell to be in the player's
+-- spellbook), so the player's own cooldowns are queried by ID.
+RLSuite.abilitySpellIdByName = {}
+for spellId, name in pairs(RLSuite.abilityBySpellId) do
+    local list = RLSuite.abilitySpellIdByName[name]
+    if not list then
+        list = {}
+        RLSuite.abilitySpellIdByName[name] = list
+    end
+    table.insert(list, spellId)
+end
+
+-- WotLK 3.3.5 buff/flask/food checks by spellId (locale-safe). Names are
+-- resolved at runtime via GetSpellInfo(id) and UnitBuff compares the
+-- returned spellId. Food buffs are the "Well Fed" family (one spell per
+-- food); feasts apply one of these.
 RLSuite.buffData = {
     flask = {
-        "Flask of the Frost Wyrm", "Flask of Endless Rage", "Flask of Pure Mojo",
-        "Flask of Stoneblood", "Flask of the North",
+        53755, -- Flask of the Frost Wyrm
+        53760, -- Flask of Endless Rage
+        54212, -- Flask of Pure Mojo
+        53758, -- Flask of Stoneblood
+        67016, -- Flask of the North (Spell Power)
+        67017, -- Flask of the North (Attack Power)
+        67018, -- Flask of the North (Strength)
     },
     food = {
-        "Fish Feast", "Great Feast", "Small Feast",
-        "Spiced Worm Burger", "Mega Mammoth Meal", "Tender Shoveltusk Steak",
-        "Rhinolicious Wormsteak", "Hearty Rhino", "Snapper Extreme",
+        57079, -- Well Fed (60 AP, 40 Stam)
+        57097, -- Well Fed (35 SP, 40 Stam)
+        57111, -- Well Fed (60 AP, 30 Stam)
+        57139, -- Well Fed (35 SP, 30 Stam)
+        57294, -- Well Fed (Great Feast: 60 AP, 35 SP, 30 Stam)
+        57325, -- Well Fed (Mega Mammoth Meal: 80 AP, 40 Stam)
+        57327, -- Well Fed (Tender Shoveltusk Steak: 46 SP, 40 Stam)
+        57399, -- Well Fed (Fish Feast: 80 AP, 46 SP, 40 Stam)
+        64057, -- Well Fed (Spiced Worm Burger)
+        65412, -- Well Fed
+        65414, -- Well Fed
+        66623, -- Well Fed
     },
     buffs = {
-        "Mark of the Wild", "Gift of the Wild",
-        "Power Word: Fortitude", "Prayer of Fortitude",
-        "Arcane Brilliance", "Arcane Intellect",
-        "Blessing of Kings", "Greater Blessing of Kings",
-        "Blessing of Might", "Greater Blessing of Might",
-        "Blessing of Wisdom", "Greater Blessing of Wisdom",
+        48469, -- Mark of the Wild
+        48470, -- Gift of the Wild
+        48161, -- Power Word: Fortitude
+        48162, -- Prayer of Fortitude
+        43002, -- Arcane Brilliance
+        42995, -- Arcane Intellect
+        20217, -- Blessing of Kings
+        25898, -- Greater Blessing of Kings
+        48932, -- Blessing of Might
+        48934, -- Greater Blessing of Might
+        48936, -- Blessing of Wisdom
+        48938, -- Greater Blessing of Wisdom
     },
 }
 
@@ -352,7 +391,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
                     end
                 end
             end
-            RLSuite.utils:Print("v" .. RLSuite.version .. " caricato. Digita /rls per aprire.")
+            RLSuite.utils:Print(string.format(L["v%s loaded. Type /rls to open."], RLSuite.version))
         end
     elseif event == "PLAYER_LOGIN" then
         RLSuite:InitModules()
@@ -388,18 +427,18 @@ end)
 
 function RLSuite:PrintHelp()
     local p = function(t) self.utils:Print(t) end
-    p("Comandi disponibili:")
-    p("  /rls              Barra tab")
-    p("  /rls help         Questo elenco")
-    p("  /rls group        Tab Groupmaking")
-    p("  /rls whisplist    Tab Whisplist")
-    p("  /rls macro        Config -> Macros (editor)")
-    p("  /rls macrobar     HUD MacroBar")
-    p("  /rls raidframe    Tab Raid Frame (impostazioni)")
-    p("  /rls rfhud        HUD Raid Frame")
-    p("  /rls ms           Tab MS Manager")
-    p("  /rls loot         Tab Loot Manager")
-    p("  /rls config       Tab Config")
+    p(L["Available commands:"])
+    p(L["  /rls              Tab bar"])
+    p(L["  /rls help         This list"])
+    p(L["  /rls group        Groupmaking tab"])
+    p(L["  /rls whisplist    Whisplist tab"])
+    p(L["  /rls macro        Config -> Macros (editor)"])
+    p(L["  /rls macrobar     HUD MacroBar"])
+    p(L["  /rls raidframe    Raid Frame tab (settings)"])
+    p(L["  /rls rfhud        HUD Raid Frame"])
+    p(L["  /rls ms           MS Manager tab"])
+    p(L["  /rls loot         Loot Manager tab"])
+    p(L["  /rls config       Config tab"])
 end
 
 SLASH_RLSUITE1 = "/rls"
@@ -432,7 +471,7 @@ SlashCmdList["RLSUITE"] = function(msg)
     elseif msg == "" then
         if RLSuite.mainWindow then RLSuite.mainWindow:Toggle() end
     else
-        RLSuite.utils:Print("Comando sconosciuto. /rls help per l'elenco.")
+        RLSuite.utils:Print(L["Unknown command. Type /rls help for the list."])
         RLSuite:PrintHelp()
     end
 end
@@ -470,7 +509,7 @@ end
 function RLSuite:ApplyDebugMode()
     self:UpdateRaidContext()
     if self:DebugMode() then
-        self.utils:Print("|cffff9900DEBUG MODE ON|r — raid simulato, messaggi in whisper a te.")
+        self.utils:Print("|cffff9900" .. L["DEBUG MODE ON"] .. "|r - " .. L["Simulated raid, messages are whispered to you."])
         if self.lootManager and self.lootManager.SpawnDebugLoot then
             self.lootManager:SpawnDebugLoot()
         end
@@ -507,7 +546,7 @@ function RLSuite:SetContextPhase(phase)
     if phase ~= "preraid" and phase ~= "preboss" and phase ~= "infight" then return end
     self.context = phase
     self:UpdatePhaseUI()
-    self.utils:Print("Fase impostata: " .. phase)
+    self.utils:Print(string.format(L["Phase set: %s"], phase))
 end
 
 -- Cicla preraid -> preboss -> infight -> preraid (usato dall'icona fase).
@@ -552,7 +591,7 @@ function RLSuite:SaveRaid(title)
     title = string.gsub(title, "^%s+", "")
     title = string.gsub(title, "%s+$", "")
     if title == "" then
-        self.utils:Print("Salvataggio annullato: titolo vuoto.")
+        self.utils:Print(L["Save cancelled: empty title."])
         return nil
     end
     RLSuiteDB.savedRaids = RLSuiteDB.savedRaids or {}
@@ -567,8 +606,8 @@ function RLSuite:SaveRaid(title)
     end
     local scales = {}
     for _, k in ipairs(SAVED_RAID_LAYOUT_KEYS) do
-        local L = RLSuiteDB.layout and RLSuiteDB.layout[k]
-        if L and L.scale then scales[k] = L.scale end
+        local lay = RLSuiteDB.layout and RLSuiteDB.layout[k]
+        if lay and lay.scale then scales[k] = lay.scale end
     end
     data.layout = scales
     local id = 1
@@ -578,7 +617,7 @@ function RLSuite:SaveRaid(title)
     local entry = { id = id, title = title, time = time(), data = data }
     table.insert(RLSuiteDB.savedRaids, entry)
     self:RefreshSavedRaidsPanel()
-    self.utils:Print("SaveRaid \"" .. title .. "\" salvato (" .. #RLSuiteDB.savedRaids .. " totali).")
+    self.utils:Print(string.format(L['SaveRaid "%s" saved (%d total).'], title, #RLSuiteDB.savedRaids))
     return id
 end
 
@@ -602,7 +641,7 @@ function RLSuite:DeleteSavedRaid(id)
         if e.id == id then
             table.remove(RLSuiteDB.savedRaids, i)
             self:RefreshSavedRaidsPanel()
-            self.utils:Print("SaveRaid \"" .. (e.title or "?") .. "\" eliminato.")
+            self.utils:Print(string.format(L['SaveRaid "%s" deleted.'], (e.title or "?")))
             return true
         end
     end
@@ -612,7 +651,7 @@ end
 function RLSuite:LoadRaid(id)
     local entry = self:GetSavedRaid(id)
     if not entry then
-        self.utils:Print("Salvataggio non trovato (id " .. tostring(id) .. ").")
+        self.utils:Print(string.format(L["Save not found (id %s)."], tostring(id)))
         return false
     end
     local d = entry.data or {}
@@ -629,7 +668,7 @@ function RLSuite:LoadRaid(id)
         end
     end
     self:ApplySavedRaidToUI()
-    self.utils:Print("SaveRaid \"" .. (entry.title or "?") .. "\" caricato.")
+    self.utils:Print(string.format(L['SaveRaid "%s" loaded.'], (entry.title or "?")))
     return true
 end
 

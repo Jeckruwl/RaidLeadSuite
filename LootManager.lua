@@ -5,6 +5,13 @@
 RLSuite.lootManager = {}
 local LM = RLSuite.lootManager
 
+local L = RLSuite.L
+
+-- Non-overlapping roll/reroll countdowns (AceTimer named timers):
+-- restarting a roll cancels the previous timer instead of stacking a
+-- second one (which used to double the announcements).
+LibStub("AceTimer-3.0"):Embed(LM)
+
 function LM:Init()
     self.db = RLSuiteDB.loot
     self.history = self.db.history or {}
@@ -121,7 +128,7 @@ function LM:CreateFrame()
     self.selectedItemText:SetPoint("LEFT", self.selectedItemIcon, "RIGHT", 8, 0)
     self.selectedItemText:SetPoint("RIGHT", self.selBox, "RIGHT", -8, 0)
     self.selectedItemText:SetJustifyH("LEFT")
-    self.selectedItemText:SetText("Nessun item selezionato")
+    self.selectedItemText:SetText(L["No item selected"])
 
     self.rollMSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     self.rollMSBtn:SetSize(80, 24)
@@ -279,7 +286,7 @@ function LM:SpawnDebugLoot()
         })
     end
     self:UpdateHistory()
-    RLSuite.utils:Print("Loot debug: " .. n .. " item da " .. raid)
+    RLSuite.utils:Print(string.format(L["Loot debug: %d items from %s"], n, raid))
 end
 
 function LM:OnLootMessage(msg)
@@ -519,8 +526,8 @@ function LM:SelectItem(entry)
     end
 end
 
--- Evidenzia la riga selezionata senza ricostruire la lista (vedi note su
--- RefreshWhisperHighlight: il rebuild dentro il click rompe i click futuri).
+-- Highlights the selected row without rebuilding the list (see notes on
+-- RefreshWhisperHighlight: rebuilding inside the click breaks future clicks).
 function LM:RefreshHistoryHighlight()
     for _, row in ipairs(self.histRows or {}) do
         if row and row.SetBackdrop then
@@ -531,7 +538,7 @@ end
 
 function LM:StartRoll(rollType)
     if not self.selectedItem then
-        RLSuite.utils:Print("Seleziona un item dalla history!")
+        RLSuite.utils:Print(L["Select an item from the history first!"])
         return
     end
 
@@ -556,9 +563,10 @@ function LM:StartRoll(rollType)
     if RLSuite.DebugMode and RLSuite:DebugMode() then
         local me = UnitName("player") or "You"
         local names = {me, "Tankbot", "Healbot", "Dpsbot", "Huntbot"}
+        local template = self:GetRollTemplate()
         for _, n in ipairs(names) do
             if math.random(1, 10) > 2 then
-                self:OnSystemRoll(n .. " rolls " .. math.random(1, 100) .. " (1-100).")
+                self:OnSystemRoll(string.format(template, n, math.random(1, 100), 1, 100))
             end
         end
     end
@@ -567,26 +575,10 @@ function LM:StartRoll(rollType)
     if self.rollOSBtn then self.rollOSBtn:Disable() end
     if self.rollOtherBtn then self.rollOtherBtn:Disable() end
 
-    local remaining = self.currentRoll.timer
-    local timerFrame = CreateFrame("Frame")
-    timerFrame:SetScript("OnUpdate", function(self2, elapsed)
-        self2.elapsed = (self2.elapsed or 0) + elapsed
-        if self2.elapsed >= 1 then
-            self2.elapsed = 0
-            remaining = remaining - 1
-            if remaining <= 0 then
-                LM:AnnounceWinner()
-                self2:SetScript("OnUpdate", nil)
-                self2:Hide()
-                return
-            end
-            if remaining <= 3 then
-                RLSuite.utils:SendChat("Roll ending in " .. remaining .. "...", "RAID")
-            end
-        end
-    end)
-    timerFrame:Show()
-    self.rollTimerFrame = timerFrame
+    -- Non-overlapping: cancel any previous roll/reroll countdown.
+    self:CancelRollTimers()
+    self.rollRemaining = self.currentRoll.timer
+    self.rollTimer = self:ScheduleRepeatingTimer("RollTick", 1)
 
     if self.rollFrame then
         self.rollFrame:UnregisterEvent("CHAT_MSG_SYSTEM")
@@ -598,9 +590,60 @@ function LM:StartRoll(rollType)
     end)
 end
 
+-- Cancels the running roll and reroll countdown timers, if any.
+function LM:CancelRollTimers()
+    if self.rollTimer then
+        self:CancelTimer(self.rollTimer, true)
+        self.rollTimer = nil
+    end
+    if self.rerollTimer then
+        self:CancelTimer(self.rerollTimer, true)
+        self.rerollTimer = nil
+    end
+end
+
+function LM:RollTick()
+    self.rollRemaining = (self.rollRemaining or 0) - 1
+    if self.rollRemaining <= 0 then
+        if self.rollTimer then
+            self:CancelTimer(self.rollTimer, true)
+            self.rollTimer = nil
+        end
+        self:AnnounceWinner()
+        return
+    end
+    if self.rollRemaining <= 3 then
+        RLSuite.utils:SendChat("Roll ending in " .. self.rollRemaining .. "...", "RAID")
+    end
+end
+
+-- Localized roll template, e.g. "%s rolls %d (%d-%d)" on enUS.
+function LM:GetRollTemplate()
+    return RANDOM_ROLL_RESULT or "%s rolls %d (%d-%d)"
+end
+
+-- Builds a Lua pattern from the localized RANDOM_ROLL_RESULT template so
+-- system roll messages are parsed on any client locale (enUS "Name rolls 42
+-- (1-100)", itIT "Name tira 42 (1-100)", deDE "Name wuerfelt 42 (1-100)",
+-- etc.) instead of matching English-only wording.
+function LM:GetRollPattern()
+    if self._rollPattern then return self._rollPattern end
+    local t = self:GetRollTemplate()
+    -- Mark the substitution tokens so the remaining text can be escaped.
+    t = string.gsub(t, "%%s", "\001NAME\001")
+    t = string.gsub(t, "%%d", "\001NUM\001")
+    -- Escape Lua pattern magic characters in the literal text.
+    t = string.gsub(t, "([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+    -- Restore capture groups.
+    t = string.gsub(t, "\001NAME\001", "(.+)")
+    t = string.gsub(t, "\001NUM\001", "(%%d+)")
+    self._rollPattern = t
+    return t
+end
+
 function LM:OnSystemRoll(msg)
     if not self.currentRoll or not self.currentRoll.active then return end
-    local name, roll, minRoll, maxRoll = string.match(msg or "", "(.+) rolls (%d+) %((%d+)%-(%d+)%)%.")
+    local name, roll, _, maxRoll = string.match(msg or "", self:GetRollPattern())
     if name and roll and maxRoll == "100" then
         table.insert(self.currentRoll.rolls, {name = name, roll = tonumber(roll)})
     end
@@ -663,22 +706,21 @@ function LM:DoReroll()
     self.currentRoll.active = true
     if self.rerollBtn then self.rerollBtn:Disable() end
 
-    local remaining = self.db.rerollDuration or 5
-    local timerFrame = CreateFrame("Frame")
-    timerFrame:SetScript("OnUpdate", function(self2, elapsed)
-        self2.elapsed = (self2.elapsed or 0) + elapsed
-        if self2.elapsed >= 1 then
-            self2.elapsed = 0
-            remaining = remaining - 1
-            if remaining <= 0 then
-                LM:ProcessReroll()
-                self2:SetScript("OnUpdate", nil)
-                self2:Hide()
-                return
-            end
+    -- Non-overlapping: cancel any previous reroll/roll countdown.
+    self:CancelRollTimers()
+    self.rerollRemaining = self.db.rerollDuration or 5
+    self.rerollTimer = self:ScheduleRepeatingTimer("RerollTick", 1)
+end
+
+function LM:RerollTick()
+    self.rerollRemaining = (self.rerollRemaining or 0) - 1
+    if self.rerollRemaining <= 0 then
+        if self.rerollTimer then
+            self:CancelTimer(self.rerollTimer, true)
+            self.rerollTimer = nil
         end
-    end)
-    timerFrame:Show()
+        self:ProcessReroll()
+    end
 end
 
 function LM:ProcessReroll()
