@@ -686,9 +686,8 @@ end
 
 function RLSuite:RefreshSavedRaidsPanel()
     local cfg = self.config
-    if cfg and cfg.frame and cfg.frame:IsShown() and cfg.currentCat == "savedraids"
-        and cfg.RebuildPanel then
-        cfg:RebuildPanel()
+    if cfg and cfg.frame and cfg.frame:IsShown() and cfg.NotifyChange then
+        cfg:NotifyChange()
     end
 end
 

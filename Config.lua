@@ -1,6 +1,10 @@
 -- ============================================================
--- RLSuite - Config (ElvUI-style: left categories, right subtabs)
--- Appearance / layout only - no feature settings.
+-- RLSuite - Config
+-- Options UI rebuilt on Ace3: an AceConfig options table rendered
+-- by AceConfigDialog into an AceGUI container hosted inside the
+-- Config tab pane. The bespoke 12-slot Macro Editor / icon picker
+-- (which has no AceConfig equivalent) is preserved and drawn over
+-- the options view when opened.
 -- ============================================================
 
 RLSuite.config = {}
@@ -8,6 +12,51 @@ local CFG = RLSuite.config
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
+local AceConfig = LibStub("AceConfig-3.0")
+local AceConfigDialog = LibStub("AceConfigDialog-3.0")
+local AceConfigRegistry = LibStub("AceConfigRegistry-3.0")
+local AceGUI = LibStub("AceGUI-3.0")
+
+local APP = "RLSuite"
+
+-- ------------------------------------------------------------------
+-- Shared profile access
+-- ------------------------------------------------------------------
+local function prof()
+    return RLSuite.db.profile
+end
+
+-- ------------------------------------------------------------------
+-- Option builders (thin wrappers over the AceConfig model)
+-- ------------------------------------------------------------------
+local function slider(name, desc, order, minV, maxV, stepV, get, set)
+    return { type = "range", name = name, desc = desc, order = order,
+             min = minV, max = maxV, step = stepV, get = get, set = set }
+end
+
+local function toggle(name, desc, order, get, set)
+    return { type = "toggle", name = name, desc = desc, order = order,
+             get = get, set = set }
+end
+
+local function select(name, desc, order, values, get, set)
+    return { type = "select", name = name, desc = desc, order = order,
+             values = values, get = get, set = set }
+end
+
+local function execute(name, desc, order, func)
+    return { type = "execute", name = name, desc = desc, order = order,
+             func = func }
+end
+
+local function textarea(name, desc, order, get, set)
+    return { type = "input", name = name, desc = desc, order = order,
+             multiline = 2, width = "full", get = get, set = set }
+end
+
+-- ------------------------------------------------------------------
+-- Lifecycle
+-- ------------------------------------------------------------------
 function CFG:Init()
     self.db = RLSuite.db.profile
     self.widgetId = 0
@@ -26,7 +75,17 @@ function CFG:Toggle()
     end
 end
 
+-- Re-renders the options dialog (used after Saved Raids change, macro
+-- bar restore, anchor toggling, etc.). AceConfigDialog listens for the
+-- ConfigTableChange callback fired by NotifyChange.
+function CFG:NotifyChange()
+    AceConfigRegistry:NotifyChange(APP)
+end
+
 function CFG:CreateFrame()
+    -- The tab pane itself stays a plain WoW frame: MainWindow hooks its
+    -- close button and drag/resize, and Utils skins it like every other
+    -- tab window.
     local f = CreateFrame("Frame", "RLSuiteConfig", UIParent)
     f:SetSize(620, 580)
     f:SetPoint("CENTER")
@@ -50,987 +109,227 @@ function CFG:CreateFrame()
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
     f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 
-    self.left = CreateFrame("Frame", nil, f)
-    self.left:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -36)
-    self.left:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
-    self.left:SetWidth(140)
-    RLSuite.utils:SkinFrame(self.left)
+    -- Content area: hosts the AceConfig dialog and (on top) the Macro
+    -- Editor. Kept as self.panel so the preserved editor code can anchor
+    -- to it unchanged.
+    self.panel = CreateFrame("Frame", nil, f)
+    self.panel:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -36)
+    self.panel:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 10)
 
-    self.right = CreateFrame("Frame", nil, f)
-    self.right:SetPoint("TOPLEFT", self.left, "TOPRIGHT", 6, 0)
-    self.right:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 10)
-    RLSuite.utils:SkinFrame(self.right)
-
-    self.categories = {
-        { key = "general",     label = "General" },
-        { key = "savedraids",  label = "Saved Raids" },
-        { key = "groupmaking", label = "Groupmaking" },
-        { key = "macros",      label = "Macros" },
-        { key = "raidframe",   label = "Raid Frame" },
-        { key = "ms",          label = "MS" },
-        { key = "loot",        label = "Loot" },
-    }
-    self.navBtns = {}
-    for i, cat in ipairs(self.categories) do
-        local btn = CreateFrame("Button", nil, self.left, "UIPanelButtonTemplate")
-        btn:SetSize(124, 22)
-        btn:SetPoint("TOPLEFT", self.left, "TOPLEFT", 8, -10 - (i - 1) * 26)
-        btn:SetText(cat.label)
-        btn.catKey = cat.key
-        btn:SetScript("OnClick", function() self:SelectCategory(cat.key) end)
-        self.navBtns[cat.key] = btn
-    end
-
-    self.subTabBar = CreateFrame("Frame", nil, self.right)
-    self.subTabBar:SetPoint("TOPLEFT", self.right, "TOPLEFT", 8, -8)
-    self.subTabBar:SetPoint("TOPRIGHT", self.right, "TOPRIGHT", -8, -8)
-    self.subTabBar:SetHeight(24)
-
-    self.panel = CreateFrame("Frame", nil, self.right)
-    self.panel:SetPoint("TOPLEFT", self.subTabBar, "BOTTOMLEFT", 0, -6)
-    self.panel:SetPoint("BOTTOMRIGHT", self.right, "BOTTOMRIGHT", -8, 8)
-
-    self:SelectCategory("general")
-end
-
-function CFG:SelectCategory(key)
-    self.currentCat = key
-    for k, btn in pairs(self.navBtns or {}) do
-        if k == key then btn:LockHighlight() else btn:UnlockHighlight() end
-    end
-    local subs = self:SubtabsFor(key)
-    self:BuildSubtabs(subs)
-    self:SelectSubtab(subs[1] and subs[1].key or "main")
-end
-
-function CFG:SubtabsFor(key)
-    if key == "general" then
-        return {
-            { key = "look", label = L["Appearance"] },
-            { key = "font", label = "Font" },
-            { key = "window", label = L["Window"] },
-            { key = "debug", label = "Debug" },
-        }
-    elseif key == "savedraids" then
-        return { { key = "main", label = "Saved Raids" } }
-    elseif key == "macros" then
-        return {
-            { key = "layout", label = "Bar Layout" },
-            { key = "editor", label = "Macro Editor" },
-        }
-    elseif key == "raidframe" then
-        return {
-            { key = "layout", label = "Layout" },
-            { key = "pos", label = L["Position"] },
-        }
-    end
-    return { { key = "layout", label = "Layout" } }
-end
-
-function CFG:LayoutPanelForSubtabs(showBar)
-    if not self.panel then return end
-    self.panel:ClearAllPoints()
-    if showBar then
-        self.subTabBar:Show()
-        self.panel:SetPoint("TOPLEFT", self.subTabBar, "BOTTOMLEFT", 0, -6)
-    else
-        self.subTabBar:Hide()
-        self.panel:SetPoint("TOPLEFT", self.right, "TOPLEFT", 8, -8)
-    end
-    self.panel:SetPoint("BOTTOMRIGHT", self.right, "BOTTOMRIGHT", -8, 8)
-end
-
-function CFG:BuildSubtabs(subs)
-    if self.subTabBtns then
-        for _, b in ipairs(self.subTabBtns) do
-            b:Hide()
-            b:SetParent(nil)
-        end
-    end
-    self.subTabBtns = {}
-    local show = subs and #subs > 1
-    self:LayoutPanelForSubtabs(show)
-    if not show then return end
-    for i, s in ipairs(subs) do
-        local btn = CreateFrame("Button", nil, self.subTabBar, "UIPanelButtonTemplate")
-        btn:SetSize(90, 20)
-        btn:SetPoint("LEFT", self.subTabBar, "LEFT", (i - 1) * 96, 0)
-        btn:SetText(s.label)
-        btn.subKey = s.key
-        btn:SetScript("OnClick", function() self:SelectSubtab(s.key) end)
-        self.subTabBtns[i] = btn
-    end
-end
-
-function CFG:SelectSubtab(key)
-    self.currentSub = key
-    for _, btn in ipairs(self.subTabBtns or {}) do
-        if btn.subKey == key then btn:LockHighlight() else btn:UnlockHighlight() end
-    end
-    self:RebuildPanel()
-end
-
-function CFG:WipePanel()
-    if self.scroll then
-        self.scroll:Hide()
-        self.scroll:SetParent(nil)
-    end
-    if self.content then
-        self.content:Hide()
-        self.content:SetParent(nil)
-    end
-    self.widgetId = (self.widgetId or 0) + 1
-    local scroll = CreateFrame("ScrollFrame", "RLSuiteCfgScroll" .. self.widgetId, self.panel)
-    scroll:SetAllPoints(self.panel)
-    scroll:EnableMouse(true)
-    scroll:EnableMouseWheel(true)
-    local content = CreateFrame("Frame", "RLSuiteCfgContent" .. self.widgetId, scroll)
-    content:SetWidth(400)
-    content:SetHeight(400)
-    scroll:SetScrollChild(content)
-    local function fit()
-        local w = scroll:GetWidth() or 0
-        if w < 80 then w = 80 end
-        content:SetWidth(w)
-        local need = math.abs(self.y or 0) + 24
-        local vis = scroll:GetHeight() or 0
-        if need < vis then need = vis end
-        if need < 80 then need = 80 end
-        content:SetHeight(need)
-    end
-    scroll:SetScript("OnSizeChanged", function() fit() end)
-    scroll:SetScript("OnMouseWheel", function(s, delta)
-        local max = s:GetVerticalScrollRange() or 0
-        local nxt = (s:GetVerticalScroll() or 0) - delta * 28
-        if nxt < 0 then nxt = 0 end
-        if nxt > max then nxt = max end
-        s:SetVerticalScroll(nxt)
-    end)
-    -- Lo ScrollFrame cattura i click sull'area impostazioni: riporta il
-    -- Config in primo piano anche quando si clicca qui (non solo sul titolo
-    -- o sulla colonna delle categorie), cosi' con piu' finestre aperte non
-    -- resta mai coperto dal background di un'altra finestra.
-    scroll:SetScript("OnMouseDown", function()
-        if CFG.frame and RLSuite.utils and RLSuite.utils.RaiseWindow then
-            RLSuite.utils:RaiseWindow(CFG.frame)
-        end
-    end)
-    self._fitPanel = fit
-    self._rowLayouts = {}
-    self.scroll = scroll
-    self.content = content
-    self.y = -4
-end
-
-function CFG:FinishPanel()
-    if self._fitPanel then self._fitPanel() end
-    for _, fn in ipairs(self._rowLayouts or {}) do
-        fn()
-    end
-end
-
-function CFG:NextY(h)
-    local y = self.y
-    self.y = self.y - (h or 30)
-    return y
-end
-
-function CFG:RebuildPanel()
-    self:WipePanel()
-    self:HideMacroEditor()
-    local cat, sub = self.currentCat, self.currentSub
-    if cat == "macros" and sub == "editor" then
-        self:ShowMacroEditor()
-        return
-    elseif cat == "general" and sub == "look" then
-        self:PanelGeneralLook()
-    elseif cat == "general" and sub == "font" then
-        self:PanelGeneralFont()
-    elseif cat == "general" and sub == "window" then
-        self:PanelMain()
-    elseif cat == "general" and sub == "debug" then
-        self:PanelGeneralDebug()
-    elseif cat == "savedraids" then
-        self:PanelSavedRaids()
-    elseif cat == "groupmaking" then
-        self:PanelScale("groupmaking", "Groupmaking")
-    elseif cat == "macros" and sub == "layout" then
-        self:PanelMacroLayout()
-    elseif cat == "raidframe" and sub == "layout" then
-        self:PanelRaidLayout()
-    elseif cat == "raidframe" and sub == "pos" then
-        self:PanelRaidPos()
-    elseif cat == "ms" then
-        self:PanelScale("ms", "MS Manager")
-    elseif cat == "loot" then
-        self:PanelScale("loot", "Loot Manager")
-    end
-    self:FinishPanel()
-end
-
--- ============================================================
--- Widgets
--- ============================================================
-
-function CFG:Header(text)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, self:NextY(22))
-    fs:SetText(text)
-    return fs
-end
-
-function CFG:Note(text)
-    local y = self:NextY(18)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
-    fs:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y)
-    fs:SetJustifyH("LEFT")
-    fs:SetText(text)
-    return fs
-end
-
-function CFG:SnapSlider(val, minV, maxV, step)
-    if val < minV then val = minV end
-    if val > maxV then val = maxV end
-    if not step or step <= 0 then return val end
-    val = math.floor((val / step) + 0.5) * step
-    if val < minV then val = minV end
-    if val > maxV then val = maxV end
-    if step >= 1 then
-        return math.floor(val + 0.5)
-    end
-    return tonumber(string.format("%.2f", val))
-end
-
-function CFG:AddSlider(label, minV, maxV, step, getValue, setValue, sliderWidth)
-    local y = self:NextY(42)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
-    fs:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -64, y)
-    fs:SetJustifyH("LEFT")
-    fs:SetText(label)
-    fs:SetTextColor(1, 0.82, 0)
-
-    self.widgetId = self.widgetId + 1
-    local edit = CreateFrame("EditBox", "RLSuiteCfgSliderEdit" .. self.widgetId, self.content, "InputBoxTemplate")
-    edit:SetSize(52, 18)
-    edit:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y + 2)
-    edit:SetAutoFocus(false)
-    edit:SetMaxLetters(6)
-    edit:SetJustifyH("CENTER")
-    edit:SetFrameLevel((self.content:GetFrameLevel() or 1) + 8)
-    if step >= 1 and minV >= 0 then
-        edit:SetNumeric(true)
-    end
-
-    local sl = CreateFrame("Slider", "RLSuiteCfgSlider" .. self.widgetId, self.content, "OptionsSliderTemplate")
-    sl:SetHeight(16)
-    sl:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y - 16)
-    sl:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y - 16)
-    sl:SetMinMaxValues(minV, maxV)
-    sl:SetValueStep(step)
-    local low = getglobal(sl:GetName() .. "Low")
-    local high = getglobal(sl:GetName() .. "High")
-    if low then low:Hide() end
-    if high then high:Hide() end
-
-    local function fmt(v)
-        if step < 1 then return string.format("%.2f", v) end
-        return tostring(math.floor(v + 0.5))
-    end
-
-    local applying = false
-    local function commit(val, fromEdit)
-        val = self:SnapSlider(val, minV, maxV, step)
-        applying = true
-        sl:SetValue(val)
-        applying = false
-        setValue(val)
-        edit:SetText(fmt(val))
-        if fromEdit then edit:ClearFocus() end
-        self:ApplyAll()
-        return val
-    end
-
-    sl:SetValue(getValue())
-    edit:SetText(fmt(getValue()))
-
-    sl:SetScript("OnValueChanged", function(s, val)
-        if applying then return end
-        commit(val, false)
+    -- Register the options table as a function so it is regenerated on
+    -- every NotifyChange (the Saved Raids list is dynamic).
+    AceConfig:RegisterOptionsTable(APP, function()
+        return CFG:BuildOptionsTable()
     end)
 
-    edit:SetScript("OnEnterPressed", function(s)
-        local val = tonumber(s:GetText())
-        if not val then
-            s:SetText(fmt(getValue()))
-            s:ClearFocus()
-            return
-        end
-        commit(val, true)
+    -- AceGUI container the dialog renders into.
+    self.dialogHost = AceGUI:Create("Frame")
+    AceConfigDialog:Open(APP, self.dialogHost)
+    self.dialogHost:SetCallback("OnClose", function()
+        f:Hide()
     end)
-    edit:SetScript("OnEscapePressed", function(s)
-        s:SetText(fmt(getValue()))
-        s:ClearFocus()
-    end)
-    edit:SetScript("OnEditFocusLost", function(s)
-        local val = tonumber(s:GetText())
-        if not val then
-            s:SetText(fmt(getValue()))
-            return
-        end
-        commit(val, false)
-    end)
-    return sl
+
+    local host = self.dialogHost.frame
+    host:ClearAllPoints()
+    host:SetParent(self.panel)
+    host:SetAllPoints(self.panel)
+    -- Override the dialog's default 700x500 so it fills the tab pane
+    -- instead of overflowing it.
+    host:SetWidth(self.panel:GetWidth() or 600)
+    host:SetHeight(self.panel:GetHeight() or 520)
+    host:Show()
 end
 
-function CFG:AddCheck(label, getValue, setValue)
-    local y = self:NextY(28)
-    local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
-    cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", 4, y)
-    cb:SetChecked(getValue() and 1 or nil)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("LEFT", cb, "RIGHT", 4, 0)
-    fs:SetText(label)
-    cb:SetScript("OnClick", function(s)
-        setValue(s:GetChecked() and true or false)
-        self:ApplyAll()
-    end)
-    return cb
-end
-
-function CFG:AddCheckGrid(items)
-    for i, it in ipairs(items) do
-        local col = (i - 1) % 2
-        local y
-        if col == 0 then
-            y = self:NextY(26)
-            self._gridY = y
-        else
-            y = self._gridY or self.y
-        end
-        local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
-        cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", 4 + col * 210, y)
-        cb:SetChecked(it.get() and 1 or nil)
-        local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetPoint("LEFT", cb, "RIGHT", 4, 0)
-        fs:SetText(it.label)
-        cb:SetScript("OnClick", function(s)
-            it.set(s:GetChecked() and true or false)
-            self:ApplyAll()
-        end)
-    end
-end
-
-function CFG:AddTextArea(label, height, getValue, setValue)
-    self:Header(label)
-    local y = self:NextY(height + 6)
-    local box = CreateFrame("Frame", nil, self.content)
-    box:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
-    box:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y)
-    box:SetHeight(height)
-    box:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = {left = 4, right = 4, top = 4, bottom = 4},
-    })
-    box:SetBackdropColor(0, 0, 0, 0.85)
-    self.widgetId = self.widgetId + 1
-    local edit = CreateFrame("EditBox", "RLSuiteCfgArea" .. self.widgetId, box)
-    edit:SetMultiLine(true)
-    edit:SetAutoFocus(false)
-    edit:SetFontObject(ChatFontNormal)
-    edit:SetTextInsets(4, 4, 4, 4)
-    edit:SetPoint("TOPLEFT", box, "TOPLEFT", 6, -6)
-    edit:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -6, 6)
-    edit:EnableMouse(true)
-    edit:SetText(getValue() or "")
-    edit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
-    local ay = self:NextY(26)
-    local acc = CreateFrame("Button", nil, self.content, "UIPanelButtonTemplate")
-    acc:SetSize(70, 20)
-    acc:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, ay)
-    acc:SetText("Accept")
-    acc:SetScript("OnClick", function()
-        setValue(edit:GetText() or "")
-        self:ApplyAll()
-    end)
-    return edit
-end
-
-function CFG:AddColor(label, colorTbl)
-    local y = self:NextY(28)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
-    fs:SetText(label)
-
-    local swatch = CreateFrame("Button", nil, self.content)
-    swatch:SetSize(22, 22)
-    swatch:SetPoint("LEFT", fs, "LEFT", 150, 0)
-    local tex = swatch:CreateTexture(nil, "ARTWORK")
-    tex:SetAllPoints(swatch)
-    tex:SetTexture("Interface\\Tooltips\\UI-Tooltip-Background")
-    tex:SetVertexColor(colorTbl.r or 1, colorTbl.g or 1, colorTbl.b or 1)
-    local border = swatch:CreateTexture(nil, "OVERLAY")
-    border:SetTexture("Interface\\Buttons\\UI-Quickslot-Depress")
-    border:SetAllPoints(swatch)
-    swatch:EnableMouse(true)
-    swatch:RegisterForClicks("LeftButtonUp")
-    swatch:SetScript("OnClick", function()
-        local r0, g0, b0 = colorTbl.r, colorTbl.g, colorTbl.b
-        ColorPickerFrame.func = function()
-            local r, g, b = ColorPickerFrame:GetColorRGB()
-            colorTbl.r, colorTbl.g, colorTbl.b = r, g, b
-            tex:SetVertexColor(r, g, b)
-            if self.db and self.db.appearance then
-                self.db.appearance.theme = "custom"
-            end
-            CFG:ApplyAll()
-        end
-        ColorPickerFrame.cancelFunc = function()
-            colorTbl.r, colorTbl.g, colorTbl.b = r0, g0, b0
-            tex:SetVertexColor(r0, g0, b0)
-            CFG:ApplyAll()
-        end
-        ColorPickerFrame.hasOpacity = false
-        ColorPickerFrame:SetColorRGB(colorTbl.r or 1, colorTbl.g or 1, colorTbl.b or 1)
-        ColorPickerFrame:Show()
-    end)
-    return swatch
-end
-
-function CFG:AddDropdown(label, options, getValue, setValue)
-    local y = self:NextY(42)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
-    fs:SetText(label)
-    fs:SetTextColor(1, 0.82, 0)
-    self.widgetId = self.widgetId + 1
-    local dd = RLSuite.utils:CreateDropdown(self.content, "RLSuiteCfgDD" .. self.widgetId, 180, 22)
-    dd:ClearAllPoints()
-    dd:SetHeight(22)
-    dd:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y - 16)
-    dd:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y - 16)
-    RLSuite.utils:SetupDropdown(dd, options, getValue(), function(value)
-        setValue(value)
-        self:ApplyAll()
-    end)
-    return dd
-end
-
-function CFG:AddInline(items)
-    local y = self:NextY(26)
-    local prev
-    for _, it in ipairs(items) do
-        if it.type == "button" then
-            local btn = CreateFrame("Button", nil, self.content, "UIPanelButtonTemplate")
-            btn:SetSize(it.width or 100, 20)
-            if prev then
-                btn:SetPoint("LEFT", prev, "RIGHT", 12, 0)
-            else
-                btn:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y - 2)
-            end
-            btn:SetText(it.label)
-            btn:SetScript("OnClick", it.click)
-            prev = btn
-        else
-            local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
-            if prev then
-                cb:SetPoint("LEFT", prev, "RIGHT", 12, 0)
-            else
-                cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", 4, y + 2)
-            end
-            cb:SetChecked(it.get() and 1 or nil)
-            local lfs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            lfs:SetPoint("LEFT", cb, "RIGHT", 2, 0)
-            lfs:SetText(it.label)
-            cb:SetScript("OnClick", function(s)
-                it.set(s:GetChecked() and true or false)
-                self:ApplyAll()
-            end)
-            prev = lfs
-        end
-    end
-end
-
-
-function CFG:Row3(height)
-    local y = self:NextY(height)
-    local row = CreateFrame("Frame", nil, self.content)
-    row:SetPoint("TOPLEFT", self.content, "TOPLEFT", 4, y)
-    row:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -4, y)
-    row:SetHeight(height)
-    local cells = {}
-    for i = 1, 3 do
-        local c = CreateFrame("Frame", nil, row)
-        c:SetHeight(height)
-        cells[i] = c
-    end
-    local function layout()
-        local w = row:GetWidth() or 0
-        if w < 90 then return end
-        local gap = 8
-        local cw = (w - gap * 2) / 3
-        for i = 1, 3 do
-            local c = cells[i]
-            c:ClearAllPoints()
-            c:SetWidth(cw)
-            c:SetHeight(height)
-            c:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * (cw + gap), 0)
-        end
-    end
-    row:SetScript("OnSizeChanged", function() layout() end)
-    self._rowLayouts = self._rowLayouts or {}
-    table.insert(self._rowLayouts, layout)
-    layout()
-    return cells[1], cells[2], cells[3]
-end
-
-function CFG:CellCheck(cell, label, getValue, setValue)
-    if not cell then return end
-    local cb = CreateFrame("CheckButton", nil, cell, "UICheckButtonTemplate")
-    cb:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, 2)
-    cb:SetChecked(getValue() and 1 or nil)
-    local fs = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("LEFT", cb, "RIGHT", 2, 0)
-    fs:SetPoint("RIGHT", cell, "RIGHT", 0, 0)
-    fs:SetJustifyH("LEFT")
-    fs:SetText(label)
-    cb:SetScript("OnClick", function(s)
-        setValue(s:GetChecked() and true or false)
-        self:ApplyAll()
-    end)
-    return cb
-end
-
-function CFG:CellButton(cell, label, onClick)
-    if not cell then return end
-    local btn = CreateFrame("Button", nil, cell, "UIPanelButtonTemplate")
-    btn:SetHeight(20)
-    btn:SetPoint("TOPLEFT", cell, "TOPLEFT", 4, -2)
-    btn:SetPoint("TOPRIGHT", cell, "TOPRIGHT", -4, -2)
-    btn:SetText(label)
-    btn:SetScript("OnClick", onClick)
-    return btn
-end
-
-function CFG:CellTwoButtons(cell, label1, onClick1, label2, onClick2)
-    if not cell then return end
-    local b1 = CreateFrame("Button", nil, cell, "UIPanelButtonTemplate")
-    b1:SetHeight(20)
-    b1:SetText(label1)
-    b1:SetScript("OnClick", onClick1)
-    local b2 = CreateFrame("Button", nil, cell, "UIPanelButtonTemplate")
-    b2:SetHeight(20)
-    b2:SetText(label2)
-    b2:SetScript("OnClick", onClick2)
-    local function layout()
-        local w = cell:GetWidth() or 0
-        if w < 40 then return end
-        local gap = 4
-        local bw = math.max(24, math.floor((w - gap) / 2))
-        b1:ClearAllPoints()
-        b1:SetWidth(bw)
-        b1:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, -2)
-        b2:ClearAllPoints()
-        b2:SetWidth(bw)
-        b2:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, -2)
-    end
-    cell:SetScript("OnSizeChanged", function() layout() end)
-    layout()
-    return b1, b2
-end
-
-function CFG:CellDropdown(cell, label, options, getValue, setValue)
-    if not cell then return end
-    local fs = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", cell, "TOPLEFT", 2, -2)
-    fs:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, -2)
-    fs:SetJustifyH("LEFT")
-    fs:SetText(label)
-    fs:SetTextColor(1, 0.82, 0)
-    self.widgetId = (self.widgetId or 0) + 1
-    local dd = RLSuite.utils:CreateDropdown(cell, "RLSuiteCfgDD" .. self.widgetId, 80, 22)
-    dd:ClearAllPoints()
-    dd:SetHeight(22)
-    dd:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, -16)
-    dd:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, -16)
-    RLSuite.utils:SetupDropdown(dd, options, getValue(), function(value)
-        setValue(value)
-        self:ApplyAll()
-    end)
-    return dd
-end
-
-function CFG:CellSlider(cell, label, minV, maxV, step, getValue, setValue)
-    if not cell then return end
-    local fs = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", cell, "TOPLEFT", 2, -2)
-    fs:SetPoint("TOPRIGHT", cell, "TOPRIGHT", -42, -2)
-    fs:SetJustifyH("LEFT")
-    fs:SetText(label)
-    fs:SetTextColor(1, 0.82, 0)
-
-    self.widgetId = (self.widgetId or 0) + 1
-    local edit = CreateFrame("EditBox", "RLSuiteCfgSliderEdit" .. self.widgetId, cell, "InputBoxTemplate")
-    edit:SetSize(40, 16)
-    edit:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, 0)
-    edit:SetAutoFocus(false)
-    edit:SetMaxLetters(6)
-    edit:SetJustifyH("CENTER")
-    edit:SetFrameLevel((cell:GetFrameLevel() or 1) + 8)
-    if step >= 1 and minV >= 0 then edit:SetNumeric(true) end
-
-    local sl = CreateFrame("Slider", "RLSuiteCfgSlider" .. self.widgetId, cell, "OptionsSliderTemplate")
-    sl:SetHeight(16)
-    sl:SetPoint("TOPLEFT", cell, "TOPLEFT", 2, -18)
-    sl:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, -18)
-    sl:SetMinMaxValues(minV, maxV)
-    sl:SetValueStep(step)
-    local low = getglobal(sl:GetName() .. "Low")
-    local high = getglobal(sl:GetName() .. "High")
-    if low then low:Hide() end
-    if high then high:Hide() end
-
-    local function fmt(v)
-        if step < 1 then return string.format("%.2f", v) end
-        return tostring(math.floor(v + 0.5))
-    end
-    local applying = false
-    local function commit(val, fromEdit)
-        val = self:SnapSlider(val, minV, maxV, step)
-        applying = true
-        sl:SetValue(val)
-        applying = false
-        setValue(val)
-        edit:SetText(fmt(val))
-        if fromEdit then edit:ClearFocus() end
-        self:ApplyAll()
-        return val
-    end
-    local cur = getValue() or minV
-    sl:SetValue(cur)
-    edit:SetText(fmt(cur))
-    sl:SetScript("OnValueChanged", function(s, val)
-        if applying then return end
-        commit(val, false)
-    end)
-    edit:SetScript("OnEnterPressed", function(s)
-        local val = tonumber(s:GetText())
-        if not val then s:SetText(fmt(getValue() or minV)) s:ClearFocus() return end
-        commit(val, true)
-    end)
-    edit:SetScript("OnEscapePressed", function(s)
-        s:SetText(fmt(getValue() or minV))
-        s:ClearFocus()
-    end)
-    edit:SetScript("OnEditFocusLost", function(s)
-        local val = tonumber(s:GetText())
-        if not val then s:SetText(fmt(getValue() or minV)) return end
-        commit(val, false)
-    end)
-    return sl
-end
-
-function CFG:PlaceCheck(x, y, label, getValue, setValue)
-    local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
-    cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y)
-    cb:SetChecked(getValue() and 1 or nil)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("LEFT", cb, "RIGHT", 2, 0)
-    fs:SetText(label)
-    cb:SetScript("OnClick", function(s)
-        setValue(s:GetChecked() and true or false)
-        self:ApplyAll()
-    end)
-    return cb
-end
-
-function CFG:PlaceCompactSlider(x, y, width, label, minV, maxV, step, getValue, setValue)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y)
-    fs:SetText(label)
-    fs:SetTextColor(1, 0.82, 0)
-    self.widgetId = (self.widgetId or 0) + 1
-    local edit = CreateFrame("EditBox", "RLSuiteCfgSliderEdit" .. self.widgetId, self.content, "InputBoxTemplate")
-    edit:SetSize(40, 16)
-    edit:SetPoint("TOPRIGHT", self.content, "TOPLEFT", x + width, y + 2)
-    edit:SetAutoFocus(false)
-    edit:SetMaxLetters(6)
-    edit:SetJustifyH("CENTER")
-    edit:SetFrameLevel((self.content:GetFrameLevel() or 1) + 6)
-    if step >= 1 and minV >= 0 then edit:SetNumeric(true) end
-    local sl = CreateFrame("Slider", "RLSuiteCfgSlider" .. self.widgetId, self.content, "OptionsSliderTemplate")
-    sl:SetHeight(16)
-    sl:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y - 16)
-    sl:SetPoint("TOPRIGHT", self.content, "TOPLEFT", x + width, y - 16)
-    sl:SetMinMaxValues(minV, maxV)
-    sl:SetValueStep(step)
-    local low = getglobal(sl:GetName() .. "Low")
-    local high = getglobal(sl:GetName() .. "High")
-    if low then low:Hide() end
-    if high then high:Hide() end
-    local function fmt(v)
-        if step < 1 then return string.format("%.2f", v) end
-        return tostring(math.floor(v + 0.5))
-    end
-    local applying = false
-    local function commit(val)
-        val = self:SnapSlider(val, minV, maxV, step)
-        applying = true
-        sl:SetValue(val)
-        applying = false
-        setValue(val)
-        edit:SetText(fmt(val))
-        self:ApplyAll()
-        return val
-    end
-    sl:SetValue(getValue())
-    edit:SetText(fmt(getValue()))
-    sl:SetScript("OnValueChanged", function(s, val)
-        if applying then return end
-        commit(val)
-    end)
-    edit:SetScript("OnEnterPressed", function(s)
-        local val = tonumber(s:GetText())
-        if not val then s:SetText(fmt(getValue())) s:ClearFocus() return end
-        commit(val)
-        s:ClearFocus()
-    end)
-    edit:SetScript("OnEscapePressed", function(s)
-        s:SetText(fmt(getValue()))
-        s:ClearFocus()
-    end)
-    edit:SetScript("OnEditFocusLost", function(s)
-        local val = tonumber(s:GetText())
-        if not val then s:SetText(fmt(getValue())) return end
-        commit(val)
-    end)
-    return sl
-end
-
-function CFG:PlaceDropdown(x, y, width, label, options, getValue, setValue)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y)
-    fs:SetText(label)
-    fs:SetTextColor(1, 0.82, 0)
-    self.widgetId = (self.widgetId or 0) + 1
-    local dd = RLSuite.utils:CreateDropdown(self.content, "RLSuiteCfgDD" .. self.widgetId, width, 22)
-    dd:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y - 16)
-    RLSuite.utils:SetupDropdown(dd, options, getValue(), function(value)
-        setValue(value)
-        self:ApplyAll()
-    end)
-    return dd
-end
-
-function CFG:PlaceTextArea(x, y, width, height, label, getValue, setValue)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    fs:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y)
-    fs:SetText(label)
-    fs:SetTextColor(1, 0.82, 0)
-    local box = CreateFrame("Frame", nil, self.content)
-    box:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y - 16)
-    if width then
-        box:SetSize(width, height)
-    else
-        box:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y - 16)
-        box:SetHeight(height)
-    end
-    box:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 10,
-        insets = {left = 3, right = 3, top = 3, bottom = 3},
-    })
-    box:SetBackdropColor(0, 0, 0, 0.9)
-    self.widgetId = (self.widgetId or 0) + 1
-    local edit = CreateFrame("EditBox", "RLSuiteCfgArea" .. self.widgetId, box)
-    edit:SetMultiLine(true)
-    edit:SetAutoFocus(false)
-    edit:SetFontObject(ChatFontNormal)
-    edit:SetTextInsets(4, 4, 4, 4)
-    edit:SetPoint("TOPLEFT", box, "TOPLEFT", 4, -4)
-    edit:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -4, 4)
-    edit:EnableMouse(true)
-    edit:SetText(getValue() or "")
-    edit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
-    local acc = CreateFrame("Button", nil, self.content, "UIPanelButtonTemplate")
-    acc:SetSize(64, 18)
-    acc:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 0, -2)
-    acc:SetText("Accept")
-    acc:SetScript("OnClick", function()
-        setValue(edit:GetText() or "")
-        self:ApplyAll()
-    end)
-    return edit
-end
-
--- ============================================================
--- Panels
--- ============================================================
-
+-- ------------------------------------------------------------------
+-- Appearance helpers (kept for ApplyTheme / ApplyAll)
+-- ------------------------------------------------------------------
 function CFG:EnsureAppearance()
-    local a = self.db.appearance
+    local a = prof().appearance
     a.bg = a.bg or { r = 0.08, g = 0.08, b = 0.10, a = 1 }
     a.fill = a.fill or { r = 0.05, g = 0.05, b = 0.07, a = 1 }
     a.border = a.border or { r = 0.70, g = 0.70, b = 0.70, a = 1 }
     return a
 end
 
-function CFG:PanelGeneralLook()
-    local a = self:EnsureAppearance()
-    self:Header(L["General Appearance"])
-    self:Note(L["Presets and background/border colors. Does not change functionality."])
-    self:AddDropdown(L["Theme:"], {
-        { text = "Default", value = "default" },
-        { text = "Dark", value = "dark" },
-        { text = "Gold", value = "gold" },
-        { text = "Custom", value = "custom" },
-    }, function() return a.theme or "default" end, function(v)
-        a.theme = v
-        if v ~= "custom" then
-            local p = RLSuite.utils:ThemePresets()[v]
-            if p then
-                a.fill = { r = p.fill[1], g = p.fill[2], b = p.fill[3], a = 1 }
-                a.bg = { r = p.bg[1], g = p.bg[2], b = p.bg[3], a = 1 }
-                a.border = { r = p.border[1], g = p.border[2], b = p.border[3], a = 1 }
-            end
-        end
-    end)
-    self:AddColor(L["Background:"], a.fill)
-    self:AddColor(L["Panel background:"], a.bg)
-    self:AddColor(L["Borders:"], a.border)
-    self:AddSlider(L["Border thickness"], 8, 48, 2, function() return a.edgeSize or 32 end, function(v) a.edgeSize = v end)
-end
-
-function CFG:PanelGeneralFont()
-    local a = self:EnsureAppearance()
-    self:Header("Font")
-    self:AddDropdown("Font:", {
-        { text = "Friz Quadrata", value = "Fonts\\FRIZQT__.TTF" },
-        { text = "Arial Narrow", value = "Fonts\\ARIALN.TTF" },
-        { text = "Morpheus", value = "Fonts\\MORPHEUS.TTF" },
-        { text = "Skurri", value = "Fonts\\SKURRI.TTF" },
-    }, function() return a.font or "Fonts\\FRIZQT__.TTF" end, function(v) a.font = v end)
-    self:AddSlider(L["Font size"], 8, 20, 1, function() return a.fontSize or 12 end, function(v) a.fontSize = v end)
-end
-
 function CFG:Layout(key)
-    self.db.layout = self.db.layout or {}
-    self.db.layout[key] = self.db.layout[key] or { scale = 1 }
-    return self.db.layout[key]
-end
-
-function CFG:PanelGeneralDebug()
-    self:Header("Debug mode")
-    self:Note(L["Simulates a raid group. Macros, LFM, rolls, loot and MS changes are whispered to you. Fake loot uses the raid selected in Groupmaking."])
-    self:AddCheck(L["Enable debug mode"], function()
-        return RLSuite.db.profile.debug == true
-    end, function(v)
-        RLSuite.db.profile.debug = v and true or false
-        if RLSuite.ApplyDebugMode then
-            RLSuite:ApplyDebugMode()
-        end
-    end)
-    local y = self:NextY(28)
-    local btn = CreateFrame("Button", nil, self.content, "UIPanelButtonTemplate")
-    btn:SetSize(160, 22)
-    btn:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
-    btn:SetText(L["Fill fake loot"])
-    btn:SetScript("OnClick", function()
-        if RLSuite.lootManager and RLSuite.lootManager.SpawnDebugLoot then
-            RLSuite.lootManager:SpawnDebugLoot()
-        end
-    end)
-end
-
-function CFG:PanelMain()
-    local lay = self:Layout("main")
-    lay.height = lay.height or 700
-    lay.scale = lay.scale or 1
-    lay.matrixCols = lay.matrixCols or 2
-    lay.matrixRows = lay.matrixRows or 4
-    self:Header(L["Bar and tab windows"])
-    self:Note(L["The bar automatically adapts to the matrix and the top icon row (Config, SaveRaid, phase). Here you set the default height of the tab windows and the bar scale."])
-    self:AddSlider(L["Default window height"], 400, 900, 20, function() return lay.height end, function(v) lay.height = v end, 220)
-    self:AddSlider(L["Bar scale"], 0.70, 1.30, 0.05, function() return lay.scale end, function(v) lay.scale = v end, 220)
-
-    self:Header(L["Button matrix (bar only)"])
-    self:Note(L["How many columns and buttons per column to use for the bar buttons. Above the matrix sit the icons (Config, SaveRaid, phase); the phase icon shows the current phase and cycles to the next on click."])
-    self:AddSlider(L["Columns"], 1, 8, 1, function() return lay.matrixCols end, function(v) lay.matrixCols = v end, 220)
-    self:AddSlider(L["Buttons per column"], 1, 8, 1, function() return lay.matrixRows end, function(v) lay.matrixRows = v end, 220)
-
-    self:Header(L["HUD anchors (ElvUI style)"])
-    self:Note(L["Unlocks the Raid Frame and MacroBar HUDs and shows them as movable placeholders. Other windows stay as usual."])
-    local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
-    cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, self:NextY(24))
-    cb:SetChecked(RLSuite.db.profile.anchorMode and 1 or nil)
-    local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("LEFT", cb, "RIGHT", 2, 0)
-    fs:SetText("Toggle Anchors")
-    fs:SetTextColor(1, 0.82, 0)
-    cb:SetScript("OnClick", function(s)
-        local on = s:GetChecked() and true or false
-        if RLSuite.ApplyAnchorMode then
-            RLSuite:ApplyAnchorMode(on)
-        end
-    end)
-    self.anchorCheck = cb
+    local p = prof()
+    p.layout = p.layout or {}
+    p.layout[key] = p.layout[key] or { scale = 1 }
+    return p.layout[key]
 end
 
 function CFG:UpdateAnchorCheck()
-    if self.anchorCheck then
-        self.anchorCheck:SetChecked(RLSuite.db.profile.anchorMode and 1 or nil)
+    -- The anchor toggle is a native AceConfig option reading the profile
+    -- directly; refresh it whenever something flips anchorMode externally.
+    self:NotifyChange()
+end
+
+function CFG:RebuildPanel()
+    -- Compatibility shim: Core used to rebuild the saved-raids list in
+    -- place. With AceConfig we just notify the dialog.
+    self:HideMacroEditor()
+    self:NotifyChange()
+end
+
+-- ------------------------------------------------------------------
+-- Options table (generated on demand)
+-- ------------------------------------------------------------------
+function CFG:BuildOptionsTable()
+    local p = prof()
+    local a = self:EnsureAppearance()
+
+    local themeValues = {
+        ["default"] = "Default",
+        ["dark"] = "Dark",
+        ["gold"] = "Gold",
+        ["custom"] = "Custom",
+    }
+
+    local fontValues = {
+        ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata",
+        ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
+        ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
+        ["Fonts\\SKURRI.TTF"] = "Skurri",
+    }
+
+    local anchorValues = {
+        ["TOPLEFT"] = "TOPLEFT", ["TOP"] = "TOP", ["TOPRIGHT"] = "TOPRIGHT",
+        ["LEFT"] = "LEFT", ["CENTER"] = "CENTER", ["RIGHT"] = "RIGHT",
+        ["BOTTOMLEFT"] = "BOTTOMLEFT", ["BOTTOM"] = "BOTTOM", ["BOTTOMRIGHT"] = "BOTTOMRIGHT",
+    }
+
+    -- --- General / Appearance ------------------------------------
+    local look = {
+        theme = select(L["Theme:"], L["Presets and background/border colors. Does not change functionality."], 1, themeValues,
+            function() return a.theme or "default" end,
+            function(_, v) self:ApplyTheme(v) end),
+        fill = { type = "color", name = L["Background:"], desc = L["Window fill color."], order = 2,
+            hasAlpha = true,
+            get = function() return a.fill.r, a.fill.g, a.fill.b, a.fill.a or 1 end,
+            set = function(_, r, g, b, alpha)
+                a.fill = { r = r, g = g, b = b, a = alpha or 1 }
+                a.theme = "custom"
+                self:ApplyAll()
+            end },
+        bg = { type = "color", name = L["Panel background:"], desc = L["Inner panel color."], order = 3,
+            hasAlpha = true,
+            get = function() return a.bg.r, a.bg.g, a.bg.b, a.bg.a or 1 end,
+            set = function(_, r, g, b, alpha)
+                a.bg = { r = r, g = g, b = b, a = alpha or 1 }
+                a.theme = "custom"
+                self:ApplyAll()
+            end },
+        border = { type = "color", name = L["Borders:"], desc = L["Window border color."], order = 4,
+            hasAlpha = true,
+            get = function() return a.border.r, a.border.g, a.border.b, a.border.a or 1 end,
+            set = function(_, r, g, b, alpha)
+                a.border = { r = r, g = g, b = b, a = alpha or 1 }
+                a.theme = "custom"
+                self:ApplyAll()
+            end },
+        edgeSize = slider(L["Border thickness"], nil, 5, 8, 48, 2,
+            function() return a.edgeSize or 32 end,
+            function(_, v) a.edgeSize = v; self:ApplyAll() end),
+    }
+
+    -- --- General / Font ------------------------------------------
+    local font = {
+        font = select(L["Font:"], nil, 1, fontValues,
+            function() return a.font or "Fonts\\FRIZQT__.TTF" end,
+            function(_, v) a.font = v; self:ApplyAll() end),
+        fontSize = slider(L["Font size"], nil, 2, 8, 20, 1,
+            function() return a.fontSize or 12 end,
+            function(_, v) a.fontSize = v; self:ApplyAll() end),
+    }
+
+    -- --- General / Window ----------------------------------------
+    local main = self:Layout("main")
+    main.height = main.height or 700
+    main.matrixCols = main.matrixCols or 2
+    main.matrixRows = main.matrixRows or 4
+
+    local window = {
+        height = slider(L["Default window height"], nil, 1, 400, 900, 20,
+            function() return main.height end,
+            function(_, v) main.height = v end),
+        barScale = slider(L["Bar scale"], nil, 2, 0.70, 1.30, 0.05,
+            function() return main.scale or 1 end,
+            function(_, v) main.scale = v end),
+        matrixCols = slider(L["Columns"], L["Columns in the bar button matrix."], 3, 1, 8, 1,
+            function() return main.matrixCols end,
+            function(_, v) main.matrixCols = v end),
+        matrixRows = slider(L["Buttons per column"], nil, 4, 1, 8, 1,
+            function() return main.matrixRows end,
+            function(_, v) main.matrixRows = v end),
+        anchors = toggle(L["Toggle Anchors"], L["Unlocks the Raid Frame and MacroBar HUDs as movable placeholders."], 5,
+            function() return prof().anchorMode == true end,
+            function(_, v)
+                if RLSuite.ApplyAnchorMode then
+                    RLSuite:ApplyAnchorMode(v and true or false)
+                end
+            end),
+    }
+
+    -- --- General / Debug -----------------------------------------
+    local debug = {
+        debugMode = toggle(L["Enable debug mode"], L["Simulates a raid group. Macros, LFM, rolls, loot and MS changes are whispered to you."], 1,
+            function() return prof().debug == true end,
+            function(_, v)
+                prof().debug = v and true or false
+                if RLSuite.ApplyDebugMode then
+                    RLSuite:ApplyDebugMode()
+                end
+            end),
+        fakeLoot = execute(L["Fill fake loot"], nil, 2, function()
+            if RLSuite.lootManager and RLSuite.lootManager.SpawnDebugLoot then
+                RLSuite.lootManager:SpawnDebugLoot()
+            end
+        end),
+    }
+
+    local general = {
+        look = { type = "group", name = L["Appearance"], order = 1, args = look },
+        font = { type = "group", name = L["Font"], order = 2, args = font },
+        window = { type = "group", name = L["Window"], order = 3, args = window },
+        debug = { type = "group", name = L["Debug"], order = 4, args = debug },
+    }
+
+    -- --- Saved Raids (dynamic) -----------------------------------
+    local savedArgs = {}
+    local list = p.savedRaids or {}
+    if #list == 0 then
+        savedArgs.none = { type = "description", name = L["No saves yet."], order = 1 }
+    else
+        for i, e in ipairs(list) do
+            local title = e.title or string.format(L["Save #%d"], i)
+            local id = e.id
+            savedArgs["save" .. i .. "head"] = { type = "header", name = title, order = i * 10 }
+            savedArgs["save" .. i .. "load"] = execute(L["Load"],
+                L["Restore Comp, MacroBar and Config (except General)."], i * 10 + 1,
+                function()
+                    if RLSuite.LoadRaid then RLSuite:LoadRaid(id) end
+                end)
+            savedArgs["save" .. i .. "del"] = execute(L["Delete"], nil, i * 10 + 2,
+                function()
+                    if RLSuite.DeleteSavedRaid then RLSuite:DeleteSavedRaid(id) end
+                end)
+        end
     end
-end
 
-function CFG:PanelScale(key, title)
-    local lay = self:Layout(key)
-    lay.scale = lay.scale or 1
-    self:Header(title)
-    self:AddSlider(L["Scale"], 0.70, 1.30, 0.05, function() return lay.scale end, function(v) lay.scale = v end, 220)
-end
+    local savedraids = { type = "group", name = L["Saved Raids"], order = 2, args = savedArgs }
 
-function CFG:RestoreMacroBar()
+    -- --- Groupmaking ---------------------------------------------
+    local groupmaking = {
+        scale = slider(L["Scale"], nil, 1, 0.70, 1.30, 0.05,
+            function() return self:Layout("groupmaking").scale end,
+            function(_, v) self:Layout("groupmaking").scale = v; self:ApplyAll() end),
+    }
+
+    -- --- Macros / Bar Layout -------------------------------------
     if RLSuite.macrobar and RLSuite.macrobar.EnsurePhases then
         RLSuite.macrobar:EnsurePhases()
     end
-    local mb = RLSuite.db.profile.macrobar
-    mb.enabled = true
-    mb.locked = true
-    mb.backdrop = true
-    mb.showEmpty = true
-    mb.mouseover = false
-    mb.inheritGlobalFade = false
-    mb.buttons = 12
-    mb.columns = 12
-    mb.buttonSize = 32
-    mb.spacing = 2
-    mb.backdropSpacing = 2
-    mb.heightMult = 1
-    mb.widthMult = 1
-    mb.alpha = 1
-    mb.scale = 1
-    mb.point, mb.relPoint, mb.x, mb.y = "BOTTOMLEFT", "BOTTOMLEFT", 4, 4
-    mb.actionPaging = "[bonusbar:1,nostealth] 7; [bonusbar:1,stealth] 8; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10;"
-    mb.visibility = ""
-    mb.keybinds = {}
-    if RLSuite.macrobar and RLSuite.macrobar.frame then
-        RLSuite.macrobar.frame:ClearAllPoints()
-        RLSuite.macrobar.frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 4, 4)
-    end
-    self:ApplyAll()
-    self:RebuildPanel()
-end
-
-function CFG:PanelMacroLayout()
-    self.db = RLSuite.db.profile
-    if RLSuite.macrobar and RLSuite.macrobar.EnsurePhases then
-        RLSuite.macrobar:EnsurePhases()
-    end
-    local mb = RLSuite.db.profile.macrobar
+    local mb = p.macrobar
     mb.buttons = mb.buttons or 12
     mb.columns = mb.columns or 12
     mb.buttonSize = mb.buttonSize or 32
@@ -1040,148 +339,142 @@ function CFG:PanelMacroLayout()
     mb.widthMult = mb.widthMult or 1
     mb.alpha = mb.alpha or 1
     mb.scale = mb.scale or 1
-    mb.actionPaging = mb.actionPaging or ""
-    mb.visibility = mb.visibility or ""
 
-    self:Header("Macrobar")
-    self:Note(L["The visible HUD buttons match the macros filled in the current phase."])
-
-    local c1, c2, c3 = self:Row3(26)
-    self:CellCheck(c1, "Enable", function() return mb.enabled ~= false end, function(v) mb.enabled = v end)
-    self:CellCheck(c2, "Lock", function() return mb.locked end, function(v) mb.locked = v end)
-    self:CellTwoButtons(c3, "Restore Bar", function()
-        self:RestoreMacroBar()
-    end, "Keybind", function()
-        if RLSuite.macrobar and RLSuite.macrobar.OpenKeybindUI then
-            RLSuite.macrobar:OpenKeybindUI()
-        end
-    end)
-
-    c1, c2, c3 = self:Row3(26)
-    self:CellCheck(c1, "Backdrop", function() return mb.backdrop ~= false end, function(v) mb.backdrop = v end)
-    self:CellCheck(c2, "Mouse Over", function() return mb.mouseover end, function(v) mb.mouseover = v end)
-    self:CellCheck(c3, "Inherit Global Fade", function() return mb.inheritGlobalFade end, function(v) mb.inheritGlobalFade = v end)
-
-    local anchors = {
-        { text = "TOPLEFT", value = "TOPLEFT" },
-        { text = "TOP", value = "TOP" },
-        { text = "TOPRIGHT", value = "TOPRIGHT" },
-        { text = "LEFT", value = "LEFT" },
-        { text = "CENTER", value = "CENTER" },
-        { text = "RIGHT", value = "RIGHT" },
-        { text = "BOTTOMLEFT", value = "BOTTOMLEFT" },
-        { text = "BOTTOM", value = "BOTTOM" },
-        { text = "BOTTOMRIGHT", value = "BOTTOMRIGHT" },
+    local macroLayout = {
+        enable = toggle(L["Enable"], nil, 1,
+            function() return mb.enabled ~= false end,
+            function(_, v) mb.enabled = v; self:ApplyAll() end),
+        lock = toggle(L["Lock"], nil, 2,
+            function() return mb.locked end,
+            function(_, v) mb.locked = v; self:ApplyAll() end),
+        backdrop = toggle(L["Backdrop"], nil, 3,
+            function() return mb.backdrop ~= false end,
+            function(_, v) mb.backdrop = v; self:ApplyAll() end),
+        mouseover = toggle(L["Mouse Over"], nil, 4,
+            function() return mb.mouseover end,
+            function(_, v) mb.mouseover = v; self:ApplyAll() end),
+        inheritFade = toggle(L["Inherit Global Fade"], nil, 5,
+            function() return mb.inheritGlobalFade end,
+            function(_, v) mb.inheritGlobalFade = v; self:ApplyAll() end),
+        anchor = select(L["Anchor Point"], nil, 6, anchorValues,
+            function() return mb.point or "CENTER" end,
+            function(_, v) mb.point = v; mb.relPoint = v; self:ApplyAll() end),
+        columns = slider(L["Buttons Per Row"], nil, 7, 1, 12, 1,
+            function() return mb.columns end,
+            function(_, v) mb.columns = v; self:ApplyAll() end),
+        buttonSize = slider(L["Button Size"], nil, 8, 15, 60, 1,
+            function() return mb.buttonSize end,
+            function(_, v) mb.buttonSize = v; self:ApplyAll() end),
+        spacing = slider(L["Button Spacing"], nil, 9, -3, 20, 1,
+            function() return mb.spacing end,
+            function(_, v) mb.spacing = v; self:ApplyAll() end),
+        backdropSpacing = slider(L["Backdrop Spacing"], nil, 10, 0, 10, 1,
+            function() return mb.backdropSpacing end,
+            function(_, v) mb.backdropSpacing = v; self:ApplyAll() end),
+        heightMult = slider(L["Height Multiplier"], nil, 11, 1, 5, 1,
+            function() return mb.heightMult end,
+            function(_, v) mb.heightMult = v; self:ApplyAll() end),
+        widthMult = slider(L["Width Multiplier"], nil, 12, 1, 5, 1,
+            function() return mb.widthMult end,
+            function(_, v) mb.widthMult = v; self:ApplyAll() end),
+        alpha = slider(L["Alpha"], nil, 13, 0, 100, 1,
+            function() return math.floor((mb.alpha or 1) * 100 + 0.5) end,
+            function(_, v) mb.alpha = v / 100; self:ApplyAll() end),
+        scale = slider(L["Scale"], nil, 14, 0.50, 2.00, 0.05,
+            function() return mb.scale or 1 end,
+            function(_, v) mb.scale = v; self:ApplyAll() end),
+        actionPaging = textarea(L["Action Paging"], nil, 15,
+            function() return mb.actionPaging end,
+            function(_, v) mb.actionPaging = v; self:ApplyAll() end),
+        visibility = textarea(L["Visibility State"], nil, 16,
+            function() return mb.visibility end,
+            function(_, v) mb.visibility = v; self:ApplyAll() end),
+        restore = execute(L["Restore Bar"], L["Reset the MacroBar to its default layout."], 17,
+            function() self:RestoreMacroBar() end),
+        keybind = execute(L["Keybind"], nil, 18,
+            function()
+                if RLSuite.macrobar and RLSuite.macrobar.OpenKeybindUI then
+                    RLSuite.macrobar:OpenKeybindUI()
+                end
+            end),
     }
-    c1, c2, c3 = self:Row3(44)
-    self:CellDropdown(c1, "Anchor Point", anchors, function() return mb.point or "CENTER" end, function(v)
-        mb.point = v
-        mb.relPoint = v
-    end)
-    self:CellSlider(c2, "Buttons Per Row", 1, 12, 1, function() return mb.columns end, function(v) mb.columns = v end)
 
-    c1, c2, c3 = self:Row3(44)
-    self:CellSlider(c1, "Button Size", 15, 60, 1, function() return mb.buttonSize end, function(v) mb.buttonSize = v end)
-    self:CellSlider(c2, "Button Spacing", -3, 20, 1, function() return mb.spacing end, function(v) mb.spacing = v end)
-    self:CellSlider(c3, "Backdrop Spacing", 0, 10, 1, function() return mb.backdropSpacing end, function(v) mb.backdropSpacing = v end)
+    local macros = {
+        layout = { type = "group", name = L["Bar Layout"], order = 1, args = macroLayout },
+        editor = execute(L["Open Macro Editor"], L["Edit the 12 macros of the current phase with the icon picker."], 2,
+            function() self:OpenMacroEditorPanel() end),
+    }
 
-    c1, c2, c3 = self:Row3(44)
-    self:CellSlider(c1, "Height Multiplier", 1, 5, 1, function() return mb.heightMult end, function(v) mb.heightMult = v end)
-    self:CellSlider(c2, "Width Multiplier", 1, 5, 1, function() return mb.widthMult end, function(v) mb.widthMult = v end)
-    self:CellSlider(c3, "Alpha", 0, 100, 1, function() return math.floor((mb.alpha or 1) * 100 + 0.5) end, function(v) mb.alpha = v / 100 end)
-
-    c1, c2, c3 = self:Row3(44)
-    self:CellSlider(c1, "Scale", 0.50, 2.00, 0.05, function() return mb.scale or 1 end, function(v) mb.scale = v end)
-
-    self:AddTextArea("Action Paging", 52, function() return mb.actionPaging end, function(v) mb.actionPaging = v end)
-    self:AddTextArea("Visibility State", 52, function() return mb.visibility end, function(v) mb.visibility = v end)
-end
-
-function CFG:PanelRaidLayout()
-    local rf = self.db.raidframe
+    -- --- Raid Frame ----------------------------------------------
+    local rf = p.raidframe
     rf.appearance = rf.appearance or {}
     rf.width = rf.width or 350
     rf.scale = rf.scale or 1
-    self:Header(L["Raid Frame - HUD layout"])
-    self:AddSlider(L["Width"], 220, 500, 20, function() return rf.width end, function(v) rf.width = v end, 220)
-    self:AddSlider(L["HP bar height"], 12, 32, 1, function() return rf.appearance.barHeight or 20 end, function(v) rf.appearance.barHeight = v end)
-    self:AddSlider(L["Icon size"], 10, 24, 1, function() return rf.appearance.iconSize or 16 end, function(v) rf.appearance.iconSize = v end)
-    self:AddSlider(L["Scale"], 0.70, 1.50, 0.05, function() return rf.scale end, function(v) rf.scale = v end, 220)
-end
 
-function CFG:PanelRaidPos()
-    local rf = self.db.raidframe
-    self:Header(L["Raid Frame - position"])
-    self:AddCheck(L["Lock position"], function() return rf.locked end, function(v) rf.locked = v end)
-    local y = self:NextY(28)
-    local btn = CreateFrame("Button", nil, self.content, "UIPanelButtonTemplate")
-    btn:SetSize(160, 22)
-    btn:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
-    btn:SetText(L["Reset position"])
-    btn:SetScript("OnClick", function()
-        rf.point, rf.relPoint, rf.x, rf.y = "LEFT", "LEFT", 10, 0
-        if RLSuite.raidFrame and RLSuite.raidFrame.frame then
-            RLSuite.raidFrame.frame:ClearAllPoints()
-            RLSuite.raidFrame.frame:SetPoint("LEFT", UIParent, "LEFT", 10, 0)
-        end
-    end)
-end
+    local raidLayout = {
+        width = slider(L["Width"], nil, 1, 220, 500, 20,
+            function() return rf.width end,
+            function(_, v) rf.width = v; self:ApplyAll() end),
+        barHeight = slider(L["HP bar height"], nil, 2, 12, 32, 1,
+            function() return rf.appearance.barHeight or 20 end,
+            function(_, v) rf.appearance.barHeight = v; self:ApplyAll() end),
+        iconSize = slider(L["Icon size"], nil, 3, 10, 24, 1,
+            function() return rf.appearance.iconSize or 16 end,
+            function(_, v) rf.appearance.iconSize = v; self:ApplyAll() end),
+        scale = slider(L["Scale"], nil, 4, 0.70, 1.50, 0.05,
+            function() return rf.scale end,
+            function(_, v) rf.scale = v; self:ApplyAll() end),
+    }
 
--- ============================================================
--- Saved Raids
--- ============================================================
-
-function CFG:PanelSavedRaids()
-    self:Header("Saved Raids")
-    self:Note(L["Saves created with the SaveRaid button in the top bar. Click Load to restore Comp, MacroBar and Config (except General)."])
-    local list = RLSuite.db.profile.savedRaids or {}
-    if #list == 0 then
-        self:Note(L["No saves yet."])
-        return
-    end
-    for i, e in ipairs(list) do
-        local y = self:NextY(30)
-        local row = CreateFrame("Frame", nil, self.content)
-        row:SetHeight(24)
-        row:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, y)
-        row:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", -8, y)
-        RLSuite.utils:SkinRow(row, false)
-
-        local title = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        title:SetPoint("LEFT", row, "LEFT", 8, 0)
-        title:SetPoint("RIGHT", row, "RIGHT", -150, 0)
-        title:SetJustifyH("LEFT")
-        title:SetText(e.title or string.format(L["Save #%d"], i))
-        if e.title then title:SetTextColor(0.9, 0.9, 0.9) end
-
-        local loadBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-        loadBtn:SetSize(60, 20)
-        loadBtn:SetPoint("RIGHT", row, "RIGHT", -8, 0)
-        loadBtn:SetText("Load")
-        loadBtn:SetScript("OnClick", function()
-            if RLSuite.LoadRaid then
-                RLSuite:LoadRaid(e.id)
+    local raidPos = {
+        locked = toggle(L["Lock position"], nil, 1,
+            function() return rf.locked end,
+            function(_, v) rf.locked = v end),
+        reset = execute(L["Reset position"], nil, 2, function()
+            rf.point, rf.relPoint, rf.x, rf.y = "LEFT", "LEFT", 10, 0
+            if RLSuite.raidFrame and RLSuite.raidFrame.frame then
+                RLSuite.raidFrame.frame:ClearAllPoints()
+                RLSuite.raidFrame.frame:SetPoint("LEFT", UIParent, "LEFT", 10, 0)
             end
-        end)
+        end),
+    }
 
-        local delBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-        delBtn:SetSize(60, 20)
-        delBtn:SetPoint("RIGHT", loadBtn, "LEFT", -6, 0)
-        delBtn:SetText("Delete")
-        delBtn:SetScript("OnClick", function()
-            if RLSuite.DeleteSavedRaid then
-                RLSuite:DeleteSavedRaid(e.id)
-            end
-            self:RebuildPanel()
-        end)
-    end
+    local raidframe = {
+        layout = { type = "group", name = L["Layout"], order = 1, args = raidLayout },
+        pos = { type = "group", name = L["Position"], order = 2, args = raidPos },
+    }
+
+    -- --- MS / Loot scales ----------------------------------------
+    local ms = {
+        scale = slider(L["Scale"], nil, 1, 0.70, 1.30, 0.05,
+            function() return self:Layout("ms").scale end,
+            function(_, v) self:Layout("ms").scale = v; self:ApplyAll() end),
+    }
+    local loot = {
+        scale = slider(L["Scale"], nil, 1, 0.70, 1.30, 0.05,
+            function() return self:Layout("loot").scale end,
+            function(_, v) self:Layout("loot").scale = v; self:ApplyAll() end),
+    }
+
+    return {
+        type = "group",
+        name = "RLSuite",
+        args = {
+            general = { type = "group", name = L["General"], order = 1, args = general },
+            savedraids = savedraids,
+            groupmaking = { type = "group", name = L["Groupmaking"], order = 3, args = groupmaking },
+            macros = { type = "group", name = L["Macros"], order = 4, args = macros },
+            raidframe = { type = "group", name = L["Raid Frame"], order = 5, args = raidframe },
+            ms = { type = "group", name = L["MS Manager"], order = 6, args = ms },
+            loot = { type = "group", name = L["Loot Manager"], order = 7, args = loot },
+        },
+    }
 end
 
 -- ============================================================
--- Macros: editor 12 slot (spostato qui dalla finestra principale)
+-- Macros: 12-slot editor + icon picker (bespoke, kept as-is)
 -- ============================================================
 
--- Apre il Config sulla categoria Macros -> Macro Editor.
 function CFG:OpenMacroEditorPanel()
     if self.frame then
         self.frame:Show()
@@ -1189,8 +482,7 @@ function CFG:OpenMacroEditorPanel()
             RLSuite.utils:RaiseWindow(self.frame)
         end
     end
-    self:SelectCategory("macros")
-    self:SelectSubtab("editor")
+    self:ShowMacroEditor()
 end
 
 function CFG:HideMacroEditor()
@@ -1200,14 +492,18 @@ function CFG:HideMacroEditor()
     if self.macroIconPicker then
         self.macroIconPicker:Hide()
     end
+    if self.dialogHost and self.dialogHost.frame then
+        self.dialogHost.frame:Show()
+    end
 end
 
 function CFG:ShowMacroEditor()
     if not self.macroEditorPanel then
         self:CreateMacroEditor()
     end
-    if self.scroll then self.scroll:Hide() end
-    if self.content then self.content:Hide() end
+    if self.dialogHost and self.dialogHost.frame then
+        self.dialogHost.frame:Hide()
+    end
     self.macroEditorPanel:Show()
     self:RefreshMacroTab()
     self:OpenMacroEditor(self.macroEditIndex or 1)
@@ -1262,6 +558,14 @@ function CFG:CreateMacroEditor()
         if RLSuite.macrobar and RLSuite.macrobar.Toggle then
             RLSuite.macrobar:Toggle()
         end
+    end)
+
+    local backBtn = CreateFrame("Button", nil, ed, "UIPanelButtonTemplate")
+    backBtn:SetSize(120, 20)
+    backBtn:SetPoint("RIGHT", hudBtn, "LEFT", -6, 0)
+    backBtn:SetText(L["Options"])
+    backBtn:SetScript("OnClick", function()
+        self:HideMacroEditor()
     end)
 
     -- riga 2: anteprima 12 slot (2 righe x 6)
@@ -1764,6 +1068,38 @@ end
 -- Apply
 -- ============================================================
 
+function CFG:RestoreMacroBar()
+    if RLSuite.macrobar and RLSuite.macrobar.EnsurePhases then
+        RLSuite.macrobar:EnsurePhases()
+    end
+    local mb = RLSuite.db.profile.macrobar
+    mb.enabled = true
+    mb.locked = true
+    mb.backdrop = true
+    mb.showEmpty = true
+    mb.mouseover = false
+    mb.inheritGlobalFade = false
+    mb.buttons = 12
+    mb.columns = 12
+    mb.buttonSize = 32
+    mb.spacing = 2
+    mb.backdropSpacing = 2
+    mb.heightMult = 1
+    mb.widthMult = 1
+    mb.alpha = 1
+    mb.scale = 1
+    mb.point, mb.relPoint, mb.x, mb.y = "BOTTOMLEFT", "BOTTOMLEFT", 4, 4
+    mb.actionPaging = "[bonusbar:1,nostealth] 7; [bonusbar:1,stealth] 8; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10;"
+    mb.visibility = ""
+    mb.keybinds = {}
+    if RLSuite.macrobar and RLSuite.macrobar.frame then
+        RLSuite.macrobar.frame:ClearAllPoints()
+        RLSuite.macrobar.frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 4, 4)
+    end
+    self:ApplyAll()
+    self:NotifyChange()
+end
+
 function CFG:ApplyAll()
     self.db = RLSuite.db.profile
     if RLSuite.macrobar then
@@ -1801,9 +1137,6 @@ function CFG:ApplyAll()
     end
     local font, size = RLSuite.utils:GetUIFont()
     if self.titleFS then self.titleFS:SetFont(font, size + 2) end
-    if RLSuite.mainWindow and RLSuite.mainWindow.frame then
-        -- title is first fontstring-ish; skip if missing
-    end
 end
 
 function CFG:ApplyTheme(theme)
