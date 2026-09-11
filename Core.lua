@@ -46,6 +46,7 @@ local defaults = {
     groupmaking = {
         raid = "",
         difficulty = "10",
+        hc = false,
         reserved = {},
         reservedText = "",
         otherReq = "",

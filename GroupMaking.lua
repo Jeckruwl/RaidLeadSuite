@@ -109,17 +109,46 @@ function GM:CreateMainWindow()
 
     self.raidDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteRaidDropdown", 180, 22)
     self.raidDropdown:SetPoint("LEFT", raidLabel, "RIGHT", 8, 0)
+    -- Backdrop pieno e ben visibile (non trasparente): colore solido piu'
+    -- chiaro del riempimento della finestra, con bordo netto.
+    self.raidDropdown:SetBackdropColor(0.13, 0.13, 0.17, 1)
+    self.raidDropdown:SetBackdropBorderColor(0.55, 0.55, 0.58, 1)
     self:PopulateRaidDropdown()
 
     local diffLabel = FontStr(f, "OVERLAY", 14)
     diffLabel:SetPoint("LEFT", self.raidDropdown, "RIGHT", 12, 0)
     diffLabel:SetText("Diff:")
 
-    self.diffDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteDiffDropdown", 60, 22)
-    self.diffDropdown:SetPoint("LEFT", diffLabel, "RIGHT", 8, 0)
-    RLSuite.utils:SetupDropdown(self.diffDropdown, {"10", "25"}, self.db.difficulty or "10", function(value)
-        self:SetDifficulty(value)
+    -- Due tasti al posto del dropdown: il tasto attivo resta evidenziato.
+    self.diffBtn10 = CreateFrame("Button", "RLSuiteDiffBtn10", f, "UIPanelButtonTemplate")
+    self.diffBtn10:SetSize(30, 22)
+    self.diffBtn10:SetPoint("LEFT", diffLabel, "RIGHT", 8, 0)
+    self.diffBtn10:SetText("10")
+    self.diffBtn10:SetScript("OnClick", function() self:SetDifficulty("10") end)
+
+    self.diffBtn25 = CreateFrame("Button", "RLSuiteDiffBtn25", f, "UIPanelButtonTemplate")
+    self.diffBtn25:SetSize(30, 22)
+    self.diffBtn25:SetPoint("LEFT", self.diffBtn10, "RIGHT", 4, 0)
+    self.diffBtn25:SetText("25")
+    self.diffBtn25:SetScript("OnClick", function() self:SetDifficulty("25") end)
+
+    self:UpdateDiffButtons()
+
+    -- Checkbox HC: aggiunge "HC" al messaggio subito dopo la difficolta'.
+    self.hcCheck = CreateFrame("CheckButton", "RLSuiteHCCheck", f, "UICheckButtonTemplate")
+    self.hcCheck:SetSize(24, 24)
+    self.hcCheck:SetPoint("LEFT", self.diffBtn25, "RIGHT", 10, 0)
+    self.hcCheck:SetChecked(self.db.hc and true or false)
+    self.hcCheck:SetScript("OnClick", function(s)
+        self.db.hc = s:GetChecked() and true or false
+        self:UpdateMessagePreview()
+        self:SaveComp()
     end)
+
+    local hcLbl = FontStr(f, "OVERLAY", 12)
+    hcLbl:SetPoint("LEFT", self.hcCheck, "RIGHT", 0, 0)
+    hcLbl:SetText("HC")
+    hcLbl:SetTextColor(1, 0.82, 0)
 
     self.topRow = CreateFrame("Frame", nil, f)
     self.topRow:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -66)
@@ -348,9 +377,7 @@ end
 
 function GM:SetDifficulty(diff)
     self.db.difficulty = diff
-    if self.diffDropdown and self.diffDropdown.text then
-        self.diffDropdown.text:SetText(diff)
-    end
+    self:UpdateDiffButtons()
     local numSlots = tonumber(diff) or 10
     for i, slot in ipairs(self.compSlots) do
         if slot then
@@ -375,6 +402,17 @@ function GM:SetDifficulty(diff)
     -- la composizione 25 occupa piu' spazio: riallinea la finestra
     if self.mainFrame then
         RLSuite.utils:EnforceWindowMin(self.mainFrame, "groupmaking")
+    end
+end
+
+-- Evidenzia il tasto di difficolta' attivo (10 o 25).
+function GM:UpdateDiffButtons()
+    local d = self.db.difficulty or "10"
+    if self.diffBtn10 then
+        if d == "10" then self.diffBtn10:LockHighlight() else self.diffBtn10:UnlockHighlight() end
+    end
+    if self.diffBtn25 then
+        if d == "25" then self.diffBtn25:LockHighlight() else self.diffBtn25:UnlockHighlight() end
     end
 end
 
@@ -680,6 +718,9 @@ end
 function GM:BuildSpamMessage()
     local diff = self.db.difficulty or "10"
     local msg = "LFM " .. self:RaidShortName() .. tostring(diff)
+    if self.db.hc then
+        msg = msg .. " HC"
+    end
 
     local needed = {tank = 0, healer = 0, mdps = 0, rdps = 0}
     local specLists = {tank = {}, healer = {}, mdps = {}, rdps = {}}
@@ -1118,6 +1159,12 @@ function GM:CreateWhisplistWindow()
     self.wlAskAchiBtn:SetText("Ask Achi")
     self.wlAskAchiBtn:SetScript("OnClick", function() self:AskAchi() end)
 
+    self.wlDeclineBtn = CreateFrame("Button", nil, self.wlDetailBox, "UIPanelButtonTemplate")
+    self.wlDeclineBtn:SetSize(66, 22)
+    self.wlDeclineBtn:SetPoint("LEFT", self.wlAskAchiBtn, "RIGHT", 4, 0)
+    self.wlDeclineBtn:SetText("Decline")
+    self.wlDeclineBtn:SetScript("OnClick", function() self:DeclineSelected() end)
+
     local customLabel = FontStr(self.wlDetailBox, "OVERLAY", 12)
     customLabel:SetPoint("BOTTOMLEFT", self.wlDetailBox, "BOTTOMLEFT", 10, 16)
     customLabel:SetText("Custom msg")
@@ -1437,6 +1484,29 @@ end
 function GM:AskAchi()
     if not self.selectedEntry then return end
     RLSuite.utils:Whisper(self.selectedEntry.name, "Do you have the achievement for this raid?")
+end
+
+-- Decline: avvisa il giocatore che non e' stato preso e rimuove la sua
+-- entry (con tutta la cronologia) da Received whispers.
+function GM:DeclineSelected()
+    if not self.selectedEntry then return end
+    local name = self.selectedEntry.name
+    RLSuite.utils:Whisper(name, "Sorry, you have not been selected for this raid.")
+
+    local entries = self.whisperDB.entries or {}
+    for i, e in ipairs(entries) do
+        if e == self.selectedEntry then
+            table.remove(entries, i)
+            break
+        end
+    end
+    self.selectedEntry = nil
+    self.selectedEntryIndex = nil
+
+    if self.wlDetailName then self.wlDetailName:SetText(L["Select a player"]) end
+    if self.wlDetailInfo then self.wlDetailInfo:SetText("") end
+    if self.wlChatText then self.wlChatText:SetText("") end
+    self:UpdateWhisplist()
 end
 
 function GM:SendCustomMessage()
