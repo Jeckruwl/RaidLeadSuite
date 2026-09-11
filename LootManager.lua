@@ -20,7 +20,7 @@ local LM_ROW_MIN_H = 26   -- altezza minima (una sola riga di testo)
 LibStub("AceTimer-3.0"):Embed(LM)
 
 function LM:Init()
-    self.db = RLSuiteDB.loot
+    self.db = RLSuite.db.profile.loot
     self.history = self.db.history or {}
     self.db.history = self.history
     self.currentRoll = nil
@@ -269,7 +269,7 @@ function LM:SetPreMessage(msg)
 end
 
 function LM:SpawnDebugLoot()
-    local raid = (RLSuiteDB.groupmaking and RLSuiteDB.groupmaking.raid) or "Icecrown Citadel"
+    local raid = (RLSuite.db.profile.groupmaking and RLSuite.db.profile.groupmaking.raid) or "Icecrown Citadel"
     local pool = (RLSuite.debugLoot and RLSuite.debugLoot[raid]) or {49623, 49908, 52025}
     local bosses = (RLSuite.raidDB[raid] and RLSuite.raidDB[raid].bosses) or {"Unknown"}
     local ids = {}

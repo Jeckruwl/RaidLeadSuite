@@ -3,121 +3,231 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.3.0"
+RLSuite.version = "1.4.0"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
+local AceAddon = LibStub("AceAddon-3.0")
+local AceDB = LibStub("AceDB-3.0")
+
+-- ============================================================
+-- Defaults (AceDB-3.0). Everything lives in the shared "profile"
+-- section; the database uses the global "Default" profile so the
+-- settings stay account-wide exactly like the old flat saved table.
+-- ============================================================
 local defaults = {
-    profile = "",
-    difficulty = "10",
-    debug = false,
-    anchorMode = false,
-    savedRaids = {},
-    macrobar = {
-        enabled = true,
-        locked = true,
-        scale = 1.0,
-        point = "CENTER",
-        relPoint = "CENTER",
-        x = 0,
-        y = 100,
-        buttons = 12,
-        columns = 12,
-        buttonSize = 32,
-        spacing = 2,
-        backdrop = true,
-        showEmpty = true,
-        mouseover = false,
-        inheritGlobalFade = false,
-        backdropSpacing = 2,
-        heightMult = 1,
-        widthMult = 1,
-        alpha = 1,
-        actionPaging = "[bonusbar:1,nostealth] 7; [bonusbar:1,stealth] 8; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10;",
-        visibility = "",
-        keybinds = {},
-        macros = {
-            preraid = {},
-            preboss = {},
-            infight = {},
-        },
-    },
-    profiles = {},
-    groupmaking = {
-        raid = "",
+    profile = {
         difficulty = "10",
-        hc = false,
-        reserved = {},
-        reservedText = "",
-        aim = "",
-        otherReq = "",
-        comp = {},
-        spamChannels = {"General", "Trade"},
-        spamInterval = 60,
-        showSpecsInMessage = false,
-    },
-    whisplist = {
-        entries = {},
-        autoinvite = {
-            mode = "manual",   -- "manual" | "calendar"
-            names = "",
-            hour = 19,
-            minute = 0,
-            eventIndex = nil,
-            eventTitle = nil,
-            eventDay = nil,
-            eventCount = 0,
-            enabled = false,
+        debug = false,
+        anchorMode = false,
+        savedRaids = {},
+        macrobar = {
+            enabled = true,
+            locked = true,
+            scale = 1.0,
+            point = "CENTER",
+            relPoint = "CENTER",
+            x = 0,
+            y = 100,
+            buttons = 12,
+            columns = 12,
+            buttonSize = 32,
+            spacing = 2,
+            backdrop = true,
+            showEmpty = true,
+            mouseover = false,
+            inheritGlobalFade = false,
+            backdropSpacing = 2,
+            heightMult = 1,
+            widthMult = 1,
+            alpha = 1,
+            actionPaging = "[bonusbar:1,nostealth] 7; [bonusbar:1,stealth] 8; [bonusbar:2] 8; [bonusbar:3] 9; [bonusbar:4] 10;",
+            visibility = "",
+            keybinds = {},
+            macros = {
+                preraid = {},
+                preboss = {},
+                infight = {},
+            },
         },
-    },
-    raidframe = {
-        enabled = true,
-        showBuffs = true,
-        showFlask = true,
-        showFood = true,
-        locked = true,
-        scale = 1.0,
-        width = 350,
-        height = 400,
-        point = "LEFT",
-        relPoint = "LEFT",
-        x = 10,
-        y = 0,
+        groupmaking = {
+            raid = "",
+            difficulty = "10",
+            hc = false,
+            reserved = {},
+            reservedText = "",
+            aim = "",
+            otherReq = "",
+            comp = {},
+            spamChannels = {"General", "Trade"},
+            spamInterval = 60,
+            showSpecsInMessage = false,
+        },
+        whisplist = {
+            entries = {},
+            autoinvite = {
+                mode = "manual",   -- "manual" | "calendar"
+                names = "",
+                hour = 19,
+                minute = 0,
+                eventIndex = nil,
+                eventTitle = nil,
+                eventDay = nil,
+                eventCount = 0,
+                enabled = false,
+            },
+        },
+        raidframe = {
+            enabled = true,
+            showBuffs = true,
+            showFlask = true,
+            showFood = true,
+            locked = true,
+            scale = 1.0,
+            width = 350,
+            height = 400,
+            point = "LEFT",
+            relPoint = "LEFT",
+            x = 10,
+            y = 0,
+            appearance = {
+                barHeight = 20,
+                iconSize = 16,
+                border = true,
+            },
+            alerts = {},
+        },
+        mschanges = {},
+        loot = {
+            history = {},
+            rollDuration = 10,
+            rerollDuration = 5,
+            rarityFilter = "all",
+            tradeWindow = 7200,
+        },
         appearance = {
-            barHeight = 20,
-            iconSize = 16,
-            border = true,
+            theme = "default",
+            font = "Fonts\\FRIZQT__.TTF",
+            fontSize = 12,
+            edgeSize = 32,
+            bg = { r = 0.08, g = 0.08, b = 0.10, a = 1 },
+            fill = { r = 0.05, g = 0.05, b = 0.07, a = 1 },
+            border = { r = 0.70, g = 0.70, b = 0.70, a = 1 },
         },
-        alerts = {},
-    },
-    mschanges = {},
-    loot = {
-        history = {},
-        rollDuration = 10,
-        rerollDuration = 5,
-        rarityFilter = "all",
-        tradeWindow = 7200,
-    },
-    appearance = {
-        theme = "default",
-        font = "Fonts\\FRIZQT__.TTF",
-        fontSize = 12,
-        edgeSize = 32,
-        bg = { r = 0.08, g = 0.08, b = 0.10, a = 1 },
-        fill = { r = 0.05, g = 0.05, b = 0.07, a = 1 },
-        border = { r = 0.70, g = 0.70, b = 0.70, a = 1 },
-    },
-    layout = {
-        main = { width = 660, height = 700, scale = 1 },
-        groupmaking = { scale = 1 },
-        whisplist = { scale = 1 },
-        macro = { scale = 1 },
-        raidframe = { scale = 1 },
-        ms = { scale = 1 },
-        loot = { scale = 1 },
-        config = { scale = 1 },
+        layout = {
+            main = { width = 660, height = 700, scale = 1 },
+            groupmaking = { scale = 1 },
+            whisplist = { scale = 1 },
+            macro = { scale = 1 },
+            raidframe = { scale = 1 },
+            ms = { scale = 1 },
+            loot = { scale = 1 },
+            config = { scale = 1 },
+        },
     },
 }
+
+-- ============================================================
+-- AceAddon-3.0 addon object. AceEvent and AceConsole are embedded, so
+-- RLSuite gains RegisterEvent / RegisterChatCommand. AceDB-3.0 is not
+-- embeddable: it is called directly (AceDB:New) inside OnInitialize.
+-- ============================================================
+RLSuite = AceAddon:NewAddon(RLSuite, "RLSuite", "AceEvent-3.0", "AceConsole-3.0")
+
+-- One-time migration of the pre-Ace3 flat saved table (RLSuiteDB.* at the
+-- root) into the new profile section. Runs before any module touches db.
+local function MergeLegacy(dest, src)
+    for k, v in pairs(src) do
+        if k == "profile" or k == "profiles" or k == "profileKeys" then
+            -- legacy/non-data keys, ignored
+        elseif type(v) == "table" then
+            if type(dest[k]) ~= "table" then dest[k] = {} end
+            MergeLegacy(dest[k], v)
+        else
+            dest[k] = v
+        end
+    end
+end
+
+function RLSuite:OnInitialize()
+    -- Detect a legacy flat DB before AceDB restructures the saved table.
+    local sv = _G.RLSuiteDB
+    local legacy = nil
+    if type(sv) == "table" and sv.profileKeys == nil and sv.profiles == nil then
+        legacy = sv
+    end
+
+    self.db = AceDB:New("RLSuiteDB", defaults, true)
+
+    if legacy then
+        MergeLegacy(self.db.profile, legacy)
+    end
+
+    -- Folder name is the addon name. Canonical: RaidLeadSuite (RLSuite kept
+    -- for backward compatibility). AceAddon stores it on baseName.
+    self.addonFolder = self.baseName or "RaidLeadSuite"
+
+    self:RegisterChatCommand("rls", "ChatCommand")
+    self:RegisterChatCommand("rlsuite", "ChatCommand")
+
+    self.utils:Print(string.format(L["v%s loaded. Type /rls to open."], RLSuite.version))
+end
+
+function RLSuite:OnEnable()
+    self:RegisterEvent("RAID_ROSTER_UPDATE", "OnRaidRosterUpdate")
+    self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnPlayerRegenEnabled")
+    self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnPlayerRegenDisabled")
+    self:RegisterEvent("CHAT_MSG_WHISPER", "OnWhisper")
+    self:RegisterEvent("CHAT_MSG_WHISPER_INFORM", "OnWhisperInform")
+    self:RegisterEvent("CHAT_MSG_RAID", "OnRaidMessage")
+    self:RegisterEvent("CHAT_MSG_RAID_LEADER", "OnRaidMessage")
+    self:RegisterEvent("CHAT_MSG_LOOT", "OnLootMessage")
+    self:InitModules()
+end
+
+function RLSuite:OnDisable()
+    self:UnregisterAllEvents()
+end
+
+-- ============================================================
+-- AceEvent-3.0 handlers (previously a single raw event frame)
+-- ============================================================
+function RLSuite:OnRaidRosterUpdate()
+    self:UpdateRaidContext()
+end
+
+function RLSuite:OnPlayerRegenEnabled()
+    self.context = "preboss"
+    self:UpdatePhaseUI()
+end
+
+function RLSuite:OnPlayerRegenDisabled()
+    self.context = "infight"
+    self:UpdatePhaseUI()
+end
+
+function RLSuite:OnWhisper(event, msg, sender)
+    if self.groupmaking and self.groupmaking.OnWhisper then
+        self.groupmaking:OnWhisper(sender, msg)
+    end
+    self:HandleDebugMSWhisper(sender, msg)
+end
+
+function RLSuite:OnWhisperInform(event, msg, target)
+    self:HandleDebugMSWhisper(UnitName("player") or target, msg)
+end
+
+function RLSuite:OnRaidMessage(event, msg, sender)
+    if self.msManager and self.msManager.ParseMSMessage then
+        self.msManager:ParseMSMessage(sender, msg)
+    end
+end
+
+function RLSuite:OnLootMessage(event, msg)
+    if self.lootManager and self.lootManager.OnLootMessage then
+        self.lootManager:OnLootMessage(msg)
+    end
+end
 
 RLSuite.raidDB = {
     ["Icecrown Citadel"] = {
@@ -373,70 +483,8 @@ RLSuite.buffData = {
     },
 }
 
-local frame = CreateFrame("Frame", "RLSuiteCoreFrame")
-frame:RegisterEvent("ADDON_LOADED")
-frame:RegisterEvent("PLAYER_LOGIN")
-frame:RegisterEvent("RAID_ROSTER_UPDATE")
-frame:RegisterEvent("PLAYER_REGEN_ENABLED")
-frame:RegisterEvent("PLAYER_REGEN_DISABLED")
-frame:RegisterEvent("CHAT_MSG_WHISPER")
-frame:RegisterEvent("CHAT_MSG_WHISPER_INFORM")
-frame:RegisterEvent("CHAT_MSG_RAID")
-frame:RegisterEvent("CHAT_MSG_RAID_LEADER")
-frame:RegisterEvent("CHAT_MSG_LOOT")
-
-frame:SetScript("OnEvent", function(self, event, ...)
-    if event == "ADDON_LOADED" then
-        local addon = ...
-        -- Folder name is the addon name. Canonical: RaidLeadSuite (RLSuite kept for backward compatibility).
-        if addon == "RLSuite" or addon == "RaidLeadSuite" then
-            RLSuite.addonFolder = addon
-            RLSuiteDB = RLSuiteDB or {}
-            RLSuiteCharDB = RLSuiteCharDB or {}
-            for k, v in pairs(defaults) do
-                if RLSuiteDB[k] == nil then
-                    RLSuiteDB[k] = v
-                elseif type(v) == "table" and type(RLSuiteDB[k]) == "table" then
-                    for k2, v2 in pairs(v) do
-                        if RLSuiteDB[k][k2] == nil then
-                            RLSuiteDB[k][k2] = v2
-                        end
-                    end
-                end
-            end
-            RLSuite.utils:Print(string.format(L["v%s loaded. Type /rls to open."], RLSuite.version))
-        end
-    elseif event == "PLAYER_LOGIN" then
-        RLSuite:InitModules()
-    elseif event == "RAID_ROSTER_UPDATE" then
-        RLSuite:UpdateRaidContext()
-    elseif event == "PLAYER_REGEN_ENABLED" then
-        RLSuite.context = "preboss"
-        RLSuite:UpdatePhaseUI()
-    elseif event == "PLAYER_REGEN_DISABLED" then
-        RLSuite.context = "infight"
-        RLSuite:UpdatePhaseUI()
-    elseif event == "CHAT_MSG_WHISPER" then
-        local msg, sender = ...
-        if RLSuite.groupmaking and RLSuite.groupmaking.OnWhisper then
-            RLSuite.groupmaking:OnWhisper(sender, msg)
-        end
-        RLSuite:HandleDebugMSWhisper(sender, msg)
-    elseif event == "CHAT_MSG_WHISPER_INFORM" then
-        local msg, target = ...
-        RLSuite:HandleDebugMSWhisper(UnitName("player") or target, msg)
-    elseif event == "CHAT_MSG_RAID" or event == "CHAT_MSG_RAID_LEADER" then
-        local msg, sender = ...
-        if RLSuite.msManager and RLSuite.msManager.ParseMSMessage then
-            RLSuite.msManager:ParseMSMessage(sender, msg)
-        end
-    elseif event == "CHAT_MSG_LOOT" then
-        local msg = ...
-        if RLSuite.lootManager and RLSuite.lootManager.OnLootMessage then
-            RLSuite.lootManager:OnLootMessage(msg)
-        end
-    end
-end)
+-- (Events, slash commands, database setup and module init are now handled
+--  by AceAddon-3.0 / AceEvent-3.0 / AceConsole-3.0 / AceDB-3.0 above.)
 
 function RLSuite:PrintHelp()
     local p = function(t) self.utils:Print(t) end
@@ -455,41 +503,39 @@ function RLSuite:PrintHelp()
     p(L["  /rls config       Config tab"])
 end
 
-SLASH_RLSUITE1 = "/rls"
-SLASH_RLSUITE2 = "/rlsuite"
-SlashCmdList["RLSUITE"] = function(msg)
-    msg = string.gsub(string.gsub(msg or "", "^%s+", ""), "%s+$", "")
+function RLSuite:ChatCommand(input)
+    local msg = string.gsub(string.gsub(input or "", "^%s+", ""), "%s+$", "")
     msg = string.lower(msg)
     if msg == "help" or msg == "?" then
-        RLSuite:PrintHelp()
+        self:PrintHelp()
     elseif msg == "macrobar" then
-        if RLSuite.macrobar then RLSuite.macrobar:Toggle() end
+        if self.macrobar then self.macrobar:Toggle() end
     elseif msg == "rfhud" then
-        if RLSuite.raidFrame then RLSuite.raidFrame:Toggle() end
+        if self.raidFrame then self.raidFrame:Toggle() end
     elseif msg == "group" then
-        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("group") end
+        if self.mainWindow then self.mainWindow:ShowTab("group") end
     elseif msg == "whisplist" or msg == "wl" or msg == "inviteengine" or msg == "ie" then
-        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("group") end
-        if RLSuite.groupmaking and RLSuite.groupmaking.OpenWhisplist then
-            RLSuite.groupmaking:OpenWhisplist()
+        if self.mainWindow then self.mainWindow:ShowTab("group") end
+        if self.groupmaking and self.groupmaking.OpenWhisplist then
+            self.groupmaking:OpenWhisplist()
         end
     elseif msg == "macro" then
-        if RLSuite.config and RLSuite.config.OpenMacroEditorPanel then
-            RLSuite.config:OpenMacroEditorPanel()
+        if self.config and self.config.OpenMacroEditorPanel then
+            self.config:OpenMacroEditorPanel()
         end
     elseif msg == "raidframe" or msg == "rf" then
-        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("raidframe") end
+        if self.mainWindow then self.mainWindow:ShowTab("raidframe") end
     elseif msg == "ms" then
-        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("ms") end
+        if self.mainWindow then self.mainWindow:ShowTab("ms") end
     elseif msg == "loot" then
-        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("loot") end
+        if self.mainWindow then self.mainWindow:ShowTab("loot") end
     elseif msg == "config" then
-        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("config") end
+        if self.mainWindow then self.mainWindow:ShowTab("config") end
     elseif msg == "" then
-        if RLSuite.mainWindow then RLSuite.mainWindow:Toggle() end
+        if self.mainWindow then self.mainWindow:Toggle() end
     else
-        RLSuite.utils:Print(L["Unknown command. Type /rls help for the list."])
-        RLSuite:PrintHelp()
+        self.utils:Print(L["Unknown command. Type /rls help for the list."])
+        self:PrintHelp()
     end
 end
 
@@ -503,7 +549,7 @@ function RLSuite:HandleDebugMSWhisper(who, msg)
 end
 
 function RLSuite:DebugMode()
-    return RLSuiteDB and RLSuiteDB.debug == true
+    return self.db and self.db.profile.debug == true
 end
 
 -- Percorso di una risorsa dentro la cartella dell'addon, usando il nome
@@ -611,30 +657,30 @@ function RLSuite:SaveRaid(title)
         self.utils:Print(L["Save cancelled: empty title."])
         return nil
     end
-    RLSuiteDB.savedRaids = RLSuiteDB.savedRaids or {}
+    self.db.profile.savedRaids = self.db.profile.savedRaids or {}
     if self.groupmaking and self.groupmaking.SaveComp then
         self.groupmaking:SaveComp()
     end
     local data = {}
     for _, k in ipairs(SAVED_RAID_BRANCHES) do
-        if RLSuiteDB[k] then
-            data[k] = self.utils:CopyTable(RLSuiteDB[k])
+        if self.db.profile[k] then
+            data[k] = self.utils:CopyTable(self.db.profile[k])
         end
     end
     local scales = {}
     for _, k in ipairs(SAVED_RAID_LAYOUT_KEYS) do
-        local lay = RLSuiteDB.layout and RLSuiteDB.layout[k]
+        local lay = self.db.profile.layout and self.db.profile.layout[k]
         if lay and lay.scale then scales[k] = lay.scale end
     end
     data.layout = scales
     local id = 1
-    for _, e in ipairs(RLSuiteDB.savedRaids) do
+    for _, e in ipairs(self.db.profile.savedRaids) do
         if (e.id or 0) >= id then id = e.id + 1 end
     end
     local entry = { id = id, title = title, time = time(), data = data }
-    table.insert(RLSuiteDB.savedRaids, entry)
+    table.insert(self.db.profile.savedRaids, entry)
     self:RefreshSavedRaidsPanel()
-    self.utils:Print(string.format(L['SaveRaid "%s" saved (%d total).'], title, #RLSuiteDB.savedRaids))
+    self.utils:Print(string.format(L['SaveRaid "%s" saved (%d total).'], title, #self.db.profile.savedRaids))
     return id
 end
 
@@ -647,16 +693,16 @@ function RLSuite:RefreshSavedRaidsPanel()
 end
 
 function RLSuite:GetSavedRaid(id)
-    for _, e in ipairs(RLSuiteDB.savedRaids or {}) do
+    for _, e in ipairs(self.db.profile.savedRaids or {}) do
         if e.id == id then return e end
     end
     return nil
 end
 
 function RLSuite:DeleteSavedRaid(id)
-    for i, e in ipairs(RLSuiteDB.savedRaids or {}) do
+    for i, e in ipairs(self.db.profile.savedRaids or {}) do
         if e.id == id then
-            table.remove(RLSuiteDB.savedRaids, i)
+            table.remove(self.db.profile.savedRaids, i)
             self:RefreshSavedRaidsPanel()
             self.utils:Print(string.format(L['SaveRaid "%s" deleted.'], (e.title or "?")))
             return true
@@ -674,14 +720,14 @@ function RLSuite:LoadRaid(id)
     local d = entry.data or {}
     for _, k in ipairs(SAVED_RAID_BRANCHES) do
         if d[k] then
-            RLSuiteDB[k] = self.utils:CopyTable(d[k])
+            self.db.profile[k] = self.utils:CopyTable(d[k])
         end
     end
     if d.layout then
-        RLSuiteDB.layout = RLSuiteDB.layout or {}
+        self.db.profile.layout = self.db.profile.layout or {}
         for k, s in pairs(d.layout) do
-            if not RLSuiteDB.layout[k] then RLSuiteDB.layout[k] = {} end
-            RLSuiteDB.layout[k].scale = s
+            if not self.db.profile.layout[k] then self.db.profile.layout[k] = {} end
+            self.db.profile.layout[k].scale = s
         end
     end
     self:ApplySavedRaidToUI()
@@ -693,32 +739,32 @@ function RLSuite:ApplySavedRaidToUI()
     -- GroupMaking
     if self.groupmaking then
         local gm = self.groupmaking
-        gm.db = RLSuiteDB.groupmaking
-        gm.whisperDB = RLSuiteDB.whisplist
+        gm.db = self.db.profile.groupmaking
+        gm.whisperDB = self.db.profile.whisplist
         if gm.mainFrame then
             local comp = {}
-            if RLSuiteDB.groupmaking and RLSuiteDB.groupmaking.comp then
-                for i, c in pairs(RLSuiteDB.groupmaking.comp) do
+            if self.db.profile.groupmaking and self.db.profile.groupmaking.comp then
+                for i, c in pairs(self.db.profile.groupmaking.comp) do
                     comp[i] = self.utils:CopyTable(c)
                 end
             end
-            local difficulty = RLSuiteDB.groupmaking and RLSuiteDB.groupmaking.difficulty or "10"
+            local difficulty = self.db.profile.groupmaking and self.db.profile.groupmaking.difficulty or "10"
             if gm.SetDifficulty then gm:SetDifficulty(difficulty) end
             for i, c in pairs(comp) do
                 if gm.FillSlot then
                     gm:FillSlot(tonumber(i), c.class, c.role, c.playerName, c.spec)
                 end
             end
-            if RLSuiteDB.groupmaking then
+            if self.db.profile.groupmaking then
                 local reserved = ""
-                if type(RLSuiteDB.groupmaking.reservedText) == "string" then
-                    reserved = RLSuiteDB.groupmaking.reservedText
-                elseif type(RLSuiteDB.groupmaking.reserved) == "string" then
-                    reserved = RLSuiteDB.groupmaking.reserved
+                if type(self.db.profile.groupmaking.reservedText) == "string" then
+                    reserved = self.db.profile.groupmaking.reservedText
+                elseif type(self.db.profile.groupmaking.reserved) == "string" then
+                    reserved = self.db.profile.groupmaking.reserved
                 end
                 if gm.reservedEdit then gm.reservedEdit:SetText(reserved) end
-                if gm.aimEdit then gm.aimEdit:SetText(RLSuiteDB.groupmaking.aim or "") end
-                if gm.otherEdit then gm.otherEdit:SetText(RLSuiteDB.groupmaking.otherReq or "") end
+                if gm.aimEdit then gm.aimEdit:SetText(self.db.profile.groupmaking.aim or "") end
+                if gm.otherEdit then gm.otherEdit:SetText(self.db.profile.groupmaking.otherReq or "") end
                 gm.db.comp = {}
                 if gm.SaveComp then gm:SaveComp() end
                 if gm.UpdateMessagePreview then gm:UpdateMessagePreview() end
@@ -738,7 +784,7 @@ function RLSuite:ApplySavedRaidToUI()
     -- MacroBar
     if self.macrobar and self.macrobar.frame then
         local mb = self.macrobar
-        mb.db = RLSuiteDB.macrobar
+        mb.db = self.db.profile.macrobar
         if mb.EnsurePhases then mb:EnsurePhases() end
         if mb.ApplyLayout then mb:ApplyLayout() end
         if mb.UpdatePhase then mb:UpdatePhase() end
@@ -746,7 +792,7 @@ function RLSuite:ApplySavedRaidToUI()
     -- Raid Frame
     if self.raidFrame and self.raidFrame.frame then
         local rf = self.raidFrame
-        rf.db = RLSuiteDB.raidframe
+        rf.db = self.db.profile.raidframe
         if rf.ApplyLayout then rf:ApplyLayout() end
         if rf.Rebuild then rf:Rebuild() end
         if rf.UpdateAll then rf:UpdateAll() end
@@ -770,18 +816,18 @@ function RLSuite:ApplySavedRaidToUI()
         u:EnforceWindowMin(self.msManager and self.msManager.frame, "ms")
         u:EnforceWindowMin(self.lootManager and self.lootManager.frame, "loot")
     end
-    self:ApplyAnchorMode(RLSuiteDB.anchorMode == true)
+    self:ApplyAnchorMode(self.db.profile.anchorMode == true)
 end
 
 -- ============================================================
 -- Anchors stile ElvUI per le HUD (Raid Frame + MacroBar)
 -- ============================================================
 function RLSuite:ApplyAnchorMode(on)
-    RLSuiteDB.anchorMode = on and true or false
+    self.db.profile.anchorMode = on and true or false
     local u = self.utils
     if self.raidFrame and self.raidFrame.frame then
-        u:SetAnchorVisual(self.raidFrame.frame, RLSuiteDB.anchorMode)
-        if RLSuiteDB.anchorMode and RLSuiteDB.raidframe and RLSuiteDB.raidframe.enabled ~= false then
+        u:SetAnchorVisual(self.raidFrame.frame, self.db.profile.anchorMode)
+        if self.db.profile.anchorMode and self.db.profile.raidframe and self.db.profile.raidframe.enabled ~= false then
             if not self.raidFrame.frame:IsShown() then
                 self.raidFrame.frame:Show()
                 if self.raidFrame.ApplyLayout then self.raidFrame:ApplyLayout() end
@@ -789,11 +835,11 @@ function RLSuite:ApplyAnchorMode(on)
         end
     end
     if self.macrobar and self.macrobar.frame then
-        u:SetAnchorVisual(self.macrobar.frame, RLSuiteDB.anchorMode)
+        u:SetAnchorVisual(self.macrobar.frame, self.db.profile.anchorMode)
         if self.macrobar.SetAnchorMode then
-            self.macrobar:SetAnchorMode(RLSuiteDB.anchorMode)
+            self.macrobar:SetAnchorMode(self.db.profile.anchorMode)
         end
-        if RLSuiteDB.anchorMode and RLSuiteDB.macrobar and RLSuiteDB.macrobar.enabled ~= false then
+        if self.db.profile.anchorMode and self.db.profile.macrobar and self.db.profile.macrobar.enabled ~= false then
             self.macrobar.frame:Show()
             if self.macrobar.ApplyLayout then self.macrobar:ApplyLayout() end
         end
@@ -812,7 +858,7 @@ function RLSuite:InitModules()
     if self.config and self.config.Init then self.config:Init() end
     if self.mainWindow and self.mainWindow.Init then self.mainWindow:Init() end
     if self.config and self.config.ApplyTheme then
-        self.config:ApplyTheme(RLSuiteDB.appearance and RLSuiteDB.appearance.theme)
+        self.config:ApplyTheme(self.db.profile.appearance and self.db.profile.appearance.theme)
     end
     if self.utils and self.utils.SkinAllWindows then
         self.utils:SkinAllWindows()

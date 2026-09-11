@@ -56,12 +56,12 @@ local function RoleIconCoords(role)
 end
 
 function GM:Init()
-    self.db = RLSuiteDB.groupmaking
-    self.whisperDB = RLSuiteDB.whisplist
+    self.db = RLSuite.db.profile.groupmaking
+    self.whisperDB = RLSuite.db.profile.whisplist
     -- Autoinviter: stato salvato + default per i campi mancanti. "enabled"
     -- torna sempre false al reload (i timer AceTimer non sopravvivono).
-    RLSuiteDB.whisplist.autoinvite = RLSuiteDB.whisplist.autoinvite or {}
-    self.autoinvite = RLSuiteDB.whisplist.autoinvite
+    RLSuite.db.profile.whisplist.autoinvite = RLSuite.db.profile.whisplist.autoinvite or {}
+    self.autoinvite = RLSuite.db.profile.whisplist.autoinvite
     local ai = self.autoinvite
     ai.mode = ai.mode or "manual"
     ai.names = ai.names or ""

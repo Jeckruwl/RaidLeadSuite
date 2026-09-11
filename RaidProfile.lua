@@ -28,7 +28,7 @@ end
 function MW:ShowMacrobarHud()
     local mb = RLSuite.macrobar
     if not mb or not mb.frame then return end
-    if RLSuiteDB.macrobar and RLSuiteDB.macrobar.enabled == false then return end
+    if RLSuite.db.profile.macrobar and RLSuite.db.profile.macrobar.enabled == false then return end
     local pset = mb.PhaseSettings and mb:PhaseSettings()
     if pset and pset.enabled == false then return end
     if not mb.frame:IsShown() then
@@ -246,7 +246,7 @@ function MW:CreateFrame()
 end
 
 function MW:ApplyLayout()
-    local L = RLSuiteDB and RLSuiteDB.layout and RLSuiteDB.layout.main
+    local L = RLSuite.db and RLSuite.db.profile.layout and RLSuite.db.profile.layout.main
     if not self.frame then return end
     L = L or {}
     local cols = math.max(1, math.min(8, tonumber(L.matrixCols) or 2))
@@ -486,7 +486,7 @@ function MW:SelectTab(key)
         local L = RLSuite.utils:WindowLayout(lkey)
         -- Default: come quando i pannelli erano agganciati sotto la barra
         -- (larghezza/altezza della tab in Config -> General -> Finestra).
-        local mL = (RLSuiteDB.layout and RLSuiteDB.layout.main) or {}
+        local mL = (RLSuite.db.profile.layout and RLSuite.db.profile.layout.main) or {}
         local pw = L.width or mL.width or 660
         local ph = L.height or mL.height or 700
         -- mai piu' piccolo del contenuto della finestra
@@ -657,11 +657,11 @@ function MW:CreateRaidFrameSubTab()
         edit:SetPoint("LEFT", aLabel, "RIGHT", 8, 0)
         edit:SetPoint("RIGHT", alertBox, "RIGHT", -16, 0)
         edit:SetAutoFocus(false)
-        local alerts = RLSuiteDB.raidframe.alerts or {}
+        local alerts = RLSuite.db.profile.raidframe.alerts or {}
         edit:SetText(alerts[atype] or "")
         edit:SetScript("OnTextChanged", function(s)
-            RLSuiteDB.raidframe.alerts = RLSuiteDB.raidframe.alerts or {}
-            RLSuiteDB.raidframe.alerts[atype] = s:GetText()
+            RLSuite.db.profile.raidframe.alerts = RLSuite.db.profile.raidframe.alerts or {}
+            RLSuite.db.profile.raidframe.alerts[atype] = s:GetText()
         end)
     end
 end

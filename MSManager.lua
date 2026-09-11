@@ -8,8 +8,8 @@ local MSM = RLSuite.msManager
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
 function MSM:Init()
-    self.db = RLSuiteDB.mschanges or {}
-    RLSuiteDB.mschanges = self.db
+    self.db = RLSuite.db.profile.mschanges or {}
+    RLSuite.db.profile.mschanges = self.db
     self:CreateFrame()
 end
 

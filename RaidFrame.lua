@@ -8,7 +8,7 @@ local RF = RLSuite.raidFrame
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
 function RF:Init()
-    self.db = RLSuiteDB.raidframe
+    self.db = RLSuite.db.profile.raidframe
     self.rows = {}
     self.cdTracker = {}
     self:CreateFrame()
@@ -37,17 +37,17 @@ function RF:CreateFrame()
     RLSuite.utils:ClampWindow(f)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", function(self2)
-        if not RLSuiteDB.raidframe.locked or (RLSuiteDB.anchorMode == true) then
+        if not RLSuite.db.profile.raidframe.locked or (RLSuite.db.profile.anchorMode == true) then
             self2:StartMoving()
         end
     end)
     f:SetScript("OnDragStop", function(self2)
         self2:StopMovingOrSizing()
         local point, _, relPoint, x, y = self2:GetPoint()
-        RLSuiteDB.raidframe.point = point
-        RLSuiteDB.raidframe.relPoint = relPoint
-        RLSuiteDB.raidframe.x = x
-        RLSuiteDB.raidframe.y = y
+        RLSuite.db.profile.raidframe.point = point
+        RLSuite.db.profile.raidframe.relPoint = relPoint
+        RLSuite.db.profile.raidframe.x = x
+        RLSuite.db.profile.raidframe.y = y
     end)
     f:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -118,7 +118,7 @@ function RF:GetRoster()
             { name = "Valeerabot", class = "HUNTER" },
             { name = "Guldanbot", class = "WARLOCK" },
         }
-        local n = tonumber(RLSuiteDB.groupmaking and RLSuiteDB.groupmaking.difficulty) or 10
+        local n = tonumber(RLSuite.db.profile.groupmaking and RLSuite.db.profile.groupmaking.difficulty) or 10
         if n < 2 then n = 10 end
         if n > 10 then
             for i = 1, n - 10 do

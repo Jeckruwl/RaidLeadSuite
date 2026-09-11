@@ -2,9 +2,8 @@
 ## Title: RLSuite - Raid Leading Suite
 ## Notes: Raid leading addon for WOTLK 3.3.5 (Warmane). Folder name: RaidLeadSuite
 ## Author: RLSuite
-## Version: 1.3.0
+## Version: 1.4.0
 ## SavedVariables: RLSuiteDB
-## SavedVariablesPerCharacter: RLSuiteCharDB
 
 ## Ace3 libraries (LibStub must load first)
 Libs\LibStub\LibStub.lua

@@ -1,24 +1,32 @@
 -- ============================================================
--- RLSuite - Locale
+-- RLSuite - Locale (AceLocale-3.0)
 -- enUS is the primary/default locale. Every user-facing string is looked up
--- through RLSuite.L. RLSuite.L is a self-contained table with no dependency
--- on external libraries (a foreign/missing AceLocale copy must never break
--- the addon): writing `true` stores the key itself as the value, and any
--- missing key resolves to its own text, so lookups always return English.
--- Other locales can be added later by overwriting keys, e.g.
---   RLSuite.L["Save"] = "Salva"
+-- through RLSuite.L, which is the AceLocale-3.0 table for the "RLSuite"
+-- application. Writing `true` stores the key itself as the value (standard
+-- AceLocale semantics), and any missing key resolves to its own text, so
+-- lookups always return English. Other locales can be added later by
+-- registering the same application, e.g.
+--   local L = AceLocale:NewLocale("RLSuite", "itIT")
+--   if L then L["Save"] = "Salva" end
 -- ============================================================
 
 RLSuite = RLSuite or {}
 
-local L = setmetatable({}, {
-    __index = function(_, key)
-        return key
-    end,
-    __newindex = function(t, key, value)
-        rawset(t, key, value == true and key or value)
-    end,
-})
+local AceLocale = LibStub("AceLocale-3.0")
+
+-- Fallback table used only if AceLocale were unavailable for some reason
+-- (the library is bundled and always loaded, so this is purely defensive).
+local L = AceLocale and AceLocale:NewLocale("RLSuite", "enUS", true, true)
+if not L then
+    L = setmetatable({}, {
+        __index = function(_, key)
+            return key
+        end,
+        __newindex = function(t, key, value)
+            rawset(t, key, value == true and key or value)
+        end,
+    })
+end
 
 do
     -- Core
@@ -179,4 +187,4 @@ do
     L['DBM/BigWigs not available: timer "%s" not started.'] = true
 end
 
-RLSuite.L = L
+RLSuite.L = (AceLocale and AceLocale:GetLocale("RLSuite", true)) or L

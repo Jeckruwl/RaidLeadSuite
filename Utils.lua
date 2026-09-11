@@ -13,7 +13,7 @@ function Utils:Print(msg)
 end
 
 function Utils:Debug(msg)
-    if RLSuiteDB and RLSuiteDB.debug then
+    if RLSuite.db and RLSuite.db.profile.debug then
         DEFAULT_CHAT_FRAME:AddMessage("|cff999999[RLSuite-Debug]|r " .. tostring(msg))
     end
 end
@@ -103,7 +103,7 @@ function Utils:SendChat(msg, channel)
     if not msg or msg == "" then return end
     channel = channel or "RAID"
     msg = self:SanitizeChat(msg)
-    if RLSuiteDB and RLSuiteDB.debug then
+    if RLSuite.db and RLSuite.db.profile.debug then
         local me = UnitName("player")
         if me then
             SendChatMessage("[" .. channel .. "] " .. msg, "WHISPER", nil, me)
@@ -120,7 +120,7 @@ function Utils:Whisper(name, msg)
     if not msg or msg == "" then return end
     msg = self:SanitizeChat(msg)
     local dest = name
-    if RLSuiteDB and RLSuiteDB.debug then
+    if RLSuite.db and RLSuite.db.profile.debug then
         dest = UnitName("player")
     end
     if dest then
@@ -273,7 +273,7 @@ function Utils:ColorToArray(c)
 end
 
 function Utils:GetThemeColors(theme)
-    local a = RLSuiteDB and RLSuiteDB.appearance or {}
+    local a = RLSuite.db and RLSuite.db.profile.appearance or {}
     if a.bg and a.bg.r then
         return {
             fill = self:ColorToArray(a.fill),
@@ -286,15 +286,15 @@ function Utils:GetThemeColors(theme)
 end
 
 function Utils:GetUIFont()
-    local a = RLSuiteDB and RLSuiteDB.appearance or {}
+    local a = RLSuite.db and RLSuite.db.profile.appearance or {}
     return a.font or "Fonts\\FRIZQT__.TTF", a.fontSize or 12
 end
 
 function Utils:WindowBackdrop(f)
     -- Tooltip border sits on the frame edge. insets 0 = fill goes to that same edge.
     local edge = 16
-    if RLSuiteDB and RLSuiteDB.appearance and RLSuiteDB.appearance.edgeSize then
-        edge = RLSuiteDB.appearance.edgeSize
+    if RLSuite.db and RLSuite.db.profile.appearance and RLSuite.db.profile.appearance.edgeSize then
+        edge = RLSuite.db.profile.appearance.edgeSize
     end
     if edge > 16 then edge = 16 end
     if edge < 8 then edge = 8 end
@@ -610,11 +610,11 @@ end
 
 -- Ritorna (creandola se serve) la sottotabella layout per una finestra.
 function Utils:WindowLayout(key)
-    RLSuiteDB.layout = RLSuiteDB.layout or {}
-    local t = RLSuiteDB.layout[key]
+    RLSuite.db.profile.layout = RLSuite.db.profile.layout or {}
+    local t = RLSuite.db.profile.layout[key]
     if not t then
         t = {}
-        RLSuiteDB.layout[key] = t
+        RLSuite.db.profile.layout[key] = t
     end
     return t
 end
@@ -868,7 +868,7 @@ function Utils:StartDbmTimer(seconds, label, icon)
         end
     end
 
-    if RLSuiteDB and RLSuiteDB.debug then
+    if RLSuite.db and RLSuite.db.profile.debug then
         self:Debug(string.format(L['DBM/BigWigs not available: timer "%s" not started.'], label))
     end
     return false

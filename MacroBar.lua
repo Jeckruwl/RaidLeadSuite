@@ -19,7 +19,7 @@ local KEYPAD_PAD = 8
 local KEYPAD_VGAP = 4
 
 function MB:Init()
-    self.db = RLSuiteDB.macrobar
+    self.db = RLSuite.db.profile.macrobar
     self:EnsurePhases()
     self.buttons = {}
     self.keypadButtons = {}
@@ -82,7 +82,7 @@ end
 
 function MB:BeginShiftDrag()
     local p = self:PhaseSettings()
-    if p and p.locked and not (RLSuiteDB and RLSuiteDB.anchorMode) then return end
+    if p and p.locked and not (RLSuite.db and RLSuite.db.profile.anchorMode) then return end
     if not self.frame then return end
     self._shiftDrag = true
     self.frame:StartMoving()
@@ -110,7 +110,7 @@ function MB:SetAnchorMode(on)
     if not f then return end
     on = on and true or false
     local function start(self2)
-        if not (RLSuiteDB and RLSuiteDB.anchorMode) then return end
+        if not (RLSuite.db and RLSuite.db.profile.anchorMode) then return end
         self2:StartMoving()
     end
     local function stop(self2)
@@ -232,8 +232,8 @@ function MB:CreateButtons()
 end
 
 function MB:DB()
-    if RLSuiteDB and RLSuiteDB.macrobar then
-        self.db = RLSuiteDB.macrobar
+    if RLSuite.db and RLSuite.db.profile.macrobar then
+        self.db = RLSuite.db.profile.macrobar
     end
     return self.db
 end
@@ -268,7 +268,7 @@ function MB:PhaseDefaults()
 end
 
 function MB:EnsurePhases()
-    local db = self:DB() or (RLSuiteDB and RLSuiteDB.macrobar)
+    local db = self:DB() or (RLSuite.db and RLSuite.db.profile.macrobar)
     if not db then return end
     self.db = db
     local defs = self:PhaseDefaults()
@@ -425,7 +425,7 @@ function MB:ApplyLayout()
     end
 
     self.frame:EnableMouse(true)
-    self.frame:SetMovable((not p.locked) or (RLSuiteDB and RLSuiteDB.anchorMode == true))
+    self.frame:SetMovable((not p.locked) or (RLSuite.db and RLSuite.db.profile.anchorMode == true))
     if self.macroHost then
         self.macroHost:EnableMouse(true)
     end
@@ -631,7 +631,7 @@ end
 
 function MB:GetMacroData(index, phase)
     phase = phase or RLSuite.context or "preraid"
-    local db = self:DB() or (RLSuiteDB and RLSuiteDB.macrobar)
+    local db = self:DB() or (RLSuite.db and RLSuite.db.profile.macrobar)
     if not db then return nil end
     db.macros = db.macros or {}
     local macros = db.macros[phase] or {}

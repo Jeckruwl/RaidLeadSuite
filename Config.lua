@@ -9,7 +9,7 @@ local CFG = RLSuite.config
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
 function CFG:Init()
-    self.db = RLSuiteDB
+    self.db = RLSuite.db.profile
     self.widgetId = 0
     self:CreateFrame()
 end
@@ -927,9 +927,9 @@ function CFG:PanelGeneralDebug()
     self:Header("Debug mode")
     self:Note(L["Simulates a raid group. Macros, LFM, rolls, loot and MS changes are whispered to you. Fake loot uses the raid selected in Groupmaking."])
     self:AddCheck(L["Enable debug mode"], function()
-        return RLSuiteDB.debug == true
+        return RLSuite.db.profile.debug == true
     end, function(v)
-        RLSuiteDB.debug = v and true or false
+        RLSuite.db.profile.debug = v and true or false
         if RLSuite.ApplyDebugMode then
             RLSuite:ApplyDebugMode()
         end
@@ -966,7 +966,7 @@ function CFG:PanelMain()
     self:Note(L["Unlocks the Raid Frame and MacroBar HUDs and shows them as movable placeholders. Other windows stay as usual."])
     local cb = CreateFrame("CheckButton", nil, self.content, "UICheckButtonTemplate")
     cb:SetPoint("TOPLEFT", self.content, "TOPLEFT", 8, self:NextY(24))
-    cb:SetChecked(RLSuiteDB.anchorMode and 1 or nil)
+    cb:SetChecked(RLSuite.db.profile.anchorMode and 1 or nil)
     local fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("LEFT", cb, "RIGHT", 2, 0)
     fs:SetText("Toggle Anchors")
@@ -982,7 +982,7 @@ end
 
 function CFG:UpdateAnchorCheck()
     if self.anchorCheck then
-        self.anchorCheck:SetChecked(RLSuiteDB.anchorMode and 1 or nil)
+        self.anchorCheck:SetChecked(RLSuite.db.profile.anchorMode and 1 or nil)
     end
 end
 
@@ -997,7 +997,7 @@ function CFG:RestoreMacroBar()
     if RLSuite.macrobar and RLSuite.macrobar.EnsurePhases then
         RLSuite.macrobar:EnsurePhases()
     end
-    local mb = RLSuiteDB.macrobar
+    local mb = RLSuite.db.profile.macrobar
     mb.enabled = true
     mb.locked = true
     mb.backdrop = true
@@ -1026,11 +1026,11 @@ function CFG:RestoreMacroBar()
 end
 
 function CFG:PanelMacroLayout()
-    self.db = RLSuiteDB
+    self.db = RLSuite.db.profile
     if RLSuite.macrobar and RLSuite.macrobar.EnsurePhases then
         RLSuite.macrobar:EnsurePhases()
     end
-    local mb = RLSuiteDB.macrobar
+    local mb = RLSuite.db.profile.macrobar
     mb.buttons = mb.buttons or 12
     mb.columns = mb.columns or 12
     mb.buttonSize = mb.buttonSize or 32
@@ -1134,7 +1134,7 @@ end
 function CFG:PanelSavedRaids()
     self:Header("Saved Raids")
     self:Note(L["Saves created with the SaveRaid button in the top bar. Click Load to restore Comp, MacroBar and Config (except General)."])
-    local list = RLSuiteDB.savedRaids or {}
+    local list = RLSuite.db.profile.savedRaids or {}
     if #list == 0 then
         self:Note(L["No saves yet."])
         return
@@ -1670,10 +1670,10 @@ end
 
 function CFG:GetMacroDB(phase)
     phase = phase or self.macroPhase or "preraid"
-    if not RLSuiteDB or not RLSuiteDB.macrobar then return {} end
-    RLSuiteDB.macrobar.macros = RLSuiteDB.macrobar.macros or {}
-    RLSuiteDB.macrobar.macros[phase] = RLSuiteDB.macrobar.macros[phase] or {}
-    return RLSuiteDB.macrobar.macros[phase]
+    if not RLSuite.db or not RLSuite.db.profile.macrobar then return {} end
+    RLSuite.db.profile.macrobar.macros = RLSuite.db.profile.macrobar.macros or {}
+    RLSuite.db.profile.macrobar.macros[phase] = RLSuite.db.profile.macrobar.macros[phase] or {}
+    return RLSuite.db.profile.macrobar.macros[phase]
 end
 
 function CFG:SaveMacroSlot()
@@ -1765,9 +1765,9 @@ end
 -- ============================================================
 
 function CFG:ApplyAll()
-    self.db = RLSuiteDB
+    self.db = RLSuite.db.profile
     if RLSuite.macrobar then
-        RLSuite.macrobar.db = RLSuiteDB and RLSuiteDB.macrobar
+        RLSuite.macrobar.db = RLSuite.db and RLSuite.db.profile.macrobar
         if RLSuite.macrobar.ApplyLayout then
             RLSuite.macrobar:ApplyLayout()
         end
