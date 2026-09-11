@@ -387,8 +387,11 @@ function MW:RegisterAllWindows()
         -- checkbox "Show specs in message") e le due colonne comp/class.
         -- Altezza: pila verticale title+dropdowns, gruppo slot (topRow),
         -- box "richieste" e blocco basso anteprima+bottoni.
-        local topH = 156
         local gm = RLSuite.groupmaking
+        if gm and gm.MinHeight then
+            return 500, gm:MinHeight()
+        end
+        local topH = 156
         if gm and gm.topRow then
             local th = gm.topRow:GetHeight()
             if th and th > 60 then topH = th end

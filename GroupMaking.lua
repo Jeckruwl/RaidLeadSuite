@@ -404,6 +404,25 @@ function GM:LayoutGroupPanels(rowW)
         self.classBar:SetHeight(math.max(40, h - 32))
     end
     self._layoutLock = false
+    self:SyncWhisplistHeight()
+end
+
+-- Altezza minima di resize di Groupmaking: topRow (dipende da 10/25) piu'
+-- la pila fissa di title+dropdown, box richieste e blocco anteprima+bottoni.
+function GM:MinHeight()
+    local topH = 156
+    if self.topRow then
+        local th = self.topRow:GetHeight()
+        if th and th > 60 then topH = th end
+    end
+    return topH + 286
+end
+
+-- La Whisplist e' una costola di Groupmaking: la sua altezza segue sempre
+-- l'altezza minima di resize di Groupmaking.
+function GM:SyncWhisplistHeight()
+    if not self.whisplistFrame then return end
+    self.whisplistFrame:SetHeight(self:MinHeight())
 end
 
 function GM:ClearSlot(index)
@@ -930,7 +949,7 @@ function GM:CreateWhisplistWindow()
     local f = CreateFrame("Frame", "RLSuiteWhisplist", self.mainFrame)
     f:SetPoint("TOPLEFT", self.mainFrame, "TOPRIGHT", 6, 0)
     f:SetWidth(380)
-    f:SetHeight(560)
+    f:SetHeight(self:MinHeight())
     f:SetFrameStrata("HIGH")
     f:EnableMouse(true)
     f:Hide()
@@ -1190,6 +1209,7 @@ end
 
 function GM:OpenWhisplist()
     if not self.whisplistFrame then return end
+    self:SyncWhisplistHeight()
     if self.mainFrame and not self.mainFrame:IsShown() then
         self.mainFrame:Show()
     end
