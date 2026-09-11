@@ -1416,7 +1416,7 @@ function GM:UpdateWhisplist()
         local row = CreateFrame("Button", nil, self.wlContent)
         self.wlRows[#self.wlRows + 1] = row
         row:EnableMouse(true)
-        row:RegisterForClicks("LeftButtonUp")
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         row:SetHeight(24)
         row:SetPoint("TOPLEFT", self.wlContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.wlContent, "TOPRIGHT", 0, -y)
@@ -1436,7 +1436,28 @@ function GM:UpdateWhisplist()
         text:SetText(info)
         row.text = text
 
-        row:SetScript("OnClick", function()
+        row:SetScript("OnClick", function(s, button)
+            if button == "RightButton" then
+                -- Debug mode: il clic destro elimina il giocatore senza
+                -- inviare il messaggio di decline. Rimando la rimozione di
+                -- un frame per non distruggere il bottone durante il click
+                -- (altrimenti i click successivi possono bloccarsi).
+                if RLSuite.DebugMode and RLSuite:DebugMode() and row.entry then
+                    self._wlRemoveNext = row.entry
+                    if not self._wlRemoveFrame then
+                        self._wlRemoveFrame = CreateFrame("Frame")
+                    end
+                    self._wlRemoveFrame:SetScript("OnUpdate", function(fr)
+                        fr:SetScript("OnUpdate", nil)
+                        if self._wlRemoveNext then
+                            local e = self._wlRemoveNext
+                            self._wlRemoveNext = nil
+                            self:RemoveWhisperEntry(e)
+                        end
+                    end)
+                end
+                return
+            end
             self:SelectWhisperEntry(i)
         end)
 
@@ -1550,27 +1571,34 @@ function GM:AskAchi()
     RLSuite.utils:Whisper(self.selectedEntry.name, "Do you have the achievement for this raid?")
 end
 
+-- Rimuove una entry (dati + riga) da Received whispers; se era la entry
+-- selezionata pulisce anche il pannello dei dettagli.
+function GM:RemoveWhisperEntry(entry)
+    if not entry then return end
+    local entries = self.whisperDB.entries or {}
+    for i, e in ipairs(entries) do
+        if e == entry then
+            table.remove(entries, i)
+            break
+        end
+    end
+    if self.selectedEntry == entry then
+        self.selectedEntry = nil
+        self.selectedEntryIndex = nil
+        if self.wlDetailName then self.wlDetailName:SetText(L["Select a player"]) end
+        if self.wlDetailInfo then self.wlDetailInfo:SetText("") end
+        if self.wlChatText then self.wlChatText:SetText("") end
+    end
+    self:UpdateWhisplist()
+end
+
 -- Decline: avvisa il giocatore che non e' stato preso e rimuove la sua
 -- entry (con tutta la cronologia) da Received whispers.
 function GM:DeclineSelected()
     if not self.selectedEntry then return end
     local name = self.selectedEntry.name
     RLSuite.utils:Whisper(name, "Sorry, you have not been selected for this raid.")
-
-    local entries = self.whisperDB.entries or {}
-    for i, e in ipairs(entries) do
-        if e == self.selectedEntry then
-            table.remove(entries, i)
-            break
-        end
-    end
-    self.selectedEntry = nil
-    self.selectedEntryIndex = nil
-
-    if self.wlDetailName then self.wlDetailName:SetText(L["Select a player"]) end
-    if self.wlDetailInfo then self.wlDetailInfo:SetText("") end
-    if self.wlChatText then self.wlChatText:SetText("") end
-    self:UpdateWhisplist()
+    self:RemoveWhisperEntry(self.selectedEntry)
 end
 
 function GM:SendCustomMessage()
