@@ -17,7 +17,10 @@ local LM_ROW_MIN_H = 26   -- altezza minima (una sola riga di testo)
 -- Non-overlapping roll/reroll countdowns (AceTimer named timers):
 -- restarting a roll cancels the previous timer instead of stacking a
 -- second one (which used to double the announcements).
+-- AceEvent-3.0 sostituisce il vecchio frame dedicato a CHAT_MSG_SYSTEM
+-- (roll di sistema); AceTimer-3.0 sostituisce ticker/pending OnUpdate.
 LibStub("AceTimer-3.0"):Embed(LM)
+LibStub("AceEvent-3.0"):Embed(LM)
 
 function LM:Init()
     self.db = RLSuite.db.profile.loot
@@ -247,18 +250,15 @@ end
 
 function LM:EnsureTicker()
     if self.remainTicker then return end
-    local f = CreateFrame("Frame")
-    f:SetScript("OnUpdate", function(s, elapsed)
-        s.t = (s.t or 0) + elapsed
-        if s.t < 1 then return end
-        s.t = 0
-        for _, rec in ipairs(LM.remainTexts or {}) do
-            if rec.fs and rec.entry then
-                rec.fs:SetText(LM:TradeRemaining(rec.entry))
-            end
+    self.remainTicker = self:ScheduleRepeatingTimer("TickRemaining", 1)
+end
+
+function LM:TickRemaining()
+    for _, rec in ipairs(self.remainTexts or {}) do
+        if rec.fs and rec.entry then
+            rec.fs:SetText(self:TradeRemaining(rec.entry))
         end
-    end)
-    self.remainTicker = f
+    end
 end
 
 function LM:SetPreMessage(msg)
@@ -319,38 +319,36 @@ end
 function LM:QueuePendingLoot(itemLink)
     self.pendingLoot = self.pendingLoot or {}
     table.insert(self.pendingLoot, {link = itemLink, tries = 0})
-    if self.pendingFrame then return end
-    local f = CreateFrame("Frame")
-    f.elapsed = 0
-    f:SetScript("OnUpdate", function(self2, elapsed)
-        self2.elapsed = self2.elapsed + elapsed
-        if self2.elapsed < 0.25 then return end
-        self2.elapsed = 0
-        local pending = LM.pendingLoot or {}
-        if #pending == 0 then
-            self2:SetScript("OnUpdate", nil)
-            LM.pendingFrame = nil
-            return
+    if self.pendingTimer then return end
+    self.pendingTimer = self:ScheduleRepeatingTimer("ProcessPendingLoot", 0.25)
+end
+
+function LM:ProcessPendingLoot()
+    local pending = self.pendingLoot or {}
+    if #pending == 0 then
+        if self.pendingTimer then
+            self:CancelTimer(self.pendingTimer)
+            self.pendingTimer = nil
         end
-        for i = #pending, 1, -1 do
-            local p = pending[i]
-            GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
-            pcall(function() GameTooltip:SetHyperlink(p.link) end)
-            GameTooltip:Hide()
-            local itemName, _, quality, _, _, _, _, _, _, itemTexture = GetItemInfo(p.link)
-            if itemName then
-                LM:AddToHistory(p.link, itemName, itemTexture, quality)
+        return
+    end
+    for i = #pending, 1, -1 do
+        local p = pending[i]
+        GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+        pcall(function() GameTooltip:SetHyperlink(p.link) end)
+        GameTooltip:Hide()
+        local itemName, _, quality, _, _, _, _, _, _, itemTexture = GetItemInfo(p.link)
+        if itemName then
+            self:AddToHistory(p.link, itemName, itemTexture, quality)
+            table.remove(pending, i)
+        else
+            p.tries = (p.tries or 0) + 1
+            if p.tries > 20 then
+                self:AddToHistory(p.link, "Unknown Item", "Interface\\Icons\\INV_Misc_QuestionMark")
                 table.remove(pending, i)
-            else
-                p.tries = (p.tries or 0) + 1
-                if p.tries > 20 then
-                    LM:AddToHistory(p.link, "Unknown Item", "Interface\\Icons\\INV_Misc_QuestionMark")
-                    table.remove(pending, i)
-                end
             end
         end
-    end)
-    self.pendingFrame = f
+    end
 end
 
 function LM:AddToHistory(itemLink, itemName, itemTexture, quality)
@@ -635,14 +633,11 @@ function LM:StartRoll(rollType)
     self.rollRemaining = self.currentRoll.timer
     self.rollTimer = self:ScheduleRepeatingTimer("RollTick", 1)
 
-    if self.rollFrame then
-        self.rollFrame:UnregisterEvent("CHAT_MSG_SYSTEM")
-    end
-    self.rollFrame = CreateFrame("Frame")
-    self.rollFrame:RegisterEvent("CHAT_MSG_SYSTEM")
-    self.rollFrame:SetScript("OnEvent", function(self2, event, msg)
-        LM:OnSystemRoll(msg)
-    end)
+    self:RegisterEvent("CHAT_MSG_SYSTEM", "OnSystemRollMessage")
+end
+
+function LM:OnSystemRollMessage(event, msg)
+    self:OnSystemRoll(msg)
 end
 
 -- Cancels the running roll and reroll countdown timers, if any.
@@ -711,6 +706,7 @@ function LM:AnnounceWinner()
     if #self.currentRoll.rolls == 0 then
         RLSuite.utils:SendChat("No rolls received for " .. (self.currentRoll.item.itemName or "Unknown"), "RAID")
         self:ResetButtons()
+        self:UnregisterEvent("CHAT_MSG_SYSTEM")
         return
     end
 
@@ -740,9 +736,7 @@ function LM:AnnounceWinner()
     end
 
     self:ResetButtons()
-    if self.rollFrame then
-        self.rollFrame:UnregisterEvent("CHAT_MSG_SYSTEM")
-    end
+    self:UnregisterEvent("CHAT_MSG_SYSTEM")
 end
 
 function LM:DoReroll()

@@ -74,10 +74,25 @@ function GM:Init()
     self.selectedEntry = nil
     self.loadingComp = true
     self:EmbedAceLibraries()
+    self:RegisterModuleEvents()
     self:CreateMainWindow()
     self:CreateWhisplistWindow()
     self:LoadCompFromDB()
     self.loadingComp = false
+end
+
+-- Eventi del modulo via AceEvent-3.0 (prima erano due frame dedicati creati
+-- al load del file: saveFrame per PLAYER_LOGOUT e rosterFrame per il roster).
+function GM:RegisterModuleEvents()
+    self:RegisterEvent("PLAYER_LOGOUT", function()
+        self:SaveComp()
+    end)
+    self:RegisterEvent("RAID_ROSTER_UPDATE", function()
+        self:UpdateWLGroups()
+    end)
+    self:RegisterEvent("GROUP_ROSTER_UPDATE", function()
+        self:UpdateWLGroups()
+    end)
 end
 
 -- Incorpora le librerie Ace per le nuove funzioni (eventi del Calendario
@@ -899,28 +914,18 @@ function GM:StartSpam()
     self.spamActive = true
     if self.spamBtn then self.spamBtn:SetText("Stop Spam") end
     self:DoSpam()
-    self.spamElapsed = 0
-    self.spamInterval = self.db.spamInterval or 60
-    if not self.spamFrame then
-        self.spamFrame = CreateFrame("Frame")
-    end
-    self.spamFrame:SetScript("OnUpdate", function(self2, elapsed)
-        GM.spamElapsed = GM.spamElapsed + elapsed
-        if GM.spamElapsed >= GM.spamInterval then
-            GM.spamElapsed = 0
-            GM:DoSpam()
-        end
-    end)
-    self.spamFrame:Show()
+    local interval = self.db.spamInterval or 60
+    if self.spamTimer then self:CancelTimer(self.spamTimer) end
+    self.spamTimer = self:ScheduleRepeatingTimer("DoSpam", interval)
     RLSuite.utils:Print(L["Spammer started."])
 end
 
 function GM:StopSpam()
     self.spamActive = false
     if self.spamBtn then self.spamBtn:SetText("Start Spam") end
-    if self.spamFrame then
-        self.spamFrame:SetScript("OnUpdate", nil)
-        self.spamFrame:Hide()
+    if self.spamTimer then
+        self:CancelTimer(self.spamTimer)
+        self.spamTimer = nil
     end
     RLSuite.utils:Print(L["Spammer stopped."])
 end
@@ -2082,17 +2087,9 @@ function GM:UpdateWhisplist()
                 -- (altrimenti i click successivi possono bloccarsi).
                 if RLSuite.DebugMode and RLSuite:DebugMode() and row.entry then
                     self._wlRemoveNext = row.entry
-                    if not self._wlRemoveFrame then
-                        self._wlRemoveFrame = CreateFrame("Frame")
-                    end
-                    self._wlRemoveFrame:SetScript("OnUpdate", function(fr)
-                        fr:SetScript("OnUpdate", nil)
-                        if self._wlRemoveNext then
-                            local e = self._wlRemoveNext
-                            self._wlRemoveNext = nil
-                            self:RemoveWhisperEntry(e)
-                        end
-                    end)
+                    -- AceTimer-3.0: rimanda la rimozione al prossimo tick
+                    -- (prima era un frame OnUpdate monouso).
+                    self:ScheduleTimer("FlushRemoveWhisper", 0)
                 end
                 return
             end
@@ -2105,28 +2102,33 @@ function GM:UpdateWhisplist()
     self:StyleWhisperRows()
 end
 
+function GM:FlushRemoveWhisper()
+    if self._wlRemoveNext then
+        local e = self._wlRemoveNext
+        self._wlRemoveNext = nil
+        self:RemoveWhisperEntry(e)
+    end
+end
+
 -- Stile delle righe dei giocatori: riga selezionata evidenziata, righe con
--- messaggi non letti con l'accento dorato "pulsante" stile Blizzard.
+-- messaggi non letti con l'accento dorato "pulsante" stile Blizzard. Il
+-- lampeggio ora e' un singolo timer AceTimer-3.0 (prima: OnUpdate per riga).
 function GM:StyleWhisperRows()
+    local anyUnread = false
     for i, row in ipairs(self.wlRows or {}) do
         local entry = row.entry
         local isSelected = (i == self.selectedEntryIndex)
         if isSelected then
             RLSuite.utils:SkinRow(row, true)
-            row:SetScript("OnUpdate", nil)
             if row.text then row.text:SetTextColor(1, 1, 1) end
         elseif entry and entry.unread then
+            anyUnread = true
             RLSuite.utils:SkinRow(row, false)
             row:SetBackdropColor(0.22, 0.16, 0.02, 0.95)
             row:SetBackdropBorderColor(1, 0.82, 0, 1)
-            row:SetScript("OnUpdate", function(r)
-                local v = (math.sin((GetTime() or 0) * 5) + 1) / 2
-                r:SetBackdropBorderColor(0.45 + 0.55 * v, 0.32 + 0.50 * v, 0.05, 1)
-            end)
             if row.text then row.text:SetTextColor(1, 0.82, 0) end
         else
             RLSuite.utils:SkinRow(row, false)
-            row:SetScript("OnUpdate", nil)
             if row.text then
                 if entry and entry.invited then
                     row.text:SetTextColor(0.5, 0.5, 0.5)
@@ -2134,6 +2136,25 @@ function GM:StyleWhisperRows()
                     row.text:SetTextColor(1, 1, 1)
                 end
             end
+        end
+    end
+
+    -- Un solo timer di lampeggio per tutte le righe non lette.
+    if anyUnread then
+        if not self.wlPulseTimer then
+            self.wlPulseTimer = self:ScheduleRepeatingTimer("PulseUnreadRows", 0.1)
+        end
+    elseif self.wlPulseTimer then
+        self:CancelTimer(self.wlPulseTimer)
+        self.wlPulseTimer = nil
+    end
+end
+
+function GM:PulseUnreadRows()
+    local v = (math.sin((GetTime() or 0) * 5) + 1) / 2
+    for i, row in ipairs(self.wlRows or {}) do
+        if row.entry and row.entry.unread and i ~= self.selectedEntryIndex then
+            row:SetBackdropBorderColor(0.45 + 0.55 * v, 0.32 + 0.50 * v, 0.05, 1)
         end
     end
 end
@@ -2321,22 +2342,3 @@ function GM:SaveComp()
         self.db.otherReq = self.otherEdit:GetText() or ""
     end
 end
-
-local saveFrame = CreateFrame("Frame")
-saveFrame:RegisterEvent("PLAYER_LOGOUT")
-saveFrame:SetScript("OnEvent", function()
-    if RLSuite.groupmaking and RLSuite.groupmaking.SaveComp then
-        RLSuite.groupmaking:SaveComp()
-    end
-end)
-
--- Il pannello Raid Group mostra il raid reale: si aggiorna a ogni cambio
--- del roster (inviti, spostamenti di gruppo, uscite).
-local rosterFrame = CreateFrame("Frame")
-rosterFrame:RegisterEvent("RAID_ROSTER_UPDATE")
-rosterFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-rosterFrame:SetScript("OnEvent", function()
-    if RLSuite.groupmaking and RLSuite.groupmaking.UpdateWLGroups then
-        RLSuite.groupmaking:UpdateWLGroups()
-    end
-end)

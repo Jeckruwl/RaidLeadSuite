@@ -7,6 +7,11 @@ local RF = RLSuite.raidFrame
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
+-- Ace3: eventi (roster/aura/combat-log) via AceEvent-3.0, il refresh
+-- periodico a 0.5s via AceTimer-3.0 (al posto del vecchio frame OnUpdate).
+LibStub("AceEvent-3.0"):Embed(RF)
+LibStub("AceTimer-3.0"):Embed(RF)
+
 function RF:Init()
     self.db = RLSuite.db.profile.raidframe
     self.rows = {}
@@ -73,33 +78,25 @@ function RF:CreateFrame()
 end
 
 function RF:RegisterEvents()
-    local f = CreateFrame("Frame")
-    f:RegisterEvent("RAID_ROSTER_UPDATE")
-    f:RegisterEvent("UNIT_HEALTH")
-    f:RegisterEvent("UNIT_MANA")
-    f:RegisterEvent("UNIT_AURA")
-    f:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-    f:SetScript("OnEvent", function(self2, event, ...)
-        if event == "RAID_ROSTER_UPDATE" then
-            RF:Rebuild()
-        elseif event == "UNIT_HEALTH" or event == "UNIT_MANA" or event == "UNIT_AURA" then
-            local unit = ...
-            RF:UpdateUnit(unit)
-        elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
-            -- 3.3.5: timestamp, subEvent, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, ...
-            local _, subEvent, _, sourceName, _, _, _, _, spellId = ...
-            if subEvent == "SPELL_CAST_SUCCESS" then
-                RF:OnSpellCast(sourceName, spellId)
-            end
-        end
-    end)
-    f:SetScript("OnUpdate", function(self2, elapsed)
-        self2.timer = (self2.timer or 0) + elapsed
-        if self2.timer > 0.5 then
-            self2.timer = 0
-            RF:UpdateAll()
-        end
-    end)
+    self:RegisterEvent("RAID_ROSTER_UPDATE", function() RF:Rebuild() end)
+    self:RegisterEvent("UNIT_HEALTH", "OnUnitEvent")
+    self:RegisterEvent("UNIT_MANA", "OnUnitEvent")
+    self:RegisterEvent("UNIT_AURA", "OnUnitEvent")
+    self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", "OnCombatLog")
+    -- refresh periodico (prima un frame OnUpdate con accumulo a 0.5s)
+    self:ScheduleRepeatingTimer("UpdateAll", 0.5)
+end
+
+function RF:OnUnitEvent(event, unit)
+    self:UpdateUnit(unit)
+end
+
+function RF:OnCombatLog(event, ...)
+    -- 3.3.5: timestamp, subEvent, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, ...
+    local _, subEvent, _, sourceName, _, _, _, _, spellId = ...
+    if subEvent == "SPELL_CAST_SUCCESS" then
+        self:OnSpellCast(sourceName, spellId)
+    end
 end
 
 function RF:GetRoster()

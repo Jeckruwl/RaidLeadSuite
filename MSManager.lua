@@ -7,6 +7,10 @@ local MSM = RLSuite.msManager
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
+-- Ace3: il conto alla rovescia dei 40s di ascolto usa AceTimer-3.0
+-- (prima era un frame OnUpdate con accumulo manuale del tempo).
+LibStub("AceTimer-3.0"):Embed(MSM)
+
 function MSM:Init()
     self.db = RLSuite.db.profile.mschanges or {}
     RLSuite.db.profile.mschanges = self.db
@@ -127,10 +131,9 @@ end
 function MSM:StopListening(announce)
     self.listening = false
     self.listenUntil = nil
-    if self.listenFrame then
-        self.listenFrame:SetScript("OnUpdate", nil)
-        self.listenFrame:Hide()
-        self.listenFrame = nil
+    if self.listenTimer then
+        self:CancelTimer(self.listenTimer)
+        self.listenTimer = nil
     end
     if announce then
         RLSuite.utils:SendChat("MS CHANGES closed, no more MS changes will be saved", "RAID")
@@ -230,18 +233,12 @@ function MSM:RequestChanges()
     RLSuite.utils:SendChat(msg, "RAID")
     -- bar timer in DBM/BigWigs if installed
     RLSuite.utils:StartDbmTimer(dur, "MS Changes", "Interface\\Icons\\Spell_Nature_AstralRecall")
-    local f = CreateFrame("Frame")
-    f:SetScript("OnUpdate", function(self2, elapsed)
-        if not MSM.listening or not MSM.listenUntil then
-            MSM:StopListening(false)
-            return
-        end
-        if GetTime() >= MSM.listenUntil then
-            MSM:StopListening(true)
-        end
-    end)
-    f:Show()
-    self.listenFrame = f
+    self.listenTimer = self:ScheduleTimer("OnListenExpire", dur)
+end
+
+function MSM:OnListenExpire()
+    if not self.listening then return end
+    self:StopListening(true)
 end
 
 function MSM:GenerateMessage()
