@@ -787,6 +787,20 @@ check(bool(rt.eval("#RLSuite.groupmaking.wlRows == 9")), "deferred rebuild rende
 rt.execute("RLSuite.groupmaking:SelectWhisperEntryByRef(RLSuite.groupmaking.whisperDB.entries[1])")
 check(bool(rt.eval("RLSuite.groupmaking.selectedEntry == RLSuite.groupmaking.whisperDB.entries[1]")), "left-click selects the next row by reference after removal")
 
+# --- Whisper rows are pooled (never destroyed): the click-bug root cause ---
+rt.execute("ROW_1 = RLSuite.groupmaking.wlRows[1]")
+rt.execute("RLSuite.groupmaking:UpdateWhisplist()")
+check(bool(rt.eval("RLSuite.groupmaking.wlRows[1] == ROW_1")), "row frames are REUSED across rebuilds (no destroy/recreate)")
+rt.execute("RLSuite.groupmaking:QueueRemoveWhisperEntry(RLSuite.groupmaking.whisperDB.entries[1])")
+rt.execute("RLSuite.groupmaking:FlushWhisperRebuild()")
+rt.execute("ROW_1B = RLSuite.groupmaking.wlRows[1]")
+rt.execute("RLSuite.groupmaking:UpdateWhisplist()")
+check(bool(rt.eval("RLSuite.groupmaking.wlRows[1] == ROW_1B")), "row frames stay identical after right-click removal + rebuild")
+# Simulate a left-click on a reused row: it must select the right entry.
+rt.execute("TARGET = RLSuite.groupmaking.whisperDB.entries[1]")
+rt.execute("local r = RLSuite.groupmaking.wlRows[1]; if r and r._scripts.OnClick then r._scripts.OnClick(r, 'LeftButton') end")
+check(bool(rt.eval("RLSuite.groupmaking.selectedEntry == TARGET")), "clicking a reused row selects its current entry")
+
 # --- Autoinviter manual list: typeable + Enter adds + Auto invite now + label ---
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoArmBtn:GetText() == 'Start Autoinviter'")), "arm button reads 'Start Autoinviter'")
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoNowBtn ~= nil")), "Auto invite now button exists")

@@ -2468,16 +2468,51 @@ function GM:SkinInner()
     if self.ieAutoCalBox then u:SkinBox(self.ieAutoCalBox) end
 end
 
+-- Crea (una sola volta) una riga della Whisplist. Le righe vengono RIUSATE:
+-- un bottone non viene MAI distrutto durante il click. Distruggere il frame
+-- cliccato dentro l'OnClick lascia il client con lo stato del mouse "morto"
+-- e le righe successive smettono di rispondere ai click (questo e' il bug
+-- dei nomi non cliccabili). L'handler legge SEMPRE l'entry corrente dal
+-- frame (s.entry), mai da una variabile catturata nel loop.
+function GM:CreateWhisperRow()
+    local row = CreateFrame("Button", nil, self.wlContent)
+    row:SetHeight(24)
+    row:EnableMouse(true)
+    if row.SetMouseClickEnabled then row:SetMouseClickEnabled(true) end
+    row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+
+    local text = FontStr(row, "OVERLAY", 12)
+    text:SetPoint("LEFT", row, "LEFT", 6, 0)
+    text:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    text:SetJustifyH("LEFT")
+    row.text = text
+
+    row:SetScript("OnClick", function(s, button)
+        if button == "RightButton" then
+            -- Debug mode: il clic destro elimina il giocatore senza
+            -- inviare il messaggio di decline.
+            if RLSuite.DebugMode and RLSuite:DebugMode() then
+                self:QueueRemoveWhisperEntry(s.entry)
+            end
+            return
+        end
+        self:SelectWhisperEntryByRef(s.entry)
+    end)
+    return row
+end
+
 function GM:UpdateWhisplist()
     if not self.wlContent then return end
     if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
     if self.SkinInner then self:SkinInner() end
-    for _, child in ipairs(self.wlRows or {}) do
-        if child.SetScript then child:SetScript("OnUpdate", nil) end
-        child:Hide()
-        child:SetParent(nil)
-    end
-    self.wlRows = {}
+
+    -- Pool di righe riusate: le righe non vengono piu' distrutte e ricreate,
+    -- vengono solo riposizionate e riempite di nuovi dati. Il pool cresce
+    -- fino al massimo numero di giocatori mai mostrato e poi viene riciclato.
+    self.wlRowPool = self.wlRowPool or {}
+    local pool = self.wlRowPool
+    local active = {}
+
     if self.wlScroll then
         local w = self.wlScroll:GetWidth()
         if w and w > 40 then self.wlContent:SetWidth(w) end
@@ -2497,19 +2532,14 @@ function GM:UpdateWhisplist()
 
     local y = 0
     for i, entry in ipairs(entries) do
-        local row = CreateFrame("Button", nil, self.wlContent)
-        self.wlRows[#self.wlRows + 1] = row
-        row:EnableMouse(true)
-        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        local row = pool[i] or self:CreateWhisperRow()
+        pool[i] = row
+        row:ClearAllPoints()
         row:SetHeight(24)
         row:SetPoint("TOPLEFT", self.wlContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.wlContent, "TOPRIGHT", 0, -y)
         row.entry = entry
 
-        local text = FontStr(row, "OVERLAY", 12)
-        text:SetPoint("LEFT", row, "LEFT", 6, 0)
-        text:SetPoint("RIGHT", row, "RIGHT", -6, 0)
-        text:SetJustifyH("LEFT")
         local info = entry.name or "Unknown"
         if entry.class then
             info = info .. " (" .. string.sub(entry.class, 1, 1) .. string.lower(string.sub(entry.class, 2)) .. ")"
@@ -2517,23 +2547,23 @@ function GM:UpdateWhisplist()
         if entry.gs then info = info .. " GS:" .. entry.gs end
         local n = #self:GetEntryMessages(entry)
         if n > 1 then info = info .. "  [" .. n .. "]" end
-        text:SetText(info)
-        row.text = text
+        if row.text then row.text:SetText(info) end
+        row:Show()
 
-        row:SetScript("OnClick", function(s, button)
-            if button == "RightButton" then
-                -- Debug mode: il clic destro elimina il giocatore senza
-                -- inviare il messaggio di decline.
-                if RLSuite.DebugMode and RLSuite:DebugMode() then
-                    self:QueueRemoveWhisperEntry(row.entry)
-                end
-                return
-            end
-            self:SelectWhisperEntryByRef(row.entry)
-        end)
-
+        active[#active + 1] = row
         y = y + 26
     end
+
+    -- Righe in eccesso: nascoste (e non piu' cliccabili) ma NON distrutte.
+    for i = #entries + 1, #pool do
+        local row = pool[i]
+        if row then
+            row:Hide()
+            row.entry = nil
+        end
+    end
+
+    self.wlRows = active
     self.wlContent:SetHeight(math.max(y, 1))
     self:StyleWhisperRows()
 end
