@@ -839,6 +839,13 @@ end
 -- ============================================================
 -- WHISPER
 -- ============================================================
+local function FormatWhisperTime(t)
+    if not t or not date then return "" end
+    local ok, s = pcall(date, "%H:%M", t)
+    if ok and type(s) == "string" and s ~= "" then return s end
+    return ""
+end
+
 function GM:OnWhisper(sender, msg)
     if not self.spamActive then return end
     local me = UnitName("player")
@@ -850,19 +857,60 @@ function GM:OnWhisper(sender, msg)
             return
         end
     end
-    local entry = {
-        name = sender,
-        rawMsg = msg,
-        class = self:ExtractClassFromWhisper(msg),
-        role = self:ExtractRoleFromWhisper(msg),
-        spec = self:ExtractSpecFromWhisper(msg),
-        gs = self:ExtractGSFromWhisper(msg),
-        time = time(),
-        invited = false,
-    }
-    table.insert(self.whisperDB.entries, 1, entry)
+
+    -- Un solo ingresso per giocatore: i messaggi vengono accodati.
+    local entries = self.whisperDB.entries
+    local entry
+    for i = #entries, 1, -1 do
+        if entries[i].name == sender then
+            entry = entries[i]
+            table.remove(entries, i)
+            break
+        end
+    end
+
+    if not entry then
+        entry = {
+            name = sender,
+            class = self:ExtractClassFromWhisper(msg),
+            role = self:ExtractRoleFromWhisper(msg),
+            spec = self:ExtractSpecFromWhisper(msg),
+            gs = self:ExtractGSFromWhisper(msg),
+            invited = false,
+            messages = {},
+        }
+    else
+        -- integra solo le info ancora mancanti
+        local class = self:ExtractClassFromWhisper(msg)
+        if class and not entry.class then entry.class = class end
+        if not entry.role then entry.role = self:ExtractRoleFromWhisper(msg) end
+        local spec = self:ExtractSpecFromWhisper(msg)
+        if spec and not entry.spec then entry.spec = spec end
+        local gs = self:ExtractGSFromWhisper(msg)
+        if gs then entry.gs = gs end
+        entry.messages = entry.messages or {}
+        -- migra un eventuale dato vecchio (rawMsg singolo)
+        if #entry.messages == 0 and entry.rawMsg then
+            table.insert(entry.messages, { msg = entry.rawMsg, time = entry.time })
+            entry.rawMsg = nil
+        end
+    end
+
+    table.insert(entry.messages, { msg = msg, time = time() })
+    table.insert(entries, 1, entry)
+
     self:UpdateWhisplist()
     RLSuite.utils:Print(string.format(L["Whisper from %s received."], sender))
+end
+
+-- Lista dei messaggi di un ingresso (gestisce anche il vecchio formato).
+function GM:GetEntryMessages(entry)
+    if entry and entry.messages and #entry.messages > 0 then
+        return entry.messages
+    elseif entry and entry.rawMsg then
+        return { { msg = entry.rawMsg, time = entry.time } }
+    end
+    return {}
 end
 
 -- Cached class keywords: English plus the localized male/female class names
@@ -1024,12 +1072,23 @@ function GM:CreateWhisplistWindow()
     self.wlChat:SetHeight(90)
     RLSuite.utils:SkinBox(self.wlChat)
 
-    self.wlChatText = FontStr(self.wlChat, "OVERLAY", 12)
-    self.wlChatText:SetPoint("TOPLEFT", self.wlChat, "TOPLEFT", 6, -6)
-    self.wlChatText:SetPoint("BOTTOMRIGHT", self.wlChat, "BOTTOMRIGHT", -6, 6)
+    -- Scroll: qui si vedono TUTTI i messaggi del giocatore selezionato.
+    self.wlChatScroll = CreateFrame("ScrollFrame", "RLSuiteWLChatScroll", self.wlChat, "UIPanelScrollFrameTemplate")
+    self.wlChatScroll:SetPoint("TOPLEFT", self.wlChat, "TOPLEFT", 6, -6)
+    self.wlChatScroll:SetPoint("BOTTOMRIGHT", self.wlChat, "BOTTOMRIGHT", -26, 6)
+
+    self.wlChatText = self.wlChatScroll:CreateFontString(nil, "OVERLAY", nil)
+    self.wlChatText:SetFont(FONT_FILE, 12, "")
     self.wlChatText:SetJustifyH("LEFT")
     self.wlChatText:SetJustifyV("TOP")
+    self.wlChatText:SetWordWrap(true)
     self.wlChatText:SetText("")
+    self.wlChatScroll:SetScrollChild(self.wlChatText)
+    self.wlChatScroll:SetScript("OnSizeChanged", function(s, w, h)
+        if GM.wlChatText and w and w > 20 then
+            GM.wlChatText:SetWidth(w)
+        end
+    end)
 
     self.wlInviteBtn = CreateFrame("Button", nil, self.wlDetailBox, "UIPanelButtonTemplate")
     self.wlInviteBtn:SetSize(66, 22)
@@ -1257,6 +1316,17 @@ function GM:UpdateWhisplist()
     end
 
     local entries = self.whisperDB.entries or {}
+
+    -- Selezione per riferimento: sopravvive a riordini e aggregazioni.
+    local selectedIndex
+    for i, e in ipairs(entries) do
+        if e == self.selectedEntry then
+            selectedIndex = i
+            break
+        end
+    end
+    self.selectedEntryIndex = selectedIndex
+
     local y = 0
     for i, entry in ipairs(entries) do
         local row = CreateFrame("Button", nil, self.wlContent)
@@ -1266,7 +1336,7 @@ function GM:UpdateWhisplist()
         row:SetHeight(24)
         row:SetPoint("TOPLEFT", self.wlContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.wlContent, "TOPRIGHT", 0, -y)
-        RLSuite.utils:SkinRow(row, self.selectedEntryIndex == i)
+        RLSuite.utils:SkinRow(row, selectedIndex == i)
 
         local text = FontStr(row, "OVERLAY", 12)
         text:SetPoint("LEFT", row, "LEFT", 6, 0)
@@ -1277,6 +1347,8 @@ function GM:UpdateWhisplist()
             info = info .. " (" .. string.sub(entry.class, 1, 1) .. string.lower(string.sub(entry.class, 2)) .. ")"
         end
         if entry.gs then info = info .. " GS:" .. entry.gs end
+        local n = #self:GetEntryMessages(entry)
+        if n > 1 then info = info .. "  [" .. n .. "]" end
         text:SetText(info)
         if entry.invited then
             text:SetTextColor(0.5, 0.5, 0.5)
@@ -1308,7 +1380,19 @@ function GM:SelectWhisperEntry(index)
     if entry.spec then info = info .. "Spec: " .. entry.spec .. "\n" end
     if entry.gs then info = info .. "GS: " .. entry.gs .. "\n" end
     if self.wlDetailInfo then self.wlDetailInfo:SetText(info) end
-    if self.wlChatText then self.wlChatText:SetText("Whisper: " .. (entry.rawMsg or "")) end
+
+    if self.wlChatText then
+        local lines = {}
+        for _, m in ipairs(self:GetEntryMessages(entry)) do
+            table.insert(lines, "[" .. FormatWhisperTime(m.time) .. "] " .. (m.msg or ""))
+        end
+        local w = self.wlChatScroll and self.wlChatScroll:GetWidth()
+        self.wlChatText:SetWidth((w and w > 20 and w) or 200)
+        self.wlChatText:SetText(table.concat(lines, "\n"))
+        if self.wlChatScroll then
+            self.wlChatScroll:SetVerticalScroll(0)
+        end
+    end
 end
 
 -- Aggiorna solo l'evidenziazione delle righe gia' presenti (niente rebuild):
@@ -1330,6 +1414,8 @@ function GM:InviteSelected()
         return
     end
     InviteUnit(self.selectedEntry.name)
+    self.selectedEntry.invited = true
+    self:UpdateWhisplist()
 end
 
 function GM:AskGS()
