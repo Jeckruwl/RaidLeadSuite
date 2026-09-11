@@ -1077,16 +1077,26 @@ function GM:CreateWhisplistWindow()
     self.wlChatScroll:SetPoint("TOPLEFT", self.wlChat, "TOPLEFT", 6, -6)
     self.wlChatScroll:SetPoint("BOTTOMRIGHT", self.wlChat, "BOTTOMRIGHT", -26, 6)
 
-    self.wlChatText = self.wlChatScroll:CreateFontString(nil, "OVERLAY", nil)
+    -- SetScrollChild richiede un Frame: il testo vive dentro wlChatContent.
+    self.wlChatContent = CreateFrame("Frame", nil, self.wlChatScroll)
+    self.wlChatContent:SetWidth(200)
+    self.wlChatScroll:SetScrollChild(self.wlChatContent)
+
+    self.wlChatText = self.wlChatContent:CreateFontString(nil, "OVERLAY", nil)
+    self.wlChatText:SetPoint("TOPLEFT", self.wlChatContent, "TOPLEFT", 0, 0)
+    self.wlChatText:SetPoint("TOPRIGHT", self.wlChatContent, "TOPRIGHT", 0, 0)
     self.wlChatText:SetFont(FONT_FILE, 12, "")
     self.wlChatText:SetJustifyH("LEFT")
     self.wlChatText:SetJustifyV("TOP")
     self.wlChatText:SetWordWrap(true)
     self.wlChatText:SetText("")
-    self.wlChatScroll:SetScrollChild(self.wlChatText)
+
     self.wlChatScroll:SetScript("OnSizeChanged", function(s, w, h)
-        if GM.wlChatText and w and w > 20 then
-            GM.wlChatText:SetWidth(w)
+        if GM.wlChatContent and w and w > 20 then
+            GM.wlChatContent:SetWidth(w)
+            if GM.wlChatText and GM.wlChatText.GetStringHeight then
+                GM.wlChatContent:SetHeight(math.max(GM.wlChatText:GetStringHeight(), 1))
+            end
         end
     end)
 
@@ -1386,9 +1396,10 @@ function GM:SelectWhisperEntry(index)
         for _, m in ipairs(self:GetEntryMessages(entry)) do
             table.insert(lines, "[" .. FormatWhisperTime(m.time) .. "] " .. (m.msg or ""))
         end
-        local w = self.wlChatScroll and self.wlChatScroll:GetWidth()
-        self.wlChatText:SetWidth((w and w > 20 and w) or 200)
         self.wlChatText:SetText(table.concat(lines, "\n"))
+        if self.wlChatContent and self.wlChatText.GetStringHeight then
+            self.wlChatContent:SetHeight(math.max(self.wlChatText:GetStringHeight(), 1))
+        end
         if self.wlChatScroll then
             self.wlChatScroll:SetVerticalScroll(0)
         end
