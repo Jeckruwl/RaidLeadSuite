@@ -58,6 +58,17 @@ local defaults = {
     },
     whisplist = {
         entries = {},
+        autoinvite = {
+            mode = "manual",   -- "manual" | "calendar"
+            names = "",
+            hour = 19,
+            minute = 0,
+            eventIndex = nil,
+            eventTitle = nil,
+            eventDay = nil,
+            eventCount = 0,
+            enabled = false,
+        },
     },
     raidframe = {
         enabled = true,
@@ -433,7 +444,8 @@ function RLSuite:PrintHelp()
     p(L["  /rls              Tab bar"])
     p(L["  /rls help         This list"])
     p(L["  /rls group        Groupmaking tab"])
-    p(L["  /rls whisplist    Whisplist panel"])
+    p(L["  /rls inviteengine InviteEngine panel (whisper + auto-invite)"])
+    p(L["  /rls whisplist    InviteEngine panel (alias)"])
     p(L["  /rls macro        Config -> Macros (editor)"])
     p(L["  /rls macrobar     HUD MacroBar"])
     p(L["  /rls raidframe    Raid Frame tab (settings)"])
@@ -456,7 +468,7 @@ SlashCmdList["RLSUITE"] = function(msg)
         if RLSuite.raidFrame then RLSuite.raidFrame:Toggle() end
     elseif msg == "group" then
         if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("group") end
-    elseif msg == "whisplist" or msg == "wl" then
+    elseif msg == "whisplist" or msg == "wl" or msg == "inviteengine" or msg == "ie" then
         if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("group") end
         if RLSuite.groupmaking and RLSuite.groupmaking.OpenWhisplist then
             RLSuite.groupmaking:OpenWhisplist()
@@ -714,10 +726,13 @@ function RLSuite:ApplySavedRaidToUI()
             end
         end
     end
-    -- Whisplist
+    -- InviteEngine (ex-Whisplist)
     if self.groupmaking and self.groupmaking.whisplistFrame and self.groupmaking.whisplistFrame:IsShown() then
         if self.groupmaking.UpdateWhisplist then
             self.groupmaking:UpdateWhisplist()
+        end
+        if self.groupmaking.ieActiveTab == "auto" and self.groupmaking.RefreshAutoinviter then
+            self.groupmaking:RefreshAutoinviter()
         end
     end
     -- MacroBar

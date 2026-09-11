@@ -27,7 +27,8 @@ do
     L["  /rls              Tab bar"] = true
     L["  /rls help         This list"] = true
     L["  /rls group        Groupmaking tab"] = true
-    L["  /rls whisplist    Whisplist panel"] = true
+    L["  /rls inviteengine InviteEngine panel (whisper + auto-invite)"] = true
+    L["  /rls whisplist    InviteEngine panel (alias)"] = true
     L["  /rls macro        Config -> Macros (editor)"] = true
     L["  /rls macrobar     HUD MacroBar"] = true
     L["  /rls raidframe    Raid Frame tab (settings)"] = true
@@ -66,6 +67,26 @@ do
     L["Received whispers"] = true
     L["Raid Group"] = true
     L["Select a player"] = true
+    -- InviteEngine (ex-Whisplist): tab + Autoinviter
+    L["InviteEngine"] = true
+    L["Whisplist"] = true
+    L["Autoinviter"] = true
+    L["Manual list"] = true
+    L["Calendar event"] = true
+    L["Names (one per line)"] = true
+    L["Raid event"] = true
+    L["Refresh"] = true
+    L["No raid events today"] = true
+    L["%d players signed up"] = true
+    L["Invite at"] = true
+    L["(server time)"] = true
+    L["Start auto-invite"] = true
+    L["Stop auto-invite"] = true
+    L["Autoinviter: no names to invite."] = true
+    L["Autoinviter armed: %d names."] = true
+    L["Autoinviter: all invites sent."] = true
+    L["Armed: inviting in %d:%02d (%d names)"] = true
+    L["Inviting %d/%d..."] = true
     L["Slot already taken!"] = true
     L["Class not recognized for %s"] = true
     L["%s invited to slot %d"] = true

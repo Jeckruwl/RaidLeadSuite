@@ -11,12 +11,17 @@ local SLOT_SIZE = 36
 local SLOT_SPACING = 2
 local GROUP_LABEL_H = 17
 
--- Raid Group panel (whisplist rib): the REAL raid, one vertical column
+-- Raid Group panel (InviteEngine rib): the REAL raid, one vertical column
 -- per raid group, each holding up to 5 class-colored name bars.
 local WL_BAR_H = 16
 local WL_BAR_GAP = 2
 local WL_COL_GAP = 4
 local WL_GROUP_LABEL_H = 14
+
+-- Extra vertical room the InviteEngine rib needs for the tabbed panel
+-- below the fixed Raid Group box (AceGUI-3.0 TabGroup: tab strip + border).
+-- The rib keeps following Groupmaking's minimum resize height.
+local IE_TAB_EXTRA = 53
 
 -- All Groupmaking window fonts are +2pt over the default game fonts
 -- (window titles keep their large size).
@@ -53,15 +58,52 @@ end
 function GM:Init()
     self.db = RLSuiteDB.groupmaking
     self.whisperDB = RLSuiteDB.whisplist
+    -- Autoinviter: stato salvato + default per i campi mancanti. "enabled"
+    -- torna sempre false al reload (i timer AceTimer non sopravvivono).
+    RLSuiteDB.whisplist.autoinvite = RLSuiteDB.whisplist.autoinvite or {}
+    self.autoinvite = RLSuiteDB.whisplist.autoinvite
+    local ai = self.autoinvite
+    ai.mode = ai.mode or "manual"
+    ai.names = ai.names or ""
+    ai.hour = ai.hour or 19
+    ai.minute = ai.minute or 0
+    ai.enabled = false
     self.spamActive = false
     self.compSlots = {}
     self.whisperEntries = {}
     self.selectedEntry = nil
     self.loadingComp = true
+    self:EmbedAceLibraries()
     self:CreateMainWindow()
     self:CreateWhisplistWindow()
     self:LoadCompFromDB()
     self.loadingComp = false
+end
+
+-- Incorpora le librerie Ace per le nuove funzioni (eventi del Calendario
+-- via AceEvent-3.0, pianificazione degli inviti via AceTimer-3.0). Le
+-- tab dell'InviteEngine usano invece il widget TabGroup di AceGUI-3.0.
+function GM:EmbedAceLibraries()
+    if not LibStub then return end
+    local AceEvent = LibStub("AceEvent-3.0", true)
+    local AceTimer = LibStub("AceTimer-3.0", true)
+
+    if AceEvent and AceEvent.Embed and not self.RegisterEvent then
+        AceEvent:Embed(self)
+        -- Il Calendario puo' cambiare fuori dall'addon: aggiorna il dropdown.
+        self:RegisterEvent("CALENDAR_UPDATE_EVENT_LIST", function()
+            self:RefreshAutoinviterCalendar()
+        end)
+        self:RegisterEvent("CALENDAR_UPDATE_PENDING_INVITES", function()
+            self:RefreshAutoinviterCalendar()
+        end)
+        self:RegisterEvent("PLAYER_ENTERING_WORLD", function()
+            self:RefreshAutoinviterCalendar()
+        end)
+    end
+    if AceTimer and AceTimer.Embed and not self.ScheduleTimer then
+        AceTimer:Embed(self)
+    end
 end
 
 function GM:Toggle()
@@ -81,7 +123,7 @@ end
 -- ============================================================
 function GM:CreateMainWindow()
     local f = CreateFrame("Frame", "RLSuiteGroupMaking", UIParent)
-    f:SetSize(500, 600)
+    f:SetSize(560, 600)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
     f:SetMovable(true)
@@ -278,15 +320,9 @@ function GM:CreateMainWindow()
     self.spamBtn:SetText("Start Spam")
     self.spamBtn:SetScript("OnClick", function() self:ToggleSpam() end)
 
-    self.whisplistBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    self.whisplistBtn:SetSize(100, 24)
-    self.whisplistBtn:SetPoint("LEFT", self.spamBtn, "RIGHT", 8, 0)
-    self.whisplistBtn:SetText("Whisplist")
-    self.whisplistBtn:SetScript("OnClick", function() self:ToggleWhisplist() end)
-
     self.previewBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     self.previewBtn:SetSize(100, 24)
-    self.previewBtn:SetPoint("LEFT", self.whisplistBtn, "RIGHT", 8, 0)
+    self.previewBtn:SetPoint("LEFT", self.spamBtn, "RIGHT", 8, 0)
     self.previewBtn:SetText("Preview Msg")
     self.previewBtn:SetScript("OnClick", function() self:ShowMessagePreview() end)
 
@@ -304,6 +340,14 @@ function GM:CreateMainWindow()
     specsLbl:SetPoint("LEFT", self.showSpecsCheck, "RIGHT", 0, 0)
     specsLbl:SetText("Show specs in message")
     specsLbl:SetTextColor(1, 0.82, 0)
+
+    -- InviteEngine (ex-Whisplist): il bottone sta a DESTRA della checkbox
+    -- "Show specs in message", come richiesto.
+    self.whisplistBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    self.whisplistBtn:SetSize(100, 24)
+    self.whisplistBtn:SetPoint("LEFT", specsLbl, "RIGHT", 10, 0)
+    self.whisplistBtn:SetText("InviteEngine")
+    self.whisplistBtn:SetScript("OnClick", function() self:ToggleWhisplist() end)
 
     f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
@@ -463,20 +507,23 @@ end
 
 -- Altezza minima di resize di Groupmaking: topRow (dipende da 10/25) piu'
 -- la pila fissa di title+dropdown, box richieste e blocco anteprima+bottoni.
+-- IE_TAB_EXTRA copre la striscia a tab che l'InviteEngine aggiunge sotto
+-- Raid Group: cosi' lista e dettaglio restano alti come prima.
 function GM:MinHeight()
     local topH = 156
     if self.topRow then
         local th = self.topRow:GetHeight()
         if th and th > 60 then topH = th end
     end
-    return topH + 336
+    return topH + 336 + IE_TAB_EXTRA
 end
 
--- La Whisplist e' una costola di Groupmaking: la sua altezza segue sempre
+-- L'InviteEngine e' una costola di Groupmaking: la sua altezza segue sempre
 -- l'altezza minima di resize di Groupmaking.
 function GM:SyncWhisplistHeight()
     if not self.whisplistFrame then return end
     self.whisplistFrame:SetHeight(self:MinHeight())
+    self:LayoutInviteEngineTabs()
 end
 
 function GM:ClearSlot(index)
@@ -1056,12 +1103,14 @@ function GM:ExtractGSFromWhisper(msg)
 end
 
 -- ============================================================
--- WHISPLIST PANEL (rib anchored to the Groupmaking window)
+-- INVITEENGINE PANEL (rib anchored to the Groupmaking window)
+-- Rebrand dell'ex "Whisplist": Raid Group fisso in alto e, sotto, un
+-- vero sistema a tab (Whisplist + Autoinviter) basato su AceGUI-3.0.
 -- ============================================================
 function GM:CreateWhisplistWindow()
     -- Aperto a destra della finestra Groupmaking e ancorato ad essa: si
     -- sposta con lei e non e' trascinabile da solo.
-    local f = CreateFrame("Frame", "RLSuiteWhisplist", self.mainFrame)
+    local f = CreateFrame("Frame", "RLSuiteInviteEngine", self.mainFrame)
     f:SetPoint("TOPLEFT", self.mainFrame, "TOPRIGHT", 6, 0)
     f:SetWidth(380)
     f:SetHeight(self:MinHeight())
@@ -1073,9 +1122,9 @@ function GM:CreateWhisplistWindow()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
-    title:SetText("Whisplist")
+    title:SetText(L["InviteEngine"])
 
-    -- ==== Raid Group: gruppi riempiti in base agli inviti ====
+    -- ==== Raid Group (fisso in alto): gruppi riempiti dal raid REALE ====
     self.wlGroupBox = CreateFrame("Frame", nil, f)
     self.wlGroupBox:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -34)
     self.wlGroupBox:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -34)
@@ -1088,10 +1137,89 @@ function GM:CreateWhisplistWindow()
 
     self:BuildWLGroupColumns()
 
+    -- ==== Sistema a tab sotto Raid Group (AceGUI-3.0 TabGroup) ====
+    self:CreateInviteEngineTabs()
+
+    -- ==== Pagine delle tab ====
+    self:BuildWhisplistPage()
+    self:BuildAutoinviterPage()
+
+    -- Tab predefinita: Whisplist.
+    if self.ieTabGroup and self.ieTabGroup.SelectTab then
+        self.ieTabGroup:SelectTab("whisper")
+    else
+        self:SetInviteEngineTab("whisper")
+    end
+
+    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
+end
+
+-- Crea la barra a tab con AceGUI-3.0 (widget TabGroup) e posiziona il suo
+-- frame sotto il riquadro Raid Group, fino in fondo alla costola.
+function GM:CreateInviteEngineTabs()
+    local f = self.whisplistFrame
+    if not f then return end
+
+    local AceGUI = LibStub and LibStub("AceGUI-3.0", true)
+    if not AceGUI or not AceGUI.Create then return end
+
+    local tg = AceGUI:Create("TabGroup")
+    if not tg then return end
+    self.ieTabGroup = tg
+
+    tg:SetTabs({
+        { text = L["Whisplist"], value = "whisper" },
+        { text = L["Autoinviter"], value = "auto" },
+    })
+    tg:SetCallback("OnGroupSelected", function(widget, event, value)
+        self:SetInviteEngineTab(value)
+    end)
+
+    -- Il frame del widget vive dentro la costola, sotto Raid Group.
+    tg.frame:SetParent(f)
+    tg.frame:SetFrameStrata("HIGH")
+    tg.frame:SetPoint("TOPLEFT", self.wlGroupBox, "BOTTOMLEFT", 0, -4)
+    self:LayoutInviteEngineTabs()
+end
+
+-- Ridimensiona il TabGroup alla costola corrente e ricalcola l'area di
+-- contenuto sotto le tab. Richiamato a ogni cambio di altezza/difficolta'.
+function GM:LayoutInviteEngineTabs()
+    local f = self.whisplistFrame
+    local tg = self.ieTabGroup
+    if not f or not tg then return end
+
+    local w = (f:GetWidth() or 380) - 16
+    if w < 200 then w = 200 end
+    -- Altezza disponibile sotto il riquadro Raid Group (fisso in alto).
+    local groupH = self.wlGroupBox and self.wlGroupBox:GetHeight() or 134
+    local topOffset = 34 + (groupH or 0) + 4
+    local h = (f:GetHeight() or 0) - topOffset - 8
+    if h < 120 then h = 120 end
+
+    if tg.SetWidth then tg:SetWidth(w) end
+    if tg.SetHeight then tg:SetHeight(h) end
+end
+
+-- Pagina "Whisplist": la lista dei whisper ricevuti e il dettaglio del
+-- giocatore vivono ora dentro il contenuto del TabGroup.
+function GM:BuildWhisplistPage()
+    -- Le pagine si ancorano al bordo del TabGroup (non al content interno
+    -- AceGUI) per sfruttare tutta la larghezza/altezza disponibili.
+    local area = self.ieTabGroup and self.ieTabGroup.border
+    if not area then return end
+
+    local page = CreateFrame("Frame", nil, area)
+    page:SetPoint("TOPLEFT", area, "TOPLEFT", 1, -1)
+    page:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -1, 1)
+    self.wlPage = page
+
     -- ==== Received whispers ====
-    self.wlListBox = CreateFrame("Frame", nil, f)
-    self.wlListBox:SetPoint("TOPLEFT", self.wlGroupBox, "BOTTOMLEFT", 0, -8)
-    self.wlListBox:SetPoint("TOPRIGHT", self.wlGroupBox, "BOTTOMRIGHT", 0, -8)
+    self.wlListBox = CreateFrame("Frame", nil, page)
+    self.wlListBox:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
+    self.wlListBox:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, 0)
     self.wlListBox:SetHeight(140)
     RLSuite.utils:SkinBox(self.wlListBox)
 
@@ -1114,9 +1242,9 @@ function GM:CreateWhisplistWindow()
         end
     end)
 
-    self.wlDetailBox = CreateFrame("Frame", nil, f)
+    self.wlDetailBox = CreateFrame("Frame", nil, page)
     self.wlDetailBox:SetPoint("TOPLEFT", self.wlListBox, "BOTTOMLEFT", 0, -8)
-    self.wlDetailBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
+    self.wlDetailBox:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", 0, 0)
     RLSuite.utils:SkinBox(self.wlDetailBox)
     self.wlDetailPanel = self.wlDetailBox
 
@@ -1204,10 +1332,501 @@ function GM:CreateWhisplistWindow()
     self.wlCustomMsg:SetScript("OnEnterPressed", function()
         self:SendCustomMessage()
     end)
+end
 
-    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
+-- Cambia la tab attiva dell'InviteEngine (mostra una pagina e nasconde
+-- l'altra). Viene chiamata dal callback "OnGroupSelected" del TabGroup.
+function GM:SetInviteEngineTab(value)
+    value = value or "whisper"
+    self.ieActiveTab = value
+    if self.wlPage then
+        if value == "whisper" then self.wlPage:Show() else self.wlPage:Hide() end
+    end
+    if self.ieAutoPage then
+        if value == "auto" then self.ieAutoPage:Show() else self.ieAutoPage:Hide() end
+    end
+    if value == "whisper" then
+        self:UpdateWhisplist()
+        self:UpdateWLGroups()
+    elseif value == "auto" then
+        self:RefreshAutoinviter()
+    end
+end
+
+-- ============================================================
+-- AUTOINVITER TAB (inviti programmati: lista manuale o evento di
+-- Calendario). La pianificazione usa AceTimer-3.0, gli aggiornamenti del
+-- Calendario arrivano via AceEvent-3.0.
+-- ============================================================
+function GM:BuildAutoinviterPage()
+    local area = self.ieTabGroup and self.ieTabGroup.border
+    if not area then return end
+
+    local page = CreateFrame("Frame", nil, area)
+    page:SetPoint("TOPLEFT", area, "TOPLEFT", 1, -1)
+    page:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -1, 1)
+    page:Hide()
+    self.ieAutoPage = page
+
+    local db = self.autoinvite
+
+    -- Sorgente: lista manuale oppure evento di Calendario (mutualmente esclusive).
+    self.ieAutoManualCheck = CreateFrame("CheckButton", "RLSuiteIEAutoManualCheck", page, "UICheckButtonTemplate")
+    self.ieAutoManualCheck:SetSize(24, 24)
+    self.ieAutoManualCheck:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -8)
+    self.ieAutoManualCheck:SetScript("OnClick", function(s)
+        if s:GetChecked() then
+            db.mode = "manual"
+            if self.ieAutoCalendarCheck then self.ieAutoCalendarCheck:SetChecked(false) end
+        else
+            db.mode = "calendar"
+            if self.ieAutoCalendarCheck then self.ieAutoCalendarCheck:SetChecked(true) end
+        end
+        self:RefreshAutoinviter()
+        self:SaveAutoinviter()
+    end)
+
+    local manualLbl = FontStr(page, "OVERLAY", 12)
+    manualLbl:SetPoint("LEFT", self.ieAutoManualCheck, "RIGHT", 0, 0)
+    manualLbl:SetText(L["Manual list"])
+
+    self.ieAutoCalendarCheck = CreateFrame("CheckButton", "RLSuiteIEAutoCalendarCheck", page, "UICheckButtonTemplate")
+    self.ieAutoCalendarCheck:SetSize(24, 24)
+    self.ieAutoCalendarCheck:SetPoint("LEFT", manualLbl, "RIGHT", 16, 0)
+    self.ieAutoCalendarCheck:SetScript("OnClick", function(s)
+        if s:GetChecked() then
+            db.mode = "calendar"
+            if self.ieAutoManualCheck then self.ieAutoManualCheck:SetChecked(false) end
+        else
+            db.mode = "manual"
+            if self.ieAutoManualCheck then self.ieAutoManualCheck:SetChecked(true) end
+        end
+        self:RefreshAutoinviter()
+        self:SaveAutoinviter()
+    end)
+
+    local calLbl = FontStr(page, "OVERLAY", 12)
+    calLbl:SetPoint("LEFT", self.ieAutoCalendarCheck, "RIGHT", 0, 0)
+    calLbl:SetText(L["Calendar event"])
+
+    -- Pannello lista manuale.
+    self.ieAutoManualBox = CreateFrame("Frame", nil, page)
+    self.ieAutoManualBox:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -38)
+    self.ieAutoManualBox:SetPoint("TOPRIGHT", page, "TOPRIGHT", -8, -38)
+    self.ieAutoManualBox:SetHeight(96)
+    RLSuite.utils:SkinBox(self.ieAutoManualBox)
+
+    local namesLbl = FontStr(self.ieAutoManualBox, "OVERLAY", 12)
+    namesLbl:SetPoint("TOPLEFT", self.ieAutoManualBox, "TOPLEFT", 8, -6)
+    namesLbl:SetText(L["Names (one per line)"])
+    namesLbl:SetTextColor(1, 0.82, 0)
+
+    self.ieAutoNamesEdit = CreateFrame("EditBox", "RLSuiteIEAutoNames", self.ieAutoManualBox, "InputBoxTemplate")
+    self.ieAutoNamesEdit:SetMultiLine(true)
+    self.ieAutoNamesEdit:SetPoint("TOPLEFT", namesLbl, "BOTTOMLEFT", 0, -6)
+    self.ieAutoNamesEdit:SetPoint("BOTTOMRIGHT", self.ieAutoManualBox, "BOTTOMRIGHT", -8, 6)
+    self.ieAutoNamesEdit:SetAutoFocus(false)
+    self.ieAutoNamesEdit:SetMaxLetters(2048)
+    self.ieAutoNamesEdit:SetScript("OnTextChanged", function()
+        GM:SaveAutoinviter()
+        GM:RefreshAutoinviterStatus()
+    end)
+    self.ieAutoNamesEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+
+    -- Pannello evento di Calendario.
+    self.ieAutoCalBox = CreateFrame("Frame", nil, page)
+    self.ieAutoCalBox:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -38)
+    self.ieAutoCalBox:SetPoint("TOPRIGHT", page, "TOPRIGHT", -8, -38)
+    self.ieAutoCalBox:SetHeight(96)
+    RLSuite.utils:SkinBox(self.ieAutoCalBox)
+
+    local eventLbl = FontStr(self.ieAutoCalBox, "OVERLAY", 12)
+    eventLbl:SetPoint("TOPLEFT", self.ieAutoCalBox, "TOPLEFT", 8, -6)
+    eventLbl:SetText(L["Raid event"])
+    eventLbl:SetTextColor(1, 0.82, 0)
+
+    self.ieAutoEventDropdown = RLSuite.utils:CreateDropdown(self.ieAutoCalBox, "RLSuiteIEAutoEvent", 190, 22)
+    self.ieAutoEventDropdown:SetPoint("TOPLEFT", eventLbl, "BOTTOMLEFT", 0, -4)
+
+    self.ieAutoEventRefresh = CreateFrame("Button", nil, self.ieAutoCalBox, "UIPanelButtonTemplate")
+    self.ieAutoEventRefresh:SetSize(70, 22)
+    self.ieAutoEventRefresh:SetPoint("LEFT", self.ieAutoEventDropdown, "RIGHT", 6, 0)
+    self.ieAutoEventRefresh:SetText(L["Refresh"])
+    self.ieAutoEventRefresh:SetScript("OnClick", function() self:RefreshAutoinviterCalendar() end)
+
+    self.ieAutoEventInfo = FontStr(self.ieAutoCalBox, "OVERLAY", 12)
+    self.ieAutoEventInfo:SetPoint("TOPLEFT", self.ieAutoEventDropdown, "BOTTOMLEFT", 0, -8)
+    self.ieAutoEventInfo:SetPoint("RIGHT", self.ieAutoCalBox, "RIGHT", -8, 0)
+    self.ieAutoEventInfo:SetJustifyH("LEFT")
+    self.ieAutoEventInfo:SetText("")
+
+    -- Ora di invito (comune alle due modalita').
+    local timeLbl = FontStr(page, "OVERLAY", 12)
+    timeLbl:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -144)
+    timeLbl:SetText(L["Invite at"])
+    timeLbl:SetTextColor(1, 0.82, 0)
+
+    self.ieAutoHourEdit = CreateFrame("EditBox", "RLSuiteIEAutoHour", page, "InputBoxTemplate")
+    self.ieAutoHourEdit:SetSize(34, 20)
+    self.ieAutoHourEdit:SetPoint("LEFT", timeLbl, "RIGHT", 8, 0)
+    self.ieAutoHourEdit:SetAutoFocus(false)
+    self.ieAutoHourEdit:SetMaxLetters(2)
+    self.ieAutoHourEdit:SetNumeric(true)
+    self.ieAutoHourEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
+    self.ieAutoHourEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+
+    local colonLbl = FontStr(page, "OVERLAY", 12)
+    colonLbl:SetPoint("LEFT", self.ieAutoHourEdit, "RIGHT", 2, 0)
+    colonLbl:SetText(":")
+
+    self.ieAutoMinuteEdit = CreateFrame("EditBox", "RLSuiteIEAutoMinute", page, "InputBoxTemplate")
+    self.ieAutoMinuteEdit:SetSize(34, 20)
+    self.ieAutoMinuteEdit:SetPoint("LEFT", colonLbl, "RIGHT", 2, 0)
+    self.ieAutoMinuteEdit:SetAutoFocus(false)
+    self.ieAutoMinuteEdit:SetMaxLetters(2)
+    self.ieAutoMinuteEdit:SetNumeric(true)
+    self.ieAutoMinuteEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
+    self.ieAutoMinuteEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+
+    local timeHint = FontStr(page, "OVERLAY", 12)
+    timeHint:SetPoint("LEFT", self.ieAutoMinuteEdit, "RIGHT", 6, 0)
+    timeHint:SetText(L["(server time)"])
+    timeHint:SetTextColor(0.6, 0.6, 0.6)
+
+    -- Bottone arma/disarma.
+    self.ieAutoArmBtn = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
+    self.ieAutoArmBtn:SetSize(120, 24)
+    self.ieAutoArmBtn:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -180)
+    self.ieAutoArmBtn:SetText(L["Start auto-invite"])
+    self.ieAutoArmBtn:SetScript("OnClick", function() self:ToggleAutoinviter() end)
+
+    -- Stato / avanzamento.
+    self.ieAutoStatus = FontStr(page, "OVERLAY", 12)
+    self.ieAutoStatus:SetPoint("LEFT", self.ieAutoArmBtn, "RIGHT", 8, 0)
+    self.ieAutoStatus:SetPoint("RIGHT", page, "RIGHT", -8, 0)
+    self.ieAutoStatus:SetJustifyH("LEFT")
+    self.ieAutoStatus:SetText("")
+    self.ieAutoStatus:SetTextColor(1, 0.82, 0)
+end
+
+-- Aggiorna checkbox/pannelli/stato in base alla modalita' salvata.
+function GM:RefreshAutoinviter()
+    if not self.ieAutoPage then return end
+    local db = self.autoinvite
+    if db.mode ~= "calendar" then db.mode = "manual" end
+    local manual = (db.mode == "manual")
+
+    if self.ieAutoManualCheck then self.ieAutoManualCheck:SetChecked(manual) end
+    if self.ieAutoCalendarCheck then self.ieAutoCalendarCheck:SetChecked(not manual) end
+    if self.ieAutoManualBox then
+        if manual then self.ieAutoManualBox:Show() else self.ieAutoManualBox:Hide() end
+    end
+    if self.ieAutoCalBox then
+        if manual then self.ieAutoCalBox:Hide() else self.ieAutoCalBox:Show() end
+    end
+    if manual and self.ieAutoNamesEdit then
+        self.ieAutoNamesEdit:SetText(db.names or "")
+    end
+    if self.ieAutoHourEdit then self.ieAutoHourEdit:SetText(string.format("%02d", db.hour or 19)) end
+    if self.ieAutoMinuteEdit then self.ieAutoMinuteEdit:SetText(string.format("%02d", db.minute or 0)) end
+
+    if not manual then self:RefreshAutoinviterCalendar() end
+    self:RefreshAutoinviterStatus()
+    self:RefreshAutoinviterArmButton()
+end
+
+-- Elenca gli eventi RAID di oggi (tipo CALENDAR_EVENTTYPE_RAID == 1).
+function GM:GetTodayRaidEvents()
+    local events = {}
+    if not CalendarGetNumDayEvents or not CalendarGetDate then return events end
+    local weekday, month, day, year = CalendarGetDate()
+    if not day then return events end
+    local n = CalendarGetNumDayEvents(0, day) or 0
+    for i = 1, n do
+        local title, hour, minute, calendarType, sequenceType, eventType =
+            CalendarGetDayEvent(0, day, i)
+        if title and tonumber(eventType) == 1 then
+            table.insert(events, { index = i, day = day, title = title, hour = hour or 0, minute = minute or 0 })
+        end
+    end
+    return events
+end
+
+-- Riempie il dropdown con gli eventi raid di oggi e riallinea la selezione.
+function GM:RefreshAutoinviterCalendar()
+    if not self.ieAutoCalBox or not self.ieAutoEventDropdown then return end
+    local db = self.autoinvite
+    local events = self:GetTodayRaidEvents()
+    self._autoEvents = events
+
+    local options = {}
+    for _, e in ipairs(events) do
+        table.insert(options, {
+            text = string.format("%s (%02d:%02d)", e.title, e.hour, e.minute),
+            value = tostring(e.index),
+        })
+    end
+    if #options == 0 then
+        options = { { text = L["No raid events today"], value = "none" } }
+    end
+
+    -- Il giorno e' cambiato? Allora la selezione salvata non e' piu' valida.
+    local today = events[1] and events[1].day or 0
+    if db.eventDay and today ~= 0 and db.eventDay ~= today then
+        db.eventIndex = nil
+        db.eventTitle = nil
+    end
+
+    RLSuite.utils:SetupDropdown(self.ieAutoEventDropdown, options, db.eventIndex or "", function(value)
+        self:SelectAutoinviteEvent(value)
+    end)
+    self:SelectAutoinviteEvent(db.eventIndex or (events[1] and tostring(events[1].index) or "none"), true)
+    self:RefreshAutoinviterStatus()
+end
+
+-- Seleziona un evento raid nel dropdown: salva la scelta, copia l'orario
+-- dell'evento nei campi HH:MM e mostra il numero di invitati.
+function GM:SelectAutoinviteEvent(value, silent)
+    local db = self.autoinvite
+    local events = self._autoEvents or self:GetTodayRaidEvents()
+    local found
+    for _, e in ipairs(events) do
+        if tostring(e.index) == tostring(value) then
+            found = e
+            break
+        end
+    end
+    if not found then
+        -- selezione non piu' valida: ripiega sul primo evento
+        found = events[1]
+    end
+    db.eventIndex = found and tostring(found.index) or "none"
+    db.eventTitle = found and found.title or ""
+    db.eventDay = found and found.day or nil
+
+    if found then
+        db.hour = found.hour
+        db.minute = found.minute
+    end
+
+    if self.ieAutoEventInfo then
+        if found then
+            local list = self:GetEventInviteeNames(found)
+            db.eventCount = #list
+            self.ieAutoEventInfo:SetText(string.format(L["%d players signed up"], #list))
+        else
+            db.eventCount = 0
+            self.ieAutoEventInfo:SetText(L["No raid events today"])
+        end
+    end
+    if not silent then
+        if self.ieAutoHourEdit then self.ieAutoHourEdit:SetText(string.format("%02d", db.hour or 19)) end
+        if self.ieAutoMinuteEdit then self.ieAutoMinuteEdit:SetText(string.format("%02d", db.minute or 0)) end
+        self:SaveAutoinviter()
+    end
+end
+
+-- Nomi dei partecipanti all'evento (esclusi i declinati).
+function GM:GetEventInviteeNames(ev)
+    local names = {}
+    if not ev or not CalendarOpenEvent or not CalendarEventGetNumInvites or not CalendarEventGetInvite then
+        return names
+    end
+    local ok = pcall(CalendarOpenEvent, 0, ev.day, ev.index)
+    if not ok then return names end
+    local n = CalendarEventGetNumInvites() or 0
+    for i = 1, n do
+        local name, _, _, _, status = CalendarEventGetInvite(i)
+        -- CALENDAR_INVITESTATUS_DECLINED == 3
+        if name and name ~= "" and status ~= 3 then
+            table.insert(names, name)
+        end
+    end
+    return names
+end
+
+-- Risolve l'evento selezionato (per indice, poi per titolo).
+function GM:ResolveAutoinviteEvent()
+    local db = self.autoinvite
+    local events = self:GetTodayRaidEvents()
+    for _, e in ipairs(events) do
+        if tostring(e.index) == tostring(db.eventIndex) then return e end
+    end
+    for _, e in ipairs(events) do
+        if e.title == db.eventTitle then return e end
+    end
+    return events[1]
+end
+
+-- Costruisce la lista dei nomi da invitare per la modalita' corrente.
+function GM:BuildAutoinviteQueue()
+    local db = self.autoinvite
+    local queue = {}
+    if db.mode == "calendar" then
+        local ev = self:ResolveAutoinviteEvent()
+        if ev then
+            for _, n in ipairs(self:GetEventInviteeNames(ev)) do
+                queue[#queue + 1] = n
+            end
+        end
+    else
+        local text = self.ieAutoNamesEdit and self.ieAutoNamesEdit:GetText() or (db.names or "")
+        -- I nomi dei giocatori non contengono spazi: si splitta su spazi,
+        -- virgole, punti e virgola e a capo.
+        for name in (text or ""):gmatch("[^%s,;]+") do
+            if name ~= "" and name ~= "-" then
+                queue[#queue + 1] = name
+            end
+        end
+    end
+    return queue
+end
+
+-- Legge HH:MM dai campi e li salva.
+function GM:ReadAutoinviterTime()
+    local db = self.autoinvite
+    local h = tonumber(self.ieAutoHourEdit and self.ieAutoHourEdit:GetText()) or db.hour or 19
+    local m = tonumber(self.ieAutoMinuteEdit and self.ieAutoMinuteEdit:GetText()) or db.minute or 0
+    if h < 0 then h = 0 elseif h > 23 then h = 23 end
+    if m < 0 then m = 0 elseif m > 59 then m = 59 end
+    db.hour = h
+    db.minute = m
+end
+
+function GM:ToggleAutoinviter()
+    if self.autoinviteActive then
+        self:StopAutoinviter()
+    else
+        self:StartAutoinviter()
+    end
+end
+
+-- Arma l'autoinviter: prepara la coda e avvia il timer AceTimer (1s).
+function GM:StartAutoinviter()
+    if self.autoinviteActive then return end
+    local db = self.autoinvite
+    self:ReadAutoinviterTime()
+
+    local queue = self:BuildAutoinviteQueue()
+    if #queue == 0 then
+        RLSuite.utils:Print(L["Autoinviter: no names to invite."])
+        return
+    end
+
+    self.autoinviteQueue = queue
+    self.autoinviteIndex = 0
+    local target = (db.hour or 19) * 60 + (db.minute or 0)
+    local h, m = GetGameTime()
+    local now = h * 60 + m
+    if target <= now then
+        -- Ora gia' passata: si parte subito.
+        self.autoinviteState = "inviting"
+        self.autoinviteTarget = now
+    else
+        self.autoinviteState = "waiting"
+        self.autoinviteTarget = target
+    end
+    self.autoinviteActive = true
+    db.enabled = true
+
+    if self.ScheduleRepeatingTimer then
+        self.autoinviteTimer = self:ScheduleRepeatingTimer("AutoinviterTick", 1)
+    end
+
+    self:RefreshAutoinviterStatus()
+    self:RefreshAutoinviterArmButton()
+    RLSuite.utils:Print(string.format(L["Autoinviter armed: %d names."], #queue))
+end
+
+-- Ferma l'autoinviter (cancella il timer AceTimer).
+function GM:StopAutoinviter()
+    if self.autoinviteTimer and self.CancelTimer then
+        self:CancelTimer(self.autoinviteTimer)
+    end
+    self.autoinviteTimer = nil
+    self.autoinviteActive = false
+    self.autoinviteState = nil
+    self.autoinviteQueue = nil
+    if self.autoinvite then self.autoinvite.enabled = false end
+    self:SaveAutoinviter()
+    self:RefreshAutoinviterStatus()
+    self:RefreshAutoinviterArmButton()
+end
+
+-- Tick del timer AceTimer: attende l'orario, poi invita uno alla volta.
+function GM:AutoinviterTick()
+    if not self.autoinviteActive then
+        self:StopAutoinviter()
+        return
+    end
+    if self.autoinviteState == "waiting" then
+        local h, m = GetGameTime()
+        local now = h * 60 + m
+        if now >= (self.autoinviteTarget or 0) then
+            self.autoinviteState = "inviting"
+            self.autoinviteIndex = 0
+        else
+            self:RefreshAutoinviterStatus()
+            return
+        end
+    end
+    if self.autoinviteState == "inviting" then
+        self.autoinviteIndex = (self.autoinviteIndex or 0) + 1
+        local name = self.autoinviteQueue and self.autoinviteQueue[self.autoinviteIndex]
+        if name then
+            self:InviteAutoName(name)
+            self:RefreshAutoinviterStatus()
+        else
+            RLSuite.utils:Print(L["Autoinviter: all invites sent."])
+            self:StopAutoinviter()
+        end
+    end
+end
+
+-- Invita un singolo nome (in debug stampa e non invita).
+function GM:InviteAutoName(name)
+    if not name then return end
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        RLSuite.utils:Print("[DBG] Autoinvite " .. name)
+        return
+    end
+    if InviteUnit then InviteUnit(name) end
+end
+
+-- Salva lo stato dell'autoinviter nel DB (il flag enabled non deve
+-- sopravvivere al reload: il timer non esiste piu' dopo un riavvio).
+function GM:SaveAutoinviter()
+    local db = self.autoinvite
+    if not db then return end
+    if self.ieAutoNamesEdit and db.mode == "manual" then
+        db.names = self.ieAutoNamesEdit:GetText() or ""
+    end
+    db.enabled = self.autoinviteActive and true or false
+end
+
+function GM:RefreshAutoinviterStatus()
+    if not self.ieAutoStatus then return end
+    if self.autoinviteState == "waiting" then
+        local h, m = GetGameTime()
+        local now = h * 60 + m
+        local left = math.max(0, (self.autoinviteTarget or now) - now)
+        self.ieAutoStatus:SetText(string.format(L["Armed: inviting in %d:%02d (%d names)"],
+            math.floor(left / 60), left % 60, #(self.autoinviteQueue or {})))
+    elseif self.autoinviteState == "inviting" then
+        self.ieAutoStatus:SetText(string.format(L["Inviting %d/%d..."],
+            self.autoinviteIndex or 0, #(self.autoinviteQueue or {})))
+    else
+        self.ieAutoStatus:SetText("")
+    end
+end
+
+function GM:RefreshAutoinviterArmButton()
+    if not self.ieAutoArmBtn then return end
+    if self.autoinviteActive then
+        self.ieAutoArmBtn:SetText(L["Stop auto-invite"])
+    else
+        self.ieAutoArmBtn:SetText(L["Start auto-invite"])
+    end
 end
 
 function GM:BuildWLGroupColumns()
@@ -1360,6 +1979,9 @@ function GM:OpenWhisplist()
     end
     self:UpdateWhisplist()
     self:UpdateWLGroups()
+    if self.ieActiveTab == "auto" then
+        self:RefreshAutoinviter()
+    end
     RLSuite.utils:RaiseWindow(self.mainFrame)
 end
 
@@ -1382,6 +2004,8 @@ function GM:SkinInner()
     u:SkinBox(self.wlListBox)
     u:SkinBox(self.wlDetailBox)
     u:SkinBox(self.wlChat)
+    if self.ieAutoManualBox then u:SkinBox(self.ieAutoManualBox) end
+    if self.ieAutoCalBox then u:SkinBox(self.ieAutoCalBox) end
 end
 
 function GM:UpdateWhisplist()

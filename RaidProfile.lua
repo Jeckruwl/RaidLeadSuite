@@ -369,8 +369,8 @@ function MW:HideAllWindows()
         local pane = self:PaneForTab(k)
         if pane then pane:Hide() end
     end
-    -- La Whisplist e' una costola di Groupmaking: nascondendo la finestra
-    -- principale si chiude anche il pannello ancorato.
+    -- L'InviteEngine (ex-Whisplist) e' una costola di Groupmaking:
+    -- nascondendo la finestra principale si chiude anche il pannello ancorato.
     if RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame then
         RLSuite.groupmaking.whisplistFrame:Hide()
     end
@@ -383,20 +383,21 @@ function MW:RegisterAllWindows()
     -- i loro layout interni non cambiano con la difficolta'.
     RLSuite.windowMins = RLSuite.windowMins or {}
     RLSuite.windowMins.groupmaking = function()
-        -- Larghezza minima: fila di controlli in basso (3 bottoni +
-        -- checkbox "Show specs in message") e le due colonne comp/class.
+        -- Larghezza minima: fila di controlli in basso (Start Spam,
+        -- Preview Msg, checkbox "Show specs in message" e bottone
+        -- InviteEngine) e le due colonne comp/class.
         -- Altezza: pila verticale title+dropdowns, gruppo slot (topRow),
         -- box "richieste" e blocco basso anteprima+bottoni.
         local gm = RLSuite.groupmaking
         if gm and gm.MinHeight then
-            return 500, gm:MinHeight()
+            return 560, gm:MinHeight()
         end
         local topH = 156
         if gm and gm.topRow then
             local th = gm.topRow:GetHeight()
             if th and th > 60 then topH = th end
         end
-        return 500, topH + 336
+        return 560, topH + 336
     end
     RLSuite.windowMins.ms = function()
         return 350, 280
