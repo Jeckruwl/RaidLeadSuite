@@ -64,7 +64,16 @@ function GM:Init()
     self.autoinvite = RLSuite.db.profile.whisplist.autoinvite
     local ai = self.autoinvite
     ai.mode = ai.mode or "manual"
-    ai.names = ai.names or ""
+    -- La lista manuale ora e' un array di nomi (prima era una stringa
+    -- multilinea). Migrazione: una vecchia stringa viene splittata.
+    if type(ai.names) == "string" then
+        local arr = {}
+        for name in (ai.names or ""):gmatch("[^%s,;]+") do
+            if name ~= "" and name ~= "-" then arr[#arr + 1] = name end
+        end
+        ai.names = arr
+    end
+    ai.names = ai.names or {}
     ai.hour = ai.hour or 19
     ai.minute = ai.minute or 0
     ai.enabled = false
@@ -801,6 +810,13 @@ function GM:BuildSpamMessage()
         msg = msg .. " HC"
     end
 
+    -- "Lim" (campo Aim): nota libera inserita subito dopo la difficolta' e
+    -- prima dei Need, come da richiesta.
+    local aimText = self.aimEdit and self.aimEdit:GetText() or ""
+    if aimText ~= "" then
+        msg = msg .. " - " .. aimText
+    end
+
     local needed = {tank = 0, healer = 0, mdps = 0, rdps = 0}
     local specLists = {tank = {}, healer = {}, mdps = {}, rdps = {}}
     local hasComp = false
@@ -917,6 +933,10 @@ function GM:StartSpam()
     local interval = self.db.spamInterval or 60
     if self.spamTimer then self:CancelTimer(self.spamTimer) end
     self.spamTimer = self:ScheduleRepeatingTimer("DoSpam", interval)
+    -- Debug mode: simuliamo 10 whisper fittizi per testare la Whisplist.
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        self:StartDebugWhispers()
+    end
     RLSuite.utils:Print(L["Spammer started."])
 end
 
@@ -927,6 +947,7 @@ function GM:StopSpam()
         self:CancelTimer(self.spamTimer)
         self.spamTimer = nil
     end
+    self:StopDebugWhispers()
     RLSuite.utils:Print(L["Spammer stopped."])
 end
 
@@ -943,6 +964,61 @@ function GM:DoSpam()
         if chNum and chNum > 0 then
             SendChatMessage(RLSuite.utils:SanitizeChat(msg), "CHANNEL", nil, chNum)
         end
+    end
+end
+
+-- ============================================================
+-- DEBUG MODE: 10 fake whispers to exercise the Whisplist while the
+-- spammer is running. Each one goes through GM:OnWhisper, so they land
+-- in "Received whispers" exactly like real players.
+-- ============================================================
+local DEBUG_WHISPER_POOL = {
+    { name = "Drakbot",   class = "WARRIOR",     role = "tank",   spec = "prot",  gs = 5900 },
+    { name = "Holymoon",  class = "PALADIN",     role = "healer", spec = "holy",  gs = 6100 },
+    { name = "Zapdora",   class = "MAGE",        role = "dps",    spec = "arcane", gs = 5700 },
+    { name = "Stabbitha", class = "ROGUE",       role = "dps",    spec = "combat", gs = 5800 },
+    { name = "Moowrath",  class = "DRUID",       role = "tank",   spec = "feral", gs = 6000 },
+    { name = "Holylite",  class = "PRIEST",      role = "healer", spec = "holy",  gs = 5950 },
+    { name = "Totemly",   class = "SHAMAN",      role = "healer", spec = "resto", gs = 5850 },
+    { name = "Frostbite", class = "DEATHKNIGHT", role = "dps",    spec = "frost", gs = 6050 },
+    { name = "Warlocky",  class = "WARLOCK",     role = "dps",    spec = "destro", gs = 5750 },
+    { name = "Arrowz",    class = "HUNTER",      role = "dps",    spec = "marks", gs = 5900 },
+}
+
+function GM:StartDebugWhispers()
+    self:StopDebugWhispers()
+    self.debugWhisperIndex = 0
+    self.debugWhisperTimer = self:ScheduleRepeatingTimer("DebugWhisperTick", 0.5)
+end
+
+function GM:StopDebugWhispers()
+    if self.debugWhisperTimer and self.CancelTimer then
+        self:CancelTimer(self.debugWhisperTimer)
+    end
+    self.debugWhisperTimer = nil
+    self.debugWhisperIndex = nil
+end
+
+-- Emette il prossimo whisper fittizio e si ferma dopo il 10o.
+function GM:DebugWhisperTick()
+    if not (RLSuite.DebugMode and RLSuite:DebugMode()) then
+        self:StopDebugWhispers()
+        return
+    end
+    if not self.spamActive then
+        self:StopDebugWhispers()
+        return
+    end
+    self.debugWhisperIndex = (self.debugWhisperIndex or 0) + 1
+    local fake = DEBUG_WHISPER_POOL[self.debugWhisperIndex]
+    if not fake then
+        self:StopDebugWhispers()
+        return
+    end
+    local msg = string.lower(fake.class) .. " " .. fake.role .. " spec " .. fake.spec .. " " .. fake.gs .. " gs"
+    self:OnWhisper(fake.name, msg)
+    if self.debugWhisperIndex >= #DEBUG_WHISPER_POOL then
+        self:StopDebugWhispers()
     end
 end
 
@@ -1428,44 +1504,71 @@ function GM:BuildAutoinviterPage()
     calLbl:SetPoint("LEFT", self.ieAutoCalendarCheck, "RIGHT", 0, 0)
     calLbl:SetText(L["Calendar event"])
 
-    -- Pannello lista manuale.
+    -- Pannello lista manuale: un campo a riga singola (Invio aggiunge il
+    -- nome alla lista) e l'elenco dei nomi aggiunti sotto.
     self.ieAutoManualBox = CreateFrame("Frame", nil, page)
     self.ieAutoManualBox:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -38)
     self.ieAutoManualBox:SetPoint("TOPRIGHT", page, "TOPRIGHT", -8, -38)
-    self.ieAutoManualBox:SetHeight(96)
+    self.ieAutoManualBox:SetHeight(160)
     RLSuite.utils:SkinBox(self.ieAutoManualBox)
 
     local namesLbl = FontStr(self.ieAutoManualBox, "OVERLAY", 12)
     namesLbl:SetPoint("TOPLEFT", self.ieAutoManualBox, "TOPLEFT", 8, -6)
-    namesLbl:SetText(L["Names (one per line)"])
+    namesLbl:SetText(L["Add player"])
     namesLbl:SetTextColor(1, 0.82, 0)
 
+    -- Campo a riga singola: la grafica dell'InputBoxTemplate e' pensata
+    -- per una riga, quindi e' subito scrivibile. Invio = aggiungi alla
+    -- lista.
     self.ieAutoNamesEdit = CreateFrame("EditBox", "RLSuiteIEAutoNames", self.ieAutoManualBox, "InputBoxTemplate")
-    self.ieAutoNamesEdit:SetMultiLine(true)
-    self.ieAutoNamesEdit:SetPoint("TOPLEFT", namesLbl, "BOTTOMLEFT", 0, -6)
-    self.ieAutoNamesEdit:SetPoint("BOTTOMRIGHT", self.ieAutoManualBox, "BOTTOMRIGHT", -8, 6)
+    self.ieAutoNamesEdit:SetPoint("TOPLEFT", namesLbl, "BOTTOMLEFT", 0, -4)
+    self.ieAutoNamesEdit:SetPoint("TOPRIGHT", self.ieAutoManualBox, "TOPRIGHT", -8, -26)
+    self.ieAutoNamesEdit:SetHeight(20)
     self.ieAutoNamesEdit:SetAutoFocus(false)
-    self.ieAutoNamesEdit:SetMaxLetters(2048)
-    self.ieAutoNamesEdit:SetScript("OnTextChanged", function()
-        GM:SaveAutoinviter()
-        GM:RefreshAutoinviterStatus()
+    self.ieAutoNamesEdit:SetMaxLetters(32)
+    self.ieAutoNamesEdit:SetScript("OnEnterPressed", function(s)
+        GM:AddAutoName(s:GetText())
     end)
-    self.ieAutoNamesEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+    self.ieAutoNamesEdit:SetScript("OnEscapePressed", function(s)
+        s:SetText("")
+        s:ClearFocus()
+    end)
 
-    -- Pannello evento di Calendario.
+    local hint = FontStr(self.ieAutoManualBox, "OVERLAY", 10)
+    hint:SetPoint("TOPLEFT", self.ieAutoNamesEdit, "BOTTOMLEFT", 0, -2)
+    hint:SetText(L["Enter to add - right-click a name to remove"])
+    hint:SetTextColor(0.6, 0.6, 0.6)
+
+    -- Elenco dei nomi gia' aggiunti (clic destro = rimuovi).
+    self.ieAutoNamesList = CreateFrame("Frame", nil, self.ieAutoManualBox)
+    self.ieAutoNamesList:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", 0, -2)
+    self.ieAutoNamesList:SetPoint("BOTTOMRIGHT", self.ieAutoManualBox, "BOTTOMRIGHT", -8, 4)
+    self.ieAutoNamesList:EnableMouse(true)
+
+    self.ieAutoNamesScroll = CreateFrame("ScrollFrame", "RLSuiteIEAutoNamesScroll", self.ieAutoNamesList, "UIPanelScrollFrameTemplate")
+    self.ieAutoNamesScroll:SetPoint("TOPLEFT", self.ieAutoNamesList, "TOPLEFT", 0, 0)
+    self.ieAutoNamesScroll:SetPoint("BOTTOMRIGHT", self.ieAutoNamesList, "BOTTOMRIGHT", -16, 0)
+
+    self.ieAutoNamesContent = CreateFrame("Frame", nil, self.ieAutoNamesScroll)
+    self.ieAutoNamesContent:SetSize(200, 10)
+    self.ieAutoNamesScroll:SetScrollChild(self.ieAutoNamesContent)
+
+    -- Pannello evento di Calendario: riproduce il layout dell'evento di
+    -- calendario collegato al raid (titolo, data/ora, note, partecipanti).
     self.ieAutoCalBox = CreateFrame("Frame", nil, page)
     self.ieAutoCalBox:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -38)
     self.ieAutoCalBox:SetPoint("TOPRIGHT", page, "TOPRIGHT", -8, -38)
-    self.ieAutoCalBox:SetHeight(96)
+    self.ieAutoCalBox:SetHeight(160)
     RLSuite.utils:SkinBox(self.ieAutoCalBox)
 
+    -- Barra di selezione evento (link a un evento esistente).
     local eventLbl = FontStr(self.ieAutoCalBox, "OVERLAY", 12)
     eventLbl:SetPoint("TOPLEFT", self.ieAutoCalBox, "TOPLEFT", 8, -6)
     eventLbl:SetText(L["Raid event"])
     eventLbl:SetTextColor(1, 0.82, 0)
 
-    self.ieAutoEventDropdown = RLSuite.utils:CreateDropdown(self.ieAutoCalBox, "RLSuiteIEAutoEvent", 190, 22)
-    self.ieAutoEventDropdown:SetPoint("TOPLEFT", eventLbl, "BOTTOMLEFT", 0, -4)
+    self.ieAutoEventDropdown = RLSuite.utils:CreateDropdown(self.ieAutoCalBox, "RLSuiteIEAutoEvent", 150, 22)
+    self.ieAutoEventDropdown:SetPoint("LEFT", eventLbl, "RIGHT", 8, 0)
 
     self.ieAutoEventRefresh = CreateFrame("Button", nil, self.ieAutoCalBox, "UIPanelButtonTemplate")
     self.ieAutoEventRefresh:SetSize(70, 22)
@@ -1473,15 +1576,48 @@ function GM:BuildAutoinviterPage()
     self.ieAutoEventRefresh:SetText(L["Refresh"])
     self.ieAutoEventRefresh:SetScript("OnClick", function() self:RefreshAutoinviterCalendar() end)
 
-    self.ieAutoEventInfo = FontStr(self.ieAutoCalBox, "OVERLAY", 12)
-    self.ieAutoEventInfo:SetPoint("TOPLEFT", self.ieAutoEventDropdown, "BOTTOMLEFT", 0, -8)
-    self.ieAutoEventInfo:SetPoint("RIGHT", self.ieAutoCalBox, "RIGHT", -8, 0)
-    self.ieAutoEventInfo:SetJustifyH("LEFT")
-    self.ieAutoEventInfo:SetText("")
+    self.ieAutoEventCreate = CreateFrame("Button", nil, self.ieAutoCalBox, "UIPanelButtonTemplate")
+    self.ieAutoEventCreate:SetSize(90, 22)
+    self.ieAutoEventCreate:SetPoint("TOPRIGHT", self.ieAutoCalBox, "TOPRIGHT", -8, -4)
+    self.ieAutoEventCreate:SetText(L["Create event"])
+    self.ieAutoEventCreate:SetScript("OnClick", function() self:CreateAutoinviteCalendarEvent() end)
+
+    -- Titolo evento (specchio del calendario).
+    self.ieAutoEventTitle = FontStr(self.ieAutoCalBox, "OVERLAY", 14)
+    self.ieAutoEventTitle:SetPoint("TOPLEFT", eventLbl, "BOTTOMLEFT", 0, -8)
+    self.ieAutoEventTitle:SetPoint("RIGHT", self.ieAutoCalBox, "RIGHT", -8, 0)
+    self.ieAutoEventTitle:SetJustifyH("LEFT")
+    self.ieAutoEventTitle:SetTextColor(1, 0.82, 0)
+    self.ieAutoEventTitle:SetText("")
+
+    -- Data/ora + info evento.
+    self.ieAutoEventWhen = FontStr(self.ieAutoCalBox, "OVERLAY", 11)
+    self.ieAutoEventWhen:SetPoint("TOPLEFT", self.ieAutoEventTitle, "BOTTOMLEFT", 0, -2)
+    self.ieAutoEventWhen:SetPoint("RIGHT", self.ieAutoCalBox, "RIGHT", -8, 0)
+    self.ieAutoEventWhen:SetJustifyH("LEFT")
+    self.ieAutoEventWhen:SetTextColor(0.75, 0.75, 0.75)
+    self.ieAutoEventWhen:SetText("")
+
+    -- Note/descrizione dell'evento.
+    self.ieAutoEventDesc = FontStr(self.ieAutoCalBox, "OVERLAY", 11)
+    self.ieAutoEventDesc:SetPoint("TOPLEFT", self.ieAutoEventWhen, "BOTTOMLEFT", 0, -4)
+    self.ieAutoEventDesc:SetPoint("RIGHT", self.ieAutoCalBox, "RIGHT", -8, 0)
+    self.ieAutoEventDesc:SetJustifyH("LEFT")
+    self.ieAutoEventDesc:SetTextColor(0.9, 0.9, 0.9)
+    self.ieAutoEventDesc:SetText("")
+
+    -- Elenco partecipanti con stato (specchio del calendario).
+    self.ieAutoEventInviteList = CreateFrame("ScrollFrame", "RLSuiteIEAutoEventInvites", self.ieAutoCalBox, "UIPanelScrollFrameTemplate")
+    self.ieAutoEventInviteList:SetPoint("TOPLEFT", self.ieAutoEventDesc, "BOTTOMLEFT", 0, -6)
+    self.ieAutoEventInviteList:SetPoint("BOTTOMRIGHT", self.ieAutoCalBox, "BOTTOMRIGHT", -8, 4)
+
+    self.ieAutoEventInviteContent = CreateFrame("Frame", nil, self.ieAutoEventInviteList)
+    self.ieAutoEventInviteContent:SetSize(200, 10)
+    self.ieAutoEventInviteList:SetScrollChild(self.ieAutoEventInviteContent)
 
     -- Ora di invito (comune alle due modalita').
     local timeLbl = FontStr(page, "OVERLAY", 12)
-    timeLbl:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -144)
+    timeLbl:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -208)
     timeLbl:SetText(L["Invite at"])
     timeLbl:SetTextColor(1, 0.82, 0)
 
@@ -1514,14 +1650,21 @@ function GM:BuildAutoinviterPage()
 
     -- Bottone arma/disarma.
     self.ieAutoArmBtn = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
-    self.ieAutoArmBtn:SetSize(120, 24)
-    self.ieAutoArmBtn:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -180)
-    self.ieAutoArmBtn:SetText(L["Start auto-invite"])
+    self.ieAutoArmBtn:SetSize(130, 24)
+    self.ieAutoArmBtn:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -244)
+    self.ieAutoArmBtn:SetText(L["Start Autoinviter"])
     self.ieAutoArmBtn:SetScript("OnClick", function() self:ToggleAutoinviter() end)
+
+    -- Invita subito l'intera lista, ignorando l'orario programmato.
+    self.ieAutoNowBtn = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
+    self.ieAutoNowBtn:SetSize(130, 24)
+    self.ieAutoNowBtn:SetPoint("LEFT", self.ieAutoArmBtn, "RIGHT", 8, 0)
+    self.ieAutoNowBtn:SetText(L["Auto invite now"])
+    self.ieAutoNowBtn:SetScript("OnClick", function() self:AutoInviteNow() end)
 
     -- Stato / avanzamento.
     self.ieAutoStatus = FontStr(page, "OVERLAY", 12)
-    self.ieAutoStatus:SetPoint("LEFT", self.ieAutoArmBtn, "RIGHT", 8, 0)
+    self.ieAutoStatus:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -274)
     self.ieAutoStatus:SetPoint("RIGHT", page, "RIGHT", -8, 0)
     self.ieAutoStatus:SetJustifyH("LEFT")
     self.ieAutoStatus:SetText("")
@@ -1543,8 +1686,8 @@ function GM:RefreshAutoinviter()
     if self.ieAutoCalBox then
         if manual then self.ieAutoCalBox:Hide() else self.ieAutoCalBox:Show() end
     end
-    if manual and self.ieAutoNamesEdit then
-        self.ieAutoNamesEdit:SetText(db.names or "")
+    if manual then
+        self:BuildAutoNameListUI()
     end
     if self.ieAutoHourEdit then self.ieAutoHourEdit:SetText(string.format("%02d", db.hour or 19)) end
     if self.ieAutoMinuteEdit then self.ieAutoMinuteEdit:SetText(string.format("%02d", db.minute or 0)) end
@@ -1554,18 +1697,49 @@ function GM:RefreshAutoinviter()
     self:RefreshAutoinviterArmButton()
 end
 
+-- Assicura che l'addon Blizzard_Calendar sia caricato (e' LoadOnDemand:
+-- le API del calendario non esistono finche' l'utente non apre il
+-- calendario, quindi lo carichiamo noi quando serve).
+function GM:EnsureCalendarLoaded()
+    if LoadAddOn and (CalendarGetDate == nil or CalendarGetDayEvent == nil) then
+        pcall(LoadAddOn, "Blizzard_Calendar")
+    end
+    return CalendarGetDate ~= nil and CalendarGetDayEvent ~= nil
+end
+
+-- Apre il calendario di gioco per CREARE un nuovo evento da collegare.
+function GM:CreateAutoinviteCalendarEvent()
+    if not self:EnsureCalendarLoaded() then
+        RLSuite.utils:Print(L["Calendar addon could not be loaded."])
+        return
+    end
+    local ok = pcall(function()
+        if OpenCalendar then OpenCalendar() end
+        if CalendarCreateEvent then CalendarCreateEvent() end
+    end)
+    if not ok then
+        if OpenCalendar then pcall(OpenCalendar) end
+    end
+    RLSuite.utils:Print(L["Create the raid event, then press Refresh to link it."])
+end
+
 -- Elenca gli eventi RAID di oggi (tipo CALENDAR_EVENTTYPE_RAID == 1).
 function GM:GetTodayRaidEvents()
     local events = {}
-    if not CalendarGetNumDayEvents or not CalendarGetDate then return events end
-    local weekday, month, day, year = CalendarGetDate()
-    if not day then return events end
-    local n = CalendarGetNumDayEvents(0, day) or 0
+    if not self:EnsureCalendarLoaded() then return events end
+    local okDate, weekday, month, day, year = pcall(CalendarGetDate)
+    if not okDate or not day then return events end
+    local okNum, n = pcall(CalendarGetNumDayEvents, 0, day)
+    if not okNum then return events end
+    n = n or 0
     for i = 1, n do
-        local title, hour, minute, calendarType, sequenceType, eventType =
-            CalendarGetDayEvent(0, day, i)
-        if title and tonumber(eventType) == 1 then
-            table.insert(events, { index = i, day = day, title = title, hour = hour or 0, minute = minute or 0 })
+        local ok, title, hour, minute, calendarType, sequenceType, eventType, texture, modStatus,
+            inviteStatus, invitedBy, difficulty, inviteType = pcall(CalendarGetDayEvent, 0, day, i)
+        if ok and title and tonumber(eventType) == 1 then
+            table.insert(events, {
+                index = i, day = day, month = month, year = year, weekday = weekday,
+                title = title, hour = hour or 0, minute = minute or 0,
+            })
         end
     end
     return events
@@ -1603,8 +1777,31 @@ function GM:RefreshAutoinviterCalendar()
     self:RefreshAutoinviterStatus()
 end
 
+-- Testo localizzato dello stato di un invitato (specchio del calendario).
+local CAL_INVITE_STATUS_TEXT = {
+    [1] = "Invited", [2] = "Accepted", [3] = "Declined", [4] = "Confirmed",
+    [5] = "Out", [6] = "Standby", [7] = "Signed up", [8] = "Not signed up",
+    [9] = "Tentative",
+}
+local function InviteStatusText(status)
+    local key = CAL_INVITE_STATUS_TEXT[tonumber(status) or 1] or "Invited"
+    return L[key] or key
+end
+
+local CAL_INVITE_STATUS_COLOR = {
+    [1] = { 1, 1, 1 },       -- invitato
+    [2] = { 0, 1, 0 },       -- accettato
+    [3] = { 1, 0.3, 0.3 },   -- declinato
+    [4] = { 0.5, 1, 0.5 },   -- confermato
+    [5] = { 0.6, 0.6, 0.6 }, -- fuori
+    [6] = { 1, 0.9, 0.4 },   -- riserva
+    [7] = { 0.6, 0.8, 1 },   -- iscritto
+    [8] = { 0.7, 0.7, 0.7 }, -- non iscritto
+    [9] = { 1, 0.8, 0.4 },   -- tentativo
+}
+
 -- Seleziona un evento raid nel dropdown: salva la scelta, copia l'orario
--- dell'evento nei campi HH:MM e mostra il numero di invitati.
+-- dell'evento nei campi HH:MM e disegna il "mirror" dell'evento.
 function GM:SelectAutoinviteEvent(value, silent)
     local db = self.autoinvite
     local events = self._autoEvents or self:GetTodayRaidEvents()
@@ -1628,15 +1825,12 @@ function GM:SelectAutoinviteEvent(value, silent)
         db.minute = found.minute
     end
 
-    if self.ieAutoEventInfo then
-        if found then
-            local list = self:GetEventInviteeNames(found)
-            db.eventCount = #list
-            self.ieAutoEventInfo:SetText(string.format(L["%d players signed up"], #list))
-        else
-            db.eventCount = 0
-            self.ieAutoEventInfo:SetText(L["No raid events today"])
-        end
+    self:RenderAutoinviteCalendarEvent(found)
+
+    if found then
+        db.eventCount = #self:GetEventInviteeNames(found)
+    else
+        db.eventCount = 0
     end
     if not silent then
         if self.ieAutoHourEdit then self.ieAutoHourEdit:SetText(string.format("%02d", db.hour or 19)) end
@@ -1645,23 +1839,140 @@ function GM:SelectAutoinviteEvent(value, silent)
     end
 end
 
--- Nomi dei partecipanti all'evento (esclusi i declinati).
-function GM:GetEventInviteeNames(ev)
-    local names = {}
+-- Nome localizzato del giorno della settimana (1 = domenica).
+local function CalendarWeekdayName(weekday)
+    local g = {
+        [1] = WEEKDAY_SUNDAY or "Sunday", [2] = WEEKDAY_MONDAY or "Monday",
+        [3] = WEEKDAY_TUESDAY or "Tuesday", [4] = WEEKDAY_WEDNESDAY or "Wednesday",
+        [5] = WEEKDAY_THURSDAY or "Thursday", [6] = WEEKDAY_FRIDAY or "Friday",
+        [7] = WEEKDAY_SATURDAY or "Saturday",
+    }
+    return g[weekday] or ""
+end
+
+-- Descrizione dell'evento (3.3.5: CalendarEventGetText; con fallback).
+function GM:GetCalendarEventText(ev)
+    if not ev or not CalendarOpenEvent then return "" end
+    local ok = pcall(CalendarOpenEvent, 0, ev.day, ev.index)
+    if not ok then return "" end
+    if CalendarEventGetText then
+        local ok2, text = pcall(CalendarEventGetText)
+        if ok2 and text and text ~= "" then return text end
+    end
+    if CalendarEventGetDescription then
+        local ok3, text = pcall(CalendarEventGetDescription)
+        if ok3 and text and text ~= "" then return text end
+    end
+    return ""
+end
+
+-- Elenco completo degli invitati con classe e stato.
+function GM:GetEventInviteList(ev)
+    local list = {}
     if not ev or not CalendarOpenEvent or not CalendarEventGetNumInvites or not CalendarEventGetInvite then
-        return names
+        return list
     end
     local ok = pcall(CalendarOpenEvent, 0, ev.day, ev.index)
-    if not ok then return names end
+    if not ok then return list end
     local n = CalendarEventGetNumInvites() or 0
     for i = 1, n do
-        local name, _, _, _, status = CalendarEventGetInvite(i)
+        local ok2, name, level, className, classFilename, status, modStatus = pcall(CalendarEventGetInvite, i)
+        if ok2 and name and name ~= "" then
+            table.insert(list, {
+                name = name,
+                class = classFilename or "WARRIOR",
+                status = tonumber(status) or 1,
+                mod = modStatus or "",
+            })
+        end
+    end
+    return list
+end
+
+-- Nomi dei partecipanti all'evento (esclusi i declinati) per la coda inviti.
+function GM:GetEventInviteeNames(ev)
+    local names = {}
+    for _, invite in ipairs(self:GetEventInviteList(ev)) do
         -- CALENDAR_INVITESTATUS_DECLINED == 3
-        if name and name ~= "" and status ~= 3 then
-            table.insert(names, name)
+        if invite.status ~= 3 then
+            names[#names + 1] = invite.name
         end
     end
     return names
+end
+
+-- Svuota l'elenco invitati del mirror.
+function GM:ClearAutoinviteEventInvites()
+    for _, row in ipairs(self._autoEventInviteRows or {}) do
+        row:Hide()
+        row:SetParent(nil)
+    end
+    self._autoEventInviteRows = {}
+end
+
+-- Disegna l'elenco invitati del mirror (nome colorato per classe + stato).
+function GM:RenderAutoinviteEventInvites(ev)
+    self:ClearAutoinviteEventInvites()
+    if not self.ieAutoEventInviteContent then return end
+    local content = self.ieAutoEventInviteContent
+    local y = 0
+    for _, invite in ipairs(self:GetEventInviteList(ev)) do
+        local row = CreateFrame("Frame", nil, content)
+        row:SetSize(240, 16)
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+
+        local nameFS = FontStr(row, "OVERLAY", 12)
+        nameFS:SetPoint("LEFT", row, "LEFT", 2, 0)
+        nameFS:SetText(invite.name)
+        local r, g, b = RLSuite.utils:GetClassColor(invite.class)
+        nameFS:SetTextColor(r, g, b)
+        row.nameFS = nameFS
+
+        local statusFS = FontStr(row, "OVERLAY", 11)
+        statusFS:SetPoint("LEFT", row, "LEFT", 150, 0)
+        local sr, sg, sb = unpack(CAL_INVITE_STATUS_COLOR[invite.status] or CAL_INVITE_STATUS_COLOR[1])
+        statusFS:SetTextColor(sr, sg, sb)
+        local statusText = InviteStatusText(invite.status)
+        if invite.mod and invite.mod ~= "" then
+            statusText = statusText .. " (" .. invite.mod .. ")"
+        end
+        statusFS:SetText(statusText)
+        row.statusFS = statusFS
+
+        table.insert(self._autoEventInviteRows, row)
+        y = y - 17
+    end
+    content:SetHeight(math.max(-y + 2, 10))
+    if self.ieAutoEventInviteList and self.ieAutoEventInviteList.UpdateScrollChildRect then
+        self.ieAutoEventInviteList:UpdateScrollChildRect()
+    end
+end
+
+-- Disegna il "mirror" dell'evento: titolo, data/ora, descrizione, invitati.
+function GM:RenderAutoinviteCalendarEvent(ev)
+    if not ev then
+        if self.ieAutoEventTitle then
+            self.ieAutoEventTitle:SetText(L["No calendar event linked"])
+        end
+        if self.ieAutoEventWhen then self.ieAutoEventWhen:SetText("") end
+        if self.ieAutoEventDesc then
+            self.ieAutoEventDesc:SetText(L["Link an existing event above, or create a new one."])
+        end
+        self:ClearAutoinviteEventInvites()
+        return
+    end
+
+    if self.ieAutoEventTitle then self.ieAutoEventTitle:SetText(ev.title or "") end
+
+    local whenText = string.format("%s %02d/%02d/%04d  %02d:%02d",
+        CalendarWeekdayName(ev.weekday), ev.day or 0, ev.month or 0, ev.year or 0,
+        ev.hour or 0, ev.minute or 0)
+    if self.ieAutoEventWhen then self.ieAutoEventWhen:SetText(whenText) end
+
+    local desc = self:GetCalendarEventText(ev)
+    if self.ieAutoEventDesc then self.ieAutoEventDesc:SetText(desc) end
+
+    self:RenderAutoinviteEventInvites(ev)
 end
 
 -- Risolve l'evento selezionato (per indice, poi per titolo).
@@ -1689,11 +2000,10 @@ function GM:BuildAutoinviteQueue()
             end
         end
     else
-        local text = self.ieAutoNamesEdit and self.ieAutoNamesEdit:GetText() or (db.names or "")
-        -- I nomi dei giocatori non contengono spazi: si splitta su spazi,
-        -- virgole, punti e virgola e a capo.
-        for name in (text or ""):gmatch("[^%s,;]+") do
-            if name ~= "" and name ~= "-" then
+        local names = db.names
+        if type(names) ~= "table" then names = {} end
+        for _, name in ipairs(names) do
+            if name and name ~= "" and name ~= "-" then
                 queue[#queue + 1] = name
             end
         end
@@ -1802,11 +2112,16 @@ function GM:AutoinviterTick()
     end
 end
 
--- Invita un singolo nome (in debug stampa e non invita).
+-- Invita un singolo nome (in debug il giocatore fittizio accetta subito).
 function GM:InviteAutoName(name)
     if not name then return end
     if RLSuite.DebugMode and RLSuite:DebugMode() then
         RLSuite.utils:Print("[DBG] Autoinvite " .. name)
+        local class = nil
+        for _, e in ipairs(self.whisperDB.entries or {}) do
+            if e.name == name and e.class then class = e.class break end
+        end
+        RLSuite:DebugInviteAccept(name, class)
         return
     end
     if InviteUnit then InviteUnit(name) end
@@ -1817,10 +2132,114 @@ end
 function GM:SaveAutoinviter()
     local db = self.autoinvite
     if not db then return end
-    if self.ieAutoNamesEdit and db.mode == "manual" then
-        db.names = self.ieAutoNamesEdit:GetText() or ""
-    end
+    if type(db.names) ~= "table" then db.names = {} end
     db.enabled = self.autoinviteActive and true or false
+end
+
+-- ============================================================
+-- Lista manuale: aggiunta/rimozione nomi e relativa UI.
+-- ============================================================
+function GM:AutoNameList()
+    local db = self.autoinvite
+    if not db then return {} end
+    if type(db.names) ~= "table" then db.names = {} end
+    return db.names
+end
+
+-- Invio nel campo nome = il nome entra nella lista.
+function GM:AddAutoName(name)
+    name = (name or ""):match("^%s*(.-)%s*$") or ""
+    name = name:gsub("%s+", "")
+    if name == "" then return end
+    local names = self:AutoNameList()
+    for _, n in ipairs(names) do
+        if n == name then
+            if self.ieAutoNamesEdit then self.ieAutoNamesEdit:SetText("") end
+            return
+        end
+    end
+    names[#names + 1] = name
+    if self.ieAutoNamesEdit then self.ieAutoNamesEdit:SetText("") end
+    self:BuildAutoNameListUI()
+    self:SaveAutoinviter()
+    self:RefreshAutoinviterStatus()
+end
+
+-- Clic destro su un nome della lista = rimozione.
+function GM:RemoveAutoName(name)
+    local names = self:AutoNameList()
+    for i, n in ipairs(names) do
+        if n == name then
+            table.remove(names, i)
+            break
+        end
+    end
+    self:BuildAutoNameListUI()
+    self:SaveAutoinviter()
+    self:RefreshAutoinviterStatus()
+end
+
+-- Ricostruisce le righe dell'elenco manuale (una riga per nome).
+function GM:BuildAutoNameListUI()
+    if not self.ieAutoNamesContent then return end
+    local content = self.ieAutoNamesContent
+    for _, row in ipairs(self._autoNameRows or {}) do
+        row:Hide()
+        row:SetParent(nil)
+    end
+    self._autoNameRows = {}
+
+    local names = self:AutoNameList()
+    local y = 0
+    for i, name in ipairs(names) do
+        local row = CreateFrame("Button", nil, content)
+        row:SetSize(220, 16)
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+        row:EnableMouse(true)
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+
+        local text = FontStr(row, "OVERLAY", 12)
+        text:SetPoint("LEFT", row, "LEFT", 4, 0)
+        text:SetText(name)
+        text:SetTextColor(1, 1, 1)
+        row.text = text
+        row.name = name
+
+        row:SetScript("OnClick", function(s, button)
+            if button == "RightButton" then
+                self:RemoveAutoName(s.name)
+            end
+        end)
+        row:SetScript("OnEnter", function(s)
+            s.text:SetTextColor(1, 0.82, 0)
+        end)
+        row:SetScript("OnLeave", function(s)
+            s.text:SetTextColor(1, 1, 1)
+        end)
+
+        table.insert(self._autoNameRows, row)
+        y = y - 17
+    end
+
+    content:SetHeight(math.max(-y + 2, 10))
+    if self.ieAutoNamesScroll and self.ieAutoNamesScroll.UpdateScrollChildRect then
+        self.ieAutoNamesScroll:UpdateScrollChildRect()
+    end
+end
+
+-- "Auto invite now": invita subito tutta la lista, senza aspettare l'ora.
+function GM:AutoInviteNow()
+    local db = self.autoinvite
+    if not db then return end
+    local queue = self:BuildAutoinviteQueue()
+    if #queue == 0 then
+        RLSuite.utils:Print(L["Autoinviter: no names to invite."])
+        return
+    end
+    RLSuite.utils:Print(string.format(L["Autoinviter: inviting %d names now."], #queue))
+    for _, name in ipairs(queue) do
+        self:InviteAutoName(name)
+    end
 end
 
 function GM:RefreshAutoinviterStatus()
@@ -1842,9 +2261,9 @@ end
 function GM:RefreshAutoinviterArmButton()
     if not self.ieAutoArmBtn then return end
     if self.autoinviteActive then
-        self.ieAutoArmBtn:SetText(L["Stop auto-invite"])
+        self.ieAutoArmBtn:SetText(L["Stop Autoinviter"])
     else
-        self.ieAutoArmBtn:SetText(L["Start auto-invite"])
+        self.ieAutoArmBtn:SetText(L["Start Autoinviter"])
     end
 end
 
@@ -1895,33 +2314,46 @@ end
 -- Popola il pannello Raid Group dal raid REALE (non dalla comp di
 -- Groupmaking, che e' quella "ideale" aggiornata a mano dal RL per lo
 -- spammer). Ogni giocatore finisce nella colonna del suo sottogruppo.
+-- In debug mode legge invece il roster simulato (Core), cosi' un invito
+-- fittizio accettato appare subito qui come farebbe un invito vero.
 function GM:UpdateWLGroups()
     if not self.wlGroupSlots then return end
 
     local byGroup = { {}, {}, {}, {}, {} }
     local num = 0
-    if IsInRaid and IsInRaid() and GetNumRaidMembers then
-        num = GetNumRaidMembers()
-    end
-    for i = 1, num do
-        local name, _, subgroup = GetRaidRosterInfo(i)
-        if name then
-            local class = "WARRIOR"
-            if UnitClass then
-                local _, classFile = UnitClass("raid" .. i)
-                if classFile then class = classFile end
-            end
-            subgroup = tonumber(subgroup) or 1
+    local debugMode = RLSuite.DebugMode and RLSuite:DebugMode()
+    if debugMode then
+        -- Roster simulato: i sottogruppi sono assegnati da Core.
+        local ngroups = self:WlGroupColumnCount()
+        RLSuite:DebugRebalanceGroups(ngroups)
+        for _, m in ipairs(RLSuite:DebugRoster()) do
+            local subgroup = tonumber(m.subgroup) or 1
             if subgroup < 1 then subgroup = 1 end
             if subgroup > 5 then subgroup = 5 end
-            table.insert(byGroup[subgroup], { name = name, class = class })
+            table.insert(byGroup[subgroup], { name = m.name, class = m.class or "WARRIOR" })
+        end
+    elseif IsInRaid and IsInRaid() and GetNumRaidMembers then
+        num = GetNumRaidMembers()
+    end
+    if not debugMode then
+        for i = 1, num do
+            local name, _, subgroup = GetRaidRosterInfo(i)
+            if name then
+                local class = "WARRIOR"
+                if UnitClass then
+                    local _, classFile = UnitClass("raid" .. i)
+                    if classFile then class = classFile end
+                end
+                subgroup = tonumber(subgroup) or 1
+                if subgroup < 1 then subgroup = 1 end
+                if subgroup > 5 then subgroup = 5 end
+                table.insert(byGroup[subgroup], { name = name, class = class })
+            end
         end
     end
 
     -- Numero di colonne dalla difficolta' di Groupmaking (2 per il 10, 5 per il 25).
-    local numSlots = tonumber(self.db.difficulty or "10") or 10
-    local ngroups = math.ceil(numSlots / 5)
-    if ngroups < 2 then ngroups = 2 end
+    local ngroups = self:WlGroupColumnCount()
 
     for g = 1, 5 do
         local col = self.wlGroupCols and self.wlGroupCols[g]
@@ -1944,6 +2376,15 @@ function GM:UpdateWLGroups()
         end
     end
     self:LayoutWLGroupColumns(ngroups)
+end
+
+-- Numero di colonne del pannello Raid Group dalla difficolta' di Groupmaking.
+function GM:WlGroupColumnCount()
+    local numSlots = tonumber(self.db.difficulty or "10") or 10
+    local ngroups = math.ceil(numSlots / 5)
+    if ngroups < 2 then ngroups = 2 end
+    if ngroups > 5 then ngroups = 5 end
+    return ngroups
 end
 
 -- Posiziona le colonne (una per gruppo raid) e le barre verticali al loro
@@ -2082,18 +2523,13 @@ function GM:UpdateWhisplist()
         row:SetScript("OnClick", function(s, button)
             if button == "RightButton" then
                 -- Debug mode: il clic destro elimina il giocatore senza
-                -- inviare il messaggio di decline. Rimando la rimozione di
-                -- un frame per non distruggere il bottone durante il click
-                -- (altrimenti i click successivi possono bloccarsi).
-                if RLSuite.DebugMode and RLSuite:DebugMode() and row.entry then
-                    self._wlRemoveNext = row.entry
-                    -- AceTimer-3.0: rimanda la rimozione al prossimo tick
-                    -- (prima era un frame OnUpdate monouso).
-                    self:ScheduleTimer("FlushRemoveWhisper", 0)
+                -- inviare il messaggio di decline.
+                if RLSuite.DebugMode and RLSuite:DebugMode() then
+                    self:QueueRemoveWhisperEntry(row.entry)
                 end
                 return
             end
-            self:SelectWhisperEntry(i)
+            self:SelectWhisperEntryByRef(row.entry)
         end)
 
         y = y + 26
@@ -2102,12 +2538,49 @@ function GM:UpdateWhisplist()
     self:StyleWhisperRows()
 end
 
-function GM:FlushRemoveWhisper()
-    if self._wlRemoveNext then
-        local e = self._wlRemoveNext
-        self._wlRemoveNext = nil
-        self:RemoveWhisperEntry(e)
+-- Seleziona una riga per RIFERIMENTO (non per indice): l'indice viene
+-- risolto al momento del click, cosi' una lista riordinata non attiva la
+-- riga sbagliata.
+function GM:SelectWhisperEntryByRef(entry)
+    if not entry then return end
+    local entries = self.whisperDB.entries or {}
+    for i, e in ipairs(entries) do
+        if e == entry then
+            self:SelectWhisperEntry(i)
+            return
+        end
     end
+end
+
+-- Rimozione "sicura" dal clic destro: i dati escono subito dalla lista,
+-- la UI viene ricostruita al tick successivo. Ricostruire i frame dentro
+-- il click distrugge il bottone cliccato e blocca i click successivi.
+function GM:QueueRemoveWhisperEntry(entry)
+    if not entry then return end
+    local entries = self.whisperDB.entries or {}
+    for i, e in ipairs(entries) do
+        if e == entry then
+            table.remove(entries, i)
+            break
+        end
+    end
+    if self.selectedEntry == entry then
+        self.selectedEntry = nil
+        self.selectedEntryIndex = nil
+        if self.wlDetailName then self.wlDetailName:SetText(L["Select a player"]) end
+        if self.wlDetailInfo then self.wlDetailInfo:SetText("") end
+        if self.wlChatText then self.wlChatText:SetText("") end
+    end
+    self._wlRebuildPending = true
+    if not self._wlRebuildTimer then
+        self._wlRebuildTimer = self:ScheduleTimer("FlushWhisperRebuild", 0.05)
+    end
+end
+
+function GM:FlushWhisperRebuild()
+    self._wlRebuildTimer = nil
+    self._wlRebuildPending = nil
+    self:UpdateWhisplist()
 end
 
 -- Stile delle righe dei giocatori: riga selezionata evidenziata, righe con
@@ -2210,12 +2683,17 @@ end
 
 function GM:InviteSelected()
     if not self.selectedEntry then return end
+    local name = self.selectedEntry.name
     if RLSuite.DebugMode and RLSuite:DebugMode() then
-        RLSuite.utils:Print("[DBG] Invite " .. (self.selectedEntry.name or "?"))
-        RLSuite.utils:Whisper(self.selectedEntry.name, "You are invited (debug).")
+        RLSuite.utils:Print("[DBG] Invite " .. (name or "?"))
+        -- Il giocatore fittizio accetta subito: entra nel roster simulato e
+        -- Raid Group + Raid Frame si aggiornano come con un invito vero.
+        RLSuite:DebugInviteAccept(name, self.selectedEntry.class)
+        self.selectedEntry.invited = true
+        self:UpdateWhisplist()
         return
     end
-    InviteUnit(self.selectedEntry.name)
+    InviteUnit(name)
     self.selectedEntry.invited = true
     self:UpdateWhisplist()
 end
@@ -2287,6 +2765,7 @@ function GM:InvitePlayerToSlot(entry, slotIndex)
     entry.invited = true
     if RLSuite.DebugMode and RLSuite:DebugMode() then
         RLSuite.utils:Print("[DBG] Invite " .. (entry.name or "?") .. " slot " .. slotIndex)
+        RLSuite:DebugInviteAccept(entry.name, class)
     else
         InviteUnit(entry.name)
     end

@@ -101,31 +101,16 @@ end
 
 function RF:GetRoster()
     if RLSuite.DebugMode and RLSuite:DebugMode() then
-        local me = UnitName("player") or "Player"
-        local myClass = select(2, UnitClass("player")) or "WARRIOR"
-        local list = { { unit = "player", name = me, class = myClass, fake = false } }
-        local fakes = {
-            { name = "Thrallbot", class = "SHAMAN" },
-            { name = "Jainabot", class = "MAGE" },
-            { name = "Utherbot", class = "PALADIN" },
-            { name = "Sylbot", class = "ROGUE" },
-            { name = "Bolvarbot", class = "WARRIOR" },
-            { name = "Tyrandebot", class = "DRUID" },
-            { name = "Anduinbot", class = "PRIEST" },
-            { name = "Valeerabot", class = "HUNTER" },
-            { name = "Guldanbot", class = "WARLOCK" },
-        }
-        local n = tonumber(RLSuite.db.profile.groupmaking and RLSuite.db.profile.groupmaking.difficulty) or 10
-        if n < 2 then n = 10 end
-        if n > 10 then
-            for i = 1, n - 10 do
-                table.insert(fakes, { name = "Raider" .. i, class = "WARRIOR" })
-            end
-        end
-        for i = 1, n - 1 do
-            local f = fakes[i]
-            if f then
-                table.insert(list, { unit = nil, name = f.name, class = f.class, fake = true })
+        -- The simulated roster (Core) is the single source of truth in debug
+        -- mode: it starts with just the player and grows when fake players
+        -- accept an invite. This is what the Raid Frame and the Raid Group
+        -- panel both read, so an accepted invite updates everything.
+        local list = {}
+        for i, m in ipairs(RLSuite:DebugRoster()) do
+            if m.isPlayer then
+                table.insert(list, { unit = "player", name = m.name, class = m.class, fake = false })
+            else
+                table.insert(list, { unit = nil, name = m.name, class = m.class, fake = true })
             end
         end
         return list

@@ -552,6 +552,75 @@ function RLSuite:DebugMode()
     return self.db and self.db.profile.debug == true
 end
 
+-- ============================================================
+-- DEBUG MODE: simulated raid roster.
+-- In debug mode the real raid API returns nothing, so the addon keeps
+-- its own roster here. The player is always present; fake players join
+-- when they are "invited" (whisper list, comp slot or autoinviter).
+-- Both the Raid Group panel (GroupMaking) and the Raid Frame read from
+-- this table in debug mode, so an accepted fake invite updates the UI
+-- exactly like a real invite would.
+-- ============================================================
+function RLSuite:DebugRoster()
+    if not self.debugRaid then self:ResetDebugRaid() end
+    return self.debugRaid.members
+end
+
+function RLSuite:ResetDebugRaid()
+    local me = UnitName("player") or "Player"
+    local myClass = select(2, UnitClass("player")) or "WARRIOR"
+    self.debugRaid = {
+        members = {
+            { name = me, class = myClass, isPlayer = true, subgroup = 1 },
+        },
+    }
+end
+
+-- A fake player accepts the invite: add them to the simulated roster and
+-- refresh every UI that reads it (Raid Group panel + Raid Frame).
+function RLSuite:DebugInviteAccept(name, class, subgroup)
+    if not name or name == "" then return nil end
+    local roster = self:DebugRoster()
+    for _, m in ipairs(roster) do
+        if m.name == name then
+            return m
+        end
+    end
+    local member = {
+        name = name,
+        class = class or "WARRIOR",
+        isPlayer = false,
+        subgroup = subgroup or ((#roster % 5) + 1),
+    }
+    table.insert(roster, member)
+    self:DebugRosterChanged()
+    return member
+end
+
+-- Rebalance subgroups 1..ngroups round-robin after the roster changes, so
+-- the Raid Group columns fill evenly like a real raid assistant would.
+function RLSuite:DebugRebalanceGroups(ngroups)
+    local roster = self:DebugRoster()
+    ngroups = tonumber(ngroups) or math.ceil(#roster / 5)
+    if ngroups < 2 then ngroups = 2 end
+    if ngroups > 5 then ngroups = 5 end
+    for i, m in ipairs(roster) do
+        m.subgroup = ((i - 1) % ngroups) + 1
+    end
+end
+
+-- Called whenever the simulated roster changes (invite accepted, debug
+-- toggled, ...). Refreshes the Raid Frame and the Raid Group panel.
+function RLSuite:DebugRosterChanged()
+    if self.raidFrame and self.raidFrame.Rebuild then
+        self.raidFrame:Rebuild()
+        if self.raidFrame.UpdateAll then self.raidFrame:UpdateAll() end
+    end
+    if self.groupmaking and self.groupmaking.UpdateWLGroups then
+        self.groupmaking:UpdateWLGroups()
+    end
+end
+
 -- Percorso di una risorsa dentro la cartella dell'addon, usando il nome
 -- cartella reale (RLSuite o RaidLeadSuite a seconda di come e' installato).
 function RLSuite:AddonTexture(rel)
@@ -571,6 +640,9 @@ end
 
 function RLSuite:ApplyDebugMode()
     self:UpdateRaidContext()
+    -- The simulated roster always restarts from just the player when debug
+    -- mode is toggled, so stale fake members never leak between sessions.
+    self.debugRaid = nil
     if self:DebugMode() then
         self.utils:Print("|cffff9900" .. L["DEBUG MODE ON"] .. "|r - " .. L["Simulated raid, messages are whispered to you."])
         if self.lootManager and self.lootManager.SpawnDebugLoot then
@@ -613,14 +685,21 @@ function RLSuite:SetContextPhase(phase)
 end
 
 -- Cicla preraid -> preboss -> infight -> preraid (usato dall'icona fase).
-function RLSuite:CycleContextPhase()
+-- dir =  1 -> fase successiva (clic sinistro)
+-- dir = -1 -> fase precedente   (clic destro)
+function RLSuite:CycleContextPhase(dir)
     local order = { "preraid", "preboss", "infight" }
     local cur = self.context or "preraid"
     local idx
     for i, k in ipairs(order) do
         if k == cur then idx = i break end
     end
-    idx = (idx or 1) % 3 + 1
+    idx = idx or 1
+    if dir and dir < 0 then
+        idx = ((idx - 2) % 3) + 1
+    else
+        idx = (idx % 3) + 1
+    end
     self:SetContextPhase(order[idx])
 end
 

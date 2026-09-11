@@ -723,6 +723,93 @@ rt.execute("RLSuite.config:Toggle()")
 check(bool(rt.eval("RLSuite.config:IsOpen() == false")), "Toggle closes the Ace3 window")
 
 print()
+print("== Scenario D: new features (Lim/Aim spam, phase, debug roster/whispers, Autoinviter) ==")
+
+# --- Phase indicator: left = forward, right = backward ---
+rt.execute("RLSuite:SetContextPhase('preraid')")
+rt.execute("RLSuite:CycleContextPhase(1)")
+check(g.RLSuite.context == "preboss", "phase forward: preraid -> preboss (left click)")
+rt.execute("RLSuite:CycleContextPhase(1)")
+check(g.RLSuite.context == "infight", "phase forward: preboss -> infight")
+rt.execute("RLSuite:CycleContextPhase(-1)")
+check(g.RLSuite.context == "preboss", "phase backward: infight -> preboss (right click)")
+rt.execute("RLSuite:CycleContextPhase(-1)")
+check(g.RLSuite.context == "preraid", "phase backward: preboss -> preraid")
+
+# --- Spammer "Lim" = the Aim field, between difficulty/HC and Need ---
+rt.execute("RLSuite.groupmaking.db.hc = false")
+rt.execute("RLSuite.groupmaking.db.showSpecsInMessage = false")
+rt.execute("RLSuite.groupmaking.aimEdit:SetText('GS 5800+')")
+rt.execute("RLSuite.groupmaking.reservedEdit:SetText('Valanyr')")
+rt.execute("RLSuite.groupmaking.otherEdit:SetText('no hunters')")
+rt.execute("RLSuite.groupmaking:FillSlot(1, 'WARRIOR', 'tank', nil, 'prot')")
+rt.execute("SPAM_MSG = RLSuite.groupmaking:BuildSpamMessage()")
+check(bool(rt.eval("SPAM_MSG:find('LFM ', 1, true) == 1")), "spam starts with LFM")
+check(bool(rt.eval("SPAM_MSG:find('GS 5800+', 1, true) ~= nil")), "Aim ('Lim') text present in the message")
+check(bool(rt.eval("(SPAM_MSG:find('GS 5800+', 1, true) or 0) < (SPAM_MSG:find('Need', 1, true) or 0)")), "Aim text sits before 'Need'")
+check(bool(rt.eval("(SPAM_MSG:find('Need', 1, true) or 0) < (SPAM_MSG:find('Res', 1, true) or 0)")), "'Need' sits before 'Res'")
+check(bool(rt.eval("(SPAM_MSG:find('Res', 1, true) or 0) < (SPAM_MSG:find('no hunters', 1, true) or 0)")), "Other requirements still at the end (after Res)")
+rt.execute("RLSuite.groupmaking:ClearSlot(1)")
+
+# --- Debug mode: shared simulated roster used by Raid Frame + Raid Group ---
+rt.execute("RLSuite.db.profile.debug = true")
+rt.execute("RLSuite:ApplyDebugMode()")
+check(bool(rt.eval("#RLSuite:DebugRoster() == 1")), "debug roster starts with just the player")
+rt.execute("RLSuite:DebugInviteAccept('Drakbot', 'WARRIOR')")
+check(bool(rt.eval("#RLSuite:DebugRoster() == 2")), "DebugInviteAccept adds the fake player")
+check(bool(rt.eval("#RLSuite.raidFrame:GetRoster() == 2")), "Raid Frame reads the shared debug roster (2 members)")
+rt.execute("local found=false; for _,s in ipairs(RLSuite.groupmaking.wlGroupSlots) do if s.nameFS and s.nameFS:GetText()=='Drakbot' then found=true end end; DRAK_IN_GROUP = found")
+check(bool(rt.eval("DRAK_IN_GROUP == true")), "Raid Group panel shows the accepted fake player")
+
+# --- Debug fake whispers: spammer active -> 10 whispers into the Whisplist ---
+rt.execute("RLSuite.groupmaking:StartSpam()")
+check(bool(rt.eval("RLSuite.groupmaking.debugWhisperTimer ~= nil")), "StartSpam (debug) schedules the fake-whisper timer")
+rt.execute("for i=1,10 do RLSuite.groupmaking:DebugWhisperTick() end")
+check(bool(rt.eval("#RLSuite.groupmaking.whisperDB.entries == 10")), "10 fake whispers produce 10 Whisplist entries")
+check(bool(rt.eval("RLSuite.groupmaking.debugWhisperTimer == nil")), "fake-whisper timer stops after the 10th whisper")
+rt.execute("RLSuite.groupmaking:StopSpam()")
+
+# --- Inviting a fake whisperer behaves like a real accept ---
+rt.execute("RLSuite.groupmaking:SelectWhisperEntry(1)")
+rt.execute("INV_NAME = RLSuite.groupmaking.selectedEntry and RLSuite.groupmaking.selectedEntry.name")
+check(bool(rt.eval("INV_NAME ~= nil")), "a whisper entry is selected")
+rt.execute("RLSuite.groupmaking:InviteSelected()")
+check(bool(rt.eval("#RLSuite:DebugRoster() == 3")), "InviteSelected (debug) accepts the fake player into the roster")
+
+# --- Right-click removal defers the rebuild so future clicks stay alive ---
+rt.execute("RLSuite.groupmaking:SelectWhisperEntry(1)")
+rt.execute("RTARGET = RLSuite.groupmaking.selectedEntry")
+rt.execute("RLSuite.groupmaking:QueueRemoveWhisperEntry(RTARGET)")
+check(bool(rt.eval("#RLSuite.groupmaking.whisperDB.entries == 9")), "right-click removal drops the entry data")
+check(bool(rt.eval("RLSuite.groupmaking._wlRebuildTimer ~= nil")), "right-click removal defers the list rebuild (AceTimer)")
+rt.execute("RLSuite.groupmaking:FlushWhisperRebuild()")
+check(bool(rt.eval("#RLSuite.groupmaking.wlRows == 9")), "deferred rebuild renders the remaining rows")
+rt.execute("RLSuite.groupmaking:SelectWhisperEntryByRef(RLSuite.groupmaking.whisperDB.entries[1])")
+check(bool(rt.eval("RLSuite.groupmaking.selectedEntry == RLSuite.groupmaking.whisperDB.entries[1]")), "left-click selects the next row by reference after removal")
+
+# --- Autoinviter manual list: typeable + Enter adds + Auto invite now + label ---
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoArmBtn:GetText() == 'Start Autoinviter'")), "arm button reads 'Start Autoinviter'")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoNowBtn ~= nil")), "Auto invite now button exists")
+rt.execute("RLSuite.groupmaking.autoinvite.names = {}")
+rt.execute("RLSuite.groupmaking.ieAutoNamesEdit:SetText('Holymoon')")
+rt.execute("RLSuite.groupmaking:AddAutoName(RLSuite.groupmaking.ieAutoNamesEdit:GetText())")
+rt.execute("RLSuite.groupmaking.ieAutoNamesEdit:SetText('  Zapdora  ')")
+rt.execute("RLSuite.groupmaking:AddAutoName(RLSuite.groupmaking.ieAutoNamesEdit:GetText())")
+check(bool(rt.eval("#RLSuite.groupmaking:AutoNameList() == 2")), "Enter/AddAutoName appends names (with trimming)")
+rt.execute("RLSuite.groupmaking:RemoveAutoName('Holymoon')")
+check(bool(rt.eval("#RLSuite.groupmaking:AutoNameList() == 1 and RLSuite.groupmaking:AutoNameList()[1] == 'Zapdora'")), "right-click RemoveAutoName removes the name")
+rt.execute("N_BEFORE = #RLSuite:DebugRoster()")
+rt.execute("RLSuite.groupmaking:AutoInviteNow()")
+check(bool(rt.eval("#RLSuite:DebugRoster() == N_BEFORE + 1")), "Auto invite now accepts the listed fake player")
+
+# --- Autoinviter calendar mirror: no event -> link/create hint ---
+rt.execute("RLSuite.groupmaking:SelectAutoinviteEvent('none', true)")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventTitle:GetText() == 'No calendar event linked'")), "calendar mirror shows 'No calendar event linked' when nothing exists")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventCreate ~= nil")), "Create event button exists for the calendar mode")
+
+check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario D (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
+
+print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
     sys.exit(1)

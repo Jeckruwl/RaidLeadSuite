@@ -53,7 +53,7 @@ The folder must contain:
 
 ## Interface
 
-- **Top bar**: at the top sits the **icon row** (as wide as the matrix): on the left, in a row, the **Config gear**, the **save icon (SaveRaid)** and the **phase icon**; on the right, the red **close X**. If there is room, the **phase name** also appears next to the icon. The phase icon changes with the current phase (**animated LFG eye** = pre-raid, **hourglass** = pre-boss, **swords** = in-fight) and cycles to the next phase on click. Below sits the **configurable button matrix** (default **2×4**) with Groupmaking, InviteEngine, Macrobar, Raid Manager, MS, Loot. The tabs are bistable; the windows open as **free, movable panels** (position remembered). **Exception**: the **Macrobar** button on the bar shows/hides the **MacroBar HUD** (it no longer opens a tab window).
+- **Top bar**: at the top sits the **icon row** (as wide as the matrix): on the left, in a row, the **Config gear**, the **save icon (SaveRaid)** and the **phase icon**; on the right, the red **close X**. If there is room, the **phase name** also appears next to the icon. The phase icon changes with the current phase (**animated LFG eye** = pre-raid, **hourglass** = pre-boss, **swords** = in-fight); **left-click** cycles to the next phase, **right-click** to the previous one. Below sits the **configurable button matrix** (default **2×4**) with Groupmaking, InviteEngine, Macrobar, Raid Manager, MS, Loot. The tabs are bistable; the windows open as **free, movable panels** (position remembered). **Exception**: the **Macrobar** button on the bar shows/hides the **MacroBar HUD** (it no longer opens a tab window).
 - **SaveRaid**: saves a setup with a title requested via a prompt → **Comp** (composition, raid, reserved items, message, whisplist), **MacroBar** (macros and layout) and **Config except for the General category**.
 - **Config → Saved Raids**: a top-level category in the Config tree with the list of saved setups (title + **Load**/**Delete** buttons).
 - **ElvUI-style Anchors** in *Config → General → Window → Toggle Anchors*: the **Raid Frame** and **MacroBar** HUDs are locked by default; with Toggle Anchors they appear as highlighted movable placeholders. The other windows stay as usual.
@@ -62,7 +62,7 @@ The folder must contain:
 
 ## Modules
 
-- **Group Making** — 10/25 composition, LFG message, channel spam, **InviteEngine** panel (received whispers with invites + **Autoinviter** scheduled from a manual list or a Calendar event)
+- **Group Making** — 10/25 composition, LFG message (the **Aim** note goes between difficulty/HC and "Need"), channel spam, **InviteEngine** panel (received whispers with invites + **Autoinviter**: manual name list with **Auto invite now**, or a linked **Calendar** raid event). In **debug mode** the spammer also fires 10 fake whispers and fake invitees auto-accept into the Raid Group and Raid Frame.
 - **MacroBar** — 12 macros per phase (`preraid` / `preboss` / `infight`); a two-row keypad that depends on the phase: **ready check** in pre-raid; in pre-boss, first row **pull 15/20/30**, second row **ready + break 5m/3m/2m**. The 12-slot editor lives in **Config → Macros → Macro Editor**.
 - **Raid Frame** — HP/mana, flask/food/buff alerts, raid cooldowns via combat log
 - **MS Manager** — reads `ms <spec>` in raid chat and generates the loot pre-message

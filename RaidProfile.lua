@@ -179,20 +179,25 @@ function MW:CreateFrame()
     self.phaseBtn = CreateFrame("Button", "RLSuitePhaseBtn", f)
     self.phaseBtn:SetSize(26, 26)
     self.phaseBtn:EnableMouse(true)
-    self.phaseBtn:RegisterForClicks("LeftButtonUp")
+    self.phaseBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     RLSuite.utils:SkinBox(self.phaseBtn)
     local phaseIcon = self.phaseBtn:CreateTexture(nil, "ARTWORK")
     phaseIcon:SetPoint("TOPLEFT", self.phaseBtn, "TOPLEFT", 3, -3)
     phaseIcon:SetPoint("BOTTOMRIGHT", self.phaseBtn, "BOTTOMRIGHT", -3, 3)
     self.phaseBtn.icon = phaseIcon
-    self.phaseBtn:SetScript("OnClick", function()
-        if RLSuite.CycleContextPhase then
-            RLSuite:CycleContextPhase()
+    self.phaseBtn:SetScript("OnClick", function(s, button)
+        if not RLSuite.CycleContextPhase then return end
+        if button == "RightButton" then
+            RLSuite:CycleContextPhase(-1)
+        else
+            RLSuite:CycleContextPhase(1)
         end
     end)
     self.phaseBtn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
         GameTooltip:SetText(L["Phase indicator"])
+        GameTooltip:AddLine(L["Left click: next phase"], 1, 1, 1)
+        GameTooltip:AddLine(L["Right click: previous phase"], 1, 1, 1)
         GameTooltip:Show()
     end)
     self.phaseBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
