@@ -590,22 +590,23 @@ function RLSuite:DebugInviteAccept(name, class, subgroup)
         name = name,
         class = class or "WARRIOR",
         isPlayer = false,
-        subgroup = subgroup or ((#roster % 5) + 1),
+        subgroup = subgroup or (math.floor(#roster / 5) + 1),
     }
     table.insert(roster, member)
     self:DebugRosterChanged()
     return member
 end
 
--- Rebalance subgroups 1..ngroups round-robin after the roster changes, so
--- the Raid Group columns fill evenly like a real raid assistant would.
+-- Riempie i sottogruppi IN ORDINE, come un display raid normale: il gruppo 1
+-- si riempie per primo (slot 1..5), poi il gruppo 2, e cosi' via. niente
+-- distribuzione round-robin (che riempiva da sinistra a destra).
 function RLSuite:DebugRebalanceGroups(ngroups)
     local roster = self:DebugRoster()
-    ngroups = tonumber(ngroups) or math.ceil(#roster / 5)
-    if ngroups < 2 then ngroups = 2 end
-    if ngroups > 5 then ngroups = 5 end
     for i, m in ipairs(roster) do
-        m.subgroup = ((i - 1) % ngroups) + 1
+        local sub = math.floor((i - 1) / 5) + 1
+        if sub < 1 then sub = 1 end
+        if sub > 5 then sub = 5 end
+        m.subgroup = sub
     end
 end
 

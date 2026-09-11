@@ -821,6 +821,12 @@ rt.execute("N_BEFORE = #RLSuite:DebugRoster()")
 rt.execute("RLSuite.groupmaking:AutoInviteNow()")
 check(bool(rt.eval("#RLSuite:DebugRoster() == N_BEFORE + 1")), "Auto invite now accepts the listed fake player")
 
+# --- Raid Group fill order: vertical, G1 fills first then G2 (not round-robin) ---
+rt.execute("RLSuite:ResetDebugRaid()")
+rt.execute("for i=1,6 do RLSuite:DebugInviteAccept('Fake'..i, 'WARRIOR') end")
+rt.execute("local subs={}; for _,m in ipairs(RLSuite:DebugRoster()) do subs[#subs+1]=m.name..':'..tostring(m.subgroup) end; SUBS=subs")
+check(bool(rt.eval("table.concat(SUBS, ',') == 'Testplayer:1,Fake1:1,Fake2:1,Fake3:1,Fake4:1,Fake5:2,Fake6:2'")), "groups fill vertically: G1 fills first (5), then G2")
+
 # --- Autoinviter calendar mirror: no event -> link/create hint ---
 rt.execute("RLSuite.groupmaking:SelectAutoinviteEvent('none', true)")
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventTitle:GetText() == 'No calendar event linked'")), "calendar mirror shows 'No calendar event linked' when nothing exists")
