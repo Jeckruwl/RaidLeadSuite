@@ -64,7 +64,6 @@ function CFG:CreateFrame()
         { key = "general",     label = "General" },
         { key = "savedraids",  label = "Saved Raids" },
         { key = "groupmaking", label = "Groupmaking" },
-        { key = "whisplist",   label = "Whisplist" },
         { key = "macros",      label = "Macros" },
         { key = "raidframe",   label = "Raid Frame" },
         { key = "ms",          label = "MS" },
@@ -254,8 +253,6 @@ function CFG:RebuildPanel()
         self:PanelSavedRaids()
     elseif cat == "groupmaking" then
         self:PanelScale("groupmaking", "Groupmaking")
-    elseif cat == "whisplist" then
-        self:PanelScale("whisplist", "Whisplist")
     elseif cat == "macros" and sub == "layout" then
         self:PanelMacroLayout()
     elseif cat == "raidframe" and sub == "layout" then
@@ -1795,7 +1792,6 @@ function CFG:ApplyAll()
         fr:SetScale(lay[key].scale)
     end
     scale(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame, "groupmaking")
-    scale(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame, "whisplist")
     scale(RLSuite.msManager and RLSuite.msManager.frame, "ms")
     scale(RLSuite.lootManager and RLSuite.lootManager.frame, "loot")
     local mw = RLSuite.mainWindow

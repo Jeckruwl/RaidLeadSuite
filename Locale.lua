@@ -27,7 +27,7 @@ do
     L["  /rls              Tab bar"] = true
     L["  /rls help         This list"] = true
     L["  /rls group        Groupmaking tab"] = true
-    L["  /rls whisplist    Whisplist tab"] = true
+    L["  /rls whisplist    Whisplist panel"] = true
     L["  /rls macro        Config -> Macros (editor)"] = true
     L["  /rls macrobar     HUD MacroBar"] = true
     L["  /rls raidframe    Raid Frame tab (settings)"] = true
@@ -63,6 +63,7 @@ do
     L["Spammer stopped."] = true
     L["Whisper from %s received."] = true
     L["Received whispers"] = true
+    L["Raid Group"] = true
     L["Select a player"] = true
     L["Slot already taken!"] = true
     L["Class not recognized for %s"] = true

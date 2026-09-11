@@ -393,7 +393,6 @@ function Utils:AllTabPanes()
         if fr then table.insert(list, fr) end
     end
     add(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame)
-    add(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame)
     add(RLSuite.msManager and RLSuite.msManager.frame)
     add(RLSuite.lootManager and RLSuite.lootManager.frame)
     add(RLSuite.config and RLSuite.config.frame)

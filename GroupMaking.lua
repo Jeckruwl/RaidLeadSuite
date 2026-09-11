@@ -11,6 +11,11 @@ local SLOT_SIZE = 36
 local SLOT_SPACING = 2
 local GROUP_LABEL_H = 17
 
+-- Raid Group panel (whisplist rib): colored bars per invited player.
+local WL_BAR_H = 16
+local WL_BAR_GAP = 2
+local WL_GROUP_LABEL_W = 22
+
 -- All Groupmaking window fonts are +2pt over the default game fonts
 -- (window titles keep their large size).
 local FONT_FILE = "Fonts\\FRIZQT__.TTF"
@@ -362,6 +367,7 @@ function GM:SetDifficulty(diff)
     local newHeight = rows * self:GroupRowHeight() - SLOT_SPACING
     self.compFrame:SetSize((SLOT_SIZE + SLOT_SPACING) * 5 - SLOT_SPACING, newHeight)
     self:LayoutGroupPanels()
+    self:UpdateWLGroups()
     self:UpdateMessagePreview()
     self:SaveComp()
     -- la composizione 25 occupa piu' spazio: riallinea la finestra
@@ -410,6 +416,7 @@ function GM:ClearSlot(index)
     slot:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
     if slot.roleIconBg then slot.roleIconBg:Hide() end
     if slot.roleIcon then slot.roleIcon:Hide() end
+    self:UpdateWLGroups()
     self:UpdateMessagePreview()
     self:SaveComp()
 end
@@ -435,6 +442,7 @@ function GM:FillSlot(index, class, role, playerName, spec)
         slot.roleIcon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
         slot.roleIcon:Show()
     end
+    self:UpdateWLGroups()
     self:UpdateMessagePreview()
     self:SaveComp()
 end
@@ -914,18 +922,17 @@ function GM:ExtractGSFromWhisper(msg)
 end
 
 -- ============================================================
--- WHISPLIST WINDOW
+-- WHISPLIST PANEL (rib anchored to the Groupmaking window)
 -- ============================================================
 function GM:CreateWhisplistWindow()
-    local f = CreateFrame("Frame", "RLSuiteWhisplist", UIParent)
-    f:SetSize(500, 450)
-    f:SetPoint("CENTER", UIParent, "CENTER", 300, 0)
+    -- Aperto a destra della finestra Groupmaking e ancorato ad essa: si
+    -- sposta con lei e non e' trascinabile da solo.
+    local f = CreateFrame("Frame", "RLSuiteWhisplist", self.mainFrame)
+    f:SetPoint("TOPLEFT", self.mainFrame, "TOPRIGHT", 6, 0)
+    f:SetWidth(380)
+    f:SetHeight(560)
     f:SetFrameStrata("HIGH")
-    f:SetMovable(true)
     f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
     f:Hide()
     self.whisplistFrame = f
     RLSuite.utils:SkinFrame(f)
@@ -934,24 +941,24 @@ function GM:CreateWhisplistWindow()
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
     title:SetText("Whisplist")
 
-    self.wlCompBox = CreateFrame("Frame", nil, f)
-    self.wlCompBox:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -36)
-    self.wlCompBox:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -36)
-    self.wlCompBox:SetHeight(52)
-    RLSuite.utils:SkinBox(self.wlCompBox)
+    -- ==== Raid Group: gruppi riempiti in base agli inviti ====
+    self.wlGroupBox = CreateFrame("Frame", nil, f)
+    self.wlGroupBox:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -34)
+    self.wlGroupBox:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -34)
+    RLSuite.utils:SkinBox(self.wlGroupBox)
 
-    local compLabel = FontStr(self.wlCompBox, "OVERLAY", 12)
-    compLabel:SetPoint("TOPLEFT", self.wlCompBox, "TOPLEFT", 8, -6)
-    compLabel:SetText("Comp")
-    compLabel:SetTextColor(1, 0.82, 0)
+    local groupLabel = FontStr(self.wlGroupBox, "OVERLAY", 12)
+    groupLabel:SetPoint("TOPLEFT", self.wlGroupBox, "TOPLEFT", 8, -6)
+    groupLabel:SetText(L["Raid Group"])
+    groupLabel:SetTextColor(1, 0.82, 0)
 
-    self.wlCompFrame = CreateFrame("Frame", nil, self.wlCompBox)
-    self.wlCompFrame:SetPoint("TOPLEFT", self.wlCompBox, "TOPLEFT", 8, -22)
-    self:BuildWLCompSlots()
+    self:BuildWLGroupSlots()
 
+    -- ==== Received whispers ====
     self.wlListBox = CreateFrame("Frame", nil, f)
-    self.wlListBox:SetPoint("TOPLEFT", self.wlCompBox, "BOTTOMLEFT", 0, -8)
-    self.wlListBox:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -6, 16)
+    self.wlListBox:SetPoint("TOPLEFT", self.wlGroupBox, "BOTTOMLEFT", 0, -8)
+    self.wlListBox:SetPoint("TOPRIGHT", self.wlGroupBox, "BOTTOMRIGHT", 0, -8)
+    self.wlListBox:SetHeight(140)
     RLSuite.utils:SkinBox(self.wlListBox)
 
     local listLabel = FontStr(self.wlListBox, "OVERLAY", 12)
@@ -974,8 +981,8 @@ function GM:CreateWhisplistWindow()
     end)
 
     self.wlDetailBox = CreateFrame("Frame", nil, f)
-    self.wlDetailBox:SetPoint("TOPRIGHT", self.wlCompBox, "BOTTOMRIGHT", 0, -8)
-    self.wlDetailBox:SetPoint("BOTTOMLEFT", f, "BOTTOM", 6, 16)
+    self.wlDetailBox:SetPoint("TOPLEFT", self.wlListBox, "BOTTOMLEFT", 0, -8)
+    self.wlDetailBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
     RLSuite.utils:SkinBox(self.wlDetailBox)
     self.wlDetailPanel = self.wlDetailBox
 
@@ -1042,52 +1049,154 @@ function GM:CreateWhisplistWindow()
     f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 end
 
-function GM:BuildWLCompSlots()
-    self.wlCompSlots = {}
-    local numSlots = tonumber(self.db.difficulty or "10")
-    for i = 1, numSlots do
-        local slot = CreateFrame("Button", nil, self.wlCompFrame)
-        slot:SetSize(20, 20)
-        local col = (i - 1) % 5
-        local row = math.floor((i - 1) / 5)
-        slot:SetPoint("TOPLEFT", self.wlCompFrame, "TOPLEFT", col * 24, -row * 24)
-        slot:SetBackdrop({
-            bgFile = "Interface\\Buttons\\UI-Quickslot",
-            tile = false, tileSize = 20, edgeSize = 20,
-        })
-        slot.index = i
-        slot:EnableMouse(true)
-        slot:RegisterForClicks("LeftButtonUp")
-        slot:SetScript("OnClick", function(s)
-            if self.selectedEntry then
-                self:InvitePlayerToSlot(self.selectedEntry, s.index)
-            end
-        end)
-        self.wlCompSlots[i] = slot
+function GM:BuildWLGroupSlots()
+    self.wlGroupRows = {}
+    self.wlGroupLabels = {}
+    self.wlGroupSlots = {}
+    local box = self.wlGroupBox
+    for g = 1, 5 do
+        local row = CreateFrame("Frame", nil, box)
+        row:SetHeight(WL_BAR_H)
+        self.wlGroupRows[g] = row
+
+        local lbl = FontStr(row, "OVERLAY", 12)
+        lbl:SetText("G" .. g)
+        lbl:SetTextColor(1, 0.82, 0)
+        lbl:SetWidth(WL_GROUP_LABEL_W)
+        lbl:SetJustifyH("LEFT")
+        self.wlGroupLabels[g] = lbl
+
+        for s = 1, 5 do
+            local i = (g - 1) * 5 + s
+            local bar = CreateFrame("Button", nil, row)
+            bar:SetBackdrop({
+                bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+                edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                tile = true, tileSize = 16, edgeSize = 6,
+                insets = {left=1, right=1, top=1, bottom=1},
+            })
+            bar:SetBackdropColor(0.16, 0.16, 0.16, 1)
+            bar:SetBackdropBorderColor(0, 0, 0, 0.6)
+            bar:EnableMouse(true)
+            bar:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            bar.index = i
+
+            local nameFS = FontStr(bar, "OVERLAY", 11)
+            nameFS:SetPoint("CENTER", bar, "CENTER", 0, 0)
+            nameFS:SetJustifyH("CENTER")
+            nameFS:SetTextColor(0, 0, 0)
+            -- ombra chiara: il nome nero resta leggibile anche sui colori
+            -- di classe piu' scuri (DK, Warlock)
+            nameFS:SetShadowColor(1, 1, 1, 0.7)
+            nameFS:SetShadowOffset(1, -1)
+            bar.nameFS = nameFS
+
+            bar:SetScript("OnClick", function(s, button)
+                if button == "RightButton" then
+                    self:ClearSlot(s.index)
+                elseif self.selectedEntry then
+                    self:InvitePlayerToSlot(self.selectedEntry, s.index)
+                end
+            end)
+            self.wlGroupSlots[i] = bar
+        end
     end
-    self.wlCompFrame:SetSize(5 * 24, math.ceil(numSlots / 5) * 24)
+    self:UpdateWLGroups()
+end
+
+-- Ridisegna le barre del pannello Raid Group dalla composizione corrente.
+function GM:UpdateWLGroups()
+    if not self.wlGroupSlots then return end
+    local numSlots = tonumber(self.db.difficulty or "10") or 10
+    local ngroups = math.ceil(numSlots / 5)
+    for g = 1, 5 do
+        local row = self.wlGroupRows and self.wlGroupRows[g]
+        if row then
+            if g <= ngroups then row:Show() else row:Hide() end
+        end
+    end
+    for i, bar in ipairs(self.wlGroupSlots) do
+        if i <= numSlots then bar:Show() else bar:Hide() end
+        local comp = self.compSlots and self.compSlots[i]
+        if comp and comp.filled then
+            local r, g, b = RLSuite.utils:GetClassColor(comp.class)
+            bar:SetBackdropColor(r, g, b, 1)
+            if bar.nameFS then bar.nameFS:SetText(comp.playerName or "") end
+        else
+            bar:SetBackdropColor(0.16, 0.16, 0.16, 1)
+            if bar.nameFS then bar.nameFS:SetText("") end
+        end
+    end
+    self:LayoutWLGroupRows(ngroups)
+end
+
+-- Posiziona righe e barre dentro il riquadro Raid Group e ne adatta
+-- l'altezza al numero di gruppi (5 per il 25, 2 per il 10).
+function GM:LayoutWLGroupRows(ngroups)
+    local box = self.wlGroupBox
+    if not box then return end
+    ngroups = ngroups or 5
+    local w = box:GetWidth() or 0
+    local inner = w - 12
+    local slotW = math.floor((inner - WL_GROUP_LABEL_W - 4 * WL_BAR_GAP) / 5)
+    if slotW < 40 then slotW = 40 end
+    for g = 1, 5 do
+        local row = self.wlGroupRows and self.wlGroupRows[g]
+        if row then
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", box, "TOPLEFT", 6, -24 - (g - 1) * (WL_BAR_H + WL_BAR_GAP))
+            row:SetSize(inner, WL_BAR_H)
+            local lbl = self.wlGroupLabels and self.wlGroupLabels[g]
+            if lbl then
+                lbl:ClearAllPoints()
+                lbl:SetPoint("LEFT", row, "LEFT", 0, 0)
+            end
+            for s = 1, 5 do
+                local bar = self.wlGroupSlots and self.wlGroupSlots[(g - 1) * 5 + s]
+                if bar then
+                    bar:ClearAllPoints()
+                    bar:SetSize(slotW, WL_BAR_H)
+                    if s == 1 then
+                        bar:SetPoint("LEFT", row, "LEFT", WL_GROUP_LABEL_W, 0)
+                    else
+                        bar:SetPoint("LEFT", self.wlGroupSlots[(g - 1) * 5 + s - 1], "RIGHT", WL_BAR_GAP, 0)
+                    end
+                end
+            end
+        end
+    end
+    box:SetHeight(24 + ngroups * WL_BAR_H + (ngroups - 1) * WL_BAR_GAP + 8)
+end
+
+function GM:OpenWhisplist()
+    if not self.whisplistFrame then return end
+    if self.mainFrame and not self.mainFrame:IsShown() then
+        self.mainFrame:Show()
+    end
+    if not self.whisplistFrame:IsShown() then
+        self.whisplistFrame:Show()
+    end
+    self:UpdateWhisplist()
+    self:UpdateWLGroups()
+    RLSuite.utils:RaiseWindow(self.mainFrame)
 end
 
 function GM:ToggleWhisplist()
-    if RLSuite.mainWindow and RLSuite.mainWindow.ShowTab then
-        RLSuite.mainWindow:ShowTab("whisplist")
-        return
-    end
     if self.whisplistFrame and self.whisplistFrame:IsShown() then
         self.whisplistFrame:Hide()
     elseif self.whisplistFrame then
-        self.whisplistFrame:Show()
-        self:UpdateWhisplist()
+        self:OpenWhisplist()
     end
 end
 
 function GM:SkinInner()
     local u = RLSuite.utils
+    if self.whisplistFrame then u:SkinFrame(self.whisplistFrame) end
     u:SkinBox(self.compBox)
     u:SkinBox(self.classBox)
     u:SkinBox(self.reqBox)
     u:SkinBox(self.previewBox)
-    u:SkinBox(self.wlCompBox)
+    u:SkinBox(self.wlGroupBox)
     u:SkinBox(self.wlListBox)
     u:SkinBox(self.wlDetailBox)
     u:SkinBox(self.wlChat)
@@ -1097,6 +1206,7 @@ function GM:UpdateWhisplist()
     if not self.wlContent then return end
     if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
     if self.SkinInner then self:SkinInner() end
+    self:UpdateWLGroups()
     for _, child in ipairs(self.wlRows or {}) do
         child:Hide()
         child:SetParent(nil)
@@ -1180,7 +1290,19 @@ function GM:InviteSelected()
         RLSuite.utils:Whisper(self.selectedEntry.name, "You are invited (debug).")
         return
     end
-    InviteUnit(self.selectedEntry.name)
+    local entry = self.selectedEntry
+    -- Con una classe riconosciuta l'invito riempie il primo slot libero
+    -- (i gruppi del pannello Raid Group si riempiono cosi' in ordine).
+    if entry.class then
+        local slotIndex = self:FindEmptySlotForRole(nil)
+        if slotIndex then
+            self:InvitePlayerToSlot(entry, slotIndex)
+            return
+        end
+    end
+    InviteUnit(entry.name)
+    entry.invited = true
+    self:UpdateWhisplist()
 end
 
 function GM:AskGS()

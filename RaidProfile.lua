@@ -109,7 +109,7 @@ end
 -- Offset a cascata per le finestre senza posizione salvata: cosi'
 -- aprendone piu' d'una non si sovrappongono tutte nello stesso punto.
 function MW:DefaultCascadeOffset(ignoreKey)
-    local ALL_KEYS = { "group", "whisplist", "raidframe", "ms", "loot", "config" }
+    local ALL_KEYS = { "group", "raidframe", "ms", "loot", "config" }
     local n = 0
     for _, k in ipairs(ALL_KEYS) do
         if k ~= ignoreKey and self:IsTabOpen(k) then
@@ -139,7 +139,6 @@ function MW:CreateFrame()
 
     self.tabDefs = {
         { key = "group",     label = "Groupmaking" },
-        { key = "whisplist", label = "Whisplist" },
         { key = "macro",     label = "Macrobar" },
         { key = "raidframe", label = "Raid Frame" },
         { key = "ms",        label = "MS" },
@@ -344,8 +343,6 @@ end
 function MW:PaneForTab(key)
     if key == "group" then
         return RLSuite.groupmaking and RLSuite.groupmaking.mainFrame
-    elseif key == "whisplist" then
-        return RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame
     elseif key == "raidframe" then
         return self.tabPanels and self.tabPanels.raidframe
     elseif key == "ms" then
@@ -361,17 +358,21 @@ end
 -- Layout key usato per salvare posizione/dimensione di ogni tab.
 function MW:LayoutKeyForTab(key)
     if key == "group" then return "groupmaking" end
-    if key == "whisplist" then return "whisplist" end
     if key == "raidframe" then return "raidframe" end
     return key -- ms / loot / config
 end
 
 function MW:HideAllWindows()
     if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
-    local keys = { "group", "whisplist", "raidframe", "ms", "loot", "config" }
+    local keys = { "group", "raidframe", "ms", "loot", "config" }
     for _, k in ipairs(keys) do
         local pane = self:PaneForTab(k)
         if pane then pane:Hide() end
+    end
+    -- La Whisplist e' una costola di Groupmaking: nascondendo la finestra
+    -- principale si chiude anche il pannello ancorato.
+    if RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame then
+        RLSuite.groupmaking.whisplistFrame:Hide()
     end
 end
 
@@ -394,19 +395,6 @@ function MW:RegisterAllWindows()
         end
         return 500, topH + 286
     end
-    RLSuite.windowMins.whisplist = function()
-        -- La meta' destra (wlDetailBox) deve contenere la riga di bottoni
-        -- Invite / Ask GS / Ask Achi: se i bottoni sono piu' larghi del
-        -- box, la larghezza minima cresce per non farli uscire.
-        local gm = RLSuite.groupmaking
-        local btnW = 66
-        if gm and gm.wlInviteBtn then
-            btnW = gm.wlInviteBtn:GetWidth() or 66
-        end
-        local rowW = 10 + 3 * btnW + 2 * 4 + 10
-        local minW = math.max(500, (rowW + 22) * 2)
-        return minW, 380
-    end
     RLSuite.windowMins.ms = function()
         return 350, 280
     end
@@ -422,7 +410,6 @@ function MW:RegisterAllWindows()
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
     local layoutKeys = {
         group = "groupmaking",
-        whisplist = "whisplist",
         raidframe = "raidframe",
         ms = "ms",
         loot = "loot",
@@ -449,10 +436,9 @@ function MW:RegisterAllWindows()
         end
     end
 
-    -- Grip di resize per Groupmaking, Whisplist, MS, Loot e Raid Frame tab
+    -- Grip di resize per Groupmaking, MS, Loot e Raid Frame tab
     local resizable = {
         group = { "groupmaking", 420, 380, "groupmaking" },
-        whisplist = { "whisplist", 360, 300, "whisplist" },
         ms = { "ms", 320, 260, "ms" },
         loot = { "loot", 440, 300, "loot" },
         raidframe = { "raidframe", 420, 320, "raidframe" },
@@ -463,9 +449,6 @@ function MW:RegisterAllWindows()
             RLSuite.utils:AddResizeGrip(pane, cfg[1], cfg[2], cfg[3], function()
                 if key == "group" and RLSuite.groupmaking then
                     if RLSuite.groupmaking.LayoutGroupPanels then RLSuite.groupmaking:LayoutGroupPanels() end
-                end
-                if key == "whisplist" and RLSuite.groupmaking then
-                    if RLSuite.groupmaking.UpdateWhisplist then RLSuite.groupmaking:UpdateWhisplist() end
                 end
                 if key == "ms" and RLSuite.msManager then
                     if RLSuite.msManager.UpdateList then RLSuite.msManager:UpdateList() end
@@ -486,7 +469,7 @@ function MW:SelectTab(key)
         local def = self.tabDefs and self.tabDefs[key]
         key = def and def.key or "group"
     end
-    if key ~= "group" and key ~= "whisplist" and key ~= "raidframe"
+    if key ~= "group" and key ~= "raidframe"
         and key ~= "ms" and key ~= "loot" and key ~= "config" then
         key = "group"
     end
@@ -535,10 +518,6 @@ function MW:RefreshTabContents(key)
         end
         if RLSuite.groupmaking and RLSuite.groupmaking.LayoutGroupPanels then
             RLSuite.groupmaking:LayoutGroupPanels()
-        end
-    elseif key == "whisplist" then
-        if RLSuite.groupmaking and RLSuite.groupmaking.UpdateWhisplist then
-            RLSuite.groupmaking:UpdateWhisplist()
         end
     elseif key == "ms" then
         if RLSuite.msManager and RLSuite.msManager.UpdateList then

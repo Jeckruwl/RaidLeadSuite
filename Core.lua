@@ -431,7 +431,7 @@ function RLSuite:PrintHelp()
     p(L["  /rls              Tab bar"])
     p(L["  /rls help         This list"])
     p(L["  /rls group        Groupmaking tab"])
-    p(L["  /rls whisplist    Whisplist tab"])
+    p(L["  /rls whisplist    Whisplist panel"])
     p(L["  /rls macro        Config -> Macros (editor)"])
     p(L["  /rls macrobar     HUD MacroBar"])
     p(L["  /rls raidframe    Raid Frame tab (settings)"])
@@ -455,7 +455,10 @@ SlashCmdList["RLSUITE"] = function(msg)
     elseif msg == "group" then
         if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("group") end
     elseif msg == "whisplist" or msg == "wl" then
-        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("whisplist") end
+        if RLSuite.mainWindow then RLSuite.mainWindow:ShowTab("group") end
+        if RLSuite.groupmaking and RLSuite.groupmaking.OpenWhisplist then
+            RLSuite.groupmaking:OpenWhisplist()
+        end
     elseif msg == "macro" then
         if RLSuite.config and RLSuite.config.OpenMacroEditorPanel then
             RLSuite.config:OpenMacroEditorPanel()
@@ -584,7 +587,7 @@ end
 -- ============================================================
 
 local SAVED_RAID_BRANCHES = { "groupmaking", "whisplist", "macrobar", "raidframe" }
-local SAVED_RAID_LAYOUT_KEYS = { "groupmaking", "whisplist", "raidframe", "ms", "loot", "config" }
+local SAVED_RAID_LAYOUT_KEYS = { "groupmaking", "raidframe", "ms", "loot", "config" }
 
 function RLSuite:SaveRaid(title)
     title = title or ""
@@ -746,7 +749,6 @@ function RLSuite:ApplySavedRaidToUI()
     local u = self.utils
     if u and u.EnforceWindowMin then
         u:EnforceWindowMin(self.groupmaking and self.groupmaking.mainFrame, "groupmaking")
-        u:EnforceWindowMin(self.groupmaking and self.groupmaking.whisplistFrame, "whisplist")
         u:EnforceWindowMin(self.msManager and self.msManager.frame, "ms")
         u:EnforceWindowMin(self.lootManager and self.lootManager.frame, "loot")
     end
