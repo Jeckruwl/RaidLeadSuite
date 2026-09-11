@@ -7,6 +7,13 @@ local LM = RLSuite.lootManager
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
+-- Listato: le righe hanno un'altezza UNICA calcolata sulla voce che va a
+-- capo su piu' righe (il nome dell'item, che fa word-wrap nella colonna).
+-- Padding verticale e gap tra le righe come nella versione a riga singola.
+local LM_ROW_TOP = 6      -- spazio sopra/sotto il testo dentro la riga
+local LM_ROW_GAP = 2      -- spazio tra una riga e l'altra
+local LM_ROW_MIN_H = 26   -- altezza minima (una sola riga di testo)
+
 -- Non-overlapping roll/reroll countdowns (AceTimer named timers):
 -- restarting a roll cancels the previous timer instead of stacking a
 -- second one (which used to double the announcements).
@@ -47,6 +54,7 @@ function LM:CreateFrame()
     f:Hide()
     self.frame = f
     RLSuite.utils:SkinFrame(f)
+    RLSuite.utils:ClampWindow(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
@@ -214,19 +222,27 @@ function LM:LayoutHeader()
     local header = self.histHeader
     if not header or not self.histHeads then return end
     local w = header:GetWidth()
-    if not w or w < 80 then w = 420 end
-    local m = self:HistMetrics(w)
+    if not w or w < 80 then w = 452 end
+    -- Il listato vive dentro lo scroll frame, che rispetto al riquadro
+    -- (e quindi all'header) e' rientrato di 6px a sinistra e 26px a
+    -- destra (scrollbar). Le intestazioni usano la STESSA larghezza del
+    -- contenuto e gli stessi offset delle righe, cosi' colonne e header
+    -- restano allineati a qualsiasi dimensione della finestra.
+    local insetL, insetR = 6, 26
+    local m = self:HistMetrics(w - insetL - insetR)
     local h = self.histHeads
+    h.num:ClearAllPoints()
+    h.num:SetPoint("LEFT", header, "LEFT", insetL + 6, 0)
     h.item:ClearAllPoints()
-    h.item:SetPoint("LEFT", header, "LEFT", m.itemX, 0)
+    h.item:SetPoint("LEFT", header, "LEFT", insetL + m.itemX, 0)
     h.boss:ClearAllPoints()
-    h.boss:SetPoint("LEFT", header, "LEFT", m.bossX, 0)
+    h.boss:SetPoint("LEFT", header, "LEFT", insetL + m.bossX, 0)
     h.type:ClearAllPoints()
-    h.type:SetPoint("LEFT", header, "LEFT", m.typeX, 0)
+    h.type:SetPoint("LEFT", header, "LEFT", insetL + m.typeX, 0)
     h.assigned:ClearAllPoints()
-    h.assigned:SetPoint("LEFT", header, "LEFT", m.assignedX, 0)
+    h.assigned:SetPoint("LEFT", header, "LEFT", insetL + m.assignedX, 0)
     h.time:ClearAllPoints()
-    h.time:SetPoint("RIGHT", header, "RIGHT", -m.padR, 0)
+    h.time:SetPoint("RIGHT", header, "RIGHT", -(insetR + m.padR), 0)
 end
 
 function LM:EnsureTicker()
@@ -429,6 +445,14 @@ function LM:UpdateHistory()
         end
     end
 
+    local m = self:HistMetrics(w)
+    self:LayoutHeader()
+
+    -- Pass 1: costruisce le righe e misura quante righe di testo servono
+    -- al nome dell'item (che fa word-wrap nella sua colonna). Il numero
+    -- massimo di righe definisce l'altezza UNICA di tutte le righe.
+    local lineH = nil
+    local maxLines = 1
     local y = 0
     for i = #self.history, 1, -1 do
         local entry = self.history[i]
@@ -437,62 +461,68 @@ function LM:UpdateHistory()
             self.histRows[#self.histRows + 1] = row
             row:EnableMouse(true)
             row:RegisterForClicks("LeftButtonUp")
-            row:SetHeight(26)
-            row:SetPoint("TOPLEFT", self.histContent, "TOPLEFT", 0, -y)
-            row:SetPoint("TOPRIGHT", self.histContent, "TOPRIGHT", 0, -y)
             row.entry = entry
             RLSuite.utils:SkinRow(row, self.selectedItem == entry)
 
             local num = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            num:SetPoint("LEFT", row, "LEFT", 6, 0)
             num:SetWidth(28)
             num:SetJustifyH("LEFT")
             num:SetText("#" .. (entry.id or 0))
+            if not lineH then
+                lineH = num:GetStringHeight() or 14
+            end
 
             local icon = row:CreateTexture(nil, "ARTWORK")
             icon:SetSize(18, 18)
-            icon:SetPoint("LEFT", row, "LEFT", 36, 0)
             icon:SetTexture(entry.itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
             icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-            local m = self:HistMetrics(w)
-            self:LayoutHeader()
-
             local name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            name:SetPoint("LEFT", row, "LEFT", m.itemX, 0)
             name:SetWidth(m.itemW)
+            name:SetWordWrap(true)
             name:SetJustifyH("LEFT")
+            name:SetJustifyV("TOP")
             name:SetText(entry.itemName or "Unknown")
             local q = self:EntryQuality(entry)
             if GetItemQualityColor and q and q >= 0 then
                 local r, g, b = GetItemQualityColor(q)
                 name:SetTextColor(r or 1, g or 1, b or 1)
             end
+            -- righe occupate dal nome con wrap (minimo una)
+            local lines = math.max(1, math.ceil((name:GetStringHeight() or lineH) / lineH))
+            row._lines = lines
+            if lines > maxLines then maxLines = lines end
+            row.name = name
 
             local boss = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            boss:SetPoint("LEFT", row, "LEFT", m.bossX, 0)
             boss:SetWidth(m.bossW)
             boss:SetJustifyH("LEFT")
             boss:SetText(entry.boss or "Unknown")
 
             local itype = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            itype:SetPoint("LEFT", row, "LEFT", m.typeX, 0)
             itype:SetWidth(m.typeW)
             itype:SetJustifyH("LEFT")
             itype:SetText(entry.itemType or "BOP")
 
             local remain = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            remain:SetPoint("RIGHT", row, "RIGHT", -m.padR, 0)
             remain:SetWidth(m.timeW)
             remain:SetJustifyH("RIGHT")
             remain:SetText(self:TradeRemaining(entry))
 
             local assigned = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            assigned:SetPoint("LEFT", row, "LEFT", m.assignedX, 0)
             assigned:SetWidth(m.assignedW)
             assigned:SetJustifyH("LEFT")
             assigned:SetText(entry.assignedTo or "-")
             table.insert(self.remainTexts, { fs = remain, entry = entry })
+
+            -- riferimenti ai figli per il secondo passaggio (posizionamento)
+            row.num = num
+            row.icon = icon
+            row.name = name
+            row.boss = boss
+            row.itype = itype
+            row.remain = remain
+            row.assigned = assigned
 
             row:SetScript("OnClick", function()
                 self:SelectItem(entry)
@@ -508,9 +538,34 @@ function LM:UpdateHistory()
             row:SetScript("OnLeave", function()
                 GameTooltip:Hide()
             end)
-
-            y = y + 28
         end
+    end
+
+    if not lineH then lineH = 14 end
+
+    -- Pass 2: altezza unica per tutte le righe (quella della voce piu' alta)
+    -- e posizionamento verticale con contenuto allineato in alto.
+    local rowH = math.max(LM_ROW_MIN_H, 2 * LM_ROW_TOP + maxLines * lineH)
+    y = 0
+    for _, row in ipairs(self.histRows) do
+        row:SetHeight(rowH)
+        row:SetPoint("TOPLEFT", self.histContent, "TOPLEFT", 0, -y)
+        row:SetPoint("TOPRIGHT", self.histContent, "TOPRIGHT", 0, -y)
+
+        -- Riposiziona i figli (num, icon, name, boss, itype, remain,
+        -- assigned) allineandoli in alto, dentro la riga.
+        if row.num then row.num:SetPoint("TOPLEFT", row, "TOPLEFT", 6, -LM_ROW_TOP) end
+        if row.icon then row.icon:SetPoint("TOPLEFT", row, "TOPLEFT", 36, -LM_ROW_TOP) end
+        if row.name then
+            row.name:SetPoint("TOPLEFT", row, "TOPLEFT", m.itemX, -LM_ROW_TOP)
+            row.name:SetHeight((row._lines or 1) * lineH)
+        end
+        if row.boss then row.boss:SetPoint("TOPLEFT", row, "TOPLEFT", m.bossX, -LM_ROW_TOP) end
+        if row.itype then row.itype:SetPoint("TOPLEFT", row, "TOPLEFT", m.typeX, -LM_ROW_TOP) end
+        if row.remain then row.remain:SetPoint("TOPRIGHT", row, "TOPRIGHT", -m.padR, -LM_ROW_TOP) end
+        if row.assigned then row.assigned:SetPoint("TOPLEFT", row, "TOPLEFT", m.assignedX, -LM_ROW_TOP) end
+
+        y = y + rowH + LM_ROW_GAP
     end
     self.histContent:SetHeight(math.max(y, 1))
     self:EnsureTicker()

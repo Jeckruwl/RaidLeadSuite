@@ -682,6 +682,16 @@ function Utils:MakeClickToFront(frame)
     end)
 end
 
+-- Impedisce che una finestra venga trascinata (o ridimensionata) fuori
+-- dallo schermo: Blizzard riporta il frame dentro UIParent a ogni drag.
+-- Vale anche per i pannelli ancorati (es. la costola InviteEngine).
+function Utils:ClampWindow(frame)
+    if not frame then return end
+    if frame.SetClampedToScreen then
+        frame:SetClampedToScreen(true)
+    end
+end
+
 -- Rende un frame trascinabile e salva la posizione nel layout.
 -- NOTA: non sovrascrive script gia' presenti: si aggancia solo se il
 -- frame non ha gia' un comportamento di trascinamento registrato.
@@ -691,6 +701,7 @@ function Utils:MakeDraggable(frame, key)
     frame._rlsDraggable = true
     frame:SetMovable(true)
     frame:EnableMouse(true)
+    self:ClampWindow(frame)
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", function(self2)
         Utils:RaiseWindow(frame)

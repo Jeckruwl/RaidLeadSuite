@@ -128,6 +128,7 @@ do
 
     -- RaidProfile (main window)
     L["Phase"] = true
+    L["Phase indicator"] = true
     L["Show/Hide HUD"] = true
     L["SaveRaid title:"] = true
     L["SaveRaid cancelled: no title entered."] = true

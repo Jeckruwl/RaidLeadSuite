@@ -39,6 +39,7 @@ function MSM:CreateFrame()
     f:Hide()
     self.frame = f
     RLSuite.utils:SkinFrame(f)
+    RLSuite.utils:ClampWindow(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)

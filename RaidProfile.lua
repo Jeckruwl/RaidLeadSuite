@@ -83,19 +83,13 @@ function MW:CloseOneTab(key)
     self:UpdateTabHighlight(key)
 end
 
--- Il tab resta evidenziato finche' la sua finestra e' aperta.
+-- I tab restano bistabili (click = apri/chiudi la finestra) ma non
+-- vengono piu' illuminati quando la finestra e' aperta: il bottone torna
+-- al suo aspetto normale (evidenziato solo al passaggio del mouse).
 function MW:UpdateTabHighlight(key)
     local tab = self.tabs and self.tabs[key]
     if not tab then return end
-    local open
-    if key == "macro" then
-        open = RLSuite.macrobar and RLSuite.macrobar.frame and RLSuite.macrobar.frame:IsShown()
-    else
-        open = self:IsTabOpen(key)
-    end
-    if open then
-        tab:LockHighlight()
-    else
+    if tab.UnlockHighlight then
         tab:UnlockHighlight()
     end
 end
@@ -133,6 +127,7 @@ function MW:CreateFrame()
     f:Hide()
     self.frame = f
     RLSuite.utils:SkinFrame(f)
+    RLSuite.utils:ClampWindow(f)
 
     -- Niente titolo: la barra contiene solo i bottoni (matrice + fase +
     -- X di chiusura e rotellina Config). Il tab Config e' la rotellina.
@@ -140,7 +135,7 @@ function MW:CreateFrame()
     self.tabDefs = {
         { key = "group",     label = "Groupmaking" },
         { key = "macro",     label = "Macrobar" },
-        { key = "raidframe", label = "Raid Frame" },
+        { key = "raidframe", label = "Raid Manager" },
         { key = "ms",        label = "MS" },
         { key = "loot",      label = "Loot" },
     }
@@ -190,7 +185,7 @@ function MW:CreateFrame()
     end)
     self.phaseBtn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
-        GameTooltip:SetText(s.label or L["Phase"])
+        GameTooltip:SetText(L["Phase indicator"])
         GameTooltip:Show()
     end)
     self.phaseBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -703,6 +698,7 @@ function MW:AskRaidTitle(callback)
     f:SetFrameStrata("DIALOG")
     f:SetMovable(true)
     f:EnableMouse(true)
+    RLSuite.utils:ClampWindow(f)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)

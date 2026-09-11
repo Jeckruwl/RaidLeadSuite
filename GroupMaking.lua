@@ -140,6 +140,7 @@ function GM:CreateMainWindow()
     f:Hide()
     self.mainFrame = f
     RLSuite.utils:SkinFrame(f)
+    RLSuite.utils:ClampWindow(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
@@ -1119,6 +1120,9 @@ function GM:CreateWhisplistWindow()
     f:Hide()
     self.whisplistFrame = f
     RLSuite.utils:SkinFrame(f)
+    -- Costola ancorata a Groupmaking: resta comunque dentro lo schermo
+    -- anche quando la finestra madre e' spinta contro il bordo destro.
+    RLSuite.utils:ClampWindow(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
