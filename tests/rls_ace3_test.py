@@ -312,6 +312,8 @@ NumberFontNormal = makeFont("NumberFontNormal")
 PlaySound = function() end
 hooksecurefunc = function() end
 unhooksecurefunc = function() end
+SetDesaturation = function() end
+GetDesaturation = function() return false end
 PanelTemplates_TabResize = function() end
 PanelTemplates_SetDisabledTabState = function() end
 PanelTemplates_SelectTab = function() end
@@ -370,6 +372,10 @@ FauxScrollFrame_GetOffset = function() return 0 end
 GetNumMacroIcons = function() return 0 end
 GetMacroIconInfo = function() return nil end
 UISpecialFrames = {}
+
+-- WoW returns children as varargs; AceGUI's fixlevels/fixstrata iterate
+-- them with select(), so GetChildren must return no values, not a table.
+function methods:GetChildren() end
 
 -- Region getters AceGUI widgets rely on.
 function methods:GetFontString()
@@ -631,6 +637,10 @@ check(bool(rt.eval("RLSuite.config.dialogHost.type == 'Frame'")), "dialog host i
 check(bool(rt.eval("RLSuite.config.frame ~= nil")), "Config tab pane (self.frame) still exists")
 check(bool(rt.eval("LibStub('AceConfigRegistry-3.0'):GetOptionsTable('RLSuite', 'dialog', 'AceConfigDialog-3.0') ~= nil")), "RLSuite options table registered with AceConfigRegistry")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().type == 'group'")), "BuildOptionsTable returns a root group")
+check(bool(rt.eval("RLSuite.config.left ~= nil and RLSuite.config.right ~= nil and RLSuite.config.panel ~= nil")), "left nav / right panel / content panel restored")
+check(bool(rt.eval("RLSuite.config.navBtns ~= nil and RLSuite.config.navBtns.general ~= nil and RLSuite.config.navBtns.macros ~= nil")), "category nav buttons exist")
+check(bool(rt.eval("RLSuite.config:SubtabsFor('macros')[2].key == 'editor'")), "Macro Editor is a subtab of the Macros category")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.macros.args.editor == nil")), "Macro Editor is NOT a button in the options tree")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.type == 'group'")), "General category present")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.args.save1load ~= nil")), "saved raids rendered as Load/Delete executes (dynamic)")
 
@@ -663,13 +673,23 @@ check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.args.save
 rt.execute("RLSuite:DeleteSavedRaid(SC_ID)")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.args.save2load == nil")), "deleting the raid removes its option")
 
-# bespoke Macro Editor preserved and swaps views
+# bespoke Macro Editor lives inside the window as a subtab
 check(bool(rt.eval("RLSuite.config.OpenMacroEditorPanel ~= nil and RLSuite.config.CreateMacroEditor ~= nil")), "Macro Editor API preserved")
 rt.execute("RLSuite.config:OpenMacroEditorPanel()")
-check(bool(rt.eval("RLSuite.config.macroEditorPanel ~= nil and RLSuite.config.macroEditorPanel:IsShown()")), "OpenMacroEditorPanel shows the bespoke editor")
-check(bool(rt.eval("RLSuite.config.dialogHost.frame:IsShown() == false")), "dialog host hidden while the editor is open")
-rt.execute("RLSuite.config:HideMacroEditor()")
-check(bool(rt.eval("RLSuite.config.dialogHost.frame:IsShown() == true")), "HideMacroEditor re-shows the options dialog")
+check(bool(rt.eval("RLSuite.config.currentCat == 'macros' and RLSuite.config.currentSub == 'editor'")), "OpenMacroEditorPanel selects Macros -> Macro Editor subtab")
+check(bool(rt.eval("RLSuite.config.macroEditorPanel ~= nil and RLSuite.config.macroEditorPanel:IsShown()")), "editor shown inside the config panel")
+check(bool(rt.eval("RLSuite.config.dialogHost.frame:IsShown() == false")), "options view hidden while the editor subtab is open")
+rt.execute("RLSuite.config:SelectSubtab('layout')")
+check(bool(rt.eval("RLSuite.config.currentSub == 'layout' and RLSuite.config.macroEditorPanel:IsShown() == false")), "switching to Bar Layout hides the editor")
+check(bool(rt.eval("RLSuite.config.dialogHost.frame:IsShown() == true")), "switching to Bar Layout re-shows the options view")
+
+# NotifyChange re-renders the current subtab when the window is shown
+rt.execute("RLSuite.config.frame:Show()")
+rt.execute("RLSuite.config:SelectCategory('savedraids')")
+check(bool(rt.eval("RLSuite.config.dialogHost:GetUserData('basepath') ~= nil and RLSuite.config.dialogHost:GetUserData('basepath')[1] == 'savedraids'")), "savedraids subtab renders at the savedraids path")
+rt.execute("RLSuite.config:NotifyChange()")
+check(bool(rt.eval("RLSuite.config.currentCat == 'savedraids' and RLSuite.config.currentSub == 'main'")), "NotifyChange re-renders the current subtab without error")
+rt.execute("RLSuite.config.frame:Hide()")
 
 print()
 if fails:

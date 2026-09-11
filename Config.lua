@@ -2,9 +2,10 @@
 -- RLSuite - Config
 -- Options UI rebuilt on Ace3: an AceConfig options table rendered
 -- by AceConfigDialog into an AceGUI container hosted inside the
--- Config tab pane. The bespoke 12-slot Macro Editor / icon picker
--- (which has no AceConfig equivalent) is preserved and drawn over
--- the options view when opened.
+-- Config tab pane. The window keeps its left category navigation
+-- and right subtab bar, and the bespoke 12-slot Macro Editor /
+-- icon picker (no AceConfig equivalent) lives as the "Macro
+-- Editor" subtab of the "Macros" category, inside the window.
 -- ============================================================
 
 RLSuite.config = {}
@@ -51,7 +52,7 @@ end
 
 local function textarea(name, desc, order, get, set)
     return { type = "input", name = name, desc = desc, order = order,
-             multiline = 2, width = "full", get = get, set = set }
+             multiline = 2, get = get, set = set }
 end
 
 -- ------------------------------------------------------------------
@@ -75,17 +76,21 @@ function CFG:Toggle()
     end
 end
 
--- Re-renders the options dialog (used after Saved Raids change, macro
--- bar restore, anchor toggling, etc.). AceConfigDialog listens for the
--- ConfigTableChange callback fired by NotifyChange.
+-- Re-renders the current options view (used after Saved Raids change,
+-- macro bar restore, anchor toggling, theme/color changes, etc.).
 function CFG:NotifyChange()
     AceConfigRegistry:NotifyChange(APP)
+    -- The bundled AceConfigDialog (r50) only auto-refreshes standalone
+    -- windows and Blizzard options, NOT custom containers; re-render the
+    -- current subtab ourselves so dynamic values stay in sync.
+    if self.frame and self.frame:IsShown() and self.currentCat and self.currentSub then
+        self:SelectSubtab(self.currentSub)
+    end
 end
 
 function CFG:CreateFrame()
-    -- The tab pane itself stays a plain WoW frame: MainWindow hooks its
-    -- close button and drag/resize, and Utils skins it like every other
-    -- tab window.
+    -- The tab pane stays a plain WoW frame: MainWindow hooks its close
+    -- button and drag, and Utils skins it like every other tab window.
     local f = CreateFrame("Frame", "RLSuiteConfig", UIParent)
     f:SetSize(620, 580)
     f:SetPoint("CENTER")
@@ -109,12 +114,46 @@ function CFG:CreateFrame()
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
     f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 
-    -- Content area: hosts the AceConfig dialog and (on top) the Macro
-    -- Editor. Kept as self.panel so the preserved editor code can anchor
-    -- to it unchanged.
-    self.panel = CreateFrame("Frame", nil, f)
-    self.panel:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -36)
-    self.panel:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 10)
+    -- Left column: category navigation.
+    self.left = CreateFrame("Frame", nil, f)
+    self.left:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -36)
+    self.left:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
+    self.left:SetWidth(140)
+    RLSuite.utils:SkinFrame(self.left)
+
+    self.right = CreateFrame("Frame", nil, f)
+    self.right:SetPoint("TOPLEFT", self.left, "TOPRIGHT", 6, 0)
+    self.right:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 10)
+    RLSuite.utils:SkinFrame(self.right)
+
+    self.categories = {
+        { key = "general",     label = "General" },
+        { key = "savedraids",  label = "Saved Raids" },
+        { key = "groupmaking", label = "Groupmaking" },
+        { key = "macros",      label = "Macros" },
+        { key = "raidframe",   label = "Raid Frame" },
+        { key = "ms",          label = "MS" },
+        { key = "loot",        label = "Loot" },
+    }
+    self.navBtns = {}
+    for i, cat in ipairs(self.categories) do
+        local btn = CreateFrame("Button", nil, self.left, "UIPanelButtonTemplate")
+        btn:SetSize(124, 22)
+        btn:SetPoint("TOPLEFT", self.left, "TOPLEFT", 8, -10 - (i - 1) * 26)
+        btn:SetText(cat.label)
+        btn.catKey = cat.key
+        btn:SetScript("OnClick", function() self:SelectCategory(cat.key) end)
+        self.navBtns[cat.key] = btn
+    end
+
+    self.subTabBar = CreateFrame("Frame", nil, self.right)
+    self.subTabBar:SetPoint("TOPLEFT", self.right, "TOPLEFT", 8, -8)
+    self.subTabBar:SetPoint("TOPRIGHT", self.right, "TOPRIGHT", -8, -8)
+    self.subTabBar:SetHeight(24)
+
+    self.panel = CreateFrame("Frame", nil, self.right)
+    self.panel:SetPoint("TOPLEFT", self.subTabBar, "BOTTOMLEFT", 0, -6)
+    self.panel:SetPoint("BOTTOMRIGHT", self.right, "BOTTOMRIGHT", -8, 8)
 
     -- Register the options table as a function so it is regenerated on
     -- every NotifyChange (the Saved Raids list is dynamic).
@@ -122,22 +161,129 @@ function CFG:CreateFrame()
         return CFG:BuildOptionsTable()
     end)
 
-    -- AceGUI container the dialog renders into.
+    -- AceGUI container the options render into. Sized explicitly to the
+    -- right-hand content area (via the widget methods so the internal
+    -- scrollframe relayouts) so the options never overflow the window.
     self.dialogHost = AceGUI:Create("Frame")
-    AceConfigDialog:Open(APP, self.dialogHost)
-    self.dialogHost:SetCallback("OnClose", function()
-        f:Hide()
-    end)
-
+    self.dialogHost:SetCallback("OnClose", function() f:Hide() end)
+    local W = math.max(300, (f:GetWidth() or 620) - 182)
+    local H = math.max(280, (f:GetHeight() or 580) - 92)
+    self.dialogHost:SetWidth(W)
+    self.dialogHost:SetHeight(H)
     local host = self.dialogHost.frame
     host:ClearAllPoints()
     host:SetParent(self.panel)
-    host:SetAllPoints(self.panel)
-    -- Override the dialog's default 700x500 so it fills the tab pane
-    -- instead of overflowing it.
-    host:SetWidth(self.panel:GetWidth() or 600)
-    host:SetHeight(self.panel:GetHeight() or 520)
+    host:SetPoint("TOPLEFT", self.panel, "TOPLEFT", 0, 0)
     host:Show()
+
+    self:SelectCategory("general")
+end
+
+-- ------------------------------------------------------------------
+-- Category / subtab navigation (kept inside the window)
+-- ------------------------------------------------------------------
+function CFG:SelectCategory(key)
+    self.currentCat = key
+    for k, btn in pairs(self.navBtns or {}) do
+        if k == key then btn:LockHighlight() else btn:UnlockHighlight() end
+    end
+    local subs = self:SubtabsFor(key)
+    self:BuildSubtabs(subs)
+    self:SelectSubtab(subs[1] and subs[1].key or "layout")
+end
+
+function CFG:SubtabsFor(key)
+    if key == "general" then
+        return {
+            { key = "look", label = L["Appearance"] },
+            { key = "font", label = L["Font"] },
+            { key = "window", label = L["Window"] },
+            { key = "debug", label = L["Debug"] },
+        }
+    elseif key == "savedraids" then
+        return { { key = "main", label = L["Saved Raids"] } }
+    elseif key == "macros" then
+        return {
+            { key = "layout", label = L["Bar Layout"] },
+            { key = "editor", label = L["Macro Editor"] },
+        }
+    elseif key == "raidframe" then
+        return {
+            { key = "layout", label = L["Layout"] },
+            { key = "pos", label = L["Position"] },
+        }
+    end
+    return { { key = "layout", label = L["Layout"] } }
+end
+
+function CFG:LayoutPanelForSubtabs(showBar)
+    if not self.panel then return end
+    self.panel:ClearAllPoints()
+    if showBar then
+        self.subTabBar:Show()
+        self.panel:SetPoint("TOPLEFT", self.subTabBar, "BOTTOMLEFT", 0, -6)
+    else
+        self.subTabBar:Hide()
+        self.panel:SetPoint("TOPLEFT", self.right, "TOPLEFT", 8, -8)
+    end
+    self.panel:SetPoint("BOTTOMRIGHT", self.right, "BOTTOMRIGHT", -8, 8)
+end
+
+function CFG:BuildSubtabs(subs)
+    if self.subTabBtns then
+        for _, b in ipairs(self.subTabBtns) do
+            b:Hide()
+            b:SetParent(nil)
+        end
+    end
+    self.subTabBtns = {}
+    local show = subs and #subs > 1
+    self:LayoutPanelForSubtabs(show)
+    if not show then return end
+    for i, s in ipairs(subs) do
+        local btn = CreateFrame("Button", nil, self.subTabBar, "UIPanelButtonTemplate")
+        btn:SetSize(90, 20)
+        btn:SetPoint("LEFT", self.subTabBar, "LEFT", (i - 1) * 96, 0)
+        btn:SetText(s.label)
+        btn.subKey = s.key
+        btn:SetScript("OnClick", function() self:SelectSubtab(s.key) end)
+        self.subTabBtns[i] = btn
+    end
+end
+
+-- Renders the AceConfig options for the given tree path inside the
+-- AceGUI host.
+function CFG:OpenOptions(...)
+    if not self.dialogHost then return end
+    AceConfigDialog:Open(APP, self.dialogHost, ...)
+end
+
+function CFG:SelectSubtab(key)
+    self.currentSub = key
+    for _, btn in ipairs(self.subTabBtns or {}) do
+        if btn.subKey == key then btn:LockHighlight() else btn:UnlockHighlight() end
+    end
+    local cat = self.currentCat
+    if cat == "macros" and key == "editor" then
+        self:ShowMacroEditor()
+        return
+    end
+    self:HideMacroEditor()
+    if cat == "general" then
+        self:OpenOptions("general", key)
+    elseif cat == "savedraids" then
+        self:OpenOptions("savedraids")
+    elseif cat == "groupmaking" then
+        self:OpenOptions("groupmaking")
+    elseif cat == "macros" then
+        self:OpenOptions("macros", "layout")
+    elseif cat == "raidframe" then
+        self:OpenOptions("raidframe", key)
+    elseif cat == "ms" then
+        self:OpenOptions("ms")
+    elseif cat == "loot" then
+        self:OpenOptions("loot")
+    end
 end
 
 -- ------------------------------------------------------------------
@@ -160,15 +306,16 @@ end
 
 function CFG:UpdateAnchorCheck()
     -- The anchor toggle is a native AceConfig option reading the profile
-    -- directly; refresh it whenever something flips anchorMode externally.
+    -- directly; refresh the current view whenever anchorMode flips.
     self:NotifyChange()
 end
 
 function CFG:RebuildPanel()
-    -- Compatibility shim: Core used to rebuild the saved-raids list in
-    -- place. With AceConfig we just notify the dialog.
-    self:HideMacroEditor()
+    -- Compatibility shim: rebuild the current options view.
     self:NotifyChange()
+    if self.currentCat and self.currentSub then
+        self:SelectSubtab(self.currentSub)
+    end
 end
 
 -- ------------------------------------------------------------------
@@ -210,6 +357,7 @@ function CFG:BuildOptionsTable()
                 a.fill = { r = r, g = g, b = b, a = alpha or 1 }
                 a.theme = "custom"
                 self:ApplyAll()
+                self:NotifyChange()
             end },
         bg = { type = "color", name = L["Panel background:"], desc = L["Inner panel color."], order = 3,
             hasAlpha = true,
@@ -218,6 +366,7 @@ function CFG:BuildOptionsTable()
                 a.bg = { r = r, g = g, b = b, a = alpha or 1 }
                 a.theme = "custom"
                 self:ApplyAll()
+                self:NotifyChange()
             end },
         border = { type = "color", name = L["Borders:"], desc = L["Window border color."], order = 4,
             hasAlpha = true,
@@ -226,6 +375,7 @@ function CFG:BuildOptionsTable()
                 a.border = { r = r, g = g, b = b, a = alpha or 1 }
                 a.theme = "custom"
                 self:ApplyAll()
+                self:NotifyChange()
             end },
         edgeSize = slider(L["Border thickness"], nil, 5, 8, 48, 2,
             function() return a.edgeSize or 32 end,
@@ -401,8 +551,6 @@ function CFG:BuildOptionsTable()
 
     local macros = {
         layout = { type = "group", name = L["Bar Layout"], order = 1, args = macroLayout },
-        editor = execute(L["Open Macro Editor"], L["Edit the 12 macros of the current phase with the icon picker."], 2,
-            function() self:OpenMacroEditorPanel() end),
     }
 
     -- --- Raid Frame ----------------------------------------------
@@ -482,7 +630,8 @@ function CFG:OpenMacroEditorPanel()
             RLSuite.utils:RaiseWindow(self.frame)
         end
     end
-    self:ShowMacroEditor()
+    self:SelectCategory("macros")
+    self:SelectSubtab("editor")
 end
 
 function CFG:HideMacroEditor()
@@ -558,14 +707,6 @@ function CFG:CreateMacroEditor()
         if RLSuite.macrobar and RLSuite.macrobar.Toggle then
             RLSuite.macrobar:Toggle()
         end
-    end)
-
-    local backBtn = CreateFrame("Button", nil, ed, "UIPanelButtonTemplate")
-    backBtn:SetSize(120, 20)
-    backBtn:SetPoint("RIGHT", hudBtn, "LEFT", -6, 0)
-    backBtn:SetText(L["Options"])
-    backBtn:SetScript("OnClick", function()
-        self:HideMacroEditor()
     end)
 
     -- riga 2: anteprima 12 slot (2 righe x 6)
@@ -1151,4 +1292,5 @@ function CFG:ApplyTheme(theme)
         end
     end
     self:ApplyAll()
+    self:NotifyChange()
 end
