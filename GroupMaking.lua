@@ -2363,11 +2363,16 @@ function GM:UpdateWLGroups()
         for s = 1, 5 do
             local bar = self.wlGroupSlots[(g - 1) * 5 + s]
             if bar then
+                bar:Show()
                 local member = byGroup[g][s]
                 if member then
                     local r, gg, b = RLSuite.utils:GetClassColor(member.class)
                     bar:SetBackdropColor(r, gg, b, 1)
-                    if bar.nameFS then bar.nameFS:SetText(member.name) end
+                    if bar.nameFS then
+                        bar.nameFS:SetText(member.name)
+                        bar.nameFS:SetTextColor(0, 0, 0)
+                        bar.nameFS:Show()
+                    end
                 else
                     bar:SetBackdropColor(0.16, 0.16, 0.16, 1)
                     if bar.nameFS then bar.nameFS:SetText("") end
@@ -2376,6 +2381,25 @@ function GM:UpdateWLGroups()
         end
     end
     self:LayoutWLGroupColumns(ngroups)
+
+    -- Diagnostica (solo debug): stampa UNA riga quando il contenuto del
+    -- pannello cambia, cosi' in gioco si vede subito se/quanti giocatori
+    -- sono stati piazzati nelle colonne.
+    if debugMode then
+        local names = {}
+        for _, m in ipairs(RLSuite:DebugRoster()) do
+            names[#names + 1] = m.name
+        end
+        local summary = table.concat(names, ", ")
+        if summary ~= self._lastWLSummary then
+            self._lastWLSummary = summary
+            if RLSuite.utils and RLSuite.utils.Print then
+                RLSuite.utils:Print("|cffffff00[Raid Group]|r " .. #names .. " membri: " .. summary)
+            end
+        end
+    else
+        self._lastWLSummary = nil
+    end
 end
 
 -- Numero di colonne del pannello Raid Group dalla difficolta' di Groupmaking.
@@ -2392,6 +2416,7 @@ end
 function GM:LayoutWLGroupColumns(ngroups)
     local box = self.wlGroupBox
     if not box then return end
+    box:Show()
     ngroups = ngroups or 5
     local w = box:GetWidth() or 0
     local inner = w - 12

@@ -615,6 +615,9 @@ end
 -- "raid group stays empty after a debug invite" bug happened because a
 -- RaidFrame failure could abort before the Raid Group update ran).
 function RLSuite:DebugRosterChanged()
+    if self.utils and self.utils.Debug then
+        self.utils:Debug(string.format("DebugRosterChanged: %d membri nel roster", #self:DebugRoster()))
+    end
     -- Raid Group (InviteEngine) per primo: e' il pannello che l'utente guarda.
     if self.groupmaking and self.groupmaking.UpdateWLGroups then
         local ok, err = pcall(self.groupmaking.UpdateWLGroups, self.groupmaking)
