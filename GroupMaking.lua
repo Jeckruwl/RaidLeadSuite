@@ -11,10 +11,12 @@ local SLOT_SIZE = 36
 local SLOT_SPACING = 2
 local GROUP_LABEL_H = 17
 
--- Raid Group panel (whisplist rib): colored bars per invited player.
+-- Raid Group panel (whisplist rib): the REAL raid, one vertical column
+-- per raid group, each holding up to 5 class-colored name bars.
 local WL_BAR_H = 16
 local WL_BAR_GAP = 2
-local WL_GROUP_LABEL_W = 22
+local WL_COL_GAP = 4
+local WL_GROUP_LABEL_H = 14
 
 -- All Groupmaking window fonts are +2pt over the default game fonts
 -- (window titles keep their large size).
@@ -416,7 +418,6 @@ function GM:ClearSlot(index)
     slot:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
     if slot.roleIconBg then slot.roleIconBg:Hide() end
     if slot.roleIcon then slot.roleIcon:Hide() end
-    self:UpdateWLGroups()
     self:UpdateMessagePreview()
     self:SaveComp()
 end
@@ -442,7 +443,6 @@ function GM:FillSlot(index, class, role, playerName, spec)
         slot.roleIcon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
         slot.roleIcon:Show()
     end
-    self:UpdateWLGroups()
     self:UpdateMessagePreview()
     self:SaveComp()
 end
@@ -952,7 +952,7 @@ function GM:CreateWhisplistWindow()
     groupLabel:SetText(L["Raid Group"])
     groupLabel:SetTextColor(1, 0.82, 0)
 
-    self:BuildWLGroupSlots()
+    self:BuildWLGroupColumns()
 
     -- ==== Received whispers ====
     self.wlListBox = CreateFrame("Frame", nil, f)
@@ -1049,26 +1049,25 @@ function GM:CreateWhisplistWindow()
     f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 end
 
-function GM:BuildWLGroupSlots()
-    self.wlGroupRows = {}
+function GM:BuildWLGroupColumns()
+    self.wlGroupCols = {}
     self.wlGroupLabels = {}
     self.wlGroupSlots = {}
     local box = self.wlGroupBox
     for g = 1, 5 do
-        local row = CreateFrame("Frame", nil, box)
-        row:SetHeight(WL_BAR_H)
-        self.wlGroupRows[g] = row
+        local col = CreateFrame("Frame", nil, box)
+        col:SetWidth(64)
+        self.wlGroupCols[g] = col
 
-        local lbl = FontStr(row, "OVERLAY", 12)
+        local lbl = FontStr(col, "OVERLAY", 12)
         lbl:SetText("G" .. g)
         lbl:SetTextColor(1, 0.82, 0)
-        lbl:SetWidth(WL_GROUP_LABEL_W)
-        lbl:SetJustifyH("LEFT")
+        lbl:SetJustifyH("CENTER")
         self.wlGroupLabels[g] = lbl
 
         for s = 1, 5 do
             local i = (g - 1) * 5 + s
-            local bar = CreateFrame("Button", nil, row)
+            local bar = CreateFrame("Frame", nil, col)
             bar:SetBackdrop({
                 bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
                 edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1077,9 +1076,6 @@ function GM:BuildWLGroupSlots()
             })
             bar:SetBackdropColor(0.16, 0.16, 0.16, 1)
             bar:SetBackdropBorderColor(0, 0, 0, 0.6)
-            bar:EnableMouse(true)
-            bar:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-            bar.index = i
 
             local nameFS = FontStr(bar, "OVERLAY", 11)
             nameFS:SetPoint("CENTER", bar, "CENTER", 0, 0)
@@ -1091,81 +1087,105 @@ function GM:BuildWLGroupSlots()
             nameFS:SetShadowOffset(1, -1)
             bar.nameFS = nameFS
 
-            bar:SetScript("OnClick", function(s, button)
-                if button == "RightButton" then
-                    self:ClearSlot(s.index)
-                elseif self.selectedEntry then
-                    self:InvitePlayerToSlot(self.selectedEntry, s.index)
-                end
-            end)
             self.wlGroupSlots[i] = bar
         end
     end
     self:UpdateWLGroups()
 end
 
--- Ridisegna le barre del pannello Raid Group dalla composizione corrente.
+-- Popola il pannello Raid Group dal raid REALE (non dalla comp di
+-- Groupmaking, che e' quella "ideale" aggiornata a mano dal RL per lo
+-- spammer). Ogni giocatore finisce nella colonna del suo sottogruppo.
 function GM:UpdateWLGroups()
     if not self.wlGroupSlots then return end
+
+    local byGroup = { {}, {}, {}, {}, {} }
+    local num = 0
+    if IsInRaid and IsInRaid() and GetNumRaidMembers then
+        num = GetNumRaidMembers()
+    end
+    for i = 1, num do
+        local name, _, subgroup = GetRaidRosterInfo(i)
+        if name then
+            local class = "WARRIOR"
+            if UnitClass then
+                local _, classFile = UnitClass("raid" .. i)
+                if classFile then class = classFile end
+            end
+            subgroup = tonumber(subgroup) or 1
+            if subgroup < 1 then subgroup = 1 end
+            if subgroup > 5 then subgroup = 5 end
+            table.insert(byGroup[subgroup], { name = name, class = class })
+        end
+    end
+
+    -- Numero di colonne dalla difficolta' di Groupmaking (2 per il 10, 5 per il 25).
     local numSlots = tonumber(self.db.difficulty or "10") or 10
     local ngroups = math.ceil(numSlots / 5)
+    if ngroups < 2 then ngroups = 2 end
+
     for g = 1, 5 do
-        local row = self.wlGroupRows and self.wlGroupRows[g]
-        if row then
-            if g <= ngroups then row:Show() else row:Hide() end
+        local col = self.wlGroupCols and self.wlGroupCols[g]
+        if col then
+            if g <= ngroups then col:Show() else col:Hide() end
+        end
+        for s = 1, 5 do
+            local bar = self.wlGroupSlots[(g - 1) * 5 + s]
+            if bar then
+                local member = byGroup[g][s]
+                if member then
+                    local r, gg, b = RLSuite.utils:GetClassColor(member.class)
+                    bar:SetBackdropColor(r, gg, b, 1)
+                    if bar.nameFS then bar.nameFS:SetText(member.name) end
+                else
+                    bar:SetBackdropColor(0.16, 0.16, 0.16, 1)
+                    if bar.nameFS then bar.nameFS:SetText("") end
+                end
+            end
         end
     end
-    for i, bar in ipairs(self.wlGroupSlots) do
-        if i <= numSlots then bar:Show() else bar:Hide() end
-        local comp = self.compSlots and self.compSlots[i]
-        if comp and comp.filled then
-            local r, g, b = RLSuite.utils:GetClassColor(comp.class)
-            bar:SetBackdropColor(r, g, b, 1)
-            if bar.nameFS then bar.nameFS:SetText(comp.playerName or "") end
-        else
-            bar:SetBackdropColor(0.16, 0.16, 0.16, 1)
-            if bar.nameFS then bar.nameFS:SetText("") end
-        end
-    end
-    self:LayoutWLGroupRows(ngroups)
+    self:LayoutWLGroupColumns(ngroups)
 end
 
--- Posiziona righe e barre dentro il riquadro Raid Group e ne adatta
--- l'altezza al numero di gruppi (5 per il 25, 2 per il 10).
-function GM:LayoutWLGroupRows(ngroups)
+-- Posiziona le colonne (una per gruppo raid) e le barre verticali al loro
+-- interno, dentro il riquadro Raid Group.
+function GM:LayoutWLGroupColumns(ngroups)
     local box = self.wlGroupBox
     if not box then return end
     ngroups = ngroups or 5
     local w = box:GetWidth() or 0
     local inner = w - 12
-    local slotW = math.floor((inner - WL_GROUP_LABEL_W - 4 * WL_BAR_GAP) / 5)
-    if slotW < 40 then slotW = 40 end
+    local colW = math.floor((inner - (ngroups - 1) * WL_COL_GAP) / ngroups)
+    if colW > 100 then colW = 100 end
+    if colW < 50 then colW = 50 end
+    local totalW = ngroups * colW + (ngroups - 1) * WL_COL_GAP
+    local startX = 6 + math.floor(math.max(0, (inner - totalW) / 2))
     for g = 1, 5 do
-        local row = self.wlGroupRows and self.wlGroupRows[g]
-        if row then
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", box, "TOPLEFT", 6, -24 - (g - 1) * (WL_BAR_H + WL_BAR_GAP))
-            row:SetSize(inner, WL_BAR_H)
+        local col = self.wlGroupCols and self.wlGroupCols[g]
+        if col then
+            col:ClearAllPoints()
+            col:SetWidth(colW)
+            col:SetPoint("TOPLEFT", box, "TOPLEFT", startX + (g - 1) * (colW + WL_COL_GAP), -24)
             local lbl = self.wlGroupLabels and self.wlGroupLabels[g]
             if lbl then
                 lbl:ClearAllPoints()
-                lbl:SetPoint("LEFT", row, "LEFT", 0, 0)
+                lbl:SetPoint("TOP", col, "TOP", 0, 0)
             end
             for s = 1, 5 do
                 local bar = self.wlGroupSlots and self.wlGroupSlots[(g - 1) * 5 + s]
                 if bar then
                     bar:ClearAllPoints()
-                    bar:SetSize(slotW, WL_BAR_H)
+                    bar:SetSize(colW, WL_BAR_H)
                     if s == 1 then
-                        bar:SetPoint("LEFT", row, "LEFT", WL_GROUP_LABEL_W, 0)
+                        bar:SetPoint("TOP", col, "TOP", 0, -WL_GROUP_LABEL_H)
                     else
-                        bar:SetPoint("LEFT", self.wlGroupSlots[(g - 1) * 5 + s - 1], "RIGHT", WL_BAR_GAP, 0)
+                        bar:SetPoint("TOP", self.wlGroupSlots[(g - 1) * 5 + s - 1], "BOTTOM", 0, -WL_BAR_GAP)
                     end
                 end
             end
         end
     end
-    box:SetHeight(24 + ngroups * WL_BAR_H + (ngroups - 1) * WL_BAR_GAP + 8)
+    box:SetHeight(24 + WL_GROUP_LABEL_H + 5 * WL_BAR_H + 4 * WL_BAR_GAP + 8)
 end
 
 function GM:OpenWhisplist()
@@ -1206,7 +1226,6 @@ function GM:UpdateWhisplist()
     if not self.wlContent then return end
     if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
     if self.SkinInner then self:SkinInner() end
-    self:UpdateWLGroups()
     for _, child in ipairs(self.wlRows or {}) do
         child:Hide()
         child:SetParent(nil)
@@ -1290,19 +1309,7 @@ function GM:InviteSelected()
         RLSuite.utils:Whisper(self.selectedEntry.name, "You are invited (debug).")
         return
     end
-    local entry = self.selectedEntry
-    -- Con una classe riconosciuta l'invito riempie il primo slot libero
-    -- (i gruppi del pannello Raid Group si riempiono cosi' in ordine).
-    if entry.class then
-        local slotIndex = self:FindEmptySlotForRole(nil)
-        if slotIndex then
-            self:InvitePlayerToSlot(entry, slotIndex)
-            return
-        end
-    end
-    InviteUnit(entry.name)
-    entry.invited = true
-    self:UpdateWhisplist()
+    InviteUnit(self.selectedEntry.name)
 end
 
 function GM:AskGS()
@@ -1399,5 +1406,16 @@ saveFrame:RegisterEvent("PLAYER_LOGOUT")
 saveFrame:SetScript("OnEvent", function()
     if RLSuite.groupmaking and RLSuite.groupmaking.SaveComp then
         RLSuite.groupmaking:SaveComp()
+    end
+end)
+
+-- Il pannello Raid Group mostra il raid reale: si aggiorna a ogni cambio
+-- del roster (inviti, spostamenti di gruppo, uscite).
+local rosterFrame = CreateFrame("Frame")
+rosterFrame:RegisterEvent("RAID_ROSTER_UPDATE")
+rosterFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+rosterFrame:SetScript("OnEvent", function()
+    if RLSuite.groupmaking and RLSuite.groupmaking.UpdateWLGroups then
+        RLSuite.groupmaking:UpdateWLGroups()
     end
 end)
