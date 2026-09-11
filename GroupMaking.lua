@@ -1169,6 +1169,16 @@ function GM:CreateInviteEngineTabs()
     if not tg then return end
     self.ieTabGroup = tg
 
+    -- Disabilita l'altezza automatica del TabGroup. Senza figli AceGUI il
+    -- widget si "collasserebbe" all'altezza minima (striscia tab + bordo)
+    -- in LayoutFinished, sovrascrivendo la nostra SetHeight: le pagine
+    -- Whisplist/Autoinviter sono frame normali, non figli AceGUI.
+    if tg.SetAutoAdjustHeight then
+        tg:SetAutoAdjustHeight(false)
+    else
+        tg.noAutoHeight = true
+    end
+
     tg:SetTabs({
         { text = L["Whisplist"], value = "whisper" },
         { text = L["Autoinviter"], value = "auto" },
