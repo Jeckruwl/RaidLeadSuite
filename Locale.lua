@@ -53,6 +53,7 @@ do
     -- GroupMaking
     L["Composition"] = true
     L["Click a spec to add"] = true
+    L["Aim"] = true
     L["Reserved items"] = true
     L["Other requirements"] = true
     L["Message preview..."] = true

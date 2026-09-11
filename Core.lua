@@ -49,6 +49,7 @@ local defaults = {
         hc = false,
         reserved = {},
         reservedText = "",
+        aim = "",
         otherReq = "",
         comp = {},
         spamChannels = {"General", "Trade"},
@@ -704,6 +705,7 @@ function RLSuite:ApplySavedRaidToUI()
                     reserved = RLSuiteDB.groupmaking.reserved
                 end
                 if gm.reservedEdit then gm.reservedEdit:SetText(reserved) end
+                if gm.aimEdit then gm.aimEdit:SetText(RLSuiteDB.groupmaking.aim or "") end
                 if gm.otherEdit then gm.otherEdit:SetText(RLSuiteDB.groupmaking.otherReq or "") end
                 gm.db.comp = {}
                 if gm.SaveComp then gm:SaveComp() end

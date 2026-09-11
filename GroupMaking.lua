@@ -193,11 +193,27 @@ function GM:CreateMainWindow()
     self.reqBox = CreateFrame("Frame", nil, f)
     self.reqBox:SetPoint("TOPLEFT", self.topRow, "BOTTOMLEFT", 0, -8)
     self.reqBox:SetPoint("TOPRIGHT", self.topRow, "BOTTOMRIGHT", 0, -8)
-    self.reqBox:SetHeight(100)
+    self.reqBox:SetHeight(150)
     RLSuite.utils:SkinBox(self.reqBox)
 
+    -- Campo "Aim": nota libera del raid leader, sopra a Reserved items.
+    local aimLabel = FontStr(self.reqBox, "OVERLAY", 12)
+    aimLabel:SetPoint("TOPLEFT", self.reqBox, "TOPLEFT", 8, -8)
+    aimLabel:SetText(L["Aim"])
+    aimLabel:SetTextColor(1, 0.82, 0)
+
+    self.aimEdit = CreateFrame("EditBox", "RLSuiteAimEdit", self.reqBox, "InputBoxTemplate")
+    self.aimEdit:SetHeight(20)
+    self.aimEdit:SetPoint("TOPLEFT", aimLabel, "BOTTOMLEFT", 4, -4)
+    self.aimEdit:SetPoint("RIGHT", self.reqBox, "RIGHT", -12, 0)
+    self.aimEdit:SetAutoFocus(false)
+    self.aimEdit:SetMaxLetters(250)
+    self.aimEdit:SetScript("OnTextChanged", function() self:SaveComp() end)
+    self.aimEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+    self.aimEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
+
     local reservedLabel = FontStr(self.reqBox, "OVERLAY", 12)
-    reservedLabel:SetPoint("TOPLEFT", self.reqBox, "TOPLEFT", 8, -8)
+    reservedLabel:SetPoint("TOPLEFT", self.aimEdit, "BOTTOMLEFT", -4, -6)
     reservedLabel:SetText(L["Reserved items"])
     reservedLabel:SetTextColor(1, 0.82, 0)
 
@@ -453,7 +469,7 @@ function GM:MinHeight()
         local th = self.topRow:GetHeight()
         if th and th > 60 then topH = th end
     end
-    return topH + 286
+    return topH + 336
 end
 
 -- La Whisplist e' una costola di Groupmaking: la sua altezza segue sempre
@@ -1555,6 +1571,7 @@ function GM:LoadCompFromDB()
         reserved = self.db.reserved
     end
     if self.reservedEdit then self.reservedEdit:SetText(reserved) end
+    if self.aimEdit then self.aimEdit:SetText(self.db.aim or "") end
     if self.otherEdit then self.otherEdit:SetText(self.db.otherReq or "") end
     if self.db.comp then
         for i, data in pairs(self.db.comp) do
@@ -1582,6 +1599,9 @@ function GM:SaveComp()
     end
     if self.reservedEdit then
         self.db.reservedText = self.reservedEdit:GetText() or ""
+    end
+    if self.aimEdit then
+        self.db.aim = self.aimEdit:GetText() or ""
     end
     if self.otherEdit then
         self.db.otherReq = self.otherEdit:GetText() or ""
