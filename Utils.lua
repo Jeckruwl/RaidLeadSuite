@@ -395,7 +395,6 @@ function Utils:AllTabPanes()
     add(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame)
     add(RLSuite.msManager and RLSuite.msManager.frame)
     add(RLSuite.lootManager and RLSuite.lootManager.frame)
-    add(RLSuite.config and RLSuite.config.frame)
     if RLSuite.mainWindow and RLSuite.mainWindow.tabPanels then
         add(RLSuite.mainWindow.tabPanels.raidframe)
     end
@@ -403,13 +402,9 @@ function Utils:AllTabPanes()
 end
 
 function Utils:AllDockedPanels()
-    local list = {}
-    local function add(fr)
-        if fr then table.insert(list, fr) end
-    end
-    add(RLSuite.config and RLSuite.config.left)
-    add(RLSuite.config and RLSuite.config.right)
-    return list
+    -- The Config surface is now a self-contained AceGUI window (not a
+    -- docked tab pane with inner panels), so there is nothing to skin.
+    return {}
 end
 
 function Utils:SkinBox(box)

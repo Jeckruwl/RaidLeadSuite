@@ -15,7 +15,7 @@ local FrameMT = { __index = methods }
 
 local function newFrame(t)
     local o = setmetatable(t or {}, FrameMT)
-    o._w = 0; o._h = 0; o._shown = true; o._parent = nil
+    o._w = 0; o._h = 0; o._shown = true
     o._points = {}; o._text = ""; o._checked = false; o._scripts = {}
     o._backdropColor = {0,0,0,1}; o._isFontString = false
     o._wordWrap = false; o._locked = false; o._highlight = false
@@ -208,7 +208,7 @@ function methods:GetIndentedWordWrap() return false end
 function methods:SetIndentedWordWrap(...) return self end
 
 CreateFrame = function(typ, name, parent, template)
-    local o = newFrame({ _type=typ, _name=name, _template=template })
+    local o = newFrame({ _type=typ, _name=name, _template=template, _parent = parent })
     if name then _G[name] = o; FRAMES[name] = o end
     return o
 end
@@ -432,6 +432,12 @@ local function _templateChildren(o, name, template)
         _G[name .. "ScrollBar"] = newFrame({ _name = name .. "ScrollBar", _parent = o })
         _G[name .. "ScrollBarScrollUpButton"] = newFrame({ _name = name .. "ScrollBarScrollUpButton", _parent = o })
         _G[name .. "ScrollBarScrollDownButton"] = newFrame({ _name = name .. "ScrollBarScrollDownButton", _parent = o })
+    elseif template == "OptionsListButtonTemplate" then
+        -- AceGUI TreeGroup buttons: Blizzard's OptionsListButtonTemplate
+        -- exposes a `text` FontString and a `toggle` expand/collapse button
+        -- via XML `key` attributes (button.text / button.toggle).
+        o.toggle = newFrame({ _name = name .. "Toggle", _parent = o })
+        o.text = newFrame({ _name = name .. "Text", _parent = o, _isFontString = true })
     end
 end
 CreateFrame = function(typ, name, parent, template)
@@ -559,7 +565,7 @@ check(RLS.macrobar is not None and RLS.macrobar.frame is not None, "MacroBar ini
 check(RLS.raidFrame is not None and RLS.raidFrame.frame is not None, "RaidFrame initialized")
 check(RLS.msManager is not None and RLS.msManager.frame is not None, "MSManager initialized")
 check(RLS.lootManager is not None and RLS.lootManager.frame is not None, "LootManager initialized")
-check(RLS.config is not None and RLS.config.frame is not None, "Config initialized")
+check(RLS.config is not None and RLS.config.window is not None, "Config initialized (Ace3 window)")
 check(RLS.mainWindow is not None and RLS.mainWindow.frame is not None, "MainWindow initialized")
 
 for want in ["RAID_ROSTER_UPDATE", "PLAYER_REGEN_ENABLED", "CHAT_MSG_WHISPER", "CHAT_MSG_LOOT", "CHAT_MSG_RAID"]:
@@ -631,18 +637,30 @@ check(rt2.eval("LAST_ERROR") is None or rt2.eval("LAST_ERROR") == None, "no erro
 
 
 print()
-print("== Scenario C: Config (AceConfig + AceConfigDialog) rewire ==")
-check(bool(rt.eval("RLSuite.config.dialogHost ~= nil")), "Config has an AceGUI dialog host")
-check(bool(rt.eval("RLSuite.config.dialogHost.type == 'Frame'")), "dialog host is an AceGUI Frame")
-check(bool(rt.eval("RLSuite.config.frame ~= nil")), "Config tab pane (self.frame) still exists")
+print("== Scenario C: Config (single Ace3 window + AceConfigDialog) ==")
+# The old raw "Config" frame is gone; the config surface is ONE Ace3 window.
+check(bool(rt.eval("RLSuite.config.window ~= nil and RLSuite.config.window.type == 'Window'")), "Config is an AceGUI Window (Ace3)")
+check(bool(rt.eval("RLSuite.config.frame == nil")), "old raw 'Config' frame no longer exists")
+check(bool(rt.eval("_G.RLSuiteConfig == nil")), "no RLSuiteConfig global frame is created")
+check(bool(rt.eval("RLSuite.config.tree ~= nil and RLSuite.config.tree.type == 'TreeGroup'")), "config uses an AceGUI TreeGroup navigation")
 check(bool(rt.eval("LibStub('AceConfigRegistry-3.0'):GetOptionsTable('RLSuite', 'dialog', 'AceConfigDialog-3.0') ~= nil")), "RLSuite options table registered with AceConfigRegistry")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().type == 'group'")), "BuildOptionsTable returns a root group")
-check(bool(rt.eval("RLSuite.config.left ~= nil and RLSuite.config.right ~= nil and RLSuite.config.panel ~= nil")), "left nav / right panel / content panel restored")
-check(bool(rt.eval("RLSuite.config.navBtns ~= nil and RLSuite.config.navBtns.general ~= nil and RLSuite.config.navBtns.macros ~= nil")), "category nav buttons exist")
-check(bool(rt.eval("RLSuite.config:SubtabsFor('macros')[2].key == 'editor'")), "Macro Editor is a subtab of the Macros category")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.macros.args.editor == nil")), "Macro Editor is NOT a button in the options tree")
+
+# Every category from the old window is still present in the options table.
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.type == 'group'")), "General category present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.type == 'group'")), "Saved Raids category present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.groupmaking.type == 'group'")), "Groupmaking category present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.macros.args.layout.type == 'group'")), "Macros -> Bar Layout present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.pos ~= nil")), "Raid Frame -> Position present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.ms.type == 'group'")), "MS category present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.loot.type == 'group'")), "Loot category present")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.args.save1load ~= nil")), "saved raids rendered as Load/Delete executes (dynamic)")
+
+# The navigation tree lists all 7 categories, with the Macro Editor as a node.
+rt.execute("local t = RLSuite.config.tree.tree; CATS = {}; for _,n in ipairs(t) do CATS[n.value] = n end")
+check(bool(rt.eval("CATS.general ~= nil and CATS.savedraids ~= nil and CATS.groupmaking ~= nil and CATS.macros ~= nil and CATS.raidframe ~= nil and CATS.ms ~= nil and CATS.loot ~= nil")), "tree lists all 7 categories")
+check(bool(rt.eval("CATS.macros.children[1].value == 'layout' and CATS.macros.children[2].value == 'editor'")), "Macros node has Bar Layout + Macro Editor children")
+check(bool(rt.eval("CATS.general.children[1].value == 'look' and CATS.general.children[4].value == 'debug'")), "General node has Appearance/Font/Window/Debug children")
 
 # theme select get/set through the AceConfig closures
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.args.look.args.theme.get() == 'default'")), "theme get() -> 'default' on fresh profile")
@@ -673,23 +691,36 @@ check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.args.save
 rt.execute("RLSuite:DeleteSavedRaid(SC_ID)")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.args.save2load == nil")), "deleting the raid removes its option")
 
-# bespoke Macro Editor lives inside the window as a subtab
+# Node selection feeds the matching AceConfig path into the tree content.
 check(bool(rt.eval("RLSuite.config.OpenMacroEditorPanel ~= nil and RLSuite.config.CreateMacroEditor ~= nil")), "Macro Editor API preserved")
-rt.execute("RLSuite.config:OpenMacroEditorPanel()")
-check(bool(rt.eval("RLSuite.config.currentCat == 'macros' and RLSuite.config.currentSub == 'editor'")), "OpenMacroEditorPanel selects Macros -> Macro Editor subtab")
-check(bool(rt.eval("RLSuite.config.macroEditorPanel ~= nil and RLSuite.config.macroEditorPanel:IsShown()")), "editor shown inside the config panel")
-check(bool(rt.eval("RLSuite.config.dialogHost.frame:IsShown() == false")), "options view hidden while the editor subtab is open")
-rt.execute("RLSuite.config:SelectSubtab('layout')")
-check(bool(rt.eval("RLSuite.config.currentSub == 'layout' and RLSuite.config.macroEditorPanel:IsShown() == false")), "switching to Bar Layout hides the editor")
-check(bool(rt.eval("RLSuite.config.dialogHost.frame:IsShown() == true")), "switching to Bar Layout re-shows the options view")
+rt.execute("RLSuite.config:SelectNode('general' .. string.char(1) .. 'look')")
+check(bool(rt.eval("RLSuite.config.currentNode == 'general' .. string.char(1) .. 'look'")), "SelectNode routes to general/look")
+check(bool(rt.eval("RLSuite.config.tree:GetUserData('basepath') ~= nil and RLSuite.config.tree:GetUserData('basepath')[1] == 'general' and RLSuite.config.tree:GetUserData('basepath')[2] == 'look'")), "general/look feeds at the general.look path")
+check(bool(rt.eval("#RLSuite.config.tree.children == 1")), "options rendered into the tree content area")
 
-# NotifyChange re-renders the current subtab when the window is shown
-rt.execute("RLSuite.config.frame:Show()")
-rt.execute("RLSuite.config:SelectCategory('savedraids')")
-check(bool(rt.eval("RLSuite.config.dialogHost:GetUserData('basepath') ~= nil and RLSuite.config.dialogHost:GetUserData('basepath')[1] == 'savedraids'")), "savedraids subtab renders at the savedraids path")
+# The Macro Editor lives inside the same window, under the Macros node.
+rt.execute("RLSuite.config:OpenMacroEditorPanel()")
+check(bool(rt.eval("RLSuite.config.currentNode == 'macros' .. string.char(1) .. 'editor'")), "OpenMacroEditorPanel selects the Macros -> Macro Editor node")
+check(bool(rt.eval("RLSuite.config.macroEditorPanel ~= nil and RLSuite.config.macroEditorPanel:IsShown()")), "editor shown inside the window")
+check(bool(rt.eval("RLSuite.config.macroEditorPanel:GetParent() == RLSuite.config.tree.content")), "editor parented inside the tree content area")
+check(bool(rt.eval("#RLSuite.config.tree.children == 0")), "AceConfig controls released while the editor is open")
+
+# Switching back to Bar Layout hides the editor and re-renders the options.
+rt.execute("RLSuite.config:SelectNode('macros' .. string.char(1) .. 'layout')")
+check(bool(rt.eval("RLSuite.config.macroEditorPanel:IsShown() == false")), "switching to Bar Layout hides the editor")
+check(bool(rt.eval("RLSuite.config.tree:GetUserData('basepath') ~= nil and RLSuite.config.tree:GetUserData('basepath')[1] == 'macros' and RLSuite.config.tree:GetUserData('basepath')[2] == 'layout'")), "Bar Layout feeds at the macros.layout path")
+
+# Toggle / NotifyChange through the Ace3 window
+rt.execute("RLSuite.config:CloseWindow()")
+check(bool(rt.eval("RLSuite.config:IsOpen() == false")), "window closed via CloseWindow")
+rt.execute("RLSuite.config:Toggle()")
+check(bool(rt.eval("RLSuite.config:IsOpen() == true and RLSuite.config.window.frame:IsShown() == true")), "Toggle opens the Ace3 window")
+rt.execute("RLSuite.config:SelectNode('savedraids')")
+check(bool(rt.eval("RLSuite.config.tree:GetUserData('basepath') ~= nil and RLSuite.config.tree:GetUserData('basepath')[1] == 'savedraids'")), "savedraids node feeds at the savedraids path")
 rt.execute("RLSuite.config:NotifyChange()")
-check(bool(rt.eval("RLSuite.config.currentCat == 'savedraids' and RLSuite.config.currentSub == 'main'")), "NotifyChange re-renders the current subtab without error")
-rt.execute("RLSuite.config.frame:Hide()")
+check(bool(rt.eval("RLSuite.config.currentNode == 'savedraids'")), "NotifyChange re-renders the current node without error")
+rt.execute("RLSuite.config:Toggle()")
+check(bool(rt.eval("RLSuite.config:IsOpen() == false")), "Toggle closes the Ace3 window")
 
 print()
 if fails:

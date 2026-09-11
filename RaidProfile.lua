@@ -39,6 +39,13 @@ function MW:ShowMacrobarHud()
 end
 
 function MW:ShowTab(key)
+    if key == "config" then
+        -- Config is now a self-contained Ace3 window, not a tab pane.
+        if RLSuite.config and RLSuite.config.Toggle then
+            RLSuite.config:Toggle()
+        end
+        return
+    end
     if not self.frame then return end
     self.frame:Show()
     self:SelectTab(key)
@@ -103,7 +110,7 @@ end
 -- Offset a cascata per le finestre senza posizione salvata: cosi'
 -- aprendone piu' d'una non si sovrappongono tutte nello stesso punto.
 function MW:DefaultCascadeOffset(ignoreKey)
-    local ALL_KEYS = { "group", "raidframe", "ms", "loot", "config" }
+    local ALL_KEYS = { "group", "raidframe", "ms", "loot" }
     local n = 0
     for _, k in ipairs(ALL_KEYS) do
         if k ~= ignoreKey and self:IsTabOpen(k) then
@@ -216,7 +223,9 @@ function MW:CreateFrame()
     gear:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
     self.configBtn:EnableMouse(true)
     self.configBtn:RegisterForClicks("LeftButtonUp")
-    self.configBtn:SetScript("OnClick", function() self:ShowTab("config") end)
+    self.configBtn:SetScript("OnClick", function()
+        if RLSuite.config then RLSuite.config:Toggle() end
+    end)
     self.configBtn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
         GameTooltip:SetText("Config")
@@ -344,8 +353,6 @@ function MW:PaneForTab(key)
         return RLSuite.msManager and RLSuite.msManager.frame
     elseif key == "loot" then
         return RLSuite.lootManager and RLSuite.lootManager.frame
-    elseif key == "config" then
-        return RLSuite.config and RLSuite.config.frame
     end
     return nil
 end
@@ -354,12 +361,12 @@ end
 function MW:LayoutKeyForTab(key)
     if key == "group" then return "groupmaking" end
     if key == "raidframe" then return "raidframe" end
-    return key -- ms / loot / config
+    return key -- ms / loot
 end
 
 function MW:HideAllWindows()
     if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
-    local keys = { "group", "raidframe", "ms", "loot", "config" }
+    local keys = { "group", "raidframe", "ms", "loot" }
     for _, k in ipairs(keys) do
         local pane = self:PaneForTab(k)
         if pane then pane:Hide() end
@@ -412,7 +419,6 @@ function MW:RegisterAllWindows()
         raidframe = "raidframe",
         ms = "ms",
         loot = "loot",
-        config = "config",
     }
     for key, lkey in pairs(layoutKeys) do
         local pane = self:PaneForTab(key)
@@ -469,7 +475,7 @@ function MW:SelectTab(key)
         key = def and def.key or "group"
     end
     if key ~= "group" and key ~= "raidframe"
-        and key ~= "ms" and key ~= "loot" and key ~= "config" then
+        and key ~= "ms" and key ~= "loot" then
         key = "group"
     end
     self.currentTab = key

@@ -500,7 +500,7 @@ function RLSuite:PrintHelp()
     p(L["  /rls rfhud        HUD Raid Frame"])
     p(L["  /rls ms           MS Manager tab"])
     p(L["  /rls loot         Loot Manager tab"])
-    p(L["  /rls config       Config tab"])
+    p(L["  /rls config       Config window"])
 end
 
 function RLSuite:ChatCommand(input)
@@ -530,7 +530,7 @@ function RLSuite:ChatCommand(input)
     elseif msg == "loot" then
         if self.mainWindow then self.mainWindow:ShowTab("loot") end
     elseif msg == "config" then
-        if self.mainWindow then self.mainWindow:ShowTab("config") end
+        if self.config then self.config:Toggle() end
     elseif msg == "" then
         if self.mainWindow then self.mainWindow:Toggle() end
     else
@@ -686,7 +686,7 @@ end
 
 function RLSuite:RefreshSavedRaidsPanel()
     local cfg = self.config
-    if cfg and cfg.frame and cfg.frame:IsShown() and cfg.NotifyChange then
+    if cfg and cfg.IsOpen and cfg:IsOpen() and cfg.NotifyChange then
         cfg:NotifyChange()
     end
 end
@@ -843,7 +843,7 @@ function RLSuite:ApplyAnchorMode(on)
             if self.macrobar.ApplyLayout then self.macrobar:ApplyLayout() end
         end
     end
-    if self.config and self.config.frame and self.config.UpdateAnchorCheck then
+    if self.config and self.config.UpdateAnchorCheck then
         self.config:UpdateAnchorCheck()
     end
 end

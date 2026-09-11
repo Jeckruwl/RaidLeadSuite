@@ -2,7 +2,7 @@
 
 An addon for **raid leaders** on World of Warcraft **Wrath of the Lich King 3.3.5** (Interface `30300`), designed for **Warmane Lordaeron**.
 
-Version: **1.3.0**
+Version: **1.4.0**
 
 ## Installation
 
@@ -49,13 +49,13 @@ The folder must contain:
 | `/rls rfhud` | Raid Frame HUD |
 | `/rls ms` | MS Manager tab |
 | `/rls loot` | Loot Manager tab |
-| `/rls config` | Config tab |
+| `/rls config` | Config window (Ace3) |
 
 ## Interface
 
 - **Top bar**: at the top sits the **icon row** (as wide as the matrix): on the left, in a row, the **Config gear**, the **save icon (SaveRaid)** and the **phase icon**; on the right, the red **close X**. If there is room, the **phase name** also appears next to the icon. The phase icon changes with the current phase (**animated LFG eye** = pre-raid, **hourglass** = pre-boss, **swords** = in-fight) and cycles to the next phase on click. Below sits the **configurable button matrix** (default **2×4**) with Groupmaking, InviteEngine, Macrobar, Raid Manager, MS, Loot. The tabs are bistable; the windows open as **free, movable panels** (position remembered). **Exception**: the **Macrobar** button on the bar shows/hides the **MacroBar HUD** (it no longer opens a tab window).
 - **SaveRaid**: saves a setup with a title requested via a prompt → **Comp** (composition, raid, reserved items, message, whisplist), **MacroBar** (macros and layout) and **Config except for the General category**.
-- **Config → Saved Raids** (entry under General): list of saved setups with the title and a **Load** button to restore everything.
+- **Config → Saved Raids**: a top-level category in the Config tree with the list of saved setups (title + **Load**/**Delete** buttons).
 - **ElvUI-style Anchors** in *Config → General → Window → Toggle Anchors*: the **Raid Frame** and **MacroBar** HUDs are locked by default; with Toggle Anchors they appear as highlighted movable placeholders. The other windows stay as usual.
 - **Resizable** (grip in the bottom-right corner): Groupmaking, InviteEngine, MS Manager and Loot Manager; sizes are remembered.
 - **DBM/BigWigs integration**: if DBM (or BigWigs) is installed, pull timer, MS-changes request and roll/reroll also start a visible timer bar.
@@ -67,7 +67,7 @@ The folder must contain:
 - **Raid Frame** — HP/mana, flask/food/buff alerts, raid cooldowns via combat log
 - **MS Manager** — reads `ms <spec>` in raid chat and generates the loot pre-message
 - **Loot Manager** — drop history, roll, tie/reroll
-- **Config** — ElvUI-style tab (category list on the left, panel + subtabs on the right): appearance, borders, font, sizes, anchors and Saved Raids. The **Macros** category contains the **Bar Layout** subtab (HUD settings) and the **Macro Editor** (12-slot per-phase editor).
+- **Config** — a single Ace3 window (AceGUI window + tree navigation): appearance, borders, font, sizes, anchors and Saved Raids. The **Macros** node contains **Bar Layout** (HUD settings) and the **Macro Editor** (12-slot per-phase editor, inside the same window).
 
 ## Requirements
 

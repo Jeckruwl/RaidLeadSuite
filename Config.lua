@@ -1,11 +1,13 @@
 -- ============================================================
 -- RLSuite - Config
--- Options UI rebuilt on Ace3: an AceConfig options table rendered
--- by AceConfigDialog into an AceGUI container hosted inside the
--- Config tab pane. The window keeps its left category navigation
--- and right subtab bar, and the bespoke 12-slot Macro Editor /
--- icon picker (no AceConfig equivalent) lives as the "Macro
--- Editor" subtab of the "Macros" category, inside the window.
+-- The config surface is now ONE Ace3 window: an AceGUI "Window"
+-- hosting an AceGUI "TreeGroup" (left navigation) and the AceConfig
+-- options rendered by AceConfigDialog into the tree's content area.
+-- Every setting from the old window lives in the same options table.
+-- The bespoke 12-slot Macro Editor / icon picker (no AceConfig
+-- equivalent) is hosted inside that same window under the "Macros"
+-- node, as the "Macro Editor" leaf. The old raw "Config" frame no
+-- longer exists: there is exactly one config window, the Ace3 one.
 -- ============================================================
 
 RLSuite.config = {}
@@ -56,24 +58,91 @@ local function textarea(name, desc, order, get, set)
 end
 
 -- ------------------------------------------------------------------
+-- Category tree (AceGUI TreeGroup) + node -> options path map.
+-- Leaves map to an AceConfig path; the Macro Editor is a leaf whose
+-- content is the bespoke in-window editor, not an AceConfig group.
+-- ------------------------------------------------------------------
+local CATEGORIES = {
+    { value = "general", text = "General", children = {
+        { value = "look",   text = "Appearance" },
+        { value = "font",   text = "Font" },
+        { value = "window", text = "Window" },
+        { value = "debug",  text = "Debug" },
+    } },
+    { value = "savedraids", text = "Saved Raids" },
+    { value = "groupmaking", text = "Groupmaking" },
+    { value = "macros", text = "Macros", children = {
+        { value = "layout", text = "Bar Layout" },
+        { value = "editor", text = "Macro Editor" },
+    } },
+    { value = "raidframe", text = "Raid Frame", children = {
+        { value = "layout", text = "Layout" },
+        { value = "pos",    text = "Position" },
+    } },
+    { value = "ms", text = "MS" },
+    { value = "loot", text = "Loot" },
+}
+
+local EDITOR_NODE = "macros\001editor"
+
+local NODES = {
+    ["general\001look"]    = { "general", "look" },
+    ["general\001font"]    = { "general", "font" },
+    ["general\001window"]  = { "general", "window" },
+    ["general\001debug"]   = { "general", "debug" },
+    ["savedraids"]         = { "savedraids" },
+    ["groupmaking"]        = { "groupmaking" },
+    ["macros\001layout"]   = { "macros", "layout" },
+    [EDITOR_NODE]          = "__editor__",
+    ["raidframe\001layout"] = { "raidframe", "layout" },
+    ["raidframe\001pos"]    = { "raidframe", "pos" },
+    ["ms"]                 = { "ms" },
+    ["loot"]               = { "loot" },
+}
+
+-- ------------------------------------------------------------------
 -- Lifecycle
 -- ------------------------------------------------------------------
 function CFG:Init()
     self.db = RLSuite.db.profile
     self.widgetId = 0
-    self:CreateFrame()
+    AceConfig:RegisterOptionsTable(APP, function()
+        return self:BuildOptionsTable()
+    end)
+    self:CreateWindow()
+    self:SelectNode("general\001look")
 end
 
 function CFG:Toggle()
-    if RLSuite.mainWindow and RLSuite.mainWindow.ShowTab then
-        RLSuite.mainWindow:ShowTab("config")
-        return
+    if self:IsOpen() then
+        self:CloseWindow()
+    else
+        self:Open()
     end
-    if self.frame and self.frame:IsShown() then
-        self.frame:Hide()
-    elseif self.frame then
-        self.frame:Show()
+end
+
+function CFG:Open()
+    if not self.window then self:CreateWindow() end
+    self.window:Show()
+    if self.window.frame then
+        self.window.frame:Raise()
     end
+    -- Re-render the current node so dynamic values (saved raids,
+    -- theme, anchors, ...) are in sync every time the window opens.
+    if self.currentNode then
+        self:OnNodeSelected(self.currentNode)
+    else
+        self:SelectNode("general\001look")
+    end
+end
+
+function CFG:CloseWindow()
+    if self.window then self.window:Hide() end
+end
+
+function CFG:IsOpen()
+    return self.window ~= nil and self.window.frame ~= nil
+        and self.window.frame:IsShown() == true
 end
 
 -- Re-renders the current options view (used after Saved Raids change,
@@ -82,207 +151,75 @@ function CFG:NotifyChange()
     AceConfigRegistry:NotifyChange(APP)
     -- The bundled AceConfigDialog (r50) only auto-refreshes standalone
     -- windows and Blizzard options, NOT custom containers; re-render the
-    -- current subtab ourselves so dynamic values stay in sync.
-    if self.frame and self.frame:IsShown() and self.currentCat and self.currentSub then
-        self:SelectSubtab(self.currentSub)
+    -- current node ourselves so dynamic values stay in sync.
+    if self:IsOpen() and self.currentNode and NODES[self.currentNode] ~= "__editor__" then
+        self:FeedNode(NODES[self.currentNode])
     end
 end
 
-function CFG:CreateFrame()
-    -- The tab pane stays a plain WoW frame: MainWindow hooks its close
-    -- button and drag, and Utils skins it like every other tab window.
-    local f = CreateFrame("Frame", "RLSuiteConfig", UIParent)
-    f:SetSize(620, 580)
-    f:SetPoint("CENTER")
-    f:SetFrameStrata("HIGH")
-    f:SetMovable(true)
-    f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    f:Hide()
-    self.frame = f
-    RLSuite.utils:SkinFrame(f)
-    RLSuite.utils:ClampWindow(f)
+function CFG:CreateWindow()
+    -- Single Ace3 window: an AceGUI Window + AceGUI TreeGroup navigation.
+    self.window = AceGUI:Create("Window")
+    self.window:SetTitle("RLSuite")
+    self.window:SetLayout("Fill")
+    self.window:SetWidth(780)
+    self.window:SetHeight(560)
+    RLSuite.utils:ClampWindow(self.window.frame)
 
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -12)
-    title:SetText("Config")
-    self.titleFS = title
-
-    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
-
-    -- Left column: category navigation.
-    self.left = CreateFrame("Frame", nil, f)
-    self.left:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -36)
-    self.left:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
-    self.left:SetWidth(140)
-    RLSuite.utils:SkinFrame(self.left)
-
-    self.right = CreateFrame("Frame", nil, f)
-    self.right:SetPoint("TOPLEFT", self.left, "TOPRIGHT", 6, 0)
-    self.right:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 10)
-    RLSuite.utils:SkinFrame(self.right)
-
-    self.categories = {
-        { key = "general",     label = "General" },
-        { key = "savedraids",  label = "Saved Raids" },
-        { key = "groupmaking", label = "Groupmaking" },
-        { key = "macros",      label = "Macros" },
-        { key = "raidframe",   label = "Raid Frame" },
-        { key = "ms",          label = "MS" },
-        { key = "loot",        label = "Loot" },
-    }
-    self.navBtns = {}
-    for i, cat in ipairs(self.categories) do
-        local btn = CreateFrame("Button", nil, self.left, "UIPanelButtonTemplate")
-        btn:SetSize(124, 22)
-        btn:SetPoint("TOPLEFT", self.left, "TOPLEFT", 8, -10 - (i - 1) * 26)
-        btn:SetText(cat.label)
-        btn.catKey = cat.key
-        btn:SetScript("OnClick", function() self:SelectCategory(cat.key) end)
-        self.navBtns[cat.key] = btn
-    end
-
-    self.subTabBar = CreateFrame("Frame", nil, self.right)
-    self.subTabBar:SetPoint("TOPLEFT", self.right, "TOPLEFT", 8, -8)
-    self.subTabBar:SetPoint("TOPRIGHT", self.right, "TOPRIGHT", -8, -8)
-    self.subTabBar:SetHeight(24)
-
-    self.panel = CreateFrame("Frame", nil, self.right)
-    self.panel:SetPoint("TOPLEFT", self.subTabBar, "BOTTOMLEFT", 0, -6)
-    self.panel:SetPoint("BOTTOMRIGHT", self.right, "BOTTOMRIGHT", -8, 8)
-
-    -- Register the options table as a function so it is regenerated on
-    -- every NotifyChange (the Saved Raids list is dynamic).
-    AceConfig:RegisterOptionsTable(APP, function()
-        return CFG:BuildOptionsTable()
+    self.tree = AceGUI:Create("TreeGroup")
+    self.tree:SetLayout("Fill")
+    self.tree:SetTreeWidth(185, true)
+    self.tree:SetTree(CATEGORIES)
+    self.tree:SetCallback("OnGroupSelected", function(_, _, unique)
+        self:OnNodeSelected(unique)
     end)
+    self.window:AddChild(self.tree)
 
-    -- AceGUI container the options render into. Sized explicitly to the
-    -- right-hand content area (via the widget methods so the internal
-    -- scrollframe relayouts) so the options never overflow the window.
-    self.dialogHost = AceGUI:Create("Frame")
-    self.dialogHost:SetCallback("OnClose", function() f:Hide() end)
-    local W = math.max(300, (f:GetWidth() or 620) - 182)
-    local H = math.max(280, (f:GetHeight() or 580) - 92)
-    self.dialogHost:SetWidth(W)
-    self.dialogHost:SetHeight(H)
-    local host = self.dialogHost.frame
-    host:ClearAllPoints()
-    host:SetParent(self.panel)
-    host:SetPoint("TOPLEFT", self.panel, "TOPLEFT", 0, 0)
-    host:Show()
+    -- Share the AceConfigDialog root status table so every re-open
+    -- (including the internal refresh after a control is changed)
+    -- keeps the tree expanded and the right node selected.
+    local status = AceConfigDialog:GetStatusTable(APP)
+    status.groups = status.groups or {}
+    for _, c in ipairs(CATEGORIES) do
+        if c.children then status.groups[c.value] = true end
+    end
+    status.width = 780
+    status.height = 560
+    status.treewidth = 185
+    status.treesizable = true
+    self.status = status
 
-    self:SelectCategory("general")
+    self:CreateMacroEditor(self.tree.content)
+
+    self.window:Hide()
 end
 
 -- ------------------------------------------------------------------
--- Category / subtab navigation (kept inside the window)
+-- Node navigation (single AceGUI tree, inside the window)
 -- ------------------------------------------------------------------
-function CFG:SelectCategory(key)
-    self.currentCat = key
-    for k, btn in pairs(self.navBtns or {}) do
-        if k == key then btn:LockHighlight() else btn:UnlockHighlight() end
-    end
-    local subs = self:SubtabsFor(key)
-    self:BuildSubtabs(subs)
-    self:SelectSubtab(subs[1] and subs[1].key or "layout")
-end
-
-function CFG:SubtabsFor(key)
-    if key == "general" then
-        return {
-            { key = "look", label = L["Appearance"] },
-            { key = "font", label = L["Font"] },
-            { key = "window", label = L["Window"] },
-            { key = "debug", label = L["Debug"] },
-        }
-    elseif key == "savedraids" then
-        return { { key = "main", label = L["Saved Raids"] } }
-    elseif key == "macros" then
-        return {
-            { key = "layout", label = L["Bar Layout"] },
-            { key = "editor", label = L["Macro Editor"] },
-        }
-    elseif key == "raidframe" then
-        return {
-            { key = "layout", label = L["Layout"] },
-            { key = "pos", label = L["Position"] },
-        }
-    end
-    return { { key = "layout", label = L["Layout"] } }
-end
-
-function CFG:LayoutPanelForSubtabs(showBar)
-    if not self.panel then return end
-    self.panel:ClearAllPoints()
-    if showBar then
-        self.subTabBar:Show()
-        self.panel:SetPoint("TOPLEFT", self.subTabBar, "BOTTOMLEFT", 0, -6)
-    else
-        self.subTabBar:Hide()
-        self.panel:SetPoint("TOPLEFT", self.right, "TOPLEFT", 8, -8)
-    end
-    self.panel:SetPoint("BOTTOMRIGHT", self.right, "BOTTOMRIGHT", -8, 8)
-end
-
-function CFG:BuildSubtabs(subs)
-    if self.subTabBtns then
-        for _, b in ipairs(self.subTabBtns) do
-            b:Hide()
-            b:SetParent(nil)
-        end
-    end
-    self.subTabBtns = {}
-    local show = subs and #subs > 1
-    self:LayoutPanelForSubtabs(show)
-    if not show then return end
-    for i, s in ipairs(subs) do
-        local btn = CreateFrame("Button", nil, self.subTabBar, "UIPanelButtonTemplate")
-        btn:SetSize(90, 20)
-        btn:SetPoint("LEFT", self.subTabBar, "LEFT", (i - 1) * 96, 0)
-        btn:SetText(s.label)
-        btn.subKey = s.key
-        btn:SetScript("OnClick", function() self:SelectSubtab(s.key) end)
-        self.subTabBtns[i] = btn
-    end
-end
-
--- Renders the AceConfig options for the given tree path inside the
--- AceGUI host.
-function CFG:OpenOptions(...)
-    if not self.dialogHost then return end
-    AceConfigDialog:Open(APP, self.dialogHost, ...)
-end
-
-function CFG:SelectSubtab(key)
-    self.currentSub = key
-    for _, btn in ipairs(self.subTabBtns or {}) do
-        if btn.subKey == key then btn:LockHighlight() else btn:UnlockHighlight() end
-    end
-    local cat = self.currentCat
-    if cat == "macros" and key == "editor" then
+function CFG:OnNodeSelected(unique)
+    if not unique then return end
+    self.currentNode = unique
+    if unique == EDITOR_NODE then
         self:ShowMacroEditor()
         return
     end
     self:HideMacroEditor()
-    if cat == "general" then
-        self:OpenOptions("general", key)
-    elseif cat == "savedraids" then
-        self:OpenOptions("savedraids")
-    elseif cat == "groupmaking" then
-        self:OpenOptions("groupmaking")
-    elseif cat == "macros" then
-        self:OpenOptions("macros", "layout")
-    elseif cat == "raidframe" then
-        self:OpenOptions("raidframe", key)
-    elseif cat == "ms" then
-        self:OpenOptions("ms")
-    elseif cat == "loot" then
-        self:OpenOptions("loot")
+    local path = NODES[unique]
+    if path then
+        if self.status then self.status.selected = unique end
+        self:FeedNode(path)
+    end
+end
+
+-- Feeds the given AceConfig path into the tree's content area.
+function CFG:FeedNode(path)
+    AceConfigDialog:Open(APP, self.tree, unpack(path))
+end
+
+function CFG:SelectNode(unique)
+    if self.tree and unique then
+        self.tree:SelectByValue(unique)
     end
 end
 
@@ -313,8 +250,8 @@ end
 function CFG:RebuildPanel()
     -- Compatibility shim: rebuild the current options view.
     self:NotifyChange()
-    if self.currentCat and self.currentSub then
-        self:SelectSubtab(self.currentSub)
+    if self.currentNode then
+        self:OnNodeSelected(self.currentNode)
     end
 end
 
@@ -624,14 +561,10 @@ end
 -- ============================================================
 
 function CFG:OpenMacroEditorPanel()
-    if self.frame then
-        self.frame:Show()
-        if RLSuite.utils and RLSuite.utils.RaiseWindow then
-            RLSuite.utils:RaiseWindow(self.frame)
-        end
-    end
-    self:SelectCategory("macros")
-    self:SelectSubtab("editor")
+    if not self.window then self:CreateWindow() end
+    self.window:Show()
+    if self.window.frame then self.window.frame:Raise() end
+    self:SelectNode(EDITOR_NODE)
 end
 
 function CFG:HideMacroEditor()
@@ -641,26 +574,24 @@ function CFG:HideMacroEditor()
     if self.macroIconPicker then
         self.macroIconPicker:Hide()
     end
-    if self.dialogHost and self.dialogHost.frame then
-        self.dialogHost.frame:Show()
-    end
 end
 
 function CFG:ShowMacroEditor()
     if not self.macroEditorPanel then
-        self:CreateMacroEditor()
+        self:CreateMacroEditor(self.tree and self.tree.content)
     end
-    if self.dialogHost and self.dialogHost.frame then
-        self.dialogHost.frame:Hide()
-    end
+    -- Release the AceConfig controls so the editor is the only thing in
+    -- the content area while the "Macro Editor" node is selected.
+    if self.tree then self.tree:ReleaseChildren() end
     self.macroEditorPanel:Show()
     self:RefreshMacroTab()
     self:OpenMacroEditor(self.macroEditIndex or 1)
 end
 
-function CFG:CreateMacroEditor()
-    local ed = CreateFrame("Frame", "RLSuiteCfgMacroEditor", self.panel)
-    ed:SetAllPoints(self.panel)
+function CFG:CreateMacroEditor(parent)
+    parent = parent or UIParent
+    local ed = CreateFrame("Frame", "RLSuiteCfgMacroEditor", parent)
+    ed:SetAllPoints(parent)
     ed:Hide()
     ed:EnableMouse(true)
     ed:SetScript("OnMouseDown", function()
@@ -1276,8 +1207,6 @@ function CFG:ApplyAll()
     if mw and mw.tabPanels then
         scale(mw.tabPanels.raidframe, "raidframe")
     end
-    local font, size = RLSuite.utils:GetUIFont()
-    if self.titleFS then self.titleFS:SetFont(font, size + 2) end
 end
 
 function CFG:ApplyTheme(theme)
