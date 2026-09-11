@@ -956,6 +956,16 @@ function GM:OnWhisper(sender, msg)
     table.insert(entry.messages, { msg = msg, time = time() })
     table.insert(entries, 1, entry)
 
+    if self.selectedEntry == entry then
+        -- Il giocatore e' gia' aperto: il messaggio appare subito, in fondo,
+        -- come nella chat di gioco.
+        entry.unread = false
+        self:RenderSelectedMessages()
+    else
+        -- Accento "nuovi whisp" sulla riga finche' non la si legge.
+        entry.unread = true
+    end
+
     self:UpdateWhisplist()
     RLSuite.utils:Print(string.format(L["Whisper from %s received."], sender))
 end
@@ -1379,6 +1389,7 @@ function GM:UpdateWhisplist()
     if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
     if self.SkinInner then self:SkinInner() end
     for _, child in ipairs(self.wlRows or {}) do
+        if child.SetScript then child:SetScript("OnUpdate", nil) end
         child:Hide()
         child:SetParent(nil)
     end
@@ -1409,7 +1420,7 @@ function GM:UpdateWhisplist()
         row:SetHeight(24)
         row:SetPoint("TOPLEFT", self.wlContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.wlContent, "TOPRIGHT", 0, -y)
-        RLSuite.utils:SkinRow(row, selectedIndex == i)
+        row.entry = entry
 
         local text = FontStr(row, "OVERLAY", 12)
         text:SetPoint("LEFT", row, "LEFT", 6, 0)
@@ -1423,20 +1434,71 @@ function GM:UpdateWhisplist()
         local n = #self:GetEntryMessages(entry)
         if n > 1 then info = info .. "  [" .. n .. "]" end
         text:SetText(info)
-        if entry.invited then
-            text:SetTextColor(0.5, 0.5, 0.5)
-        else
-            text:SetTextColor(1, 1, 1)
-        end
+        row.text = text
 
         row:SetScript("OnClick", function()
             self:SelectWhisperEntry(i)
-            self:RefreshWhisperHighlight()
         end)
 
         y = y + 26
     end
     self.wlContent:SetHeight(math.max(y, 1))
+    self:StyleWhisperRows()
+end
+
+-- Stile delle righe dei giocatori: riga selezionata evidenziata, righe con
+-- messaggi non letti con l'accento dorato "pulsante" stile Blizzard.
+function GM:StyleWhisperRows()
+    for i, row in ipairs(self.wlRows or {}) do
+        local entry = row.entry
+        local isSelected = (i == self.selectedEntryIndex)
+        if isSelected then
+            RLSuite.utils:SkinRow(row, true)
+            row:SetScript("OnUpdate", nil)
+            if row.text then row.text:SetTextColor(1, 1, 1) end
+        elseif entry and entry.unread then
+            RLSuite.utils:SkinRow(row, false)
+            row:SetBackdropColor(0.22, 0.16, 0.02, 0.95)
+            row:SetBackdropBorderColor(1, 0.82, 0, 1)
+            row:SetScript("OnUpdate", function(r)
+                local v = (math.sin((GetTime() or 0) * 5) + 1) / 2
+                r:SetBackdropBorderColor(0.45 + 0.55 * v, 0.32 + 0.50 * v, 0.05, 1)
+            end)
+            if row.text then row.text:SetTextColor(1, 0.82, 0) end
+        else
+            RLSuite.utils:SkinRow(row, false)
+            row:SetScript("OnUpdate", nil)
+            if row.text then
+                if entry and entry.invited then
+                    row.text:SetTextColor(0.5, 0.5, 0.5)
+                else
+                    row.text:SetTextColor(1, 1, 1)
+                end
+            end
+        end
+    end
+end
+
+-- Riempi il riquadro messaggi con la cronologia completa del giocatore
+-- selezionato e scorri in fondo (i messaggi piu' recenti, come la chat).
+function GM:RenderSelectedMessages()
+    if not self.selectedEntry or not self.wlChatText then return end
+    local lines = {}
+    for _, m in ipairs(self:GetEntryMessages(self.selectedEntry)) do
+        table.insert(lines, "[" .. FormatWhisperTime(m.time) .. "] " .. (m.msg or ""))
+    end
+    self.wlChatText:SetText(table.concat(lines, "\n"))
+    if self.wlChatContent and self.wlChatText.GetStringHeight then
+        self.wlChatContent:SetHeight(math.max(self.wlChatText:GetStringHeight(), 1))
+    end
+    if self.wlChatScroll and self.wlChatScroll.SetVerticalScroll then
+        local range = 0
+        if self.wlChatScroll.GetVerticalScrollRange then
+            local ok, r = pcall(self.wlChatScroll.GetVerticalScrollRange, self.wlChatScroll)
+            if ok and type(r) == "number" then range = r end
+        end
+        self.wlChatScroll:SetVerticalScroll(range)
+    end
 end
 
 function GM:SelectWhisperEntry(index)
@@ -1445,6 +1507,7 @@ function GM:SelectWhisperEntry(index)
     if not entry then return end
     self.selectedEntry = entry
     self.selectedEntryIndex = index
+    entry.unread = false
 
     if self.wlDetailName then self.wlDetailName:SetText(entry.name or "Unknown") end
     local info = ""
@@ -1454,30 +1517,15 @@ function GM:SelectWhisperEntry(index)
     if entry.gs then info = info .. "GS: " .. entry.gs .. "\n" end
     if self.wlDetailInfo then self.wlDetailInfo:SetText(info) end
 
-    if self.wlChatText then
-        local lines = {}
-        for _, m in ipairs(self:GetEntryMessages(entry)) do
-            table.insert(lines, "[" .. FormatWhisperTime(m.time) .. "] " .. (m.msg or ""))
-        end
-        self.wlChatText:SetText(table.concat(lines, "\n"))
-        if self.wlChatContent and self.wlChatText.GetStringHeight then
-            self.wlChatContent:SetHeight(math.max(self.wlChatText:GetStringHeight(), 1))
-        end
-        if self.wlChatScroll then
-            self.wlChatScroll:SetVerticalScroll(0)
-        end
-    end
+    self:RenderSelectedMessages()
+    self:StyleWhisperRows()
 end
 
 -- Aggiorna solo l'evidenziazione delle righe gia' presenti (niente rebuild):
 -- ricostruire la lista dentro il click distrugge il bottone cliccato e
 -- puo' bloccare i click successivi nelle altre finestre.
 function GM:RefreshWhisperHighlight()
-    for i, row in ipairs(self.wlRows or {}) do
-        if row and row.SetBackdrop then
-            RLSuite.utils:SkinRow(row, self.selectedEntryIndex == i)
-        end
-    end
+    self:StyleWhisperRows()
 end
 
 function GM:InviteSelected()
