@@ -2268,16 +2268,11 @@ function GM:RefreshAutoinviterArmButton()
 end
 
 function GM:BuildWLGroupColumns()
-    self.wlGroupCols = {}
     self.wlGroupLabels = {}
     self.wlGroupSlots = {}
     local box = self.wlGroupBox
     for g = 1, 5 do
-        local col = CreateFrame("Frame", nil, box)
-        col:SetWidth(64)
-        self.wlGroupCols[g] = col
-
-        local lbl = FontStr(col, "OVERLAY", 12)
+        local lbl = FontStr(box, "OVERLAY", 12)
         lbl:SetText("G" .. g)
         lbl:SetTextColor(1, 0.82, 0)
         lbl:SetJustifyH("CENTER")
@@ -2285,23 +2280,30 @@ function GM:BuildWLGroupColumns()
 
         for s = 1, 5 do
             local i = (g - 1) * 5 + s
-            local bar = CreateFrame("Frame", nil, col)
+            -- Ogni slot e' un Button con dimensione e sfondo ESPLICITI, creato
+            -- direttamente dentro il box (niente frame "colonna" intermedi che
+            -- potevano restare non posizionati/nascosti). Stesso pattern delle
+            -- righe del Raid Frame, che funziona: slot scuro + bordo visibile.
+            local bar = CreateFrame("Button", "RLSuiteWLSlot" .. i, box)
+            bar:SetSize(50, WL_BAR_H)
             bar:SetBackdrop({
-                bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+                bgFile = "Interface\\Buttons\\UI-Quickslot",
                 edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-                tile = true, tileSize = 16, edgeSize = 6,
-                insets = {left=1, right=1, top=1, bottom=1},
+                tile = false, tileSize = 32, edgeSize = 8,
+                insets = {left=2, right=2, top=2, bottom=2},
             })
-            bar:SetBackdropColor(0.16, 0.16, 0.16, 1)
-            bar:SetBackdropBorderColor(0, 0, 0, 0.6)
+            bar:SetBackdropColor(0.15, 0.15, 0.17, 0.95)
+            bar:SetBackdropBorderColor(0.40, 0.40, 0.42, 1)
+            bar:EnableMouse(true)
 
+            -- Nome in colore di classe su slot scuro (come il Raid Frame):
+            -- sempre leggibile, con ombra chiara per i colori piu' scuri.
             local nameFS = FontStr(bar, "OVERLAY", 11)
-            nameFS:SetPoint("CENTER", bar, "CENTER", 0, 0)
+            nameFS:SetPoint("LEFT", bar, "LEFT", 3, 0)
+            nameFS:SetPoint("RIGHT", bar, "RIGHT", -3, 0)
             nameFS:SetJustifyH("CENTER")
-            nameFS:SetTextColor(0, 0, 0)
-            -- ombra chiara: il nome nero resta leggibile anche sui colori
-            -- di classe piu' scuri (DK, Warlock)
-            nameFS:SetShadowColor(1, 1, 1, 0.7)
+            nameFS:SetTextColor(1, 1, 1)
+            nameFS:SetShadowColor(1, 1, 1, 0.8)
             nameFS:SetShadowOffset(1, -1)
             bar.nameFS = nameFS
 
@@ -2356,25 +2358,30 @@ function GM:UpdateWLGroups()
     local ngroups = self:WlGroupColumnCount()
 
     for g = 1, 5 do
-        local col = self.wlGroupCols and self.wlGroupCols[g]
-        if col then
-            if g <= ngroups then col:Show() else col:Hide() end
-        end
         for s = 1, 5 do
             local bar = self.wlGroupSlots[(g - 1) * 5 + s]
             if bar then
-                bar:Show()
                 local member = byGroup[g][s]
+                if g <= ngroups then
+                    bar:Show()
+                else
+                    bar:Hide()
+                end
                 if member then
                     local r, gg, b = RLSuite.utils:GetClassColor(member.class)
-                    bar:SetBackdropColor(r, gg, b, 1)
+                    -- Slot pieno: bordo in colore di classe e nome in colore
+                    -- di classe su fondo scuro (leggibile su qualsiasi colore).
+                    bar:SetBackdropColor(0.16, 0.16, 0.18, 0.95)
+                    bar:SetBackdropBorderColor(r, gg, b, 1)
                     if bar.nameFS then
                         bar.nameFS:SetText(member.name)
-                        bar.nameFS:SetTextColor(0, 0, 0)
+                        bar.nameFS:SetTextColor(r, gg, b)
                         bar.nameFS:Show()
                     end
                 else
-                    bar:SetBackdropColor(0.16, 0.16, 0.16, 1)
+                    -- Slot vuoto: fondo scuro + bordo grigio (comunque visibile).
+                    bar:SetBackdropColor(0.12, 0.12, 0.14, 0.95)
+                    bar:SetBackdropBorderColor(0.30, 0.30, 0.32, 1)
                     if bar.nameFS then bar.nameFS:SetText("") end
                 end
             end
@@ -2426,27 +2433,21 @@ function GM:LayoutWLGroupColumns(ngroups)
     local totalW = ngroups * colW + (ngroups - 1) * WL_COL_GAP
     local startX = 6 + math.floor(math.max(0, (inner - totalW) / 2))
     for g = 1, 5 do
-        local col = self.wlGroupCols and self.wlGroupCols[g]
-        if col then
-            col:ClearAllPoints()
-            col:SetWidth(colW)
-            col:SetPoint("TOPLEFT", box, "TOPLEFT", startX + (g - 1) * (colW + WL_COL_GAP), -24)
-            local lbl = self.wlGroupLabels and self.wlGroupLabels[g]
-            if lbl then
-                lbl:ClearAllPoints()
-                lbl:SetPoint("TOP", col, "TOP", 0, 0)
-            end
-            for s = 1, 5 do
-                local bar = self.wlGroupSlots and self.wlGroupSlots[(g - 1) * 5 + s]
-                if bar then
-                    bar:ClearAllPoints()
-                    bar:SetSize(colW, WL_BAR_H)
-                    if s == 1 then
-                        bar:SetPoint("TOP", col, "TOP", 0, -WL_GROUP_LABEL_H)
-                    else
-                        bar:SetPoint("TOP", self.wlGroupSlots[(g - 1) * 5 + s - 1], "BOTTOM", 0, -WL_BAR_GAP)
-                    end
-                end
+        local x = startX + (g - 1) * (colW + WL_COL_GAP)
+        local lbl = self.wlGroupLabels and self.wlGroupLabels[g]
+        if lbl then
+            lbl:ClearAllPoints()
+            lbl:SetWidth(colW)
+            lbl:SetPoint("TOPLEFT", box, "TOPLEFT", x, -24)
+            if g <= ngroups then lbl:Show() else lbl:Hide() end
+        end
+        for s = 1, 5 do
+            local bar = self.wlGroupSlots and self.wlGroupSlots[(g - 1) * 5 + s]
+            if bar then
+                bar:ClearAllPoints()
+                bar:SetSize(colW, WL_BAR_H)
+                local y = -24 - WL_GROUP_LABEL_H - (s - 1) * (WL_BAR_H + WL_BAR_GAP)
+                bar:SetPoint("TOPLEFT", box, "TOPLEFT", x, y)
             end
         end
     end

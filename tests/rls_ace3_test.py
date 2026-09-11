@@ -763,6 +763,8 @@ check(bool(rt.eval("#RLSuite.raidFrame:GetRoster() == 2")), "Raid Frame reads th
 check(bool(rt.eval("#RLSuite.raidFrame.rows == 2")), "Raid Frame rebuilds its rows from the debug roster after invite")
 rt.execute("local found=false; for _,s in ipairs(RLSuite.groupmaking.wlGroupSlots) do if s.nameFS and s.nameFS:GetText()=='Drakbot' then found=true end end; DRAK_IN_GROUP = found")
 check(bool(rt.eval("DRAK_IN_GROUP == true")), "Raid Group panel shows the accepted fake player")
+rt.execute("local b = RLSuite.groupmaking.wlGroupSlots[1]; SLOT_OK = (b ~= nil and b:IsShown() and (b:GetWidth() or 0) > 0 and b.nameFS ~= nil and type(b.GetObjectType) == 'function' and b:GetObjectType() == 'Button')")
+check(bool(rt.eval("SLOT_OK == true")), "Raid Group slots are visible Buttons with explicit size")
 
 # --- Debug fake whispers: spammer active -> 10 whispers into the Whisplist ---
 rt.execute("RLSuite.groupmaking:StartSpam()")
