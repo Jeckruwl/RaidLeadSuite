@@ -610,14 +610,28 @@ function RLSuite:DebugRebalanceGroups(ngroups)
 end
 
 -- Called whenever the simulated roster changes (invite accepted, debug
--- toggled, ...). Refreshes the Raid Frame and the Raid Group panel.
+-- toggled, ...). Refreshes the Raid Group panel and the Raid Frame. Every
+-- refresh is protected: an error in one UI must NEVER block the other (the
+-- "raid group stays empty after a debug invite" bug happened because a
+-- RaidFrame failure could abort before the Raid Group update ran).
 function RLSuite:DebugRosterChanged()
-    if self.raidFrame and self.raidFrame.Rebuild then
-        self.raidFrame:Rebuild()
-        if self.raidFrame.UpdateAll then self.raidFrame:UpdateAll() end
-    end
+    -- Raid Group (InviteEngine) per primo: e' il pannello che l'utente guarda.
     if self.groupmaking and self.groupmaking.UpdateWLGroups then
-        self.groupmaking:UpdateWLGroups()
+        local ok, err = pcall(self.groupmaking.UpdateWLGroups, self.groupmaking)
+        if not ok and self.utils and self.utils.Debug then
+            self.utils:Debug("UpdateWLGroups error: " .. tostring(err))
+        end
+    end
+    if self.raidFrame then
+        if self.raidFrame.Rebuild then
+            local ok, err = pcall(self.raidFrame.Rebuild, self.raidFrame)
+            if not ok and self.utils and self.utils.Debug then
+                self.utils:Debug("RaidFrame Rebuild error: " .. tostring(err))
+            end
+        end
+        if self.raidFrame.UpdateAll then
+            pcall(self.raidFrame.UpdateAll, self.raidFrame)
+        end
     end
 end
 
@@ -648,16 +662,14 @@ function RLSuite:ApplyDebugMode()
         if self.lootManager and self.lootManager.SpawnDebugLoot then
             self.lootManager:SpawnDebugLoot()
         end
-        if self.raidFrame and self.raidFrame.Rebuild then
-            self.raidFrame:Rebuild()
-            if self.raidFrame.UpdateAll then self.raidFrame:UpdateAll() end
-        end
     else
         self.utils:Print("Debug mode OFF.")
-        if self.raidFrame and self.raidFrame.Rebuild then
-            self.raidFrame:Rebuild()
-        end
     end
+    -- Rinfresca TUTTE le UI che leggono il roster (Raid Group + Raid Frame):
+    -- in debug si parte dal solo giocatore, fuori dal debug si torna al
+    -- raid reale. Prima non veniva aggiornato il pannello Raid Group, che
+    -- restava vuoto finche' non arrivava il primo invito.
+    self:DebugRosterChanged()
     self:UpdatePhaseUI()
 end
 
@@ -942,4 +954,10 @@ function RLSuite:InitModules()
         self.utils:SkinAllWindows()
     end
     self:UpdateRaidContext()
+    -- Se il debug era gia' attivo al login (flag salvato nelle SavedVariables
+    -- e /reload), il roster simulato parte e le UI che lo leggono (Raid Group
+    -- + Raid Frame) vengono subito allineate, senza aspettare un invito.
+    if self:DebugMode() then
+        self:DebugRosterChanged()
+    end
 end
