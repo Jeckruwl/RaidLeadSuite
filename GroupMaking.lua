@@ -9,7 +9,16 @@ local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end 
 
 local SLOT_SIZE = 36
 local SLOT_SPACING = 2
-local GROUP_LABEL_H = 14
+local GROUP_LABEL_H = 17
+
+-- All Groupmaking window fonts are +2pt over the default game fonts
+-- (window titles keep their large size).
+local FONT_FILE = "Fonts\\FRIZQT__.TTF"
+local function FontStr(parent, layer, size)
+    local fs = parent:CreateFontString(nil, layer, nil)
+    fs:SetFont(FONT_FILE, size, "OUTLINE")
+    return fs
+end
 
 local ROLE_COLORS = {
     tank   = {r=0.2, g=0.4, b=1.0},
@@ -87,7 +96,7 @@ function GM:CreateMainWindow()
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
     title:SetText("Group Making")
 
-    local raidLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local raidLabel = FontStr(f, "OVERLAY", 14)
     raidLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -36)
     raidLabel:SetText("Raid:")
 
@@ -95,7 +104,7 @@ function GM:CreateMainWindow()
     self.raidDropdown:SetPoint("LEFT", raidLabel, "RIGHT", 8, 0)
     self:PopulateRaidDropdown()
 
-    local diffLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local diffLabel = FontStr(f, "OVERLAY", 14)
     diffLabel:SetPoint("LEFT", self.raidDropdown, "RIGHT", 12, 0)
     diffLabel:SetText("Diff:")
 
@@ -116,7 +125,7 @@ function GM:CreateMainWindow()
     self.compBox:SetWidth(204)
     RLSuite.utils:SkinBox(self.compBox)
 
-    local compLabel = self.compBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local compLabel = FontStr(self.compBox, "OVERLAY", 14)
     compLabel:SetPoint("TOPLEFT", self.compBox, "TOPLEFT", 8, -6)
     compLabel:SetText(L["Composition"])
     compLabel:SetTextColor(1, 0.82, 0)
@@ -131,7 +140,7 @@ function GM:CreateMainWindow()
     self.classBox:SetWidth(200)
     RLSuite.utils:SkinBox(self.classBox)
 
-    local classBarLabel = self.classBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local classBarLabel = FontStr(self.classBox, "OVERLAY", 14)
     classBarLabel:SetPoint("TOPLEFT", self.classBox, "TOPLEFT", 8, -6)
     classBarLabel:SetText(L["Click a spec to add"])
     classBarLabel:SetTextColor(1, 0.82, 0)
@@ -151,7 +160,7 @@ function GM:CreateMainWindow()
     self.reqBox:SetHeight(100)
     RLSuite.utils:SkinBox(self.reqBox)
 
-    local reservedLabel = self.reqBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local reservedLabel = FontStr(self.reqBox, "OVERLAY", 12)
     reservedLabel:SetPoint("TOPLEFT", self.reqBox, "TOPLEFT", 8, -8)
     reservedLabel:SetText(L["Reserved items"])
     reservedLabel:SetTextColor(1, 0.82, 0)
@@ -179,7 +188,7 @@ function GM:CreateMainWindow()
     -- (margine 10 + larghezza tasto 80 + spazio 6), senza creare dipendenze circolari.
     self.reservedEdit:SetPoint("RIGHT", self.reqBox, "RIGHT", -96, 0)
 
-    local otherLabel = self.reqBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local otherLabel = FontStr(self.reqBox, "OVERLAY", 12)
     otherLabel:SetPoint("TOPLEFT", self.reservedEdit, "BOTTOMLEFT", -4, -6)
     otherLabel:SetText(L["Other requirements"])
     otherLabel:SetTextColor(1, 0.82, 0)
@@ -204,7 +213,7 @@ function GM:CreateMainWindow()
     self.previewBox:SetHeight(58)
     RLSuite.utils:SkinBox(self.previewBox)
 
-    self.previewText = self.previewBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.previewText = FontStr(self.previewBox, "OVERLAY", 12)
     self.previewText:SetPoint("TOPLEFT", self.previewBox, "TOPLEFT", 8, -8)
     self.previewText:SetPoint("BOTTOMRIGHT", self.previewBox, "BOTTOMRIGHT", -8, 8)
     self.previewText:SetJustifyH("LEFT")
@@ -239,7 +248,7 @@ function GM:CreateMainWindow()
         self:SaveComp()
     end)
 
-    local specsLbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local specsLbl = FontStr(f, "OVERLAY", 12)
     specsLbl:SetPoint("LEFT", self.showSpecsCheck, "RIGHT", 0, 0)
     specsLbl:SetText("Show specs in message")
     specsLbl:SetTextColor(1, 0.82, 0)
@@ -265,7 +274,7 @@ function GM:BuildCompSlots()
     self.compSlots = {}
     self.groupLabels = {}
     for g = 1, 5 do
-        local fs = self.compFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local fs = FontStr(self.compFrame, "OVERLAY", 12)
         fs:SetPoint("TOPLEFT", self.compFrame, "TOPLEFT", 0, -((g - 1) * self:GroupRowHeight()))
         fs:SetText("Group " .. g)
         fs:SetTextColor(1, 0.82, 0)
@@ -460,7 +469,7 @@ function GM:BuildClassBar()
         local specs = data and data.specs or {}
         local cr, cg, cb = RLSuite.utils:GetClassColor(class)
         local cell = CreateFrame("Frame", nil, self.classBar)
-        local nameFS = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local nameFS = FontStr(cell, "OVERLAY", 12)
         nameFS:SetPoint("TOPLEFT", cell, "TOPLEFT", 1, 0)
         nameFS:SetText(RLSuite.utils:ClassLabel(class))
         nameFS:SetTextColor(cr, cg, cb)
@@ -931,7 +940,7 @@ function GM:CreateWhisplistWindow()
     self.wlCompBox:SetHeight(52)
     RLSuite.utils:SkinBox(self.wlCompBox)
 
-    local compLabel = self.wlCompBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local compLabel = FontStr(self.wlCompBox, "OVERLAY", 12)
     compLabel:SetPoint("TOPLEFT", self.wlCompBox, "TOPLEFT", 8, -6)
     compLabel:SetText("Comp")
     compLabel:SetTextColor(1, 0.82, 0)
@@ -945,7 +954,7 @@ function GM:CreateWhisplistWindow()
     self.wlListBox:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -6, 16)
     RLSuite.utils:SkinBox(self.wlListBox)
 
-    local listLabel = self.wlListBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local listLabel = FontStr(self.wlListBox, "OVERLAY", 12)
     listLabel:SetPoint("TOPLEFT", self.wlListBox, "TOPLEFT", 8, -6)
     listLabel:SetText(L["Received whispers"])
     listLabel:SetTextColor(1, 0.82, 0)
@@ -970,14 +979,14 @@ function GM:CreateWhisplistWindow()
     RLSuite.utils:SkinBox(self.wlDetailBox)
     self.wlDetailPanel = self.wlDetailBox
 
-    self.wlDetailName = self.wlDetailBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    self.wlDetailName = FontStr(self.wlDetailBox, "OVERLAY", 14)
     self.wlDetailName:SetPoint("TOPLEFT", self.wlDetailBox, "TOPLEFT", 10, -10)
     self.wlDetailName:SetPoint("TOPRIGHT", self.wlDetailBox, "TOPRIGHT", -10, -10)
     self.wlDetailName:SetJustifyH("LEFT")
     self.wlDetailName:SetText(L["Select a player"])
     self.wlDetailName:SetTextColor(1, 0.82, 0)
 
-    self.wlDetailInfo = self.wlDetailBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.wlDetailInfo = FontStr(self.wlDetailBox, "OVERLAY", 12)
     self.wlDetailInfo:SetPoint("TOPLEFT", self.wlDetailName, "BOTTOMLEFT", 0, -6)
     self.wlDetailInfo:SetPoint("RIGHT", self.wlDetailBox, "RIGHT", -10, 0)
     self.wlDetailInfo:SetJustifyH("LEFT")
@@ -989,7 +998,7 @@ function GM:CreateWhisplistWindow()
     self.wlChat:SetHeight(90)
     RLSuite.utils:SkinBox(self.wlChat)
 
-    self.wlChatText = self.wlChat:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.wlChatText = FontStr(self.wlChat, "OVERLAY", 12)
     self.wlChatText:SetPoint("TOPLEFT", self.wlChat, "TOPLEFT", 6, -6)
     self.wlChatText:SetPoint("BOTTOMRIGHT", self.wlChat, "BOTTOMRIGHT", -6, 6)
     self.wlChatText:SetJustifyH("LEFT")
@@ -1014,7 +1023,7 @@ function GM:CreateWhisplistWindow()
     self.wlAskAchiBtn:SetText("Ask Achi")
     self.wlAskAchiBtn:SetScript("OnClick", function() self:AskAchi() end)
 
-    local customLabel = self.wlDetailBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local customLabel = FontStr(self.wlDetailBox, "OVERLAY", 12)
     customLabel:SetPoint("BOTTOMLEFT", self.wlDetailBox, "BOTTOMLEFT", 10, 16)
     customLabel:SetText("Custom msg")
     customLabel:SetTextColor(1, 0.82, 0)
@@ -1110,7 +1119,7 @@ function GM:UpdateWhisplist()
         row:SetPoint("TOPRIGHT", self.wlContent, "TOPRIGHT", 0, -y)
         RLSuite.utils:SkinRow(row, self.selectedEntryIndex == i)
 
-        local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local text = FontStr(row, "OVERLAY", 12)
         text:SetPoint("LEFT", row, "LEFT", 6, 0)
         text:SetPoint("RIGHT", row, "RIGHT", -6, 0)
         text:SetJustifyH("LEFT")
