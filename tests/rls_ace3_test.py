@@ -827,10 +827,40 @@ rt.execute("for i=1,6 do RLSuite:DebugInviteAccept('Fake'..i, 'WARRIOR') end")
 rt.execute("local subs={}; for _,m in ipairs(RLSuite:DebugRoster()) do subs[#subs+1]=m.name..':'..tostring(m.subgroup) end; SUBS=subs")
 check(bool(rt.eval("table.concat(SUBS, ',') == 'Testplayer:1,Fake1:1,Fake2:1,Fake3:1,Fake4:1,Fake5:2,Fake6:2'")), "groups fill vertically: G1 fills first (5), then G2")
 
-# --- Autoinviter calendar mirror: no event -> link/create hint ---
-rt.execute("RLSuite.groupmaking:SelectAutoinviteEvent('none', true)")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventTitle:GetText() == 'No calendar event linked'")), "calendar mirror shows 'No calendar event linked' when nothing exists")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventCreate ~= nil")), "Create event button exists for the calendar mode")
+# --- Calendar Event tab redo: empty box + 'Link or create an event' button ---
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoCalBox ~= nil")), "Calendar Event tab has the full-size empty box")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoLinkBtn ~= nil")), "'Link or create an event' button exists")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoLinkBtn:GetText() == 'Link or create an event'")), "'Link or create an event' button is labelled correctly")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventRefresh == nil")), "old Refresh button removed")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventCreate == nil")), "old Create event button removed")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventDropdown == nil")), "old Raid event dropdown removed")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventTitle == nil")), "old mirror title removed")
+check(bool(rt.eval("type(RLSuite.groupmaking.OpenCalendarToLink) == 'function'")), "OpenCalendarToLink wired")
+check(bool(rt.eval("type(RLSuite.groupmaking.EnsureRLSCalendarUI) == 'function'")), "EnsureRLSCalendarUI wired")
+
+# --- empty linked-event state ---
+rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = nil")
+rt.execute("RLSuite.groupmaking:RenderLinkedEvent()")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoMirrorTitle:GetText() == 'No event linked yet.'")), "empty mirror shows 'No event linked yet.'")
+
+# --- linked-event mirror renders exactly like the calendar event view ---
+rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = { title='Test Raid', description='Bring consumables', creator='Testplayer', eventType=1, weekday=1, month=9, day=12, year=2026, hour=20, minute=30, invitees={ { name='Fake1', className='Warrior', class='WARRIOR', status=2, mod='CREATOR' } } }")
+rt.execute("RLSuite.groupmaking:RenderLinkedEvent()")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoMirrorTitle:GetText() == 'Test Raid'")), "mirror shows event title")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoMirrorDesc:GetText() == 'Bring consumables'")), "mirror shows event description")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoMirrorTime:GetText() == '20:30'")), "mirror shows event time")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoMirrorDate:GetText() ~= ''")), "mirror shows event date")
+check(bool(rt.eval("#RLSuite.groupmaking._autoMirrorInviteRows == 1")), "mirror renders one invite row")
+
+# --- calendar mode invite queue comes from the linked snapshot ---
+rt.execute("RLSuite.groupmaking.autoinvite.mode = 'calendar'")
+rt.execute("Q = RLSuite.groupmaking:BuildAutoinviteQueue()")
+check(bool(rt.eval("table.concat(Q, ',') == 'Fake1'")), "calendar queue is built from linked invitees")
+
+# --- declined invitees are skipped by the calendar queue ---
+rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = { title='Test Raid', invitees={ { name='Fake1', status=1 }, { name='Fake2', status=3 } } }")
+rt.execute("Q = RLSuite.groupmaking:BuildAutoinviteQueue()")
+check(bool(rt.eval("table.concat(Q, ',') == 'Fake1'")), "declined invitees are skipped by the calendar queue")
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario D (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 

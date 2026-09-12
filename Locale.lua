@@ -81,6 +81,14 @@ do
     L["Autoinviter"] = true
     L["Manual list"] = true
     L["Calendar event"] = true
+    L["Link or create an event"] = true
+    L["Link to RLS"] = true
+    L["Open your raid event and tick 'Link to RLS'."] = true
+    L["Create/save the event first, then tick 'Link to RLS'."] = true
+    L["Event linked: %s"] = true
+    L["Event unlinked."] = true
+    L["No event linked yet."] = true
+    L["Created by %s"] = true
     L["Names (one per line)"] = true
     L["Add player"] = true
     L["Enter to add"] = true
