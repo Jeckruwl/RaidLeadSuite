@@ -862,6 +862,31 @@ rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = { title='Test Raid', in
 rt.execute("Q = RLSuite.groupmaking:BuildAutoinviteQueue()")
 check(bool(rt.eval("table.concat(Q, ',') == 'Fake1'")), "declined invitees are skipped by the calendar queue")
 
+# --- footer: time + invite buttons live at the bottom (no clipping) ---
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoFooter ~= nil")), "autoinviter footer frame exists")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoArmBtn:GetParent() == RLSuite.groupmaking.ieAutoFooter")), "arm button anchored to the footer")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoNowBtn:GetParent() == RLSuite.groupmaking.ieAutoFooter")), "now button anchored to the footer")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoHourEdit:GetParent() == RLSuite.groupmaking.ieAutoFooter")), "hour edit anchored to the footer")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoMinuteEdit:GetParent() == RLSuite.groupmaking.ieAutoFooter")), "minute edit anchored to the footer")
+
+# --- 'Edit event' button (opens the in-game calendar edit view) ---
+check(bool(rt.eval("type(RLSuite.groupmaking.EditLinkedCalendarEvent) == 'function'")), "EditLinkedCalendarEvent wired")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoEditBtn ~= nil")), "Edit event button exists")
+rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = nil")
+rt.execute("RLSuite.groupmaking:RenderLinkedEvent()")
+check(bool(rt.eval("not RLSuite.groupmaking.ieAutoEditBtn:IsShown()")), "Edit event button hidden when no event linked")
+rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = { title='Test Raid', description='d', creator='c', eventType=1, weekday=1, month=9, day=12, year=2026, hour=20, minute=30, invitees={} }")
+rt.execute("RLSuite.groupmaking:RenderLinkedEvent()")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoEditBtn:IsShown()")), "Edit event button shown when event linked")
+
+# --- manual list: X button removes the player ---
+rt.execute("RLSuite.groupmaking.autoinvite.names = {}")
+rt.execute("RLSuite.groupmaking:AddAutoName('Zap')")
+check(bool(rt.eval("#RLSuite.groupmaking:AutoNameList() == 1")), "manual list has one entry")
+check(bool(rt.eval("RLSuite.groupmaking._autoNameRows[1].xBtn ~= nil")), "manual row has an X button")
+rt.execute("RLSuite.groupmaking._autoNameRows[1].xBtn._scripts.OnClick(RLSuite.groupmaking._autoNameRows[1].xBtn)")
+check(bool(rt.eval("#RLSuite.groupmaking:AutoNameList() == 0")), "clicking X removes the player from the manual list")
+
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario D (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 
 print()

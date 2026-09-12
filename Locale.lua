@@ -92,7 +92,8 @@ do
     L["Names (one per line)"] = true
     L["Add player"] = true
     L["Enter to add"] = true
-    L["Enter to add - right-click a name to remove"] = true
+    L["Enter to add - click X to remove"] = true
+    L["Edit event"] = true
     L["Raid event"] = true
     L["Refresh"] = true
     L["Create event"] = true
