@@ -1879,32 +1879,54 @@ function GM:EnsureRLSCalendarUI()
     if not CalendarViewEventFrame or not CalendarCreateEventFrame then return end
     self._rlsCalHooked = true
 
-    local function makeCheckbox(parent, isView)
-        local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-        cb:SetSize(24, 24)
-        cb:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 14, 12)
+    local function attachLabel(cb)
         local label = FontStr(cb, "OVERLAY", 12)
-        label:SetPoint("LEFT", cb, "RIGHT", 4, 0)
         label:SetText(L["Link to RLS"])
         label:SetTextColor(1, 0.82, 0)
         cb.label = label
-        cb:SetScript("OnClick", function(s)
-            if s:GetChecked() then
-                -- Vista: l'evento esiste gia' e si puo' linkare subito.
-                -- Creazione/modifica: l'intento viene catturato al salvataggio
-                -- (CALENDAR_NEW_EVENT / CALENDAR_UPDATE_EVENT).
-                if isView then
-                    GM:LinkOpenCalendarEvent()
-                end
-            else
-                GM:UnlinkCalendarEvent()
-            end
-        end)
-        return cb
+        return label
     end
 
-    self._rlsCalCheckView = makeCheckbox(CalendarViewEventFrame, true)
-    self._rlsCalCheckEdit = makeCheckbox(CalendarCreateEventFrame, false)
+    local function onClick(self)
+        if self:GetChecked() then
+            -- Vista: l'evento esiste gia' e si puo' linkare subito.
+            -- Creazione/modifica: l'intento viene catturato al salvataggio
+            -- (CALENDAR_NEW_EVENT / CALENDAR_UPDATE_EVENT).
+            if self.isView then
+                GM:LinkOpenCalendarEvent()
+            end
+        else
+            GM:UnlinkCalendarEvent()
+        end
+    end
+
+    -- Vista evento (non moderatore): in basso, sotto descrizione/lista invitati.
+    self._rlsCalCheckView = CreateFrame("CheckButton", nil, CalendarViewEventFrame, "UICheckButtonTemplate")
+    self._rlsCalCheckView:SetSize(24, 24)
+    self._rlsCalCheckView:SetPoint("BOTTOMLEFT", CalendarViewEventFrame, "BOTTOMLEFT", 14, 12)
+    self._rlsCalCheckView.isView = true
+    local viewLabel = attachLabel(self._rlsCalCheckView)
+    viewLabel:SetPoint("LEFT", self._rlsCalCheckView, "RIGHT", 4, 0)
+    self._rlsCalCheckView:SetScript("OnClick", onClick)
+
+    -- Creazione/modifica evento: sotto il box della descrizione, accanto
+    -- alla checkbox "Lock event" di Blizzard (stessa riga, subito a sinistra).
+    self._rlsCalCheckEdit = CreateFrame("CheckButton", nil, CalendarCreateEventFrame, "UICheckButtonTemplate")
+    self._rlsCalCheckEdit:SetSize(24, 24)
+    local lockCheck = CalendarCreateEventLockEventCheck
+    if lockCheck then
+        self._rlsCalCheckEdit:SetPoint("RIGHT", lockCheck, "LEFT", -8, 0)
+    else
+        self._rlsCalCheckEdit:SetPoint("TOPLEFT", CalendarCreateEventDescriptionContainer, "BOTTOMLEFT", 0, -8)
+    end
+    local editLabel = attachLabel(self._rlsCalCheckEdit)
+    editLabel:SetPoint("RIGHT", self._rlsCalCheckEdit, "LEFT", -4, 0)
+    self._rlsCalCheckEdit:SetScript("OnClick", onClick)
+    -- il testo sta a SINISTRA della casella: allarga l'area cliccabile.
+    local editLabelW = editLabel:GetStringWidth() or 0
+    if editLabelW > 0 then
+        self._rlsCalCheckEdit:SetHitRectInsets(-editLabelW - 4, 0, 0, 0)
+    end
 
     -- In una nuova schermata di creazione (CREATE) azzera l'intento residuo.
     CalendarCreateEventFrame:HookScript("OnShow", function(frame)
