@@ -821,10 +821,17 @@ function RLSuite:CreateMinimapIcon()
         return
     end
 
-    local btn = CreateFrame("Button", "RLSuiteMinimapIcon", Minimap)
+    -- NB: il nome NON deve contenere "MinimapIcon": MinimapButtonFrame lo
+    -- userebbe come match per escludere i pin della minimappa e rifiuterebbe
+    -- di raccogliere il bottone nella sua barra.
+    local btn = CreateFrame("Button", "RLSuiteMinimapButton", Minimap)
     btn:SetSize(32, 32)
-    btn:SetFrameStrata("MEDIUM")
-    btn:SetFrameLevel(8)
+    -- Strata HIGH + livello alto: la minimappa stock e' BACKGROUND e molti
+    -- addon (incluso MinimapButtonFrame, che raccoglie i bottoni in una
+    -- barra LOW) la portano a MEDIUM. Con HIGH il bottone resta SEMPRE sopra
+    -- la minimappa e sopra la barra di MBF, senza finire "sotto".
+    btn:SetFrameStrata("HIGH")
+    btn:SetFrameLevel(20)
 
     -- ICONA DELL'UTENTE da media/ (priorita' assoluta): hordeicon per
     -- l'Orda, allianceicon altrimenti. Quadrata 32x32, riempie il bottone.
@@ -969,6 +976,12 @@ function RLSuite:DiagnoseMinimapIcon()
         if not btn then return end
     end
     p("  button shown: " .. tostring(btn:IsShown()))
+    if btn.GetFrameStrata and btn.GetFrameLevel then
+        p("  button strata/level: " .. tostring(btn:GetFrameStrata()) .. " / " .. tostring(btn:GetFrameLevel()))
+    end
+    if Minimap and Minimap.GetFrameStrata then
+        p("  Minimap strata/level: " .. tostring(Minimap:GetFrameStrata()) .. " / " .. tostring(Minimap:GetFrameLevel()))
+    end
     if btn.GetLeft and btn.GetBottom then
         p("  button pos: " .. tostring(btn:GetLeft()) .. ", " .. tostring(btn:GetBottom()))
     end
