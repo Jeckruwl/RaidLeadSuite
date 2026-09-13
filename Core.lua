@@ -821,26 +821,26 @@ function RLSuite:CreateMinimapIcon()
         return
     end
 
-    -- NB: il nome NON deve contenere "MinimapIcon": MinimapButtonFrame lo
-    -- userebbe come match per escludere i pin della minimappa e rifiuterebbe
-    -- di raccogliere il bottone nella sua barra.
-    --
-    -- IMPORTANTE: il bottone e' figlio di UIParent, NON di Minimap. In WoW il
-    -- figlio eredita la strata del genitore come "soffitto": Minimap sta in
-    -- MinimapCluster (strata BACKGROUND), quindi un bottone figlio di Minimap
-    -- resta SEMPRE nel soffitto BACKGROUND e finisce dietro a qualsiasi frame
-    -- MEDIUM/HIGH agganciato a UIParent (come la barra di MinimapButtonFrame).
-    -- Come figlio di UIParent in strata HIGH, il bottone sta sopra la minimappa
-    -- E sopra la barra di MBF. La posizione resta ancorata alla minimappa.
-    local btn = CreateFrame("Button", "RLSuiteMinimapButton", UIParent)
+    -- Il bottone e' figlio di Minimap, come ogni normale bottone da minimappa:
+    -- cosi' MinimapButtonFrame (MBF) lo trova scandendo Minimap:GetChildren()
+    -- e lo raccoglie nella sua barra (lo riparenta e gestisce strata/livello).
+    -- Il nome NON deve contenere "MinimapIcon": MBF lo userebbe come match per
+    -- escludere i pin della minimappa e lo ignorerebbe.
+    local btn = CreateFrame("Button", "RLSuiteMinimapButton", Minimap)
     btn:SetSize(32, 32)
-    btn:SetFrameStrata("HIGH")
-    btn:SetFrameLevel(30)
+    -- Strata/livello standard da bottone minimappa: visibile sul bordo della
+    -- minimappa finche' MBF non lo raccoglie; dopo la raccolta e' MBF a
+    -- posizionarlo nella barra.
+    btn:SetFrameStrata("MEDIUM")
+    btn:SetFrameLevel(8)
 
     -- ICONA DELL'UTENTE da media/ (priorita' assoluta): hordeicon per
     -- l'Orda, allianceicon altrimenti. Quadrata 32x32, riempie il bottone.
     local file = self:IsHorde() and "media\\hordeicon.blp" or "media\\allianceicon.blp"
-    local tex = btn:CreateTexture(nil, "ARTWORK")
+    -- Texture CON NOME: alcuni addon che raccolgono i bottoni (MBF) iterano
+    -- i figli del bottone e usano GetName() come chiave; una texture senza
+    -- nome li manderebbe in errore e bloccherebbe la raccolta nella barra.
+    local tex = btn:CreateTexture("RLSuiteMMBtnIcon", "ARTWORK")
     tex:SetAllPoints(btn)
     tex:SetTexture(self:AddonTexture(file))
 
@@ -857,7 +857,7 @@ function RLSuite:CreateMinimapIcon()
     -- standard + SetVertexColor. E' isolato in un pcall: se dovesse fallire
     -- per qualunque motivo NON deve impedire la creazione del bottone.
     local ok = pcall(function()
-        local bg = btn:CreateTexture(nil, "BACKGROUND")
+        local bg = btn:CreateTexture("RLSuiteMMBtnBg", "BACKGROUND")
         bg:SetAllPoints(btn)
         bg:SetTexture("Interface\\Buttons\\WHITE8x8")
         bg:SetVertexColor(0.09, 0.09, 0.11, 1)
