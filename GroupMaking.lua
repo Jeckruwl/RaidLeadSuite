@@ -3066,20 +3066,30 @@ function GM:BuildWLGroupColumns()
             bar:EnableMouse(true)
 
             -- Trascina un giocatore su un altro slot per riorganizzare i
-            -- gruppi: tieni premuto sullo slot di partenza e rilascia su
-            -- quello di arrivo. Slot vuoto = spostamento, slot pieno =
-            -- scambio. Uso OnMouseDown/OnMouseUp invece di OnDragStart/
-            -- OnReceiveDrag: OnReceiveDrag non viene consegnato in modo
-            -- affidabile sui frame annidati (e dipende dall'ordine con
-            -- OnDragStop), mentre il rilascio col mouse e' sempre consegnato
-            -- al frame sotto il cursore.
-            bar:SetScript("OnMouseDown", function(self2, button)
-                if button == "LeftButton" then
-                    GM._wlDragSource = (self2.playerName and self2) or nil
+            -- gruppi: trascina dallo slot di partenza e rilascia su quello
+            -- di arrivo. Slot vuoto = spostamento, slot pieno = scambio.
+            -- Uso il drag&drop classico (RegisterForDrag + OnDragStart/
+            -- OnDragStop): durante un drag il mouse-up NON viene consegnato
+            -- al frame sotto il cursore (resta al frame di partenza), quindi
+            -- OnDragStop calcola il bersaglio dalle coordinate del cursore.
+            -- OnReceiveDrag resta come percorso parallelo: qualunque dei due
+            -- scatti per primo consuma GM._wlDragSource, quindi non c'e'
+            -- mai un doppio spostamento/scambio.
+            bar:RegisterForDrag("LeftButton")
+            bar:SetScript("OnDragStart", function(self2)
+                GM._wlDragSource = (self2.playerName and self2) or nil
+            end)
+            bar:SetScript("OnDragStop", function()
+                local src = GM._wlDragSource
+                GM._wlDragSource = nil
+                if src and src.playerName then
+                    local target = GM:WlSlotAtCursor()
+                    if target and target ~= src then
+                        GM:MoveWLSlot(src, target)
+                    end
                 end
             end)
-            bar:SetScript("OnMouseUp", function(self2, button)
-                if button ~= "LeftButton" then return end
+            bar:SetScript("OnReceiveDrag", function(self2)
                 local src = GM._wlDragSource
                 GM._wlDragSource = nil
                 if src and src ~= self2 and src.playerName then
@@ -3254,6 +3264,35 @@ function GM:LayoutWLGroupColumns(ngroups)
         end
     end
     box:SetHeight(24 + WL_GROUP_LABEL_H + 5 * WL_BAR_H + 4 * WL_BAR_GAP + 8)
+end
+
+-- Slot del pannello Raid Group sotto il cursore del mouse (nil se nessuno).
+-- Usato da OnDragStop: calcola il bersaglio dalle coordinate dello schermo
+-- (GetCursorPosition) invece di affidarsi a OnReceiveDrag, che non viene
+-- sempre consegnato sui frame annidati. Le coordinate del cursore vengono
+-- riportate alla scala dell'UI per confrontarle con GetLeft/GetRight/...
+function GM:WlSlotAtCursor()
+    if not GetCursorPosition then return nil end
+    local x, y = GetCursorPosition()
+    if not x or not y then return nil end
+    local scale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+    if scale and scale > 0 then
+        x = x / scale
+        y = y / scale
+    end
+    for i, bar in ipairs(self.wlGroupSlots or {}) do
+        if bar and bar.IsShown and bar:IsShown() then
+            local left = bar:GetLeft()
+            local right = bar:GetRight()
+            local bottom = bar:GetBottom()
+            local top = bar:GetTop()
+            if left and right and bottom and top
+                and x >= left and x <= right and y >= bottom and y <= top then
+                return bar
+            end
+        end
+    end
+    return nil
 end
 
 -- Riorganizza i gruppi trascinando un giocatore tra gli slot del pannello

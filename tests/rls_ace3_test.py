@@ -831,26 +831,51 @@ check(bool(rt.eval("#RLSuite.groupmaking.wlGroupSlots == 30")), "Raid Group now 
 check(bool(rt.eval("RLSuite.groupmaking.wlGroupLabels[6] ~= nil and RLSuite.groupmaking.wlGroupLabels[6]:GetText() == 'G6'")), "Raid Group shows the G6 label")
 check(bool(rt.eval("RLSuite.groupmaking.whisplistFrame:GetWidth() == 450")), "InviteEngine rib widened to 450 for the 6th column")
 
-# Drop onto an EMPTY slot: the player moves there exactly, source becomes empty.
+# Drop onto an EMPTY slot (OnReceiveDrag path): move there exactly.
 rt.execute("RLSuite:ResetDebugRaid()")
 rt.execute("for i=1,4 do RLSuite:DebugInviteAccept('Mv'..i, 'WARRIOR') end")
-# simulate the wired drag: press (OnMouseDown) on slot 2, release (OnMouseUp) on slot 6
-rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[2]; if s._scripts.OnMouseDown then s._scripts.OnMouseDown(s, 'LeftButton') end")
-rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[6]; if s._scripts.OnMouseUp then s._scripts.OnMouseUp(s, 'LeftButton') end")
+rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[2]; if s._scripts.OnDragStart then s._scripts.OnDragStart(s, 'LeftButton') end")
+rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[6]; if s._scripts.OnReceiveDrag then s._scripts.OnReceiveDrag(s) end")
 check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[2].playerName == nil")), "drag onto empty slot empties the source slot")
 check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[6].playerName == 'Mv1'")), "dragged player lands exactly in the empty destination slot")
 check(bool(rt.eval("#RLSuite:DebugRoster() == 5")), "moving keeps the roster size unchanged")
 
-# Drop onto an OCCUPIED slot: the two players swap.
-rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[1]; if s._scripts.OnMouseDown then s._scripts.OnMouseDown(s, 'LeftButton') end")
-rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[3]; if s._scripts.OnMouseUp then s._scripts.OnMouseUp(s, 'LeftButton') end")
+# Drop onto an OCCUPIED slot (OnReceiveDrag path): the two players swap.
+rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[1]; if s._scripts.OnDragStart then s._scripts.OnDragStart(s, 'LeftButton') end")
+rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[3]; if s._scripts.OnReceiveDrag then s._scripts.OnReceiveDrag(s) end")
 check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[1].playerName == 'Mv2' and RLSuite.groupmaking.wlGroupSlots[3].playerName == 'Testplayer'")), "dropping onto an occupied slot swaps the two players")
 check(bool(rt.eval("#RLSuite:DebugRoster() == 5")), "swapping keeps the roster size unchanged")
 
-# Releasing on the SAME slot (plain click) must not reorder anything.
-rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[1]; if s._scripts.OnMouseDown then s._scripts.OnMouseDown(s, 'LeftButton') end")
-rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[1]; if s._scripts.OnMouseUp then s._scripts.OnMouseUp(s, 'LeftButton') end")
-check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[1].playerName == 'Mv2'")), "clicking a slot without dropping elsewhere leaves it unchanged")
+# Releasing on the SAME slot must not reorder anything.
+rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[1]; if s._scripts.OnDragStart then s._scripts.OnDragStart(s, 'LeftButton') end")
+rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[1]; if s._scripts.OnReceiveDrag then s._scripts.OnReceiveDrag(s) end")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[1].playerName == 'Mv2'")), "dropping on the source slot itself leaves it unchanged")
+
+# OnDragStop fallback: target computed from the cursor coordinates.
+rt.execute("RLSuite:ResetDebugRaid()")
+rt.execute("for i=1,4 do RLSuite:DebugInviteAccept('Mv'..i, 'WARRIOR') end")
+rt.execute("""
+GetCursorPosition = function() return 101, 104 end
+UIParent.GetEffectiveScale = function() return 1 end
+local slots = RLSuite.groupmaking.wlGroupSlots
+for i, b in ipairs(slots) do
+    if i == 6 then
+        b.GetLeft = function() return 100 end
+        b.GetRight = function() return 120 end
+        b.GetBottom = function() return 100 end
+        b.GetTop = function() return 116 end
+    else
+        b.GetLeft = function() return 0 end
+        b.GetRight = function() return 10 end
+        b.GetBottom = function() return 0 end
+        b.GetTop = function() return 10 end
+    end
+end
+RLSuite.groupmaking.wlGroupSlots[2]._scripts.OnDragStart(RLSuite.groupmaking.wlGroupSlots[2], 'LeftButton')
+RLSuite.groupmaking.wlGroupSlots[2]._scripts.OnDragStop(RLSuite.groupmaking.wlGroupSlots[2])
+""")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[2].playerName == nil")), "OnDragStop fallback empties the source slot")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[6].playerName == 'Mv1'")), "OnDragStop fallback moves the player to the slot under the cursor")
 
 # --- Calendar Event tab redo: editable event + class sidebar ---
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoCalBox ~= nil")), "Calendar Event tab has the event box")
