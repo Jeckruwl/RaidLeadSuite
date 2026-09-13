@@ -190,6 +190,8 @@ do
     L["Left click: open RLS"] = true
     L["Right click: config"] = true
     L["Shift + left drag: move"] = true
+    L["Minimap icon: %s"] = true
+    L["RLSuite minimap error: %s"] = true
 
     -- Config
     L["Appearance"] = true

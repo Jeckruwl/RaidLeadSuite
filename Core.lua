@@ -186,7 +186,10 @@ function RLSuite:OnEnable()
     self:RegisterEvent("CHAT_MSG_RAID_LEADER", "OnRaidMessage")
     self:RegisterEvent("CHAT_MSG_LOOT", "OnLootMessage")
     self:InitModules()
-    self:CreateMinimapIcon()
+    local ok, err = pcall(self.CreateMinimapIcon, self)
+    if not ok and self.utils and self.utils.Print then
+        self.utils:Print(string.format(L["RLSuite minimap error: %s"], tostring(err)))
+    end
 end
 
 function RLSuite:OnDisable()
@@ -728,14 +731,17 @@ function RLSuite:IsHorde()
     return false
 end
 
--- Raggio dell'anello della minimappa (in 3.3.5 la forma puo' variare;
--- fallback al raggio standard della minimappa).
+-- Raggio dell'anello della minimappa. La minimappa classica 3.3.5 ha un
+-- diametro di circa 140px; usiamo la larghezza reale della Minimap se e'
+-- plausibile, altrimenti il raggio standard.
 function RLSuite:MinimapIconRadius()
     if Minimap and Minimap.GetWidth then
-        local w = Minimap:GetWidth()
-        if w and w > 0 then return w / 2 end
+        local w = tonumber(Minimap:GetWidth())
+        if w and w >= 40 then
+            return w / 2
+        end
     end
-    return 78
+    return 70
 end
 
 -- Angolo salvato (in gradi, 0 = est, cresce in senso antiorario).
@@ -748,19 +754,33 @@ end
 
 -- Crea l'icona della minimappa (una sola volta, al login).
 function RLSuite:CreateMinimapIcon()
-    if not Minimap then return end
     if self.minimapIcon then return end
+    if not Minimap then return end
 
     local btn = CreateFrame("Button", "RLSuiteMinimapIcon", Minimap)
-    btn:SetSize(31, 31)
+    btn:SetSize(33, 33)
     btn:SetFrameStrata("MEDIUM")
     btn:SetFrameLevel(8)
+
+    -- Struttura identica ai bottoni nativi della minimappa (mail / world
+    -- map / battlefield): sfondo circolare + icona + bordo dorato. Cosi'
+    -- il bottone resta visibile anche se la texture della fazione non
+    -- dovesse caricare.
+    local bg = btn:CreateTexture(nil, "BACKGROUND")
+    bg:SetSize(25, 25)
+    bg:SetPoint("CENTER", btn, "CENTER")
+    bg:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
 
     local tex = btn:CreateTexture(nil, "ARTWORK")
     tex:SetAllPoints(btn)
     local file = self:IsHorde() and "media\\hordeicon.blp" or "media\\allianceicon.blp"
     tex:SetTexture(self:AddonTexture(file))
     btn.icon = tex
+
+    local border = btn:CreateTexture(nil, "BORDER")
+    border:SetSize(52, 52)
+    border:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
 
     btn:SetMovable(true)
     btn:EnableMouse(true)
@@ -808,8 +828,15 @@ function RLSuite:CreateMinimapIcon()
         if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
     end)
 
+    btn:Show()
     self.minimapIcon = btn
     self:PlaceMinimapIcon()
+
+    -- Diagnostica: stampa il percorso risolto, cosi' da verificare che
+    -- l'icona sia stata creata e che il file punti alla cartella giusta.
+    if self.utils and self.utils.Print then
+        self.utils:Print(string.format(L["Minimap icon: %s"], self:AddonTexture(file)))
+    end
 end
 
 -- Posiziona l'icona sulla minimappa all'angolo salvato.
@@ -829,8 +856,8 @@ function RLSuite:SaveMinimapIconPosition(btn)
     if not Minimap.GetCenter then return end
     local cx, cy = Minimap:GetCenter()
     if not cx then return end
-    local x = (btn:GetLeft() or 0) + (btn:GetWidth() or 31) / 2
-    local y = (btn:GetBottom() or 0) + (btn:GetHeight() or 31) / 2
+    local x = (btn:GetLeft() or 0) + (btn:GetWidth() or 32) / 2
+    local y = (btn:GetBottom() or 0) + (btn:GetHeight() or 32) / 2
     local angle = math.deg(math.atan2(y - cy, x - cx))
     if angle < 0 then angle = angle + 360 end
     local mm = self.db.profile.minimap
