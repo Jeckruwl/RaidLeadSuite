@@ -1757,7 +1757,7 @@ function GM:BuildCalendarPage()
     self.ieCalFooter = CreateFrame("Frame", nil, page)
     self.ieCalFooter:SetPoint("BOTTOMLEFT", page, "BOTTOMLEFT", 0, 0)
     self.ieCalFooter:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", 0, 0)
-    self.ieCalFooter:SetHeight(50)
+    self.ieCalFooter:SetHeight(52)
 
     self.ieCalStatus = FontStr(self.ieCalFooter, "OVERLAY", 12)
     self.ieCalStatus:SetPoint("BOTTOMLEFT", self.ieCalFooter, "BOTTOMLEFT", 8, 2)
@@ -1768,7 +1768,7 @@ function GM:BuildCalendarPage()
 
     self.ieCalAtBtn = CreateFrame("Button", nil, self.ieCalFooter, "UIPanelButtonTemplate")
     self.ieCalAtBtn:SetSize(150, 24)
-    self.ieCalAtBtn:SetPoint("BOTTOMLEFT", self.ieCalFooter, "BOTTOMLEFT", 8, 22)
+    self.ieCalAtBtn:SetPoint("BOTTOMLEFT", self.ieCalFooter, "BOTTOMLEFT", 8, 24)
     self.ieCalAtBtn:SetText(L["Autoinvite at set time"])
     self.ieCalAtBtn:SetScript("OnClick", function() self:ToggleAutoinviterCalendar() end)
 
@@ -1799,14 +1799,15 @@ function GM:BuildCalendarPage()
     -- ============================================================
     self.ieAutoCalBox = CreateFrame("Frame", nil, page)
     self.ieAutoCalBox:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -36)
-    self.ieAutoCalBox:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -8, 52)
+    self.ieAutoCalBox:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -8, 54)
     RLSuite.utils:SkinBox(self.ieAutoCalBox)
 
-    -- Sidebar: una colonna di icone di classe con il conteggio dei presenti.
+    -- Sidebar: una colonna stretta di icone di classe con il conteggio
+    -- dei presenti accanto (niente testi, quindi serve poca larghezza).
     self.ieCalSidebar = CreateFrame("Frame", nil, self.ieAutoCalBox)
     self.ieCalSidebar:SetPoint("TOPRIGHT", self.ieAutoCalBox, "TOPRIGHT", -8, -8)
     self.ieCalSidebar:SetPoint("BOTTOMRIGHT", self.ieAutoCalBox, "BOTTOMRIGHT", -8, 8)
-    self.ieCalSidebar:SetWidth(68)
+    self.ieCalSidebar:SetWidth(40)
 
     self.ieCalClassButtons = {}
     local order = CalClassOrder()

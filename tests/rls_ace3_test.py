@@ -203,7 +203,6 @@ function methods:SetMovable(...) return self end
 function methods:IsMovable() return true end
 function methods:IsResizable() return false end
 function methods:GetClampedToScreen() return true end
-function methods:SetWidth(...) return self end
 function methods:GetIndentedWordWrap() return false end
 function methods:SetIndentedWordWrap(...) return self end
 
@@ -836,6 +835,7 @@ check(bool(rt.eval("RLSuite.groupmaking.ieCalTypeDD ~= nil")), "editable type dr
 check(bool(rt.eval("RLSuite.groupmaking.ieCalDayEdit ~= nil and RLSuite.groupmaking.ieCalMonthDD ~= nil and RLSuite.groupmaking.ieCalYearEdit ~= nil")), "editable day/month/year controls exist")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalHourEdit ~= nil and RLSuite.groupmaking.ieCalMinuteEdit ~= nil")), "editable hour/minute controls exist")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalSidebar ~= nil")), "class sidebar exists")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalSidebar:GetWidth() == 40")), "class sidebar is narrow (icons + counts only)")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalClassButtons ~= nil and RLSuite.groupmaking.ieCalClassButtons['WARRIOR'] ~= nil and RLSuite.groupmaking.ieCalClassButtons['DEATHKNIGHT'] ~= nil")), "class sidebar has a class icon per class")
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventRefresh == nil")), "old Refresh button removed")
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventCreate == nil")), "old Create event button removed")
