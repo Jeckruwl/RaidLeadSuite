@@ -902,6 +902,14 @@ check(bool(rt.eval("RLSuite.groupmaking.ieCalUpdateBtn ~= nil")), "Update button
 check(bool(rt.eval("RLSuite.groupmaking.ieCalInviteEdit ~= nil")), "'invite a player' edit box exists")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalInviteBtn ~= nil")), "'Invite new member' button exists")
 
+# --- the three calendar buttons sit on one inline row ---
+check(bool(rt.eval("select(2, RLSuite.groupmaking.ieCalNowBtn:GetPoint(1)) == RLSuite.groupmaking.ieCalAtBtn")), "'Auto invite now' is inline next to 'Autoinvite at set time'")
+check(bool(rt.eval("select(2, RLSuite.groupmaking.ieCalUpdateBtn:GetPoint(1)) == RLSuite.groupmaking.ieCalNowBtn")), "'Update' is inline next to 'Auto invite now' (not on a lower row)")
+
+# --- the sidebar shows only per-class counts (no header/total) ---
+check(bool(rt.eval("RLSuite.groupmaking.ieCalClassTotal == nil")), "sidebar has no 'attending' total line")
+check(bool(rt.eval("select(1, RLSuite.groupmaking.ieAutoMirrorDescBox:GetPoint(2)) == 'TOPRIGHT'")), "description box is pinned to the top (not vertically centered)")
+
 # --- calendar 'Autoinvite at set time' arms the calendar queue ---
 check(bool(rt.eval("type(RLSuite.groupmaking.ToggleAutoinviterCalendar) == 'function'")), "ToggleAutoinviterCalendar wired")
 rt.execute("RLSuite.groupmaking.autoinvite.names = {}")

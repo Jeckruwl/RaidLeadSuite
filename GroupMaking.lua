@@ -1752,13 +1752,12 @@ function GM:BuildCalendarPage()
     self.ieCalPage = page
 
     -- ============================================================
-    -- Barra inferiore: i 3 tasti (Autoinvite at set time / Auto invite
-    -- now / Update) + stato, in fondo.
+    -- Barra inferiore: i 3 tasti in linea + stato, in fondo.
     -- ============================================================
     self.ieCalFooter = CreateFrame("Frame", nil, page)
     self.ieCalFooter:SetPoint("BOTTOMLEFT", page, "BOTTOMLEFT", 0, 0)
     self.ieCalFooter:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", 0, 0)
-    self.ieCalFooter:SetHeight(74)
+    self.ieCalFooter:SetHeight(50)
 
     self.ieCalStatus = FontStr(self.ieCalFooter, "OVERLAY", 12)
     self.ieCalStatus:SetPoint("BOTTOMLEFT", self.ieCalFooter, "BOTTOMLEFT", 8, 2)
@@ -1769,19 +1768,19 @@ function GM:BuildCalendarPage()
 
     self.ieCalAtBtn = CreateFrame("Button", nil, self.ieCalFooter, "UIPanelButtonTemplate")
     self.ieCalAtBtn:SetSize(150, 24)
-    self.ieCalAtBtn:SetPoint("BOTTOMLEFT", self.ieCalFooter, "BOTTOMLEFT", 8, 48)
+    self.ieCalAtBtn:SetPoint("BOTTOMLEFT", self.ieCalFooter, "BOTTOMLEFT", 8, 22)
     self.ieCalAtBtn:SetText(L["Autoinvite at set time"])
     self.ieCalAtBtn:SetScript("OnClick", function() self:ToggleAutoinviterCalendar() end)
 
     self.ieCalNowBtn = CreateFrame("Button", nil, self.ieCalFooter, "UIPanelButtonTemplate")
-    self.ieCalNowBtn:SetSize(120, 24)
-    self.ieCalNowBtn:SetPoint("LEFT", self.ieCalAtBtn, "RIGHT", 8, 0)
+    self.ieCalNowBtn:SetSize(116, 24)
+    self.ieCalNowBtn:SetPoint("LEFT", self.ieCalAtBtn, "RIGHT", 6, 0)
     self.ieCalNowBtn:SetText(L["Auto invite now"])
     self.ieCalNowBtn:SetScript("OnClick", function() self:AutoInviteNow("calendar") end)
 
     self.ieCalUpdateBtn = CreateFrame("Button", nil, self.ieCalFooter, "UIPanelButtonTemplate")
-    self.ieCalUpdateBtn:SetSize(90, 24)
-    self.ieCalUpdateBtn:SetPoint("BOTTOMLEFT", self.ieCalFooter, "BOTTOMLEFT", 8, 20)
+    self.ieCalUpdateBtn:SetSize(66, 24)
+    self.ieCalUpdateBtn:SetPoint("LEFT", self.ieCalNowBtn, "RIGHT", 6, 0)
     self.ieCalUpdateBtn:SetText(L["Update"])
     self.ieCalUpdateBtn:SetScript("OnClick", function() self:UpdateLinkedCalendarEvent() end)
     self.ieCalUpdateBtn:Disable()
@@ -1800,7 +1799,7 @@ function GM:BuildCalendarPage()
     -- ============================================================
     self.ieAutoCalBox = CreateFrame("Frame", nil, page)
     self.ieAutoCalBox:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -36)
-    self.ieAutoCalBox:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -8, 76)
+    self.ieAutoCalBox:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -8, 52)
     RLSuite.utils:SkinBox(self.ieAutoCalBox)
 
     -- Sidebar: una colonna di icone di classe con il conteggio dei presenti.
@@ -1809,14 +1808,9 @@ function GM:BuildCalendarPage()
     self.ieCalSidebar:SetPoint("BOTTOMRIGHT", self.ieAutoCalBox, "BOTTOMRIGHT", -8, 8)
     self.ieCalSidebar:SetWidth(68)
 
-    local sideLbl = FontStr(self.ieCalSidebar, "OVERLAY", 11)
-    sideLbl:SetPoint("TOPLEFT", self.ieCalSidebar, "TOPLEFT", 4, -4)
-    sideLbl:SetText(L["Attending"])
-    sideLbl:SetTextColor(1, 0.82, 0)
-
     self.ieCalClassButtons = {}
     local order = CalClassOrder()
-    local y = -18
+    local y = -4
     for _, class in ipairs(order) do
         local btn = CreateFrame("Button", nil, self.ieCalSidebar)
         btn:SetSize(18, 18)
@@ -1841,11 +1835,6 @@ function GM:BuildCalendarPage()
         y = y - 20
     end
 
-    self.ieCalClassTotal = FontStr(self.ieCalSidebar, "OVERLAY", 11)
-    self.ieCalClassTotal:SetPoint("TOPLEFT", self.ieCalSidebar, "TOPLEFT", 4, y - 2)
-    self.ieCalClassTotal:SetText("")
-    self.ieCalClassTotal:SetTextColor(1, 0.82, 0)
-
     -- Colonna principale modificabile.
     self.ieCalMain = CreateFrame("Frame", nil, self.ieAutoCalBox)
     self.ieCalMain:SetPoint("TOPLEFT", self.ieAutoCalBox, "TOPLEFT", 8, -8)
@@ -1863,15 +1852,10 @@ function GM:BuildCalendarPage()
     self.ieCalEmptyLabel:SetTextColor(1, 0.82, 0)
 
     -- Titolo
-    local titleLbl = FontStr(self.ieCalMain, "OVERLAY", 12)
-    titleLbl:SetPoint("LEFT", self.ieCalMain, "LEFT", 0, -6)
-    titleLbl:SetText(L["Title"])
-    titleLbl:SetTextColor(1, 0.82, 0)
-
     self.ieCalTitleEdit = CreateFrame("EditBox", "RLSuiteIECalTitle", self.ieCalMain, "InputBoxTemplate")
     self.ieCalTitleEdit:SetHeight(20)
-    self.ieCalTitleEdit:SetPoint("TOPLEFT", self.ieCalMain, "TOPLEFT", 40, -2)
-    self.ieCalTitleEdit:SetPoint("RIGHT", self.ieCalMain, "RIGHT", 0, 0)
+    self.ieCalTitleEdit:SetPoint("TOPLEFT", self.ieCalMain, "TOPLEFT", 42, 0)
+    self.ieCalTitleEdit:SetPoint("TOPRIGHT", self.ieCalMain, "TOPRIGHT", 0, 0)
     self.ieCalTitleEdit:SetAutoFocus(false)
     self.ieCalTitleEdit:SetMaxLetters(60)
     self.ieCalTitleEdit:SetScript("OnTextChanged", function(s, userInput)
@@ -1880,24 +1864,24 @@ function GM:BuildCalendarPage()
     self.ieCalTitleEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
     self.ieCalTitleEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
 
+    local titleLbl = FontStr(self.ieCalMain, "OVERLAY", 12)
+    titleLbl:SetPoint("RIGHT", self.ieCalTitleEdit, "LEFT", -6, 0)
+    titleLbl:SetText(L["Title"])
+    titleLbl:SetTextColor(1, 0.82, 0)
+
     -- Tipo
+    self.ieCalTypeDD = RLSuite.utils:CreateDropdown(self.ieCalMain, "RLSuiteIECalType", 150, 20)
+    self.ieCalTypeDD:SetPoint("TOPLEFT", self.ieCalMain, "TOPLEFT", 42, -26)
+
     local typeLbl = FontStr(self.ieCalMain, "OVERLAY", 12)
-    typeLbl:SetPoint("LEFT", self.ieCalMain, "LEFT", 0, -32)
+    typeLbl:SetPoint("RIGHT", self.ieCalTypeDD, "LEFT", -6, 0)
     typeLbl:SetText(L["Type"])
     typeLbl:SetTextColor(1, 0.82, 0)
 
-    self.ieCalTypeDD = RLSuite.utils:CreateDropdown(self.ieCalMain, "RLSuiteIECalType", 150, 20)
-    self.ieCalTypeDD:SetPoint("TOPLEFT", self.ieCalMain, "TOPLEFT", 40, -28)
-
     -- Giorno
-    local dayLbl = FontStr(self.ieCalMain, "OVERLAY", 12)
-    dayLbl:SetPoint("LEFT", self.ieCalMain, "LEFT", 0, -58)
-    dayLbl:SetText(L["Day"])
-    dayLbl:SetTextColor(1, 0.82, 0)
-
     self.ieCalDayEdit = CreateFrame("EditBox", "RLSuiteIECalDay", self.ieCalMain, "InputBoxTemplate")
     self.ieCalDayEdit:SetSize(28, 20)
-    self.ieCalDayEdit:SetPoint("TOPLEFT", self.ieCalMain, "TOPLEFT", 40, -54)
+    self.ieCalDayEdit:SetPoint("TOPLEFT", self.ieCalMain, "TOPLEFT", 42, -52)
     self.ieCalDayEdit:SetAutoFocus(false)
     self.ieCalDayEdit:SetMaxLetters(2)
     self.ieCalDayEdit:SetNumeric(true)
@@ -1906,6 +1890,11 @@ function GM:BuildCalendarPage()
     end)
     self.ieCalDayEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
     self.ieCalDayEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
+
+    local dayLbl = FontStr(self.ieCalMain, "OVERLAY", 12)
+    dayLbl:SetPoint("RIGHT", self.ieCalDayEdit, "LEFT", -6, 0)
+    dayLbl:SetText(L["Day"])
+    dayLbl:SetTextColor(1, 0.82, 0)
 
     self.ieCalMonthDD = RLSuite.utils:CreateDropdown(self.ieCalMain, "RLSuiteIECalMonth", 74, 20)
     self.ieCalMonthDD:SetPoint("LEFT", self.ieCalDayEdit, "RIGHT", 4, 0)
@@ -1923,14 +1912,9 @@ function GM:BuildCalendarPage()
     self.ieCalYearEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
 
     -- Ora
-    local timeLbl = FontStr(self.ieCalMain, "OVERLAY", 12)
-    timeLbl:SetPoint("LEFT", self.ieCalMain, "LEFT", 0, -84)
-    timeLbl:SetText(L["Time"])
-    timeLbl:SetTextColor(1, 0.82, 0)
-
     self.ieCalHourEdit = CreateFrame("EditBox", "RLSuiteIECalHour", self.ieCalMain, "InputBoxTemplate")
     self.ieCalHourEdit:SetSize(28, 20)
-    self.ieCalHourEdit:SetPoint("TOPLEFT", self.ieCalMain, "TOPLEFT", 40, -80)
+    self.ieCalHourEdit:SetPoint("TOPLEFT", self.ieCalMain, "TOPLEFT", 42, -78)
     self.ieCalHourEdit:SetAutoFocus(false)
     self.ieCalHourEdit:SetMaxLetters(2)
     self.ieCalHourEdit:SetNumeric(true)
@@ -1939,6 +1923,11 @@ function GM:BuildCalendarPage()
     end)
     self.ieCalHourEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
     self.ieCalHourEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
+
+    local timeLbl = FontStr(self.ieCalMain, "OVERLAY", 12)
+    timeLbl:SetPoint("RIGHT", self.ieCalHourEdit, "LEFT", -6, 0)
+    timeLbl:SetText(L["Time"])
+    timeLbl:SetTextColor(1, 0.82, 0)
 
     local calColon = FontStr(self.ieCalMain, "OVERLAY", 12)
     calColon:SetPoint("LEFT", self.ieCalHourEdit, "RIGHT", 2, 0)
@@ -1958,8 +1947,8 @@ function GM:BuildCalendarPage()
 
     -- Box descrizione (scrollabile, stile addon).
     self.ieAutoMirrorDescBox = CreateFrame("Frame", nil, self.ieCalMain)
-    self.ieAutoMirrorDescBox:SetPoint("TOPLEFT", self.ieCalMain, "TOPLEFT", 0, -108)
-    self.ieAutoMirrorDescBox:SetPoint("RIGHT", self.ieCalMain, "RIGHT", 0, 0)
+    self.ieAutoMirrorDescBox:SetPoint("TOPLEFT", self.ieCalMain, "TOPLEFT", 0, -104)
+    self.ieAutoMirrorDescBox:SetPoint("TOPRIGHT", self.ieCalMain, "TOPRIGHT", 0, -104)
     self.ieAutoMirrorDescBox:SetHeight(54)
     RLSuite.utils:SkinBox(self.ieAutoMirrorDescBox)
 
@@ -2609,10 +2598,8 @@ end
 function GM:RenderClassSidebar()
     if not self.ieCalClassButtons then return end
     local counts = self:CountCalendarClassAttending()
-    local total = 0
     for _, btn in pairs(self.ieCalClassButtons) do
         local n = counts[btn.class] or 0
-        total = total + n
         if btn.count then
             if n > 0 then btn.count:SetText(tostring(n)) else btn.count:SetText("") end
         end
@@ -2625,9 +2612,6 @@ function GM:RenderClassSidebar()
                 btn.icon:SetVertexColor(0.45, 0.45, 0.45, 1)
             end
         end
-    end
-    if self.ieCalClassTotal then
-        self.ieCalClassTotal:SetText(string.format(L["%d attending"], total))
     end
 end
 
