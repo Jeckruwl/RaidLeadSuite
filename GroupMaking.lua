@@ -125,7 +125,7 @@ function GM:EmbedAceLibraries()
             self:OnCalendarEventCreated()
         end)
         self:RegisterEvent("CALENDAR_UPDATE_EVENT", function()
-            self:OnCalendarEventCreated()
+            self:OnCalendarChanged()
         end)
         self:RegisterEvent("CALENDAR_CLOSE_EVENT", function()
             self:OnCalendarChanged()
@@ -1236,7 +1236,8 @@ function GM:CreateWhisplistWindow()
 
     -- ==== Pagine delle tab ====
     self:BuildWhisplistPage()
-    self:BuildAutoinviterPage()
+    self:BuildManualPage()
+    self:BuildCalendarPage()
 
     -- Tab predefinita: Whisplist.
     if self.ieTabGroup and self.ieTabGroup.SelectTab then
@@ -1275,7 +1276,8 @@ function GM:CreateInviteEngineTabs()
 
     tg:SetTabs({
         { text = L["Whisplist"], value = "whisper" },
-        { text = L["Autoinviter"], value = "auto" },
+        { text = L["Manual list"], value = "manual" },
+        { text = L["Calendar event"], value = "calendar" },
     })
     tg:SetCallback("OnGroupSelected", function(widget, event, value)
         self:SetInviteEngineTab(value)
@@ -1440,27 +1442,34 @@ end
 
 -- Cambia la tab attiva dell'InviteEngine (mostra una pagina e nasconde
 -- l'altra). Viene chiamata dal callback "OnGroupSelected" del TabGroup.
+-- Cambia la tab attiva dell'InviteEngine (mostra la pagina giusta).
+-- Viene chiamata dal callback "OnGroupSelected" del TabGroup.
 function GM:SetInviteEngineTab(value)
     value = value or "whisper"
     self.ieActiveTab = value
     if self.wlPage then
         if value == "whisper" then self.wlPage:Show() else self.wlPage:Hide() end
     end
-    if self.ieAutoPage then
-        if value == "auto" then self.ieAutoPage:Show() else self.ieAutoPage:Hide() end
+    if self.ieManualPage then
+        if value == "manual" then self.ieManualPage:Show() else self.ieManualPage:Hide() end
+    end
+    if self.ieCalPage then
+        if value == "calendar" then self.ieCalPage:Show() else self.ieCalPage:Hide() end
     end
     if value == "whisper" then
         self:UpdateWhisplist()
         self:UpdateWLGroups()
-    elseif value == "auto" then
-        self:RefreshAutoinviter()
+    elseif value == "manual" then
+        self:RefreshManualPage()
+    elseif value == "calendar" then
+        self:RefreshCalendarPage()
     end
 end
 
 -- ============================================================
--- AUTOINVITER TAB (inviti programmati: lista manuale o evento di
--- Calendario). La pianificazione usa AceTimer-3.0, gli aggiornamenti del
--- Calendario arrivano via AceEvent-3.0.
+-- TAB "MANUAL LIST" e "CALENDAR EVENT" (ex tab Autoinviter). Gli inviti
+-- programmati usano AceTimer-3.0; gli aggiornamenti del Calendario arrivano
+-- via AceEvent-3.0.
 -- ============================================================
 -- Nome localizzato del giorno della settimana (1 = domenica), come Blizzard.
 local function CalWeekdayName(weekday)
@@ -1545,7 +1554,7 @@ local function CalFontStr(parent, layer, fontObjName, fallbackSize)
     return fs
 end
 
-function GM:BuildAutoinviterPage()
+function GM:BuildManualPage()
     local area = self.ieTabGroup and self.ieTabGroup.border
     if not area then return end
 
@@ -1553,83 +1562,41 @@ function GM:BuildAutoinviterPage()
     page:SetPoint("TOPLEFT", area, "TOPLEFT", 1, -1)
     page:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -1, 1)
     page:Hide()
-    self.ieAutoPage = page
-
-    local db = self.autoinvite
-
-    -- Sorgente: lista manuale oppure evento di Calendario (mutualmente esclusive).
-    self.ieAutoManualCheck = CreateFrame("CheckButton", "RLSuiteIEAutoManualCheck", page, "UICheckButtonTemplate")
-    self.ieAutoManualCheck:SetSize(24, 24)
-    self.ieAutoManualCheck:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -8)
-    self.ieAutoManualCheck:SetScript("OnClick", function(s)
-        if s:GetChecked() then
-            db.mode = "manual"
-            if self.ieAutoCalendarCheck then self.ieAutoCalendarCheck:SetChecked(false) end
-        else
-            db.mode = "calendar"
-            if self.ieAutoCalendarCheck then self.ieAutoCalendarCheck:SetChecked(true) end
-        end
-        self:RefreshAutoinviter()
-        self:SaveAutoinviter()
-    end)
-
-    local manualLbl = FontStr(page, "OVERLAY", 12)
-    manualLbl:SetPoint("LEFT", self.ieAutoManualCheck, "RIGHT", 0, 0)
-    manualLbl:SetText(L["Manual list"])
-
-    self.ieAutoCalendarCheck = CreateFrame("CheckButton", "RLSuiteIEAutoCalendarCheck", page, "UICheckButtonTemplate")
-    self.ieAutoCalendarCheck:SetSize(24, 24)
-    self.ieAutoCalendarCheck:SetPoint("LEFT", manualLbl, "RIGHT", 16, 0)
-    self.ieAutoCalendarCheck:SetScript("OnClick", function(s)
-        if s:GetChecked() then
-            db.mode = "calendar"
-            if self.ieAutoManualCheck then self.ieAutoManualCheck:SetChecked(false) end
-        else
-            db.mode = "manual"
-            if self.ieAutoManualCheck then self.ieAutoManualCheck:SetChecked(true) end
-        end
-        self:RefreshAutoinviter()
-        self:SaveAutoinviter()
-    end)
-
-    local calLbl = FontStr(page, "OVERLAY", 12)
-    calLbl:SetPoint("LEFT", self.ieAutoCalendarCheck, "RIGHT", 0, 0)
-    calLbl:SetText(L["Calendar event"])
+    self.ieManualPage = page
 
     -- ============================================================
-    -- Barra inferiore: ora di invito + tasti + stato (l'ultima cosa
-    -- in fondo, sotto i riquadri manuale/calendario, senza clippare).
+    -- Barra inferiore: ora di invito + tasti + stato, in fondo.
     -- ============================================================
-    self.ieAutoFooter = CreateFrame("Frame", nil, page)
-    self.ieAutoFooter:SetPoint("BOTTOMLEFT", page, "BOTTOMLEFT", 0, 0)
-    self.ieAutoFooter:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", 0, 0)
-    self.ieAutoFooter:SetHeight(76)
+    self.ieManualFooter = CreateFrame("Frame", nil, page)
+    self.ieManualFooter:SetPoint("BOTTOMLEFT", page, "BOTTOMLEFT", 0, 0)
+    self.ieManualFooter:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", 0, 0)
+    self.ieManualFooter:SetHeight(70)
 
-    self.ieAutoStatus = FontStr(self.ieAutoFooter, "OVERLAY", 12)
-    self.ieAutoStatus:SetPoint("BOTTOMLEFT", self.ieAutoFooter, "BOTTOMLEFT", 8, 4)
-    self.ieAutoStatus:SetPoint("RIGHT", self.ieAutoFooter, "RIGHT", -8, 0)
+    self.ieAutoStatus = FontStr(self.ieManualFooter, "OVERLAY", 12)
+    self.ieAutoStatus:SetPoint("BOTTOMLEFT", self.ieManualFooter, "BOTTOMLEFT", 8, 2)
+    self.ieAutoStatus:SetPoint("RIGHT", self.ieManualFooter, "RIGHT", -8, 0)
     self.ieAutoStatus:SetJustifyH("LEFT")
     self.ieAutoStatus:SetText("")
     self.ieAutoStatus:SetTextColor(1, 0.82, 0)
 
-    self.ieAutoArmBtn = CreateFrame("Button", nil, self.ieAutoFooter, "UIPanelButtonTemplate")
+    self.ieAutoArmBtn = CreateFrame("Button", nil, self.ieManualFooter, "UIPanelButtonTemplate")
     self.ieAutoArmBtn:SetSize(130, 24)
-    self.ieAutoArmBtn:SetPoint("BOTTOMLEFT", self.ieAutoFooter, "BOTTOMLEFT", 8, 26)
+    self.ieAutoArmBtn:SetPoint("BOTTOMLEFT", self.ieManualFooter, "BOTTOMLEFT", 8, 22)
     self.ieAutoArmBtn:SetText(L["Start Autoinviter"])
     self.ieAutoArmBtn:SetScript("OnClick", function() self:ToggleAutoinviter() end)
 
-    self.ieAutoNowBtn = CreateFrame("Button", nil, self.ieAutoFooter, "UIPanelButtonTemplate")
+    self.ieAutoNowBtn = CreateFrame("Button", nil, self.ieManualFooter, "UIPanelButtonTemplate")
     self.ieAutoNowBtn:SetSize(130, 24)
     self.ieAutoNowBtn:SetPoint("LEFT", self.ieAutoArmBtn, "RIGHT", 8, 0)
     self.ieAutoNowBtn:SetText(L["Auto invite now"])
-    self.ieAutoNowBtn:SetScript("OnClick", function() self:AutoInviteNow() end)
+    self.ieAutoNowBtn:SetScript("OnClick", function() self:AutoInviteNow("manual") end)
 
-    local timeLbl = FontStr(self.ieAutoFooter, "OVERLAY", 12)
-    timeLbl:SetPoint("BOTTOMLEFT", self.ieAutoFooter, "BOTTOMLEFT", 8, 52)
+    local timeLbl = FontStr(self.ieManualFooter, "OVERLAY", 12)
+    timeLbl:SetPoint("BOTTOMLEFT", self.ieManualFooter, "BOTTOMLEFT", 8, 48)
     timeLbl:SetText(L["Invite at"])
     timeLbl:SetTextColor(1, 0.82, 0)
 
-    self.ieAutoHourEdit = CreateFrame("EditBox", "RLSuiteIEAutoHour", self.ieAutoFooter, "InputBoxTemplate")
+    self.ieAutoHourEdit = CreateFrame("EditBox", "RLSuiteIEAutoHour", self.ieManualFooter, "InputBoxTemplate")
     self.ieAutoHourEdit:SetSize(34, 20)
     self.ieAutoHourEdit:SetPoint("LEFT", timeLbl, "RIGHT", 8, 0)
     self.ieAutoHourEdit:SetAutoFocus(false)
@@ -1638,11 +1605,11 @@ function GM:BuildAutoinviterPage()
     self.ieAutoHourEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
     self.ieAutoHourEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
 
-    local colonLbl = FontStr(self.ieAutoFooter, "OVERLAY", 12)
+    local colonLbl = FontStr(self.ieManualFooter, "OVERLAY", 12)
     colonLbl:SetPoint("LEFT", self.ieAutoHourEdit, "RIGHT", 2, 0)
     colonLbl:SetText(":")
 
-    self.ieAutoMinuteEdit = CreateFrame("EditBox", "RLSuiteIEAutoMinute", self.ieAutoFooter, "InputBoxTemplate")
+    self.ieAutoMinuteEdit = CreateFrame("EditBox", "RLSuiteIEAutoMinute", self.ieManualFooter, "InputBoxTemplate")
     self.ieAutoMinuteEdit:SetSize(34, 20)
     self.ieAutoMinuteEdit:SetPoint("LEFT", colonLbl, "RIGHT", 2, 0)
     self.ieAutoMinuteEdit:SetAutoFocus(false)
@@ -1651,7 +1618,7 @@ function GM:BuildAutoinviterPage()
     self.ieAutoMinuteEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
     self.ieAutoMinuteEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
 
-    local timeHint = FontStr(self.ieAutoFooter, "OVERLAY", 12)
+    local timeHint = FontStr(self.ieManualFooter, "OVERLAY", 12)
     timeHint:SetPoint("LEFT", self.ieAutoMinuteEdit, "RIGHT", 6, 0)
     timeHint:SetText(L["(server time)"])
     timeHint:SetTextColor(0.6, 0.6, 0.6)
@@ -1660,9 +1627,9 @@ function GM:BuildAutoinviterPage()
     -- Pannello lista manuale.
     -- ============================================================
     self.ieAutoManualBox = CreateFrame("Frame", nil, page)
-    self.ieAutoManualBox:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -38)
-    self.ieAutoManualBox:SetPoint("TOPRIGHT", page, "TOPRIGHT", -8, -38)
-    self.ieAutoManualBox:SetPoint("BOTTOM", self.ieAutoFooter, "TOP", 0, -4)
+    self.ieAutoManualBox:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -8)
+    self.ieAutoManualBox:SetPoint("TOPRIGHT", page, "TOPRIGHT", -8, -8)
+    self.ieAutoManualBox:SetPoint("BOTTOM", self.ieManualFooter, "TOP", 0, -2)
     RLSuite.utils:SkinBox(self.ieAutoManualBox)
 
     local namesLbl = FontStr(self.ieAutoManualBox, "OVERLAY", 12)
@@ -1697,20 +1664,61 @@ function GM:BuildAutoinviterPage()
     self.ieAutoNamesScroll = CreateFrame("ScrollFrame", "RLSuiteIEAutoNamesScroll", self.ieAutoNamesList, "UIPanelScrollFrameTemplate")
     self.ieAutoNamesScroll:SetPoint("TOPLEFT", self.ieAutoNamesList, "TOPLEFT", 0, 0)
     self.ieAutoNamesScroll:SetPoint("BOTTOMRIGHT", self.ieAutoNamesList, "BOTTOMRIGHT", -16, 0)
+    self.ieAutoNamesScroll:SetScript("OnSizeChanged", function(s, w, h)
+        if GM.ieAutoNamesContent and w and w > 40 then
+            GM.ieAutoNamesContent:SetWidth(w - 16)
+        end
+    end)
 
     self.ieAutoNamesContent = CreateFrame("Frame", nil, self.ieAutoNamesScroll)
     self.ieAutoNamesContent:SetSize(200, 10)
     self.ieAutoNamesScroll:SetScrollChild(self.ieAutoNamesContent)
+end
+
+function GM:BuildCalendarPage()
+    local area = self.ieTabGroup and self.ieTabGroup.border
+    if not area then return end
+
+    local page = CreateFrame("Frame", nil, area)
+    page:SetPoint("TOPLEFT", area, "TOPLEFT", 1, -1)
+    page:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -1, 1)
+    page:Hide()
+    self.ieCalPage = page
 
     -- ============================================================
-    -- Pannello evento di Calendario: riquadro con "Link or create an
-    -- event" + "Edit event", e sotto la copia esatta della schermata
-    -- evento del calendario di gioco.
+    -- Barra inferiore: solo i tasti (niente "Invite at").
+    -- ============================================================
+    self.ieCalFooter = CreateFrame("Frame", nil, page)
+    self.ieCalFooter:SetPoint("BOTTOMLEFT", page, "BOTTOMLEFT", 0, 0)
+    self.ieCalFooter:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", 0, 0)
+    self.ieCalFooter:SetHeight(50)
+
+    self.ieCalStatus = FontStr(self.ieCalFooter, "OVERLAY", 12)
+    self.ieCalStatus:SetPoint("BOTTOMLEFT", self.ieCalFooter, "BOTTOMLEFT", 8, 2)
+    self.ieCalStatus:SetPoint("RIGHT", self.ieCalFooter, "RIGHT", -8, 0)
+    self.ieCalStatus:SetJustifyH("LEFT")
+    self.ieCalStatus:SetText("")
+    self.ieCalStatus:SetTextColor(1, 0.82, 0)
+
+    self.ieCalNowBtn = CreateFrame("Button", nil, self.ieCalFooter, "UIPanelButtonTemplate")
+    self.ieCalNowBtn:SetSize(130, 24)
+    self.ieCalNowBtn:SetPoint("BOTTOMLEFT", self.ieCalFooter, "BOTTOMLEFT", 8, 22)
+    self.ieCalNowBtn:SetText(L["Auto invite now"])
+    self.ieCalNowBtn:SetScript("OnClick", function() self:AutoInviteNow("calendar") end)
+
+    self.ieCalUpdateBtn = CreateFrame("Button", nil, self.ieCalFooter, "UIPanelButtonTemplate")
+    self.ieCalUpdateBtn:SetSize(130, 24)
+    self.ieCalUpdateBtn:SetPoint("LEFT", self.ieCalNowBtn, "RIGHT", 8, 0)
+    self.ieCalUpdateBtn:SetText(L["Update"])
+    self.ieCalUpdateBtn:SetScript("OnClick", function() self:UpdateLinkedCalendarEvent() end)
+
+    -- ============================================================
+    -- Pannello evento di Calendario.
     -- ============================================================
     self.ieAutoCalBox = CreateFrame("Frame", nil, page)
-    self.ieAutoCalBox:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -38)
-    self.ieAutoCalBox:SetPoint("TOPRIGHT", page, "TOPRIGHT", -8, -38)
-    self.ieAutoCalBox:SetPoint("BOTTOM", self.ieAutoFooter, "TOP", 0, -4)
+    self.ieAutoCalBox:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -8)
+    self.ieAutoCalBox:SetPoint("TOPRIGHT", page, "TOPRIGHT", -8, -8)
+    self.ieAutoCalBox:SetPoint("BOTTOM", self.ieCalFooter, "TOP", 0, -2)
     RLSuite.utils:SkinBox(self.ieAutoCalBox)
 
     self.ieAutoLinkBtn = CreateFrame("Button", nil, self.ieAutoCalBox, "UIPanelButtonTemplate")
@@ -1719,137 +1727,135 @@ function GM:BuildAutoinviterPage()
     self.ieAutoLinkBtn:SetText(L["Link or create an event"])
     self.ieAutoLinkBtn:SetScript("OnClick", function() self:OpenCalendarToLink() end)
 
-    self.ieAutoEditBtn = CreateFrame("Button", nil, self.ieAutoCalBox, "UIPanelButtonTemplate")
-    self.ieAutoEditBtn:SetSize(120, 24)
-    self.ieAutoEditBtn:SetPoint("TOPRIGHT", self.ieAutoCalBox, "TOPRIGHT", -8, -8)
-    self.ieAutoEditBtn:SetText(L["Edit event"])
-    self.ieAutoEditBtn:SetScript("OnClick", function() self:EditLinkedCalendarEvent() end)
-    self.ieAutoEditBtn:Hide()
-
-    -- Area "mirror" (copia della CalendarViewEventFrame).
+    -- Area "mirror": come la vista evento del calendario, ma modificabile
+    -- inline e con lo stile grafico dell'addon.
     self.ieAutoMirror = CreateFrame("Frame", nil, self.ieAutoCalBox)
     self.ieAutoMirror:SetPoint("TOPLEFT", self.ieAutoCalBox, "TOPLEFT", 8, -40)
     self.ieAutoMirror:SetPoint("BOTTOMRIGHT", self.ieAutoCalBox, "BOTTOMRIGHT", -8, 8)
     self.ieAutoMirror:EnableMouse(true)
 
-    -- icona evento (60x60 come CalendarViewEventIcon)
+    -- icona evento
     self.ieAutoMirrorIcon = self.ieAutoMirror:CreateTexture(nil, "ARTWORK")
     self.ieAutoMirrorIcon:SetSize(60, 60)
     self.ieAutoMirrorIcon:SetPoint("TOPLEFT", self.ieAutoMirror, "TOPLEFT", 16, -26)
     self.ieAutoMirrorIcon:SetTexCoord(0, 1, 0, 1)
 
-    -- titolo (GameFontNormal, sinistra)
+    -- titolo
     self.ieAutoMirrorTitle = CalFontStr(self.ieAutoMirror, "OVERLAY", "GameFontNormal", 13)
     self.ieAutoMirrorTitle:SetPoint("TOPLEFT", self.ieAutoMirrorIcon, "TOPRIGHT", 2, 0)
     self.ieAutoMirrorTitle:SetPoint("RIGHT", self.ieAutoMirror, "RIGHT", -16, 0)
     self.ieAutoMirrorTitle:SetJustifyH("LEFT")
     self.ieAutoMirrorTitle:SetText("")
 
-    -- tipo evento (GameFontNormalSmall)
+    -- tipo evento
     self.ieAutoMirrorType = CalFontStr(self.ieAutoMirror, "OVERLAY", "GameFontNormalSmall", 11)
     self.ieAutoMirrorType:SetPoint("TOPLEFT", self.ieAutoMirrorTitle, "BOTTOMLEFT", 0, 0)
     self.ieAutoMirrorType:SetPoint("RIGHT", self.ieAutoMirror, "RIGHT", -16, 0)
     self.ieAutoMirrorType:SetJustifyH("LEFT")
     self.ieAutoMirrorType:SetText("")
 
-    -- creatore (GameFontNormalSmall)
+    -- creatore
     self.ieAutoMirrorCreator = CalFontStr(self.ieAutoMirror, "OVERLAY", "GameFontNormalSmall", 11)
     self.ieAutoMirrorCreator:SetPoint("TOPLEFT", self.ieAutoMirrorType, "BOTTOMLEFT", 0, 0)
     self.ieAutoMirrorCreator:SetPoint("RIGHT", self.ieAutoMirror, "RIGHT", -16, 0)
     self.ieAutoMirrorCreator:SetJustifyH("LEFT")
     self.ieAutoMirrorCreator:SetText("")
 
-    -- data (GameFontHighlightSmall)
+    -- data
     self.ieAutoMirrorDate = CalFontStr(self.ieAutoMirror, "OVERLAY", "GameFontHighlightSmall", 11)
     self.ieAutoMirrorDate:SetPoint("TOPLEFT", self.ieAutoMirrorCreator, "BOTTOMLEFT", 0, 0)
     self.ieAutoMirrorDate:SetPoint("RIGHT", self.ieAutoMirror, "RIGHT", -16, 0)
     self.ieAutoMirrorDate:SetJustifyH("LEFT")
     self.ieAutoMirrorDate:SetText("")
 
-    -- ora (GameFontHighlightSmall)
+    -- ora
     self.ieAutoMirrorTime = CalFontStr(self.ieAutoMirror, "OVERLAY", "GameFontHighlightSmall", 11)
     self.ieAutoMirrorTime:SetPoint("TOPLEFT", self.ieAutoMirrorDate, "BOTTOMLEFT", 0, 0)
     self.ieAutoMirrorTime:SetPoint("RIGHT", self.ieAutoMirror, "RIGHT", -16, 0)
     self.ieAutoMirrorTime:SetJustifyH("LEFT")
     self.ieAutoMirrorTime:SetText("")
 
-    -- box descrizione (tooltip background/border, come CalendarViewEventDescriptionContainer)
+    -- box descrizione (stile addon) con EditBox multi-riga scrollabile.
     self.ieAutoMirrorDescBox = CreateFrame("Frame", nil, self.ieAutoMirror)
-    self.ieAutoMirrorDescBox:SetPoint("TOPLEFT", self.ieAutoMirror, "TOPLEFT", 16, -95)
-    self.ieAutoMirrorDescBox:SetPoint("RIGHT", self.ieAutoMirror, "RIGHT", -16, 0)
+    self.ieAutoMirrorDescBox:SetPoint("TOPLEFT", self.ieAutoMirror, "TOPLEFT", 8, -95)
+    self.ieAutoMirrorDescBox:SetPoint("RIGHT", self.ieAutoMirror, "RIGHT", -8, 0)
     self.ieAutoMirrorDescBox:SetHeight(65)
-    self.ieAutoMirrorDescBox:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 8, edgeSize = 8,
-        insets = { left = 1, right = 1, top = 1, bottom = 1 },
-    })
-    self.ieAutoMirrorDescBox:SetBackdropColor(0, 0, 0, 0.9)
-    if TOOLTIP_DEFAULT_COLOR then
-        self.ieAutoMirrorDescBox:SetBackdropBorderColor(
-            TOOLTIP_DEFAULT_COLOR.r, TOOLTIP_DEFAULT_COLOR.g, TOOLTIP_DEFAULT_COLOR.b, 1)
-    end
+    RLSuite.utils:SkinBox(self.ieAutoMirrorDescBox)
 
-    self.ieAutoMirrorDescScroll = CreateFrame("ScrollFrame", "RLSuiteIEAutoEventDesc", self.ieAutoMirrorDescBox, "UIPanelScrollFrameTemplate")
-    self.ieAutoMirrorDescScroll:SetPoint("TOPLEFT", self.ieAutoMirrorDescBox, "TOPLEFT", 4, -4)
-    self.ieAutoMirrorDescScroll:SetPoint("BOTTOMRIGHT", self.ieAutoMirrorDescBox, "BOTTOMRIGHT", -18, 4)
+    self.ieAutoMirrorDesc = CreateFrame("EditBox", "RLSuiteIEAutoEventDesc", self.ieAutoMirrorDescBox)
+    self.ieAutoMirrorDesc:SetPoint("TOPLEFT", self.ieAutoMirrorDescBox, "TOPLEFT", 8, -6)
+    self.ieAutoMirrorDesc:SetPoint("BOTTOMRIGHT", self.ieAutoMirrorDescBox, "BOTTOMRIGHT", -8, 6)
+    self.ieAutoMirrorDesc:SetFont(FONT_FILE, 12, "")
+    self.ieAutoMirrorDesc:SetTextInsets(4, 4, 2, 2)
+    self.ieAutoMirrorDesc:SetMultiLine(true)
+    self.ieAutoMirrorDesc:SetAutoFocus(false)
+    self.ieAutoMirrorDesc:SetMaxLetters(255)
+    self.ieAutoMirrorDesc:EnableMouseWheel(true)
+    self.ieAutoMirrorDesc:SetScript("OnTextChanged", function(s, userInput)
+        if userInput then self:MarkCalendarDirty() end
+    end)
 
-    self.ieAutoMirrorDescContent = CreateFrame("Frame", nil, self.ieAutoMirrorDescScroll)
-    self.ieAutoMirrorDescContent:SetWidth(200)
-    self.ieAutoMirrorDescScroll:SetScrollChild(self.ieAutoMirrorDescContent)
+    -- box invitati (stile addon).
+    self.ieAutoMirrorInviteBox = CreateFrame("Frame", nil, self.ieAutoMirror)
+    self.ieAutoMirrorInviteBox:SetPoint("TOPLEFT", self.ieAutoMirrorDescBox, "BOTTOMLEFT", 0, -8)
+    self.ieAutoMirrorInviteBox:SetPoint("BOTTOMRIGHT", self.ieAutoMirror, "BOTTOMRIGHT", 0, 0)
+    RLSuite.utils:SkinBox(self.ieAutoMirrorInviteBox)
 
-    self.ieAutoMirrorDesc = CalFontStr(self.ieAutoMirrorDescContent, "OVERLAY", "GameFontNormalSmall", 11)
-    self.ieAutoMirrorDesc:SetPoint("TOPLEFT", self.ieAutoMirrorDescContent, "TOPLEFT", 0, 0)
-    self.ieAutoMirrorDesc:SetPoint("TOPRIGHT", self.ieAutoMirrorDescContent, "TOPRIGHT", 0, 0)
-    self.ieAutoMirrorDesc:SetJustifyH("LEFT")
-    self.ieAutoMirrorDesc:SetJustifyV("TOP")
-    self.ieAutoMirrorDesc:SetWordWrap(true)
-    self.ieAutoMirrorDesc:SetText("")
+    -- riga "invita un altro giocatore" in fondo al box.
+    self.ieCalInviteEdit = CreateFrame("EditBox", "RLSuiteIEAutoEventInviteEdit", self.ieAutoMirrorInviteBox, "InputBoxTemplate")
+    self.ieCalInviteEdit:SetHeight(20)
+    self.ieCalInviteEdit:SetPoint("BOTTOMLEFT", self.ieAutoMirrorInviteBox, "BOTTOMLEFT", 8, 6)
+    self.ieCalInviteEdit:SetPoint("RIGHT", self.ieAutoMirrorInviteBox, "RIGHT", -124, 6)
+    self.ieCalInviteEdit:SetAutoFocus(false)
+    self.ieCalInviteEdit:SetMaxLetters(32)
+    self.ieCalInviteEdit:SetScript("OnEnterPressed", function() self:CalendarAddInvitee() end)
+    self.ieCalInviteEdit:SetScript("OnEscapePressed", function(s) s:SetText(""); s:ClearFocus() end)
 
-    -- divisore sopra l'elenco invitati (come CalendarViewEventDivider)
-    self.ieAutoMirrorDivider = self.ieAutoMirror:CreateTexture(nil, "BORDER")
-    self.ieAutoMirrorDivider:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Divider")
-    self.ieAutoMirrorDivider:SetSize(303, 16)
-    self.ieAutoMirrorDivider:SetPoint("TOPLEFT", self.ieAutoMirrorDescBox, "BOTTOMLEFT", 6, -8)
-    self.ieAutoMirrorDivider:SetTexCoord(0, 0.75390625, 0, 0.5)
+    self.ieCalInviteBtn = CreateFrame("Button", nil, self.ieAutoMirrorInviteBox, "UIPanelButtonTemplate")
+    self.ieCalInviteBtn:SetSize(112, 20)
+    self.ieCalInviteBtn:SetPoint("BOTTOMRIGHT", self.ieAutoMirrorInviteBox, "BOTTOMRIGHT", -8, 6)
+    self.ieCalInviteBtn:SetText(L["Invite new member"])
+    self.ieCalInviteBtn:SetScript("OnClick", function() self:CalendarAddInvitee() end)
 
-    -- elenco partecipanti (copia di CalendarViewEventInviteList)
-    self.ieAutoMirrorInviteList = CreateFrame("ScrollFrame", "RLSuiteIEAutoEventInvites", self.ieAutoMirror, "UIPanelScrollFrameTemplate")
-    self.ieAutoMirrorInviteList:SetPoint("TOPLEFT", self.ieAutoMirrorDivider, "BOTTOMLEFT", 0, -4)
-    self.ieAutoMirrorInviteList:SetPoint("BOTTOMRIGHT", self.ieAutoMirror, "BOTTOMRIGHT", -8, 0)
+    -- elenco invitati (sopra la riga invita).
+    self.ieAutoMirrorInviteList = CreateFrame("ScrollFrame", "RLSuiteIEAutoEventInvites", self.ieAutoMirrorInviteBox, "UIPanelScrollFrameTemplate")
+    self.ieAutoMirrorInviteList:SetPoint("TOPLEFT", self.ieAutoMirrorInviteBox, "TOPLEFT", 6, -6)
+    self.ieAutoMirrorInviteList:SetPoint("BOTTOMRIGHT", self.ieAutoMirrorInviteBox, "BOTTOMRIGHT", -24, 34)
+    self.ieAutoMirrorInviteList:SetScript("OnSizeChanged", function(s, w, h)
+        if GM.ieAutoMirrorInviteContent and w and w > 40 then
+            GM.ieAutoMirrorInviteContent:SetWidth(w - 16)
+        end
+    end)
 
     self.ieAutoMirrorInviteContent = CreateFrame("Frame", nil, self.ieAutoMirrorInviteList)
     self.ieAutoMirrorInviteContent:SetSize(200, 10)
     self.ieAutoMirrorInviteList:SetScrollChild(self.ieAutoMirrorInviteContent)
 end
 
--- Aggiorna checkbox/pannelli/stato in base alla modalita' salvata.
-function GM:RefreshAutoinviter()
-    if not self.ieAutoPage then return end
+-- ============================================================
+-- Refresh delle due pagine.
+-- ============================================================
+function GM:RefreshManualPage()
     local db = self.autoinvite
-    if db.mode ~= "calendar" then db.mode = "manual" end
-    local manual = (db.mode == "manual")
-
-    if self.ieAutoManualCheck then self.ieAutoManualCheck:SetChecked(manual) end
-    if self.ieAutoCalendarCheck then self.ieAutoCalendarCheck:SetChecked(not manual) end
-    if self.ieAutoManualBox then
-        if manual then self.ieAutoManualBox:Show() else self.ieAutoManualBox:Hide() end
-    end
-    if self.ieAutoCalBox then
-        if manual then self.ieAutoCalBox:Hide() else self.ieAutoCalBox:Show() end
-    end
-    if manual then
-        self:BuildAutoNameListUI()
-    end
     if self.ieAutoHourEdit then self.ieAutoHourEdit:SetText(string.format("%02d", db.hour or 19)) end
     if self.ieAutoMinuteEdit then self.ieAutoMinuteEdit:SetText(string.format("%02d", db.minute or 0)) end
-
-    if not manual then self:RenderLinkedEvent() end
+    self:BuildAutoNameListUI()
     self:RefreshAutoinviterStatus()
     self:RefreshAutoinviterArmButton()
 end
 
--- Assicura che l'addon Blizzard_Calendar sia caricato (e' LoadOnDemand).
+function GM:RefreshCalendarPage()
+    self:RenderLinkedEvent()
+    self:RefreshCalendarButtons()
+    self:RefreshAutoinviterStatus()
+end
+
+-- Dispatcher (compatibilita'): aggiorna entrambe le pagine.
+function GM:RefreshAutoinviter()
+    self:RefreshManualPage()
+    self:RefreshCalendarPage()
+end
+
 function GM:EnsureCalendarLoaded()
     if LoadAddOn and (CalendarGetEventInfo == nil or CalendarGetEventIndex == nil) then
         pcall(LoadAddOn, "Blizzard_Calendar")
@@ -1944,50 +1950,130 @@ function GM:LinkOpenCalendarEvent()
         RLSuite.utils:Print(L["Create/save the event first, then tick 'Link to RLS'."])
         return false
     end
-    self.autoinvite.linkedEvent = snapshot
-    -- sincronizza l'orario di invito con quello dell'evento
-    self.autoinvite.hour = snapshot.hour
-    self.autoinvite.minute = snapshot.minute
-    if self.ieAutoHourEdit then self.ieAutoHourEdit:SetText(string.format("%02d", snapshot.hour)) end
-    if self.ieAutoMinuteEdit then self.ieAutoMinuteEdit:SetText(string.format("%02d", snapshot.minute)) end
-    self:SaveAutoinviter()
-    self:RenderLinkedEvent()
+    self:SetLinkedEvent(snapshot)
     RLSuite.utils:Print(string.format(L["Event linked: %s"], snapshot.title))
     return true
+end
+
+-- Salva l'evento collegato e azzera le modifiche pendenti.
+function GM:SetLinkedEvent(snapshot)
+    self.autoinvite.linkedEvent = snapshot
+    self:ResetCalendarWorking()
+    self:SaveAutoinviter()
+    self:RenderLinkedEvent()
 end
 
 -- Scollega l'evento.
 function GM:UnlinkCalendarEvent()
     self.autoinvite.linkedEvent = nil
+    self:ResetCalendarWorking()
     self:SaveAutoinviter()
     self:RenderLinkedEvent()
     RLSuite.utils:Print(L["Event unlinked."])
 end
 
--- Crea la checkbox "Link to RLS" dentro le schermate evento del calendario
--- (vista + modifica) e aggancia gli aggiornamenti. Chiamata una sola volta.
+-- Azzera la copia di lavoro (invitati + modifiche pendenti).
+function GM:ResetCalendarWorking()
+    self.calWorkingInvitees = nil
+    self.calAdded = {}
+    self.calRemoved = {}
+    self.calDirty = false
+    self:RefreshCalendarButtons()
+end
 
-
--- Apre il calendario di gioco sull'evento collegato, per modificarlo.
-function GM:EditLinkedCalendarEvent()
+-- Elenco invitati corrente (copia di lavoro, oppure lo snapshot).
+function GM:CalendarWorkingInvitees()
+    if type(self.calWorkingInvitees) == "table" then
+        return self.calWorkingInvitees
+    end
     local link = self.autoinvite and self.autoinvite.linkedEvent
-    if not link or not link.title then
-        RLSuite.utils:Print(L["No event linked yet."])
-        return
-    end
-    if not self:EnsureCalendarLoaded() then
-        RLSuite.utils:Print(L["Calendar addon could not be loaded."])
-        return
-    end
-    self:EnsureRLSCalendarUI()
-    if Calendar_Show then Calendar_Show() end
+    return (link and link.invitees) or {}
+end
 
-    -- naviga al mese dell'evento, poi trova e apre l'evento per titolo
+-- Copia lo snapshot nella working list (alla prima modifica).
+function GM:EnsureCalendarWorking()
+    if type(self.calWorkingInvitees) == "table" then return end
+    local src = self:CalendarWorkingInvitees()
+    self.calWorkingInvitees = {}
+    for _, inv in ipairs(src) do
+        self.calWorkingInvitees[#self.calWorkingInvitees + 1] = inv
+    end
+    self.calAdded = self.calAdded or {}
+    self.calRemoved = self.calRemoved or {}
+end
+
+-- Segna modifiche pendenti: attiva il tasto "Update".
+function GM:MarkCalendarDirty()
+    self.calDirty = true
+    self:RefreshCalendarButtons()
+end
+
+-- Attiva/disattiva il tasto "Update" in base alle modifiche pendenti.
+function GM:RefreshCalendarButtons()
+    if not self.ieCalUpdateBtn then return end
+    local hasLink = self.autoinvite and self.autoinvite.linkedEvent and self.autoinvite.linkedEvent.title
+    if self.calDirty and hasLink then
+        self.ieCalUpdateBtn:Enable()
+    else
+        self.ieCalUpdateBtn:Disable()
+    end
+end
+
+-- Aggiunge un giocatore alla lista invitati (pendente fino a "Update").
+function GM:CalendarAddInvitee()
+    if not self.ieCalInviteEdit then return end
+    local name = (self.ieCalInviteEdit:GetText() or ""):match("^%s*(.-)%s*$") or ""
+    if name == "" then return end
+    self:EnsureCalendarWorking()
+    for _, inv in ipairs(self.calWorkingInvitees) do
+        if inv.name == name then
+            self.ieCalInviteEdit:SetText("")
+            return
+        end
+    end
+    self.calWorkingInvitees[#self.calWorkingInvitees + 1] = {
+        name = name, className = "", class = "", status = 1, mod = "",
+    }
+    self.calAdded[#self.calAdded + 1] = name
+    self.ieCalInviteEdit:SetText("")
+    self:RenderAutoinviteMirrorInvites()
+    self:MarkCalendarDirty()
+end
+
+-- Rimuove un giocatore dalla lista invitati (pendente fino a "Update").
+function GM:CalendarRemoveInvitee(name)
+    self:EnsureCalendarWorking()
+    for i, inv in ipairs(self.calWorkingInvitees) do
+        if inv.name == name then
+            table.remove(self.calWorkingInvitees, i)
+            local wasAdded = false
+            for j, n in ipairs(self.calAdded) do
+                if n == name then
+                    table.remove(self.calAdded, j)
+                    wasAdded = true
+                    break
+                end
+            end
+            if not wasAdded then
+                self.calRemoved[#self.calRemoved + 1] = name
+            end
+            break
+        end
+    end
+    self:RenderAutoinviteMirrorInvites()
+    self:MarkCalendarDirty()
+end
+
+-- Apre l'evento collegato nelle API del calendario (per leggerlo/modificarlo).
+function GM:OpenLinkedCalendarEvent()
+    local link = self.autoinvite and self.autoinvite.linkedEvent
+    if not link or not link.title then return false end
+    if not self:EnsureCalendarLoaded() then return false end
     if CalendarSetAbsMonth and link.month and link.year then
         pcall(CalendarSetAbsMonth, link.month, link.year)
     end
-    local opened = false
     local day = link.eventDay or link.day
+    local opened = false
     if CalendarGetNumDayEvents and CalendarGetDayEvent and CalendarOpenEvent and day then
         local okN, n = pcall(CalendarGetNumDayEvents, 0, day)
         if okN and n and n > 0 then
@@ -2001,11 +2087,76 @@ function GM:EditLinkedCalendarEvent()
             end
         end
     end
-    -- fallback: usa gli identificativi salvati al momento del link
     if not opened then
-        pcall(CalendarOpenEvent, link.monthOffset or 0, link.eventDay, link.eventIndex)
+        pcall(CalendarOpenEvent, link.monthOffset or 0, link.eventDay or link.day, link.eventIndex)
+        opened = true
     end
+    return opened
 end
+
+-- Salva le modifiche pendenti nell'evento del calendario.
+function GM:UpdateLinkedCalendarEvent()
+    local link = self.autoinvite and self.autoinvite.linkedEvent
+    if not link or not link.title then
+        RLSuite.utils:Print(L["No event linked yet."])
+        return
+    end
+    if not self.calDirty then return end
+    if not self:EnsureCalendarLoaded() then
+        RLSuite.utils:Print(L["Calendar addon could not be loaded."])
+        return
+    end
+    if not self:OpenLinkedCalendarEvent() then
+        RLSuite.utils:Print(L["Could not open the linked event."])
+        return
+    end
+
+    -- descrizione
+    if self.ieAutoMirrorDesc and CalendarEventSetDescription then
+        local newDesc = self.ieAutoMirrorDesc:GetText() or ""
+        if newDesc ~= (link.description or "") then
+            pcall(CalendarEventSetDescription, newDesc)
+        end
+    end
+
+    -- invitati rimossi (indici decrescenti)
+    if CalendarEventRemoveInvite and CalendarEventGetNumInvites and CalendarEventGetInvite then
+        for _, name in ipairs(self.calRemoved or {}) do
+            local n = CalendarEventGetNumInvites() or 0
+            for i = n, 1, -1 do
+                local ok, iname = pcall(CalendarEventGetInvite, i)
+                if ok and iname == name then
+                    pcall(CalendarEventRemoveInvite, i)
+                    break
+                end
+            end
+        end
+    end
+
+    -- invitati aggiunti
+    if CalendarEventInvite then
+        for _, name in ipairs(self.calAdded or {}) do
+            pcall(CalendarEventInvite, name)
+        end
+    end
+
+    if CalendarUpdateEvent then
+        pcall(CalendarUpdateEvent)
+    end
+
+    -- ricattura lo snapshot aggiornato e azzera le modifiche
+    local snapshot = self:CaptureOpenCalendarEvent()
+    if snapshot then
+        self.autoinvite.linkedEvent = snapshot
+    end
+    self:ResetCalendarWorking()
+    self:SaveAutoinviter()
+    self:RenderLinkedEvent()
+    RLSuite.utils:Print(L["Event updated."])
+end
+
+-- Crea la checkbox "Link to RLS" dentro le schermate evento del calendario
+-- (vista + modifica) e aggancia gli aggiornamenti. Chiamata una sola volta.
 function GM:EnsureRLSCalendarUI()
     if self._rlsCalHooked then return end
     if not self:EnsureCalendarLoaded() then return end
@@ -2103,8 +2254,12 @@ function GM:RefreshRLSCalendarCheckboxes()
         end
     end
 
-    if isLinked then
-        self.autoinvite.linkedEvent = self:CaptureOpenCalendarEvent()
+    if isLinked and not self.calDirty then
+        local snap = self:CaptureOpenCalendarEvent()
+        if snap then
+            self.autoinvite.linkedEvent = snap
+            self:ResetCalendarWorking()
+        end
     end
 
     -- Checkbox della vista: riflette l'evento attualmente aperto.
@@ -2151,27 +2306,32 @@ end
 -- Copia ESATTA della schermata evento del calendario di gioco
 -- (CalendarViewEventFrame_Update). Disegna dallo snapshot collegato usando
 -- gli stessi font, colori e formati di Blizzard.
+-- Copia della schermata evento del calendario di gioco: mostra l'evento
+-- collegato e permette di modificare descrizione e invitati direttamente
+-- nell'addon (stile grafico dell'addon, font/colori di Blizzard).
 function GM:RenderLinkedEvent()
     local link = self.autoinvite and self.autoinvite.linkedEvent
 
     -- stato vuoto
     if not link or not link.title then
-        if self.ieAutoEditBtn then self.ieAutoEditBtn:Hide() end
         if self.ieAutoMirrorTitle then self.ieAutoMirrorTitle:SetText(L["No event linked yet."]) end
         if self.ieAutoMirrorType then self.ieAutoMirrorType:SetText("") end
         if self.ieAutoMirrorCreator then self.ieAutoMirrorCreator:SetText("") end
         if self.ieAutoMirrorDate then self.ieAutoMirrorDate:SetText("") end
         if self.ieAutoMirrorTime then self.ieAutoMirrorTime:SetText("") end
-        if self.ieAutoMirrorDesc then self.ieAutoMirrorDesc:SetText("") end
+        if self.ieAutoMirrorDesc then
+            self._calRendering = true
+            self.ieAutoMirrorDesc:SetText("")
+            self._calRendering = false
+        end
         if self.ieAutoMirrorIcon then
             self.ieAutoMirrorIcon:SetTexture("")
             if SetDesaturation then SetDesaturation(self.ieAutoMirrorIcon, false) end
         end
         self:ClearAutoinviteMirrorInvites()
+        self:RefreshCalendarButtons()
         return
     end
-
-    if self.ieAutoEditBtn then self.ieAutoEditBtn:Show() end
 
     local locked = link.locked
     local title = link.title or ""
@@ -2199,7 +2359,7 @@ function GM:RenderLinkedEvent()
         end
     end
 
-    -- tipo evento ("Raid", ecc.)
+    -- tipo evento
     local typeName = ""
     if CalendarEventGetTypes then
         local ok, name = pcall(function()
@@ -2217,7 +2377,7 @@ function GM:RenderLinkedEvent()
         end
     end
 
-    -- creatore ("Created by X")
+    -- creatore
     if self.ieAutoMirrorCreator then
         local creator = link.creator
         if creator and creator ~= "" then
@@ -2233,7 +2393,7 @@ function GM:RenderLinkedEvent()
         end
     end
 
-    -- data (FULLDATE: "weekday, month day, year")
+    -- data + ora
     if self.ieAutoMirrorDate then
         if FULLDATE then
             self.ieAutoMirrorDate:SetFormattedText(FULLDATE,
@@ -2243,28 +2403,22 @@ function GM:RenderLinkedEvent()
         end
         self.ieAutoMirrorDate:SetTextColor(hr, hg, hb)
     end
-
-    -- ora (GameTime_GetFormattedTime)
     if self.ieAutoMirrorTime then
         self.ieAutoMirrorTime:SetText(self:CalendarFormattedTime(link.hour, link.minute))
         self.ieAutoMirrorTime:SetTextColor(hr, hg, hb)
     end
 
-    -- descrizione
-    if self.ieAutoMirrorDesc then
+    -- descrizione (EditBox; non sovrascrivere se ci sono modifiche pendenti)
+    if self.ieAutoMirrorDesc and not self.calDirty then
+        self._calRendering = true
         self.ieAutoMirrorDesc:SetText(link.description or "")
-        if locked then
-            self.ieAutoMirrorDesc:SetTextColor(gr, gg, gb)
-        else
-            self.ieAutoMirrorDesc:SetTextColor(nr, ng, nb)
-        end
-        if self.ieAutoMirrorDescContent and self.ieAutoMirrorDesc.GetStringHeight then
-            self.ieAutoMirrorDescContent:SetHeight(math.max(self.ieAutoMirrorDesc:GetStringHeight(), 1))
-        end
+        self._calRendering = false
     end
 
-    self:RenderAutoinviteMirrorInvites(link)
+    self:RenderAutoinviteMirrorInvites()
+    self:RefreshCalendarButtons()
 end
+
 -- Svuota l'elenco invitati del mirror.
 function GM:ClearAutoinviteMirrorInvites()
     for _, row in ipairs(self._autoMirrorInviteRows or {}) do
@@ -2274,7 +2428,6 @@ function GM:ClearAutoinviteMirrorInvites()
     self._autoMirrorInviteRows = {}
 end
 
--- Nome localizzato dello stato di un invitato (come il calendario di gioco).
 -- Nome localizzato dello stato di un invitato (CALENDAR_STATUS_*, come il
 -- calendario di gioco).
 local function InviteStatusText(status)
@@ -2310,15 +2463,19 @@ local function InviteStatusColor(status)
     local f = fallback[tonumber(status) or 1] or { 1, 1, 1 }
     return f[1], f[2], f[3]
 end
-function GM:RenderAutoinviteMirrorInvites(link)
+
+-- Disegna l'elenco invitati del mirror (nome+classe colorati, stato, X).
+function GM:RenderAutoinviteMirrorInvites()
     self:ClearAutoinviteMirrorInvites()
     if not self.ieAutoMirrorInviteContent then return end
     local content = self.ieAutoMirrorInviteContent
+    local invites = self:CalendarWorkingInvitees()
     local y = 0
-    for _, invite in ipairs(link.invitees or {}) do
+    for _, invite in ipairs(invites) do
         local row = CreateFrame("Frame", nil, content)
-        row:SetSize(240, 16)
+        row:SetHeight(16)
         row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+        row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
 
         local modIcon = row:CreateTexture(nil, "OVERLAY")
         modIcon:SetSize(14, 14)
@@ -2334,13 +2491,11 @@ function GM:RenderAutoinviteMirrorInvites(link)
             modIcon:Hide()
         end
 
-        -- nome + classe colorati come RAID_CLASS_COLORS (come Blizzard)
-        local classFilename = invite.class
-        local r, g, b = CalClassColor(classFilename)
+        local r, g, b = CalClassColor(invite.class)
 
         local nameFS = FontStr(row, "OVERLAY", 12)
         nameFS:SetPoint("LEFT", row, "LEFT", 16, 0)
-        nameFS:SetWidth(120)
+        nameFS:SetWidth(110)
         nameFS:SetJustifyH("LEFT")
         nameFS:SetText(invite.name)
         nameFS:SetTextColor(r, g, b)
@@ -2350,8 +2505,19 @@ function GM:RenderAutoinviteMirrorInvites(link)
         classFS:SetText(invite.className or "")
         classFS:SetTextColor(r, g, b)
 
+        local nm = invite.name
+        local xBtn = CreateFrame("Button", nil, row)
+        xBtn:SetSize(14, 14)
+        xBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        row.xBtn = xBtn
+        local xText = FontStr(xBtn, "OVERLAY", 11)
+        xText:SetPoint("CENTER", xBtn, "CENTER", 0, 0)
+        xText:SetText("x")
+        xText:SetTextColor(0.8, 0.2, 0.2)
+        xBtn:SetScript("OnClick", function() self:CalendarRemoveInvitee(nm) end)
+
         local statusFS = FontStr(row, "OVERLAY", 11)
-        statusFS:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        statusFS:SetPoint("RIGHT", xBtn, "LEFT", -4, 0)
         local sr, sg, sb = InviteStatusColor(invite.status)
         statusFS:SetTextColor(sr, sg, sb)
         statusFS:SetText(InviteStatusText(invite.status))
@@ -2364,18 +2530,17 @@ function GM:RenderAutoinviteMirrorInvites(link)
         self.ieAutoMirrorInviteList:UpdateScrollChildRect()
     end
 end
--- Costruisce la lista dei nomi da invitare per la modalita' corrente.
-function GM:BuildAutoinviteQueue()
+
+-- Costruisce la lista dei nomi da invitare (manuale o evento collegato).
+function GM:BuildAutoinviteQueue(mode)
     local db = self.autoinvite
+    mode = mode or db.mode or "manual"
     local queue = {}
-    if db.mode == "calendar" then
-        local link = db.linkedEvent
-        if link then
-            for _, invite in ipairs(link.invitees or {}) do
-                -- CALENDAR_INVITESTATUS_DECLINED == 3
-                if invite.name and invite.name ~= "" and invite.status ~= 3 then
-                    queue[#queue + 1] = invite.name
-                end
+    if mode == "calendar" then
+        for _, invite in ipairs(self:CalendarWorkingInvitees()) do
+            -- CALENDAR_INVITESTATUS_DECLINED == 3
+            if invite.name and invite.name ~= "" and invite.status ~= 3 then
+                queue[#queue + 1] = invite.name
             end
         end
     else
@@ -2390,7 +2555,6 @@ function GM:BuildAutoinviteQueue()
     return queue
 end
 
--- Legge HH:MM dai campi e li salva.
 function GM:ReadAutoinviterTime()
     local db = self.autoinvite
     local h = tonumber(self.ieAutoHourEdit and self.ieAutoHourEdit:GetText()) or db.hour or 19
@@ -2415,7 +2579,7 @@ function GM:StartAutoinviter()
     local db = self.autoinvite
     self:ReadAutoinviterTime()
 
-    local queue = self:BuildAutoinviteQueue()
+    local queue = self:BuildAutoinviteQueue("manual")
     if #queue == 0 then
         RLSuite.utils:Print(L["Autoinviter: no names to invite."])
         return
@@ -2572,8 +2736,9 @@ function GM:BuildAutoNameListUI()
     local y = 0
     for i, name in ipairs(names) do
         local row = CreateFrame("Button", nil, content)
-        row:SetSize(220, 16)
+        row:SetHeight(16)
         row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+        row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
         row:EnableMouse(true)
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
@@ -2625,10 +2790,9 @@ function GM:BuildAutoNameListUI()
 end
 
 -- "Auto invite now": invita subito tutta la lista, senza aspettare l'ora.
-function GM:AutoInviteNow()
-    local db = self.autoinvite
-    if not db then return end
-    local queue = self:BuildAutoinviteQueue()
+-- "Auto invite now": invita subito tutta la lista, senza aspettare l'ora.
+function GM:AutoInviteNow(mode)
+    local queue = self:BuildAutoinviteQueue(mode)
     if #queue == 0 then
         RLSuite.utils:Print(L["Autoinviter: no names to invite."])
         return
@@ -2640,19 +2804,19 @@ function GM:AutoInviteNow()
 end
 
 function GM:RefreshAutoinviterStatus()
-    if not self.ieAutoStatus then return end
+    local text = ""
     if self.autoinviteState == "waiting" then
         local h, m = GetGameTime()
         local now = h * 60 + m
         local left = math.max(0, (self.autoinviteTarget or now) - now)
-        self.ieAutoStatus:SetText(string.format(L["Armed: inviting in %d:%02d (%d names)"],
-            math.floor(left / 60), left % 60, #(self.autoinviteQueue or {})))
+        text = string.format(L["Armed: inviting in %d:%02d (%d names)"],
+            math.floor(left / 60), left % 60, #(self.autoinviteQueue or {}))
     elseif self.autoinviteState == "inviting" then
-        self.ieAutoStatus:SetText(string.format(L["Inviting %d/%d..."],
-            self.autoinviteIndex or 0, #(self.autoinviteQueue or {})))
-    else
-        self.ieAutoStatus:SetText("")
+        text = string.format(L["Inviting %d/%d..."],
+            self.autoinviteIndex or 0, #(self.autoinviteQueue or {}))
     end
+    if self.ieAutoStatus then self.ieAutoStatus:SetText(text) end
+    if self.ieCalStatus then self.ieCalStatus:SetText(text) end
 end
 
 function GM:RefreshAutoinviterArmButton()
@@ -2862,8 +3026,10 @@ function GM:OpenWhisplist()
     end
     self:UpdateWhisplist()
     self:UpdateWLGroups()
-    if self.ieActiveTab == "auto" then
-        self:RefreshAutoinviter()
+    if self.ieActiveTab == "manual" then
+        self:RefreshManualPage()
+    elseif self.ieActiveTab == "calendar" then
+        self:RefreshCalendarPage()
     end
     RLSuite.utils:RaiseWindow(self.mainFrame)
 end

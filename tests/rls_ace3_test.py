@@ -862,22 +862,47 @@ rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = { title='Test Raid', in
 rt.execute("Q = RLSuite.groupmaking:BuildAutoinviteQueue()")
 check(bool(rt.eval("table.concat(Q, ',') == 'Fake1'")), "declined invitees are skipped by the calendar queue")
 
-# --- footer: time + invite buttons live at the bottom (no clipping) ---
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoFooter ~= nil")), "autoinviter footer frame exists")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoArmBtn:GetParent() == RLSuite.groupmaking.ieAutoFooter")), "arm button anchored to the footer")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoNowBtn:GetParent() == RLSuite.groupmaking.ieAutoFooter")), "now button anchored to the footer")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoHourEdit:GetParent() == RLSuite.groupmaking.ieAutoFooter")), "hour edit anchored to the footer")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoMinuteEdit:GetParent() == RLSuite.groupmaking.ieAutoFooter")), "minute edit anchored to the footer")
+# --- three real tabs: Whisplist / Manual list / Calendar event ---
+check(bool(rt.eval("RLSuite.groupmaking.ieManualPage ~= nil")), "Manual list is its own tab page")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalPage ~= nil")), "Calendar event is its own tab page")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoPage == nil")), "old combined 'Autoinviter' page removed")
 
-# --- 'Edit event' button (opens the in-game calendar edit view) ---
-check(bool(rt.eval("type(RLSuite.groupmaking.EditLinkedCalendarEvent) == 'function'")), "EditLinkedCalendarEvent wired")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoEditBtn ~= nil")), "Edit event button exists")
-rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = nil")
-rt.execute("RLSuite.groupmaking:RenderLinkedEvent()")
-check(bool(rt.eval("not RLSuite.groupmaking.ieAutoEditBtn:IsShown()")), "Edit event button hidden when no event linked")
+# --- manual footer: time + invite buttons live at the bottom (no clipping) ---
+check(bool(rt.eval("RLSuite.groupmaking.ieManualFooter ~= nil")), "manual footer frame exists")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoArmBtn:GetParent() == RLSuite.groupmaking.ieManualFooter")), "arm button anchored to the footer")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoNowBtn:GetParent() == RLSuite.groupmaking.ieManualFooter")), "now button anchored to the footer")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoHourEdit:GetParent() == RLSuite.groupmaking.ieManualFooter")), "hour edit anchored to the footer")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoMinuteEdit:GetParent() == RLSuite.groupmaking.ieManualFooter")), "minute edit anchored to the footer")
+
+# --- calendar footer: no 'Invite at', buttons only ---
+check(bool(rt.eval("RLSuite.groupmaking.ieCalFooter ~= nil")), "calendar footer frame exists")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalUpdateBtn ~= nil")), "Update button exists")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalInviteEdit ~= nil")), "'invite a player' edit box exists")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalInviteBtn ~= nil")), "'Invite new member' button exists")
+
+# --- Update button activates only on pending changes ---
+check(bool(rt.eval("type(RLSuite.groupmaking.UpdateLinkedCalendarEvent) == 'function'")), "UpdateLinkedCalendarEvent wired")
+check(bool(rt.eval("type(RLSuite.groupmaking.OpenLinkedCalendarEvent) == 'function'")), "OpenLinkedCalendarEvent wired")
 rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = { title='Test Raid', description='d', creator='c', eventType=1, weekday=1, month=9, day=12, year=2026, hour=20, minute=30, invitees={} }")
+rt.execute("RLSuite.groupmaking:ResetCalendarWorking()")
 rt.execute("RLSuite.groupmaking:RenderLinkedEvent()")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoEditBtn:IsShown()")), "Edit event button shown when event linked")
+check(bool(rt.eval("not RLSuite.groupmaking.ieCalUpdateBtn:IsEnabled()")), "Update button disabled when no changes")
+rt.execute("RLSuite.groupmaking:MarkCalendarDirty()")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalUpdateBtn:IsEnabled()")), "Update button enabled after a change")
+rt.execute("RLSuite.groupmaking:ResetCalendarWorking()")
+check(bool(rt.eval("not RLSuite.groupmaking.ieCalUpdateBtn:IsEnabled()")), "Update button disabled after reset")
+
+# --- calendar invite list: add/remove mark pending changes ---
+rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = { title='Test Raid', invitees={ { name='Fake1', className='Warrior', class='WARRIOR', status=2, mod='CREATOR' } } }")
+rt.execute("RLSuite.groupmaking:ResetCalendarWorking()")
+rt.execute("RLSuite.groupmaking.ieCalInviteEdit:SetText('Newbie')")
+rt.execute("RLSuite.groupmaking:CalendarAddInvitee()")
+check(bool(rt.eval("#RLSuite.groupmaking:CalendarWorkingInvitees() == 2")), "adding a member grows the working invite list")
+check(bool(rt.eval("RLSuite.groupmaking.calDirty == true")), "adding a member marks changes pending")
+check(bool(rt.eval("RLSuite.groupmaking._autoMirrorInviteRows[2] ~= nil and RLSuite.groupmaking._autoMirrorInviteRows[2].xBtn ~= nil")), "invite rows have an X button")
+rt.execute("RLSuite.groupmaking:CalendarRemoveInvitee('Fake1')")
+check(bool(rt.eval("#RLSuite.groupmaking:CalendarWorkingInvitees() == 1")), "removing a member shrinks the working invite list")
+check(bool(rt.eval("RLSuite.groupmaking.calRemoved[1] == 'Fake1'")), "removed member tracked for update")
 
 # --- manual list: X button removes the player ---
 rt.execute("RLSuite.groupmaking.autoinvite.names = {}")
