@@ -738,8 +738,8 @@ end
 -- ============================================================
 -- MINIMAP ICON
 -- Fazione: personaggio dell'Orda -> hordeicon, altrimenti allianceicon
--- (entrambe .blp, come l'icona SaveRaid: le .tga originali non venivano
--- renderizzate dal client).
+-- (file .blp forniti dall'utente, con fallback sul .tga originale).
+-- L'icona e' QUADRATA 32x32 e riempie tutto il bottone, senza anellino.
 -- Click sinistro  = apre/chiude la main bar di RLS.
 -- Click destro    = apre la Config.
 -- Shift + click sinistro + drag = sposta l'icona lungo la minimappa
