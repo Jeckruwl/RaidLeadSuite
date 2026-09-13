@@ -810,6 +810,38 @@ function RLSuite:OnMinimapRetry()
     self:EnsureMinimapIcon()
 end
 
+-- Tiene il bottone della minimappa SEMPRE sopra lo sfondo della barra in cui
+-- viene raccolto (MinimapButtonFrame e simili). MBF ripara i livelli durante
+-- i propri scan; qui li ripristiniamo subito, in modo deterministico e
+-- indipendente dall'ordine di caricamento/scan.
+function RLSuite:KeepMinimapButtonOnTop()
+    local btn = self.minimapIcon
+    if not btn or not btn.SetFrameLevel or not btn.SetFrameStrata then
+        -- Il bottone non c'e' piu': ferma il timer.
+        if self._mmTopTimer and self.CancelTimer then
+            self:CancelTimer(self._mmTopTimer, true)
+        end
+        self._mmTopTimer = nil
+        return
+    end
+
+    local par = (btn.GetParent and btn:GetParent()) or nil
+    local base = 0
+    if par and par.GetFrameLevel then
+        base = tonumber(par:GetFrameLevel()) or 0
+    end
+
+    -- Livello ben sopra quello del genitore (e quindi sopra il suo sfondo),
+    -- qualunque valore usi l'addon che raccoglie i bottoni.
+    local want = base + 50
+    if (tonumber(btn:GetFrameLevel()) or 0) < want then
+        btn:SetFrameLevel(want)
+    end
+    if btn:GetFrameStrata() ~= "MEDIUM" then
+        btn:SetFrameStrata("MEDIUM")
+    end
+end
+
 -- Crea l'icona della minimappa (una sola volta, al login o appena la
 -- minimappa e' disponibile).
 function RLSuite:CreateMinimapIcon()
@@ -828,11 +860,11 @@ function RLSuite:CreateMinimapIcon()
     -- escludere i pin della minimappa e lo ignorerebbe.
     local btn = CreateFrame("Button", "RLSuiteMinimapButton", Minimap)
     btn:SetSize(32, 32)
-    -- Strata/livello standard da bottone minimappa: visibile sul bordo della
-    -- minimappa finche' MBF non lo raccoglie; dopo la raccolta e' MBF a
-    -- posizionarlo nella barra.
+    -- Strata/livello iniziali: visibile sul bordo della minimappa finche' MBF
+    -- non lo raccoglie; il livello viene poi gestito da KeepMinimapButtonOnTop
+    -- per restare SEMPRE sopra lo sfondo della barra di MBF.
     btn:SetFrameStrata("MEDIUM")
-    btn:SetFrameLevel(8)
+    btn:SetFrameLevel(10)
 
     -- ICONA DELL'UTENTE da media/ (priorita' assoluta): hordeicon per
     -- l'Orda, allianceicon altrimenti. Quadrata 32x32, riempie il bottone.
@@ -912,6 +944,15 @@ function RLSuite:CreateMinimapIcon()
     btn:Show()
     self.minimapIcon = btn
     self:PlaceMinimapIcon()
+
+    -- SELF-HEAL dello z-order: MBF (e addon simili) riparentano il bottone e
+    -- durante i propri scan ne reimpostano strata/livello. Un timer leggero
+    -- riporta il livello SEMPRE sopra lo sfondo della barra, cosi' il bottone
+    -- non finisce mai "sotto il quadrato" (il bug prima cambiava tra /reload
+    -- e logout/login perche' dipendeva dall'ordine degli scan).
+    if self.ScheduleRepeatingTimer and not self._mmTopTimer then
+        self._mmTopTimer = self:ScheduleRepeatingTimer("KeepMinimapButtonOnTop", 0.5)
+    end
 
     -- Diagnostica: al login stampa il percorso risolto e l'esito del
     -- caricamento, cosi' da verificare subito se l'icona e' stata trovata.
