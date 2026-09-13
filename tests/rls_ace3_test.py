@@ -846,8 +846,7 @@ check(bool(rt.eval("#RLSuite:DebugRoster() == 5")), "swapping keeps the roster s
 
 # --- Calendar Event tab redo: editable event + class sidebar ---
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoCalBox ~= nil")), "Calendar Event tab has the event box")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoLinkBtn ~= nil")), "'Link or create an event' button exists")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoLinkBtn:GetText() == 'Link or create an event'")), "'Link or create an event' button is labelled correctly")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoLinkBtn == nil")), "'Link or create an event' button removed")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalTitleEdit ~= nil")), "editable title field exists")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalTypeDD ~= nil")), "editable type dropdown exists")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalDayEdit ~= nil and RLSuite.groupmaking.ieCalMonthDD ~= nil and RLSuite.groupmaking.ieCalYearEdit ~= nil")), "editable day/month/year controls exist")
@@ -917,6 +916,7 @@ check(bool(rt.eval("RLSuite.groupmaking.ieCalAtBtn ~= nil")), "'Autoinvite at se
 check(bool(rt.eval("RLSuite.groupmaking.ieCalAtBtn:GetText() == 'Autoinvite at set time'")), "'Autoinvite at set time' is labelled correctly")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalNowBtn ~= nil")), "'Auto invite now' button exists")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalUpdateBtn ~= nil")), "Update button exists")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalUpdateBtn:GetText() == 'Create/Update'")), "Update button reads 'Create/Update'")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalInviteEdit ~= nil")), "'invite a player' edit box exists")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalInviteBtn ~= nil")), "'Invite new member' button exists")
 

@@ -1782,26 +1782,17 @@ function GM:BuildCalendarPage()
     self.ieCalNowBtn:SetScript("OnClick", function() self:AutoInviteNow("calendar") end)
 
     self.ieCalUpdateBtn = CreateFrame("Button", nil, self.ieCalFooter, "UIPanelButtonTemplate")
-    self.ieCalUpdateBtn:SetSize(66, 24)
+    self.ieCalUpdateBtn:SetSize(104, 24)
     self.ieCalUpdateBtn:SetPoint("LEFT", self.ieCalNowBtn, "RIGHT", 6, 0)
-    self.ieCalUpdateBtn:SetText(L["Update"])
+    self.ieCalUpdateBtn:SetText(L["Create/Update"])
     self.ieCalUpdateBtn:SetScript("OnClick", function() self:UpdateLinkedCalendarEvent() end)
     self.ieCalUpdateBtn:Disable()
-
-    -- ============================================================
-    -- Tasto link in alto.
-    -- ============================================================
-    self.ieAutoLinkBtn = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
-    self.ieAutoLinkBtn:SetSize(190, 24)
-    self.ieAutoLinkBtn:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -8)
-    self.ieAutoLinkBtn:SetText(L["Link or create an event"])
-    self.ieAutoLinkBtn:SetScript("OnClick", function() self:OpenCalendarToLink() end)
 
     -- ============================================================
     -- Pannello evento: colonna principale modificabile + sidebar classi.
     -- ============================================================
     self.ieAutoCalBox = CreateFrame("Frame", nil, page)
-    self.ieAutoCalBox:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -36)
+    self.ieAutoCalBox:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -8)
     self.ieAutoCalBox:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -8, 54)
     RLSuite.utils:SkinBox(self.ieAutoCalBox)
 

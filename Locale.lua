@@ -81,7 +81,6 @@ do
     L["Autoinviter"] = true
     L["Manual list"] = true
     L["Calendar event"] = true
-    L["Link or create an event"] = true
     L["Link to RLS"] = true
     L["Open your raid event and tick 'Link to RLS'."] = true
     L["Create/save the event first, then tick 'Link to RLS'."] = true
@@ -93,7 +92,7 @@ do
     L["Add player"] = true
     L["Enter to add"] = true
     L["Enter to add - click X to remove"] = true
-    L["Update"] = true
+    L["Create/Update"] = true
     L["Invite new member"] = true
     L["Event updated."] = true
     L["Could not open the linked event."] = true
