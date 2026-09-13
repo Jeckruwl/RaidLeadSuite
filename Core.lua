@@ -536,6 +536,8 @@ function RLSuite:ChatCommand(input)
         if self.mainWindow then self.mainWindow:ShowTab("ms") end
     elseif msg == "loot" then
         if self.mainWindow then self.mainWindow:ShowTab("loot") end
+    elseif msg == "minimap" then
+        self:DiagnoseMinimapIcon()
     elseif msg == "config" then
         if self.config then self.config:Toggle() end
     elseif msg == "" then
@@ -718,7 +720,10 @@ function RLSuite:DetectAddonFolder()
         if n and n > 0 then
             for i = 1, n do
                 local name, title = GetAddOnInfo(i)
-                if title and (title:find("RLSuite", 1, true) or title:find("Raid Leading", 1, true)) then
+                local t = tostring(title or ""):lower()
+                local nm = tostring(name or ""):lower()
+                if t:find("rlsuite", 1, true) or t:find("raid leading", 1, true)
+                    or nm:find("raidlead", 1, true) then
                     folder = name
                     break
                 end
@@ -783,9 +788,15 @@ function RLSuite:CreateMinimapIcon()
     btn:SetFrameStrata("MEDIUM")
     btn:SetFrameLevel(8)
 
+    -- Backdrop QUADRATO a colore pieno (nessun file da caricare): il bottone
+    -- non puo' MAI risultare invisibile e fa da sfondo all'icona dell'utente.
+    local bg = btn:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(btn)
+    bg:SetColorTexture(0.09, 0.09, 0.11, 1)
+
     -- ICONA DELL'UTENTE da media/: hordeicon per l'Orda, allianceicon
-    -- altrimenti. Quadrata 32x32, riempie tutto il bottone, nessun anellino
-    -- e nessuna icona di gioco. Solo i file .blp forniti dall'utente.
+    -- altrimenti. Quadrata 32x32, riempie tutto il bottone. Solo i file
+    -- .blp/.tga forniti dall'utente, nessuna icona di gioco.
     local file = self:IsHorde() and "media\\hordeicon.blp" or "media\\allianceicon.blp"
     local tex = btn:CreateTexture(nil, "ARTWORK")
     tex:SetAllPoints(btn)
@@ -892,6 +903,36 @@ function RLSuite:SaveMinimapIconPosition(btn)
     end
     mm.angle = angle
     self:PlaceMinimapIcon()
+end
+
+-- Diagnostica completa dell'icona minimappa (/rls minimap): stampa cartella
+-- rilevata, percorso risolto, stato della texture, posizione e visibilita'.
+function RLSuite:DiagnoseMinimapIcon()
+    local p = function(t) if self.utils and self.utils.Print then self.utils:Print(t) end end
+    p("|cff00ccffRLSuite minimap diagnostic:|r")
+    p("  baseName: " .. tostring(self.baseName))
+    p("  detected folder: " .. tostring(self:DetectAddonFolder()))
+    p("  faction: " .. (self:IsHorde() and "Horde" or "Alliance"))
+    local btn = self.minimapIcon
+    if not btn then
+        p("|cffff0000  minimap button: NOT CREATED|r")
+        return
+    end
+    p("  button shown: " .. tostring(btn:IsShown()))
+    if btn.GetLeft and btn.GetBottom then
+        p("  button pos: " .. tostring(btn:GetLeft()) .. ", " .. tostring(btn:GetBottom()))
+    end
+    local tex = btn.icon
+    if tex then
+        local tp = tex:GetTexture()
+        if type(tp) == "string" then
+            p("  icon texture: " .. tp)
+        else
+            p("|cffff0000  icon texture: NOT LOADED (path/folder wrong, or file missing)|r")
+        end
+        p("  icon texture region size: " .. tostring(tex:GetWidth()) .. "x" .. tostring(tex:GetHeight()))
+    end
+    p("  expected path: " .. self:AddonTexture(self:IsHorde() and "media\\hordeicon.blp" or "media\\allianceicon.blp"))
 end
 
 function RLSuite:InRaid()
