@@ -826,15 +826,8 @@ function RLSuite:CreateMinimapIcon()
     btn:SetFrameStrata("MEDIUM")
     btn:SetFrameLevel(8)
 
-    -- Backdrop QUADRATO a colore pieno (nessun file da caricare): il bottone
-    -- non puo' MAI risultare invisibile e fa da sfondo all'icona dell'utente.
-    local bg = btn:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints(btn)
-    bg:SetColorTexture(0.09, 0.09, 0.11, 1)
-
-    -- ICONA DELL'UTENTE da media/: hordeicon per l'Orda, allianceicon
-    -- altrimenti. Quadrata 32x32, riempie tutto il bottone. Solo i file
-    -- .blp/.tga forniti dall'utente, nessuna icona di gioco.
+    -- ICONA DELL'UTENTE da media/ (priorita' assoluta): hordeicon per
+    -- l'Orda, allianceicon altrimenti. Quadrata 32x32, riempie il bottone.
     local file = self:IsHorde() and "media\\hordeicon.blp" or "media\\allianceicon.blp"
     local tex = btn:CreateTexture(nil, "ARTWORK")
     tex:SetAllPoints(btn)
@@ -847,6 +840,17 @@ function RLSuite:CreateMinimapIcon()
         tex:SetTexture(self:AddonTexture(tgafile))
     end
     btn.icon = tex
+
+    -- Sfondo quadrato dietro l'icona (OPZIONALE): niente SetColorTexture
+    -- (non disponibile su tutti i client 3.3.5), usiamo la texture bianca
+    -- standard + SetVertexColor. E' isolato in un pcall: se dovesse fallire
+    -- per qualunque motivo NON deve impedire la creazione del bottone.
+    local ok = pcall(function()
+        local bg = btn:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints(btn)
+        bg:SetTexture("Interface\\Buttons\\WHITE8x8")
+        bg:SetVertexColor(0.09, 0.09, 0.11, 1)
+    end)
 
     btn:SetMovable(true)
     btn:EnableMouse(true)
