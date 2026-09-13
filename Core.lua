@@ -185,7 +185,19 @@ function RLSuite:OnEnable()
     self:RegisterEvent("CHAT_MSG_RAID", "OnRaidMessage")
     self:RegisterEvent("CHAT_MSG_RAID_LEADER", "OnRaidMessage")
     self:RegisterEvent("CHAT_MSG_LOOT", "OnLootMessage")
+    self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     self:InitModules()
+    local ok, err = pcall(self.CreateMinimapIcon, self)
+    if not ok and self.utils and self.utils.Print then
+        self.utils:Print(string.format(L["RLSuite minimap error: %s"], tostring(err)))
+    end
+end
+
+-- La minimappa (frame globale "Minimap") non sempre esiste gia' al
+-- PLAYER_LOGIN (dipende dal client e dagli addon di minimappa caricati):
+-- creiamo/riproviamo l'icona quando entriamo nel mondo, dove Minimap c'e'
+-- di sicuro. La funzione e' idempotente (non ricrea se gia' presente).
+function RLSuite:OnPlayerEnteringWorld()
     local ok, err = pcall(self.CreateMinimapIcon, self)
     if not ok and self.utils and self.utils.Print then
         self.utils:Print(string.format(L["RLSuite minimap error: %s"], tostring(err)))
@@ -778,10 +790,16 @@ function RLSuite:MinimapIconAngle()
     return 220
 end
 
--- Crea l'icona della minimappa (una sola volta, al login).
+-- Crea l'icona della minimappa (una sola volta, al login o appena la
+-- minimappa e' disponibile).
 function RLSuite:CreateMinimapIcon()
     if self.minimapIcon then return end
-    if not Minimap then return end
+    if not Minimap then
+        if self.utils and self.utils.Print then
+            self.utils:Print("|cffff9900RLSuite: Minimap not ready, will retry at PLAYER_ENTERING_WORLD|r")
+        end
+        return
+    end
 
     local btn = CreateFrame("Button", "RLSuiteMinimapIcon", Minimap)
     btn:SetSize(32, 32)
@@ -913,6 +931,7 @@ function RLSuite:DiagnoseMinimapIcon()
     p("  baseName: " .. tostring(self.baseName))
     p("  detected folder: " .. tostring(self:DetectAddonFolder()))
     p("  faction: " .. (self:IsHorde() and "Horde" or "Alliance"))
+    p("  Minimap frame exists: " .. tostring(Minimap ~= nil))
     local btn = self.minimapIcon
     if not btn then
         p("|cffff0000  minimap button: NOT CREATED|r")
