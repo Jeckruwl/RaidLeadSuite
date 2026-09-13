@@ -833,13 +833,26 @@ function RLSuite:KeepMinimapButtonOnTop()
 
     -- Livello ben sopra quello del genitore (e quindi sopra il suo sfondo),
     -- qualunque valore usi l'addon che raccoglie i bottoni.
-    local want = base + 50
+    local want = base + 100
     if (tonumber(btn:GetFrameLevel()) or 0) < want then
         btn:SetFrameLevel(want)
     end
     if btn:GetFrameStrata() ~= "MEDIUM" then
         btn:SetFrameStrata("MEDIUM")
     end
+end
+
+-- Chiede a MinimapButtonFrame (se installato) di riscansare subito: il suo
+-- scan singolo parte ~3s dopo il load e, se la minimappa non era ancora
+-- pronta in quel momento, il nostro bottone non verrebbe raccolto e
+-- resterebbe dietro il quadrato. Chiamando MBF_Scan appena il bottone esiste,
+-- la raccolta avviene sempre, a prescindere dall'ordine reload/login.
+function RLSuite:TriggerMBFRescan()
+    if InCombatLockdown and InCombatLockdown() then return end
+    if type(MBF_Scan) == "function" then
+        pcall(MBF_Scan)
+    end
+    self:KeepMinimapButtonOnTop()
 end
 
 -- Crea l'icona della minimappa (una sola volta, al login o appena la
@@ -951,7 +964,20 @@ function RLSuite:CreateMinimapIcon()
     -- non finisce mai "sotto il quadrato" (il bug prima cambiava tra /reload
     -- e logout/login perche' dipendeva dall'ordine degli scan).
     if self.ScheduleRepeatingTimer and not self._mmTopTimer then
-        self._mmTopTimer = self:ScheduleRepeatingTimer("KeepMinimapButtonOnTop", 0.5)
+        self._mmTopTimer = self:ScheduleRepeatingTimer("KeepMinimapButtonOnTop", 0.25)
+    end
+
+    -- Ogni volta che il bottone viene mostrato (anche dopo un reparent di
+    -- MBF), ripristina subito il livello sopra lo sfondo.
+    btn:SetScript("OnShow", function() RLSuite:KeepMinimapButtonOnTop() end)
+
+    -- Forza la raccolta di MBF appena il bottone esiste: se lo scan singolo
+    -- di MBF e' gia' passato, lo facciamo riscansare ora (e di nuovo tra
+    -- poco, per sicurezza). Senza questo, al /reload il bottone poteva
+    -- restare figlio della minimappa e finire dietro il quadrato di MBF.
+    if self.ScheduleTimer then
+        self:ScheduleTimer("TriggerMBFRescan", 0.5)
+        self:ScheduleTimer("TriggerMBFRescan", 2.5)
     end
 
     -- Diagnostica: al login stampa il percorso risolto e l'esito del
@@ -1023,14 +1049,19 @@ function RLSuite:DiagnoseMinimapIcon()
     p("  button shown: " .. tostring(btn:IsShown()))
     if btn.GetParent then
         local par = btn:GetParent()
-        p("  button parent: " .. tostring(par and par.GetName and par:GetName() or "?")
-            .. " (strata " .. tostring(par and par.GetFrameStrata and par:GetFrameStrata() or "?") .. ")")
+        local pname = (par and par.GetName and par:GetName()) or "?"
+        local pstrata = (par and par.GetFrameStrata and par:GetFrameStrata()) or "?"
+        local plevel = (par and par.GetFrameLevel and par:GetFrameLevel()) or "?"
+        p("  button parent: " .. tostring(pname) .. " (strata " .. tostring(pstrata) .. ", level " .. tostring(plevel) .. ")")
     end
     if btn.GetFrameStrata and btn.GetFrameLevel then
         p("  button strata/level: " .. tostring(btn:GetFrameStrata()) .. " / " .. tostring(btn:GetFrameLevel()))
     end
     if Minimap and Minimap.GetFrameStrata then
         p("  Minimap strata/level: " .. tostring(Minimap:GetFrameStrata()) .. " / " .. tostring(Minimap:GetFrameLevel()))
+    end
+    if MinimapButtonFrame then
+        p("  MBF bar strata/level: " .. tostring(MinimapButtonFrame:GetFrameStrata()) .. " / " .. tostring(MinimapButtonFrame:GetFrameLevel()))
     end
     if btn.GetLeft and btn.GetBottom then
         p("  button pos: " .. tostring(btn:GetLeft()) .. ", " .. tostring(btn:GetBottom()))
