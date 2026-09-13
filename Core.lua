@@ -824,14 +824,18 @@ function RLSuite:CreateMinimapIcon()
     -- NB: il nome NON deve contenere "MinimapIcon": MinimapButtonFrame lo
     -- userebbe come match per escludere i pin della minimappa e rifiuterebbe
     -- di raccogliere il bottone nella sua barra.
-    local btn = CreateFrame("Button", "RLSuiteMinimapButton", Minimap)
+    --
+    -- IMPORTANTE: il bottone e' figlio di UIParent, NON di Minimap. In WoW il
+    -- figlio eredita la strata del genitore come "soffitto": Minimap sta in
+    -- MinimapCluster (strata BACKGROUND), quindi un bottone figlio di Minimap
+    -- resta SEMPRE nel soffitto BACKGROUND e finisce dietro a qualsiasi frame
+    -- MEDIUM/HIGH agganciato a UIParent (come la barra di MinimapButtonFrame).
+    -- Come figlio di UIParent in strata HIGH, il bottone sta sopra la minimappa
+    -- E sopra la barra di MBF. La posizione resta ancorata alla minimappa.
+    local btn = CreateFrame("Button", "RLSuiteMinimapButton", UIParent)
     btn:SetSize(32, 32)
-    -- Strata HIGH + livello alto: la minimappa stock e' BACKGROUND e molti
-    -- addon (incluso MinimapButtonFrame, che raccoglie i bottoni in una
-    -- barra LOW) la portano a MEDIUM. Con HIGH il bottone resta SEMPRE sopra
-    -- la minimappa e sopra la barra di MBF, senza finire "sotto".
     btn:SetFrameStrata("HIGH")
-    btn:SetFrameLevel(20)
+    btn:SetFrameLevel(30)
 
     -- ICONA DELL'UTENTE da media/ (priorita' assoluta): hordeicon per
     -- l'Orda, allianceicon altrimenti. Quadrata 32x32, riempie il bottone.
@@ -976,6 +980,11 @@ function RLSuite:DiagnoseMinimapIcon()
         if not btn then return end
     end
     p("  button shown: " .. tostring(btn:IsShown()))
+    if btn.GetParent then
+        local par = btn:GetParent()
+        p("  button parent: " .. tostring(par and par.GetName and par:GetName() or "?")
+            .. " (strata " .. tostring(par and par.GetFrameStrata and par:GetFrameStrata() or "?") .. ")")
+    end
     if btn.GetFrameStrata and btn.GetFrameLevel then
         p("  button strata/level: " .. tostring(btn:GetFrameStrata()) .. " / " .. tostring(btn:GetFrameLevel()))
     end
