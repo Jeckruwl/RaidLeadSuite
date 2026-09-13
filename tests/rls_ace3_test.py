@@ -1085,6 +1085,43 @@ check(bool(rt.eval("RLSuite.raidFrame.buffBar:IsShown() == false and RLSuite.rai
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario E (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 
 print()
+print("== Scenario F: Raid Frame groups + pre-boss drag & drop ==")
+rt.execute("RLSuite:ResetDebugRaid()")
+rt.execute("RLSuite.db.profile.debug = true; RLSuite:ApplyDebugMode()")
+rt.execute("for i=1,5 do RLSuite:DebugInviteAccept('F'..i, 'WARRIOR') end")
+
+# --- bars divided into 6 groups (G1..G6, 5 players each) ---
+check(bool(rt.eval("#RLSuite.raidFrame.slots == 30")), "Raid Frame builds 30 slots (6 groups x 5 players)")
+check(bool(rt.eval("#RLSuite.raidFrame.groupHeaders == 6")), "Raid Frame has 6 group headers (G1..G6)")
+check(bool(rt.eval("#RLSuite.raidFrame.rows == 6")), "6 players render 6 populated rows")
+check(bool(rt.eval("RLSuite.raidFrame.slots[1].member ~= nil and RLSuite.raidFrame.slots[1].member.name == 'Testplayer'")), "player sits in G1 slot 1")
+check(bool(rt.eval("RLSuite.raidFrame.slots[6].member ~= nil and RLSuite.raidFrame.slots[6].member.name == 'F5'")), "6th member lands in G2 slot 1 (groups fill in order)")
+
+# --- pre-boss: empty slots visible as drop targets; drag enabled ---
+check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == true")), "drag & drop enabled in pre-boss (debug)")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == true")), "pre-boss: empty slot shown as drop target")
+check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[6]:IsShown() == true")), "pre-boss: all 6 group headers shown")
+
+# --- move a player into an empty slot ---
+rt.execute("RLSuite.raidFrame:MoveSlot(RLSuite.raidFrame.slots[6], RLSuite.raidFrame.slots[7])")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7].member ~= nil and RLSuite.raidFrame.slots[7].member.name == 'F5'")), "drag onto empty slot moves the player there")
+check(bool(rt.eval("RLSuite.raidFrame.slots[6].member == nil")), "source slot is left empty after the move")
+
+# --- swap two occupied slots ---
+rt.execute("RLSuite.raidFrame:MoveSlot(RLSuite.raidFrame.slots[1], RLSuite.raidFrame.slots[7])")
+check(bool(rt.eval("RLSuite.raidFrame.slots[1].member ~= nil and RLSuite.raidFrame.slots[1].member.name == 'F5'")), "drag onto occupied slot swaps the two players")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7].member ~= nil and RLSuite.raidFrame.slots[7].member.name == 'Testplayer'")), "swapped player lands in the source slot")
+
+# --- non pre-boss: empty slots hidden, drag disabled ---
+rt.execute("RLSuite:SetContextPhase('infight')")
+check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == false")), "drag & drop disabled outside pre-boss")
+check(bool(rt.eval("RLSuite.raidFrame.slots[8]:IsShown() == false")), "outside pre-boss empty slots are hidden")
+check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "outside pre-boss empty groups hide their header")
+check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[1]:IsShown() == true")), "groups with members keep their header")
+
+check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario F (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
+
+print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
     sys.exit(1)

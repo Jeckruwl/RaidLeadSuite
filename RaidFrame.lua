@@ -9,12 +9,32 @@
 --   far right : vertical ability-check bar (ability per buff/debuff covered
 --              by the raid; greyed when present, flashing border when missing)
 --   below  : pre-boss alert buff bar / in-fight alert debuff bar
+--
+-- The player bars are divided into the 6 raid groups (G1..G6, 5 players
+-- each), in pre-boss phase empty slots are shown as drop targets and
+-- players can be rearranged by drag & drop (like the InviteEngine raid
+-- group panel).
 -- ============================================================
 
 RLSuite.raidFrame = {}
 local RF = RLSuite.raidFrame
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
+
+local RF_GROUPS = 6
+local RF_PER_GROUP = 5
+local RF_MAX_CDS = 4
+local RF_HEADER_H = 14
+local RF_GROUP_GAP = 8
+
+-- Drop-target outline for empty slots (pre-boss only). Transparent fill,
+-- subtle border: it is a placeholder, not a HUD backdrop.
+local RF_EMPTY_BACKDROP = {
+    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 16, edgeSize = 8,
+    insets = { left = 2, right = 2, top = 2, bottom = 2 },
+}
 
 -- Ace3: eventi (roster/aura/combat-log) via AceEvent-3.0, il refresh
 -- periodico a 0.5s via AceTimer-3.0 (al posto del vecchio frame OnUpdate).
@@ -23,7 +43,9 @@ LibStub("AceTimer-3.0"):Embed(RF)
 
 function RF:Init()
     self.db = RLSuite.db.profile.raidframe
-    self.rows = {}
+    self.rows = {}          -- populated slots, dense (for tests + UpdateAll)
+    self.slots = {}         -- 30 slot frames (6 groups x 5 players)
+    self.groupHeaders = {}  -- 6 group labels (G1..G6)
     self.cdTracker = {}
     self.abilityButtons = {}
     self:CreateFrame()
@@ -72,7 +94,7 @@ function RF:CreateFrame()
     f:Hide()
     self.frame = f
 
-    -- Rows (one horizontal bar per player).
+    -- Groups + slots (G1..G6) live in this container.
     self.content = CreateFrame("Frame", nil, f)
     self.content:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
 
@@ -145,6 +167,57 @@ function RF:GetRoster()
     return list
 end
 
+-- Raid roster divided into the 6 groups: groups[g][s] = member or nil.
+-- Debug mode reads the sparse simulated slots (slot -> group/row); real
+-- mode reads GetRaidRosterInfo's subgroup, ordered by raid index.
+function RF:GetGroupedRoster()
+    local groups = { {}, {}, {}, {}, {}, {} }
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        local slots = RLSuite:DebugRaidSlots()
+        for i = 1, RF_GROUPS * RF_PER_GROUP do
+            local m = slots[i]
+            if m then
+                local g = math.floor((i - 1) / RF_PER_GROUP) + 1
+                local s = (i - 1) % RF_PER_GROUP + 1
+                if g >= 1 and g <= RF_GROUPS then
+                    groups[g][s] = {
+                        name = m.name,
+                        class = m.class or "WARRIOR",
+                        unit = m.isPlayer and "player" or nil,
+                        fake = not m.isPlayer,
+                        slot = i,
+                    }
+                end
+            end
+        end
+        return groups
+    end
+
+    local num = GetNumRaidMembers() or 0
+    local groupCount = { 0, 0, 0, 0, 0, 0 }
+    for i = 1, num do
+        local name, _, subgroup = GetRaidRosterInfo(i)
+        if name then
+            local class = select(2, UnitClass("raid" .. i)) or "WARRIOR"
+            subgroup = tonumber(subgroup) or 1
+            if subgroup < 1 then subgroup = 1 end
+            if subgroup > RF_GROUPS then subgroup = RF_GROUPS end
+            groupCount[subgroup] = groupCount[subgroup] + 1
+            local s = groupCount[subgroup]
+            if s <= RF_PER_GROUP then
+                groups[subgroup][s] = {
+                    name = name,
+                    class = class,
+                    unit = "raid" .. i,
+                    fake = false,
+                    raidIndex = i,
+                }
+            end
+        end
+    end
+    return groups
+end
+
 -- ------------------------------------------------------------------
 -- Layout metrics
 -- ------------------------------------------------------------------
@@ -174,57 +247,44 @@ function RF:LayoutMetrics()
 end
 
 -- ------------------------------------------------------------------
--- Player rows
+-- Group headers + slot frames (created once, reused)
 -- ------------------------------------------------------------------
-function RF:Rebuild()
-    for _, row in ipairs(self.rows) do
-        row:Hide()
+function RF:EnsureSlots()
+    self.groupHeaders = self.groupHeaders or {}
+    self.slots = self.slots or {}
+    for g = 1, RF_GROUPS do
+        if not self.groupHeaders[g] then
+            local lbl = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            lbl:SetText("G" .. g)
+            lbl:SetTextColor(1, 0.82, 0)
+            lbl:SetJustifyH("LEFT")
+            self.groupHeaders[g] = lbl
+        end
+        for s = 1, RF_PER_GROUP do
+            local i = (g - 1) * RF_PER_GROUP + s
+            if not self.slots[i] then
+                self.slots[i] = self:CreateSlotFrame(i, g)
+            end
+        end
     end
-    self.rows = {}
-
-    local roster = self:GetRoster()
-    local numMembers = #roster
-    if numMembers == 0 then
-        self:BuildAbilityBar()
-        self:RefreshAlertBars()
-        return
-    end
-
-    local m = self:LayoutMetrics()
-    for i = 1, numMembers do
-        local info = roster[i]
-        local row = self:CreateRow(info, i, m)
-        self.rows[i] = row
-    end
-
-    self:BuildAbilityBar()
-    self:RefreshAlertBars()
 end
 
-function RF:CreateRow(info, i, m)
-    local row = CreateFrame("Button", "RLSuiteRaidRow" .. i, self.content)
-    row:SetSize(m.rowWidth, m.rowHeight)
-    row:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, -(i - 1) * m.rowHeight)
-    row.unit = info.unit
-    row.name = info.name or "Unknown"
-    row.class = info.class or "WARRIOR"
-    row.fake = info.fake
-    row.fakeHP = 70 + ((i * 13) % 31)
+function RF:CreateSlotFrame(slotIndex, group)
+    local row = CreateFrame("Button", "RLSuiteRaidRow" .. slotIndex, self.content)
+    row.slot = slotIndex
+    row.group = group
+    row.member = nil
+    row.fakeHP = 70 + ((slotIndex * 13) % 31)
 
     -- Left: flask / Well Fed missing-consumable icons.
-    row.flaskIcon = self:MakeConsumableIcon(row, "flask", 1, m)
-    row.foodIcon = self:MakeConsumableIcon(row, "food", 2, m)
+    row.flaskIcon = self:MakeConsumableIcon(row, "flask")
+    row.foodIcon = self:MakeConsumableIcon(row, "food")
 
     -- HP bar (name + % inside), fill = HP%, color = class color.
-    -- The bar width is fixed (config "Player bar width").
-    local leftX = 4 + 2 * m.iconSize + 4
-
     local bar = CreateFrame("StatusBar", nil, row)
-    bar:SetSize(m.barWidth, m.barHeight)
-    bar:SetPoint("TOPLEFT", row, "TOPLEFT", leftX, 0)
     bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     bar:SetMinMaxValues(0, 100)
-    bar:SetValue(100)
+    bar:SetValue(0)
     row.bar = bar
 
     -- Subtle track behind the fill (a status bar needs a readable track;
@@ -237,32 +297,21 @@ function RF:CreateRow(info, i, m)
 
     local nameFS = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     nameFS:SetPoint("LEFT", bar, "LEFT", 3, 0)
-    nameFS:SetFont(RLSuite.utils:GetUIFont(), m.nameFontSize, "OUTLINE")
-    nameFS:SetText(row.name)
+    nameFS:SetText("")
     nameFS:SetTextColor(1, 1, 1)
     bar.nameText = nameFS
 
     local pctFS = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     pctFS:SetPoint("RIGHT", bar, "RIGHT", -3, 0)
-    pctFS:SetFont(RLSuite.utils:GetUIFont(), m.nameFontSize, "OUTLINE")
-    pctFS:SetText("100%")
+    pctFS:SetText("")
     pctFS:SetTextColor(1, 1, 1)
     bar.hpText = pctFS
 
-    local r, g, b = RLSuite.utils:GetClassColor(row.class)
-    bar:SetStatusBarColor(r, g, b)
-
-    -- Right: class key cooldowns (immediately after the HP bar).
+    -- Class key cooldowns (up to 4, pooled; filled per class in ApplySlotCDs).
     row.cdIcons = {}
-    local abilities = RLSuite.keyAbilities[row.class] or {}
-    for j, ability in ipairs(abilities) do
+    for j = 1, RF_MAX_CDS do
         local cd = row:CreateTexture(nil, "OVERLAY")
-        cd:SetSize(m.iconSize, m.iconSize)
-        cd:SetPoint("LEFT", bar, "RIGHT", 4 + (j - 1) * (m.iconSize + 2), 0)
-        local meta = RLSuite.abilityByName and RLSuite.abilityByName[ability]
-        cd:SetTexture((meta and meta.icon) or "Interface\\Icons\\INV_Misc_QuestionMark")
         cd:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        cd.ability = ability
         local timer = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         timer:SetPoint("CENTER", cd, "CENTER", 0, 0)
         timer:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
@@ -270,15 +319,37 @@ function RF:CreateRow(info, i, m)
         cd.timer = timer
         row.cdIcons[j] = cd
     end
+    row._cdClass = nil
 
-    row:Show()
+    -- Drag & drop (active only in pre-boss, enabled via UpdateDragState).
+    row:SetScript("OnDragStart", function(self2)
+        if not RF:IsDragEnabled() then return end
+        RF._rfDragSource = (self2.member and self2) or nil
+    end)
+    row:SetScript("OnDragStop", function()
+        local src = RF._rfDragSource
+        RF._rfDragSource = nil
+        if src and src.member then
+            local target = RF:SlotAtCursor()
+            if target and target ~= src then
+                RF:MoveSlot(src, target)
+            end
+        end
+    end)
+    row:SetScript("OnReceiveDrag", function(self2)
+        local src = RF._rfDragSource
+        RF._rfDragSource = nil
+        if src and src ~= self2 and src.member then
+            RF:MoveSlot(src, self2)
+        end
+    end)
+
+    row:Hide()
     return row
 end
 
-function RF:MakeConsumableIcon(row, atype, idx, m)
+function RF:MakeConsumableIcon(row, atype)
     local btn = CreateFrame("Button", nil, row)
-    btn:SetSize(m.iconSize, m.iconSize)
-    btn:SetPoint("TOPLEFT", row, "TOPLEFT", 2 + (idx - 1) * (m.iconSize + 2), 0)
     btn.consType = atype
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints(btn)
@@ -297,7 +368,157 @@ function RF:MakeConsumableIcon(row, atype, idx, m)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    btn:Hide()
     return btn
+end
+
+-- Positions + resizes every widget of a slot from the layout metrics.
+-- Called from ApplyLayout so Config changes (bar width/height, icon size,
+-- name font size) apply immediately without a full roster rebuild.
+function RF:LayoutSlotGeometry(slot, m)
+    slot:SetSize(m.rowWidth, m.rowHeight)
+    local iconSize = m.iconSize
+    if slot.flaskIcon then
+        slot.flaskIcon:ClearAllPoints()
+        slot.flaskIcon:SetSize(iconSize, iconSize)
+        slot.flaskIcon:SetPoint("TOPLEFT", slot, "TOPLEFT", 2, 0)
+    end
+    if slot.foodIcon then
+        slot.foodIcon:ClearAllPoints()
+        slot.foodIcon:SetSize(iconSize, iconSize)
+        slot.foodIcon:SetPoint("TOPLEFT", slot, "TOPLEFT", 2 + iconSize + 2, 0)
+    end
+    if slot.bar then
+        local leftX = 4 + 2 * iconSize + 4
+        slot.bar:ClearAllPoints()
+        slot.bar:SetSize(m.barWidth, m.barHeight)
+        slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", leftX, 0)
+        if slot.bar.nameText then
+            slot.bar.nameText:SetFont(RLSuite.utils:GetUIFont(), m.nameFontSize, "OUTLINE")
+        end
+        if slot.bar.hpText then
+            slot.bar.hpText:SetFont(RLSuite.utils:GetUIFont(), m.nameFontSize, "OUTLINE")
+        end
+    end
+    for j, cd in ipairs(slot.cdIcons or {}) do
+        cd:ClearAllPoints()
+        cd:SetSize(iconSize, iconSize)
+        cd:SetPoint("LEFT", slot.bar, "RIGHT", 4 + (j - 1) * (iconSize + 2), 0)
+    end
+end
+
+function RF:ApplySlotCDs(slot, class)
+    slot._cdClass = class
+    local abilities = RLSuite.keyAbilities[class] or {}
+    for j = 1, RF_MAX_CDS do
+        local cd = slot.cdIcons and slot.cdIcons[j]
+        if cd then
+            local ability = abilities[j]
+            if ability then
+                local meta = RLSuite.abilityByName and RLSuite.abilityByName[ability]
+                cd:SetTexture((meta and meta.icon) or "Interface\\Icons\\INV_Misc_QuestionMark")
+                cd.ability = ability
+                cd:Show()
+            else
+                cd.ability = nil
+                cd:Hide()
+            end
+        end
+    end
+end
+
+function RF:FillSlot(slot, member)
+    slot.member = member
+    slot.unit = member.unit
+    slot.name = member.name
+    slot.class = member.class
+    slot.fake = member.fake
+    slot.raidIndex = member.raidIndex
+    slot:SetBackdrop(nil)
+    slot:Show()
+
+    if slot.bar then
+        local r, g, b = RLSuite.utils:GetClassColor(member.class)
+        slot.bar:SetStatusBarColor(r, g, b)
+        slot.bar:SetMinMaxValues(0, 100)
+        slot.bar:SetValue(100)
+        if slot.bar.nameText then slot.bar.nameText:SetText(member.name) end
+        if slot.bar.hpText then slot.bar.hpText:SetText("100%") end
+        slot.bar:Show()
+    end
+
+    if slot._cdClass ~= member.class then
+        self:ApplySlotCDs(slot, member.class)
+    end
+
+    self:UpdateRow(slot)
+end
+
+function RF:ClearSlot(slot)
+    slot.member = nil
+    slot.unit = nil
+    slot.name = nil
+    slot.class = nil
+    slot.fake = false
+    slot.raidIndex = nil
+
+    if slot.bar then
+        slot.bar:SetValue(0)
+        if slot.bar.nameText then slot.bar.nameText:SetText("") end
+        if slot.bar.hpText then slot.bar.hpText:SetText("") end
+    end
+    self:SetConsumable(slot.flaskIcon, "off")
+    self:SetConsumable(slot.foodIcon, "off")
+    for _, cd in ipairs(slot.cdIcons or {}) do
+        cd:Hide()
+    end
+
+    if self:IsDragEnabled() then
+        -- Empty drop target (pre-boss): subtle outline, no fill.
+        slot:SetBackdrop(RF_EMPTY_BACKDROP)
+        slot:SetBackdropColor(0, 0, 0, 0)
+        slot:SetBackdropBorderColor(0.32, 0.32, 0.36, 0.9)
+        slot:Show()
+    else
+        slot:SetBackdrop(nil)
+        slot:Hide()
+    end
+end
+
+-- ------------------------------------------------------------------
+-- Rebuild
+-- ------------------------------------------------------------------
+function RF:Rebuild()
+    self:EnsureSlots()
+    local m = self:LayoutMetrics()
+    local groups = self:GetGroupedRoster()
+    local preboss = self:IsDragEnabled()
+
+    self.rows = {}
+    for g = 1, RF_GROUPS do
+        local anyMember = false
+        for s = 1, RF_PER_GROUP do
+            local slot = self.slots[(g - 1) * RF_PER_GROUP + s]
+            local member = groups[g][s]
+            if member then
+                self:FillSlot(slot, member)
+                self.rows[#self.rows + 1] = slot
+                anyMember = true
+            else
+                self:ClearSlot(slot)
+            end
+        end
+        local hdr = self.groupHeaders[g]
+        if anyMember or preboss then
+            hdr:Show()
+        else
+            hdr:Hide()
+        end
+    end
+
+    self:BuildAbilityBar()
+    self:RefreshAlertBars()
+    self:UpdateDragState()
 end
 
 -- ------------------------------------------------------------------
@@ -689,13 +910,110 @@ function RF:SetAbilityButtonState(btn, present)
 end
 
 -- ------------------------------------------------------------------
--- Pre-boss / in-fight alert bars
+-- Phase + drag & drop
 -- ------------------------------------------------------------------
 function RF:UpdatePhase()
-    self:BuildAbilityBar()
-    self:RefreshAlertBars()
+    self:Rebuild()
+    self:UpdateDragState()
 end
 
+-- Players can be rearranged only in pre-boss phase (like the InviteEngine
+-- raid group panel is used while organizing the raid).
+function RF:IsDragEnabled()
+    return (RLSuite.context or "preraid") == "preboss"
+end
+
+function RF:UpdateDragState()
+    local enabled = self:IsDragEnabled()
+    for _, slot in ipairs(self.slots or {}) do
+        if enabled then
+            slot:EnableMouse(true)
+            slot:RegisterForDrag("LeftButton")
+        else
+            slot:EnableMouse(false)
+            slot:RegisterForDrag()
+        end
+    end
+end
+
+-- Slot under the mouse cursor (nil if none). Mirrors GroupMaking's
+-- WlSlotAtCursor: computes the target from the cursor coordinates because
+-- OnReceiveDrag is not always delivered on nested frames.
+function RF:SlotAtCursor()
+    if not GetCursorPosition then return nil end
+    local x, y = GetCursorPosition()
+    if not x or not y then return nil end
+    local scale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+    if scale and scale > 0 then
+        x = x / scale
+        y = y / scale
+    end
+    for _, slot in ipairs(self.slots or {}) do
+        if slot and slot.IsShown and slot:IsShown() then
+            local left = slot:GetLeft()
+            local right = slot:GetRight()
+            local bottom = slot:GetBottom()
+            local top = slot:GetTop()
+            if left and right and bottom and top
+                and x >= left and x <= right and y >= bottom and y <= top then
+                return slot
+            end
+        end
+    end
+    return nil
+end
+
+-- Reorganizes the groups by dragging a player between slots. src/dst are
+-- the two slot frames (source and destination). Empty destination = move,
+-- occupied destination = swap.
+function RF:MoveSlot(src, dst)
+    if not src or not dst or src == dst then return end
+    if not src.member then return end
+
+    -- Simulated roster (debug): reorder the shared slot list.
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        self:MoveSlotDebug(src, dst)
+        return
+    end
+
+    -- Real raid: Blizzard APIs (only the raid leader can rearrange).
+    if not (IsRaidLeader and (IsRaidLeader() or IsRaidOfficer())) then
+        RLSuite.utils:Print(L["Only the raid leader can rearrange groups."])
+        return
+    end
+    if not src.raidIndex then return end
+    if dst.member and dst.raidIndex then
+        -- Swap: SwapRaidSubgroup exchanges the two players.
+        pcall(SwapRaidSubgroup, src.raidIndex, dst.raidIndex)
+    else
+        -- Move: SetRaidSubgroup moves the player to the target group.
+        pcall(SetRaidSubgroup, src.raidIndex, dst.group)
+    end
+end
+
+-- Reorders the simulated roster in debug: swaps two members (occupied slot)
+-- or moves a member exactly into the empty destination slot. The slots are
+-- SPARSE, so a move leaves a hole in the source slot (shown by both the
+-- InviteEngine Raid Group panel and this HUD).
+function RF:MoveSlotDebug(src, dst)
+    local slots = RLSuite:DebugRaidSlots()
+    local srcMember = slots[src.slot]
+    local dstMember = slots[dst.slot]
+    if not srcMember then return end
+
+    if dstMember then
+        slots[src.slot], slots[dst.slot] = dstMember, srcMember
+    else
+        slots[dst.slot] = srcMember
+        slots[src.slot] = nil
+    end
+    RLSuite:DebugSyncSubgroups()
+    RLSuite:DebugRosterChanged()
+end
+
+-- ------------------------------------------------------------------
+-- Pre-boss / in-fight alert bars
+-- ------------------------------------------------------------------
 function RF:RefreshAlertBars()
     local phase = RLSuite.context or "preraid"
 
@@ -813,14 +1131,40 @@ function RF:ApplyLayout()
     self.frame:SetWidth(m.W)
     self.frame:SetScale(db.scale or 1)
 
-    local numRows = #(self.rows or {})
-    local rowsH = numRows * m.rowHeight
-
-    if self.content then
-        self.content:ClearAllPoints()
-        self.content:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, 0)
-        self.content:SetSize(m.rowWidth, rowsH)
+    -- Pack group headers + visible slots vertically (G1..G6).
+    local y = 0
+    local shown = false
+    for g = 1, RF_GROUPS do
+        local hdr = self.groupHeaders and self.groupHeaders[g]
+        local hdrShown = hdr ~= nil and hdr:IsShown()
+        if hdrShown then
+            hdr:ClearAllPoints()
+            hdr:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
+            hdr:SetWidth(m.rowWidth)
+            y = y - RF_HEADER_H
+            shown = true
+        end
+        local anySlot = false
+        for s = 1, RF_PER_GROUP do
+            local slot = self.slots and self.slots[(g - 1) * RF_PER_GROUP + s]
+            if slot and slot:IsShown() then
+                slot:ClearAllPoints()
+                slot:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
+                self:LayoutSlotGeometry(slot, m)
+                y = y - m.rowHeight
+                anySlot = true
+                shown = true
+            end
+        end
+        if g < RF_GROUPS and (hdrShown or anySlot) then
+            y = y - RF_GROUP_GAP
+        end
     end
+    local rowsH = shown and -y or 0
+
+    self.content:ClearAllPoints()
+    self.content:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, 0)
+    self.content:SetSize(m.rowWidth, rowsH)
 
     if self.abilityBar then
         self.abilityBar:ClearAllPoints()
