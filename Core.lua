@@ -783,25 +783,19 @@ function RLSuite:CreateMinimapIcon()
     btn:SetFrameStrata("MEDIUM")
     btn:SetFrameLevel(8)
 
-    -- ICONA QUADRATA: la texture della fazione (hordeicon / allianceicon)
-    -- riempie TUTTO il bottone 32x32, senza anellino e senza ritagli
-    -- circolari. E' esattamente il file .blp fornito dall'utente.
+    -- ICONA DELL'UTENTE da media/: hordeicon per l'Orda, allianceicon
+    -- altrimenti. Quadrata 32x32, riempie tutto il bottone, nessun anellino
+    -- e nessuna icona di gioco. Solo i file .blp forniti dall'utente.
     local file = self:IsHorde() and "media\\hordeicon.blp" or "media\\allianceicon.blp"
     local tex = btn:CreateTexture(nil, "ARTWORK")
     tex:SetAllPoints(btn)
     tex:SetTexture(self:AddonTexture(file))
 
-    -- Se il .blp non viene caricato (percorso errato o file assente),
-    -- riproviamo con il .tga originale e, come ultima risorsa, con l'icona
-    -- di fazione di gioco: il bottone non deve MAI restare invisibile.
+    -- Se il .blp non viene caricato, riproviamo con il .tga originale
+    -- (sempre l'icona dell'utente, sempre da media/).
     if not tex:GetTexture() then
         local tgafile = self:IsHorde() and "media\\hordeicon.tga" or "media\\allianceicon.tga"
         tex:SetTexture(self:AddonTexture(tgafile))
-    end
-    if not tex:GetTexture() then
-        local stock = self:IsHorde() and "Interface\\Icons\\INV_BannerPVP_01"
-            or "Interface\\Icons\\INV_BannerPVP_02"
-        tex:SetTexture(stock)
     end
     btn.icon = tex
 
@@ -855,15 +849,18 @@ function RLSuite:CreateMinimapIcon()
     self.minimapIcon = btn
     self:PlaceMinimapIcon()
 
-    -- Diagnostica: stampa il percorso risolto, cosi' da verificare che
-    -- l'icona sia stata creata e che il file punti alla cartella giusta.
+    -- Diagnostica: al login stampa il percorso risolto e l'esito del
+    -- caricamento, cosi' da verificare subito se l'icona e' stata trovata.
     if self.utils and self.utils.Print then
         local finalPath = tex:GetTexture()
-        if type(finalPath) ~= "string" then finalPath = self:AddonTexture(file) end
-        self.utils:Print(string.format(L["Minimap icon: %s"],
-            string.format("%s (%s, folder=%s)", finalPath,
-                self:IsHorde() and "Horde" or "Alliance",
-                self:DetectAddonFolder())))
+        if type(finalPath) == "string" then
+            self.utils:Print(string.format(L["Minimap icon: %s"],
+                string.format("%s (%s)", finalPath, self:IsHorde() and "Horde" or "Alliance")))
+        else
+            self.utils:Print("|cffff0000" .. string.format(L["RLSuite minimap error: %s"],
+                string.format("icon not loaded from %s (folder=%s)",
+                    self:AddonTexture(file), self:DetectAddonFolder())) .. "|r")
+        end
     end
 end
 
