@@ -707,10 +707,31 @@ function RLSuite:DebugRosterChanged()
     end
 end
 
+-- Determina il nome della cartella dell'addon. baseName (dalla ADDON_LOADED)
+-- e' di solito gia' corretto; come ulteriore sicurezza cerchiamo la cartella
+-- tra gli addon caricati confrontando il titolo del .toc (robusto anche con
+-- cartelle rinominate).
+function RLSuite:DetectAddonFolder()
+    local folder = self.baseName or "RaidLeadSuite"
+    if GetNumAddOns and GetAddOnInfo then
+        local n = GetNumAddOns()
+        if n and n > 0 then
+            for i = 1, n do
+                local name, title = GetAddOnInfo(i)
+                if title and (title:find("RLSuite", 1, true) or title:find("Raid Leading", 1, true)) then
+                    folder = name
+                    break
+                end
+            end
+        end
+    end
+    return folder
+end
+
 -- Percorso di una risorsa dentro la cartella dell'addon, usando il nome
 -- cartella reale (RLSuite o RaidLeadSuite a seconda di come e' installato).
 function RLSuite:AddonTexture(rel)
-    local folder = self.addonFolder or "RaidLeadSuite"
+    local folder = self:DetectAddonFolder()
     return "Interface\\AddOns\\" .. folder .. "\\" .. rel
 end
 
@@ -758,29 +779,31 @@ function RLSuite:CreateMinimapIcon()
     if not Minimap then return end
 
     local btn = CreateFrame("Button", "RLSuiteMinimapIcon", Minimap)
-    btn:SetSize(33, 33)
+    btn:SetSize(32, 32)
     btn:SetFrameStrata("MEDIUM")
     btn:SetFrameLevel(8)
 
-    -- Struttura identica ai bottoni nativi della minimappa (mail / world
-    -- map / battlefield): sfondo circolare + icona + bordo dorato. Cosi'
-    -- il bottone resta visibile anche se la texture della fazione non
-    -- dovesse caricare.
-    local bg = btn:CreateTexture(nil, "BACKGROUND")
-    bg:SetSize(25, 25)
-    bg:SetPoint("CENTER", btn, "CENTER")
-    bg:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
-
+    -- ICONA QUADRATA: la texture della fazione (hordeicon / allianceicon)
+    -- riempie TUTTO il bottone 32x32, senza anellino e senza ritagli
+    -- circolari. E' esattamente il file .blp fornito dall'utente.
+    local file = self:IsHorde() and "media\\hordeicon.blp" or "media\\allianceicon.blp"
     local tex = btn:CreateTexture(nil, "ARTWORK")
     tex:SetAllPoints(btn)
-    local file = self:IsHorde() and "media\\hordeicon.blp" or "media\\allianceicon.blp"
     tex:SetTexture(self:AddonTexture(file))
-    btn.icon = tex
 
-    local border = btn:CreateTexture(nil, "BORDER")
-    border:SetSize(52, 52)
-    border:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
-    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    -- Se il .blp non viene caricato (percorso errato o file assente),
+    -- riproviamo con il .tga originale e, come ultima risorsa, con l'icona
+    -- di fazione di gioco: il bottone non deve MAI restare invisibile.
+    if not tex:GetTexture() then
+        local tgafile = self:IsHorde() and "media\\hordeicon.tga" or "media\\allianceicon.tga"
+        tex:SetTexture(self:AddonTexture(tgafile))
+    end
+    if not tex:GetTexture() then
+        local stock = self:IsHorde() and "Interface\\Icons\\INV_BannerPVP_01"
+            or "Interface\\Icons\\INV_BannerPVP_02"
+        tex:SetTexture(stock)
+    end
+    btn.icon = tex
 
     btn:SetMovable(true)
     btn:EnableMouse(true)
@@ -835,7 +858,12 @@ function RLSuite:CreateMinimapIcon()
     -- Diagnostica: stampa il percorso risolto, cosi' da verificare che
     -- l'icona sia stata creata e che il file punti alla cartella giusta.
     if self.utils and self.utils.Print then
-        self.utils:Print(string.format(L["Minimap icon: %s"], self:AddonTexture(file)))
+        local finalPath = tex:GetTexture()
+        if type(finalPath) ~= "string" then finalPath = self:AddonTexture(file) end
+        self.utils:Print(string.format(L["Minimap icon: %s"],
+            string.format("%s (%s, folder=%s)", finalPath,
+                self:IsHorde() and "Horde" or "Alliance",
+                self:DetectAddonFolder())))
     end
 end
 
