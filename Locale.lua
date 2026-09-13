@@ -111,10 +111,24 @@ do
     L["Start Autoinviter"] = true
     L["Stop Autoinviter"] = true
     L["Auto invite now"] = true
+    L["Autoinvite at set time"] = true
     L["Autoinviter: no names to invite."] = true
     L["Autoinviter armed: %d names."] = true
     L["Autoinviter: all invites sent."] = true
     L["Autoinviter: inviting %d names now."] = true
+    -- Campi modificabili della tab Calendar event
+    L["Title"] = true
+    L["Type"] = true
+    L["Day"] = true
+    L["Time"] = true
+    L["Attending"] = true
+    L["%d attending"] = true
+    -- Tipi evento (fallback se CalendarEventGetTypes non e' disponibile)
+    L["Raid"] = true
+    L["Dungeon"] = true
+    L["PvP"] = true
+    L["Meeting"] = true
+    L["Other"] = true
     -- Stato degli invitati (specchio evento Calendario)
     L["Invited"] = true
     L["Accepted"] = true

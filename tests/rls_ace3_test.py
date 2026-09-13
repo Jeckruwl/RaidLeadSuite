@@ -827,33 +827,52 @@ rt.execute("for i=1,6 do RLSuite:DebugInviteAccept('Fake'..i, 'WARRIOR') end")
 rt.execute("local subs={}; for _,m in ipairs(RLSuite:DebugRoster()) do subs[#subs+1]=m.name..':'..tostring(m.subgroup) end; SUBS=subs")
 check(bool(rt.eval("table.concat(SUBS, ',') == 'Testplayer:1,Fake1:1,Fake2:1,Fake3:1,Fake4:1,Fake5:2,Fake6:2'")), "groups fill vertically: G1 fills first (5), then G2")
 
-# --- Calendar Event tab redo: empty box + 'Link or create an event' button ---
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoCalBox ~= nil")), "Calendar Event tab has the full-size empty box")
+# --- Calendar Event tab redo: editable event + class sidebar ---
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoCalBox ~= nil")), "Calendar Event tab has the event box")
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoLinkBtn ~= nil")), "'Link or create an event' button exists")
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoLinkBtn:GetText() == 'Link or create an event'")), "'Link or create an event' button is labelled correctly")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalTitleEdit ~= nil")), "editable title field exists")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalTypeDD ~= nil")), "editable type dropdown exists")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalDayEdit ~= nil and RLSuite.groupmaking.ieCalMonthDD ~= nil and RLSuite.groupmaking.ieCalYearEdit ~= nil")), "editable day/month/year controls exist")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalHourEdit ~= nil and RLSuite.groupmaking.ieCalMinuteEdit ~= nil")), "editable hour/minute controls exist")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalSidebar ~= nil")), "class sidebar exists")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalClassButtons ~= nil and RLSuite.groupmaking.ieCalClassButtons['WARRIOR'] ~= nil and RLSuite.groupmaking.ieCalClassButtons['DEATHKNIGHT'] ~= nil")), "class sidebar has a class icon per class")
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventRefresh == nil")), "old Refresh button removed")
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventCreate == nil")), "old Create event button removed")
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventDropdown == nil")), "old Raid event dropdown removed")
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoEventTitle == nil")), "old mirror title removed")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoMirrorTitle == nil")), "old read-only mirror title removed")
 check(bool(rt.eval("type(RLSuite.groupmaking.OpenCalendarToLink) == 'function'")), "OpenCalendarToLink wired")
 check(bool(rt.eval("type(RLSuite.groupmaking.EnsureRLSCalendarUI) == 'function'")), "EnsureRLSCalendarUI wired")
 
 # --- empty linked-event state ---
 rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = nil")
 rt.execute("RLSuite.groupmaking:RenderLinkedEvent()")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoMirrorTitle:GetText() == 'No event linked yet.'")), "empty mirror shows 'No event linked yet.'")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalEmptyLabel:GetText() == 'No event linked yet.'")), "empty state shows 'No event linked yet.'")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalEmptyLabel:IsShown() == true")), "empty label is shown")
 
-# --- linked-event mirror renders exactly like the calendar event view ---
+# --- linked-event renders into the editable fields ---
 rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = { title='Test Raid', description='Bring consumables', creator='Testplayer', eventType=1, weekday=1, month=9, day=12, year=2026, hour=20, minute=30, invitees={ { name='Fake1', className='Warrior', class='WARRIOR', status=2, mod='CREATOR' } } }")
 rt.execute("RLSuite.groupmaking:RenderLinkedEvent()")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoMirrorTitle:GetText() == 'Test Raid'")), "mirror shows event title")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoMirrorDesc:GetText() == 'Bring consumables'")), "mirror shows event description")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoMirrorTime:GetText() == '20:30'")), "mirror shows event time")
-check(bool(rt.eval("RLSuite.groupmaking.ieAutoMirrorDate:GetText() ~= ''")), "mirror shows event date")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalTitleEdit:GetText() == 'Test Raid'")), "title field shows the event title")
+check(bool(rt.eval("RLSuite.groupmaking.ieAutoMirrorDesc:GetText() == 'Bring consumables'")), "description field shows the event description")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalDayEdit:GetText() == '12'")), "day field shows the event day")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalYearEdit:GetText() == '2026'")), "year field shows the event year")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalHourEdit:GetText() == '20' and RLSuite.groupmaking.ieCalMinuteEdit:GetText() == '30'")), "time fields show the event time")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalEmptyLabel:IsShown() == false")), "empty label is hidden")
 check(bool(rt.eval("#RLSuite.groupmaking._autoMirrorInviteRows == 1")), "mirror renders one invite row")
+
+# --- class sidebar counts attending invitees per class ---
+rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = { title='Test Raid', invitees={ { name='Fake1', class='WARRIOR', status=2 }, { name='Fake2', class='WARRIOR', status=4 }, { name='Fake3', class='MAGE', status=1 }, { name='Fake4', class='MAGE', status=3 } } }")
+rt.execute("RLSuite.groupmaking:ResetCalendarWorking()")
+rt.execute("RLSuite.groupmaking:RenderLinkedEvent()")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalClassButtons['WARRIOR'].count:GetText() == '2'")), "sidebar counts 2 attending warriors")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalClassButtons['MAGE'].count:GetText() == ''")), "sidebar ignores invited/declined (non-attending) mages")
 
 # --- calendar mode invite queue comes from the linked snapshot ---
 rt.execute("RLSuite.groupmaking.autoinvite.mode = 'calendar'")
+rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = { title='Test Raid', invitees={ { name='Fake1', status=1 } } }")
+rt.execute("RLSuite.groupmaking:ResetCalendarWorking()")
 rt.execute("Q = RLSuite.groupmaking:BuildAutoinviteQueue()")
 check(bool(rt.eval("table.concat(Q, ',') == 'Fake1'")), "calendar queue is built from linked invitees")
 
@@ -874,11 +893,25 @@ check(bool(rt.eval("RLSuite.groupmaking.ieAutoNowBtn:GetParent() == RLSuite.grou
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoHourEdit:GetParent() == RLSuite.groupmaking.ieManualFooter")), "hour edit anchored to the footer")
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoMinuteEdit:GetParent() == RLSuite.groupmaking.ieManualFooter")), "minute edit anchored to the footer")
 
-# --- calendar footer: no 'Invite at', buttons only ---
+# --- calendar footer: the 3 buttons + status ---
 check(bool(rt.eval("RLSuite.groupmaking.ieCalFooter ~= nil")), "calendar footer frame exists")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalAtBtn ~= nil")), "'Autoinvite at set time' button exists")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalAtBtn:GetText() == 'Autoinvite at set time'")), "'Autoinvite at set time' is labelled correctly")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalNowBtn ~= nil")), "'Auto invite now' button exists")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalUpdateBtn ~= nil")), "Update button exists")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalInviteEdit ~= nil")), "'invite a player' edit box exists")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalInviteBtn ~= nil")), "'Invite new member' button exists")
+
+# --- calendar 'Autoinvite at set time' arms the calendar queue ---
+check(bool(rt.eval("type(RLSuite.groupmaking.ToggleAutoinviterCalendar) == 'function'")), "ToggleAutoinviterCalendar wired")
+rt.execute("RLSuite.groupmaking.autoinvite.names = {}")
+rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = { title='Test Raid', invitees={ { name='Fake1', status=1 } } }")
+rt.execute("RLSuite.groupmaking:ResetCalendarWorking()")
+rt.execute("RLSuite.groupmaking:ToggleAutoinviterCalendar()")
+check(bool(rt.eval("RLSuite.groupmaking.autoinviteActive == true")), "calendar Autoinvite at set time arms the autoinviter")
+check(bool(rt.eval("RLSuite.groupmaking.autoinviteQueue ~= nil and RLSuite.groupmaking.autoinviteQueue[1] == 'Fake1'")), "armed queue comes from the calendar invitees")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalAtBtn:GetText() == 'Stop Autoinviter'")), "armed calendar button reads 'Stop Autoinviter'")
+rt.execute("RLSuite.groupmaking:StopAutoinviter()")
 
 # --- Update button activates only on pending changes ---
 check(bool(rt.eval("type(RLSuite.groupmaking.UpdateLinkedCalendarEvent) == 'function'")), "UpdateLinkedCalendarEvent wired")
