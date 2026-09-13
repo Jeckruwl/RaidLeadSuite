@@ -95,7 +95,9 @@ local defaults = {
             y = 0,
             appearance = {
                 barHeight = 20,
+                barWidth = 180,
                 iconSize = 16,
+                nameFontSize = 11,
                 abilityBarWidth = 110,
                 border = true,
             },

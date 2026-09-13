@@ -1040,6 +1040,20 @@ check(bool(rt.eval("RLSuite.mainWindow.tabPanels == nil")), "old Raid Frame sett
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.behavior ~= nil")), "Raid Frame -> Checks present in Config")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.alerts ~= nil")), "Raid Frame -> Alert Messages present in Config")
 
+# --- Raid Frame config: right panel shows a tab window (one tab per sub-item) ---
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.childGroups == 'tab'")), "Raid Frame group renders sub-items as tabs")
+rt.execute("RF_TREE = RLSuite.config.tree.tree; RF_NODE = nil; for _, n in ipairs(RF_TREE) do if n.value == 'raidframe' then RF_NODE = n end end")
+check(bool(rt.eval("RF_NODE ~= nil and RF_NODE.children == nil")), "Raid Frame is a leaf node (tabs live in the right panel)")
+rt.execute("RLSuite.config:SelectNode('raidframe')")
+check(bool(rt.eval("RLSuite.config.currentNode == 'raidframe'")), "selecting Raid Frame node renders without error")
+check(bool(rt.eval("LAST_ERROR == nil or LAST_ERROR == None")), "no error rendering the Raid Frame tab window")
+
+# --- Layout tab controls ---
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.iconSize ~= nil")), "Layout -> Icon size present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.barHeight ~= nil")), "Layout -> Player bar height present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.barWidth ~= nil")), "Layout -> Player bar width present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.nameFontSize ~= nil")), "Layout -> Name font size present")
+
 # --- clean HUD: no backdrop / border / close button ---
 check(bool(rt.eval("RLSuite.raidFrame.frame:GetBackdrop() == nil")), "HUD has no backdrop")
 check(bool(rt.eval("RLSuite.raidFrame.frame.closeBtn == nil")), "HUD has no red-X close button")
@@ -1050,6 +1064,7 @@ rt.execute("E5_ROW = RLSuite.raidFrame.rows and RLSuite.raidFrame.rows[1] or nil
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar ~= nil and E5_ROW.bar.nameText ~= nil and E5_ROW.bar.hpText ~= nil")), "row has one HP bar with name + %% inside")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.flaskIcon ~= nil and E5_ROW.foodIcon ~= nil")), "row has left flask + Well Fed icons")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.cdIcons ~= nil and #E5_ROW.cdIcons > 0")), "row has class key CDs on the right")
+check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar:GetWidth() == RLSuite.db.profile.raidframe.appearance.barWidth")), "player HP bar uses the configured bar width")
 
 # --- vertical ability bar (driven by the composition) ---
 check(bool(rt.eval("RLSuite.raidFrame.abilityButtons ~= nil and #RLSuite.raidFrame.abilityButtons >= 4")), "ability bar shows abilities for the WARRIOR-heavy comp")

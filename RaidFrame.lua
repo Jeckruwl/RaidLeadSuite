@@ -150,17 +150,27 @@ end
 -- ------------------------------------------------------------------
 function RF:LayoutMetrics()
     local db = self.db or {}
-    local W = db.width or 380
+    local iconSize = (db.appearance and db.appearance.iconSize) or 16
+    local barHeight = (db.appearance and db.appearance.barHeight) or 20
+    local barWidth = (db.appearance and db.appearance.barWidth) or 180
+    local nameFontSize = (db.appearance and db.appearance.nameFontSize) or 11
     local abw = 0
     if db.showAbilityBar ~= false and (self.abilityCount or 0) > 0 then
         abw = (db.appearance and db.appearance.abilityBarWidth) or 110
     end
     local gap = (abw > 0) and 8 or 0
-    local cw = math.max(120, W - abw - gap)
-    local barHeight = (db.appearance and db.appearance.barHeight) or 20
-    local iconSize = (db.appearance and db.appearance.iconSize) or 16
+    -- Layout per row: [flask][food] ... [HP bar = barWidth] ... [up to 4 CDs]
+    local leftArea = 4 + 2 * iconSize + 4
+    local cdReserve = 4 * iconSize + 3 * 2 + 4
+    local rowWidth = leftArea + barWidth + cdReserve + 4
+    local W = rowWidth + abw + gap
     local rowHeight = math.max(barHeight, iconSize) + 4
-    return { W = W, abw = abw, cw = cw, barHeight = barHeight, iconSize = iconSize, rowHeight = rowHeight }
+    return {
+        W = W, abw = abw, rowWidth = rowWidth,
+        barWidth = barWidth, barHeight = barHeight,
+        iconSize = iconSize, nameFontSize = nameFontSize,
+        rowHeight = rowHeight,
+    }
 end
 
 -- ------------------------------------------------------------------
@@ -193,7 +203,7 @@ end
 
 function RF:CreateRow(info, i, m)
     local row = CreateFrame("Button", "RLSuiteRaidRow" .. i, self.content)
-    row:SetSize(m.cw, m.rowHeight)
+    row:SetSize(m.rowWidth, m.rowHeight)
     row:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, -(i - 1) * m.rowHeight)
     row.unit = info.unit
     row.name = info.name or "Unknown"
@@ -206,14 +216,12 @@ function RF:CreateRow(info, i, m)
     row.foodIcon = self:MakeConsumableIcon(row, "food", 2, m)
 
     -- HP bar (name + % inside), fill = HP%, color = class color.
+    -- The bar width is fixed (config "Player bar width").
     local leftX = 4 + 2 * m.iconSize + 4
-    local cdCount = #(RLSuite.keyAbilities[row.class] or {})
-    local cdArea = (cdCount > 0) and (cdCount * m.iconSize + (cdCount - 1) * 2 + 4) or 0
 
     local bar = CreateFrame("StatusBar", nil, row)
-    bar:SetHeight(m.barHeight)
+    bar:SetSize(m.barWidth, m.barHeight)
     bar:SetPoint("TOPLEFT", row, "TOPLEFT", leftX, 0)
-    bar:SetPoint("RIGHT", row, "RIGHT", -cdArea, 0)
     bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     bar:SetMinMaxValues(0, 100)
     bar:SetValue(100)
@@ -229,12 +237,14 @@ function RF:CreateRow(info, i, m)
 
     local nameFS = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     nameFS:SetPoint("LEFT", bar, "LEFT", 3, 0)
+    nameFS:SetFont(RLSuite.utils:GetUIFont(), m.nameFontSize, "OUTLINE")
     nameFS:SetText(row.name)
     nameFS:SetTextColor(1, 1, 1)
     bar.nameText = nameFS
 
     local pctFS = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     pctFS:SetPoint("RIGHT", bar, "RIGHT", -3, 0)
+    pctFS:SetFont(RLSuite.utils:GetUIFont(), m.nameFontSize, "OUTLINE")
     pctFS:SetText("100%")
     pctFS:SetTextColor(1, 1, 1)
     bar.hpText = pctFS
@@ -242,13 +252,13 @@ function RF:CreateRow(info, i, m)
     local r, g, b = RLSuite.utils:GetClassColor(row.class)
     bar:SetStatusBarColor(r, g, b)
 
-    -- Right: class key cooldowns.
+    -- Right: class key cooldowns (immediately after the HP bar).
     row.cdIcons = {}
     local abilities = RLSuite.keyAbilities[row.class] or {}
     for j, ability in ipairs(abilities) do
         local cd = row:CreateTexture(nil, "OVERLAY")
         cd:SetSize(m.iconSize, m.iconSize)
-        cd:SetPoint("RIGHT", row, "RIGHT", -((j - 1) * (m.iconSize + 2)) - 2, 0)
+        cd:SetPoint("LEFT", bar, "RIGHT", 4 + (j - 1) * (m.iconSize + 2), 0)
         local meta = RLSuite.abilityByName and RLSuite.abilityByName[ability]
         cd:SetTexture((meta and meta.icon) or "Interface\\Icons\\INV_Misc_QuestionMark")
         cd:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -809,7 +819,7 @@ function RF:ApplyLayout()
     if self.content then
         self.content:ClearAllPoints()
         self.content:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, 0)
-        self.content:SetSize(m.cw, rowsH)
+        self.content:SetSize(m.rowWidth, rowsH)
     end
 
     if self.abilityBar then

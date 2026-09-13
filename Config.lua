@@ -75,12 +75,7 @@ local CATEGORIES = {
         { value = "layout", text = "Bar Layout" },
         { value = "editor", text = "Macro Editor" },
     } },
-    { value = "raidframe", text = "Raid Frame", children = {
-        { value = "layout",   text = "Layout" },
-        { value = "behavior", text = "Checks" },
-        { value = "alerts",   text = "Alert Messages" },
-        { value = "pos",      text = "Position" },
-    } },
+    { value = "raidframe", text = "Raid Frame" },
     { value = "ms", text = "MS" },
     { value = "loot", text = "Loot" },
 }
@@ -96,10 +91,10 @@ local NODES = {
     ["groupmaking"]        = { "groupmaking" },
     ["macros\001layout"]   = { "macros", "layout" },
     [EDITOR_NODE]          = "__editor__",
-    ["raidframe\001layout"]   = { "raidframe", "layout" },
-    ["raidframe\001behavior"] = { "raidframe", "behavior" },
-    ["raidframe\001alerts"]   = { "raidframe", "alerts" },
-    ["raidframe\001pos"]      = { "raidframe", "pos" },
+    -- Raid Frame e' un nodo singolo: le sotto-voci (Layout/Checks/Alerts/
+    -- Position) vengono mostrate come TAB nel pannello di destra
+    -- (childGroups = "tab" nel gruppo raidframe di BuildOptionsTable).
+    ["raidframe"]          = { "raidframe" },
     ["ms"]                 = { "ms" },
     ["loot"]               = { "loot" },
 }
@@ -499,21 +494,26 @@ function CFG:BuildOptionsTable()
     rf.appearance = rf.appearance or {}
     rf.width = rf.width or 380
     rf.scale = rf.scale or 1
+    rf.appearance.barWidth = rf.appearance.barWidth or 180
+    rf.appearance.nameFontSize = rf.appearance.nameFontSize or 11
 
     local raidLayout = {
-        width = slider(L["Width"], nil, 1, 220, 500, 20,
-            function() return rf.width end,
-            function(_, v) rf.width = v; self:ApplyAll() end),
-        barHeight = slider(L["HP bar height"], nil, 2, 12, 32, 1,
-            function() return rf.appearance.barHeight or 20 end,
-            function(_, v) rf.appearance.barHeight = v; self:ApplyAll() end),
-        iconSize = slider(L["Icon size"], nil, 3, 10, 24, 1,
+        iconSize = slider(L["Icon size"], nil, 1, 10, 24, 1,
             function() return rf.appearance.iconSize or 16 end,
             function(_, v) rf.appearance.iconSize = v; self:ApplyAll() end),
-        abilityBarWidth = slider(L["Ability bar width"], nil, 4, 80, 160, 5,
+        barHeight = slider(L["Player bar height"], nil, 2, 12, 32, 1,
+            function() return rf.appearance.barHeight or 20 end,
+            function(_, v) rf.appearance.barHeight = v; self:ApplyAll() end),
+        barWidth = slider(L["Player bar width"], nil, 3, 100, 300, 5,
+            function() return rf.appearance.barWidth or 180 end,
+            function(_, v) rf.appearance.barWidth = v; self:ApplyAll() end),
+        nameFontSize = slider(L["Name font size"], nil, 4, 8, 16, 1,
+            function() return rf.appearance.nameFontSize or 11 end,
+            function(_, v) rf.appearance.nameFontSize = v; self:ApplyAll() end),
+        abilityBarWidth = slider(L["Ability bar width"], nil, 5, 80, 160, 5,
             function() return rf.appearance.abilityBarWidth or 110 end,
             function(_, v) rf.appearance.abilityBarWidth = v; self:ApplyAll() end),
-        scale = slider(L["Scale"], nil, 5, 0.70, 1.50, 0.05,
+        scale = slider(L["Scale"], nil, 6, 0.70, 1.50, 0.05,
             function() return rf.scale end,
             function(_, v) rf.scale = v; self:ApplyAll() end),
     }
@@ -597,7 +597,7 @@ function CFG:BuildOptionsTable()
             savedraids = savedraids,
             groupmaking = { type = "group", name = L["Groupmaking"], order = 3, args = groupmaking },
             macros = { type = "group", name = L["Macros"], order = 4, args = macros },
-            raidframe = { type = "group", name = L["Raid Frame"], order = 5, args = raidframe },
+            raidframe = { type = "group", name = L["Raid Frame"], order = 5, childGroups = "tab", args = raidframe },
             ms = { type = "group", name = L["MS Manager"], order = 6, args = ms },
             loot = { type = "group", name = L["Loot Manager"], order = 7, args = loot },
         },
