@@ -124,7 +124,7 @@ function methods:SetMinResize(...) return self end
 function methods:SetClampedToScreen(b) return self end
 function methods:SetAllPoints(...) return self end
 function methods:SetTexCoord(...) return self end
-function methods:SetTexture(...) return self end
+function methods:SetTexture(t) self._texture = t; return self end
 function methods:SetBlendMode(...) return self end
 function methods:SetVertexColor(...) return self end
 function methods:SetColorTexture(...) return self end
@@ -213,6 +213,8 @@ CreateFrame = function(typ, name, parent, template)
 end
 UIParent = newFrame({ _name = "UIParent" })
 UIParent._w = 1920; UIParent._h = 1080
+Minimap = newFrame({ _name = "Minimap" })
+Minimap._w = 156; Minimap._h = 156
 GameTooltip = newFrame({ _name = "GameTooltip" })
 DEFAULT_CHAT_FRAME = newFrame({ _name = "DEFAULT_CHAT_FRAME" })
 SlashCmdList = {}
@@ -578,6 +580,23 @@ check(g.RLSuite.context == "preraid", "RAID_ROSTER_UPDATE dispatch sets context 
 rt.execute("RLSuite.mainWindow.toggleCount = 0; RLSuite.mainWindow.Toggle = function(self) self.toggleCount = self.toggleCount + 1 end")
 rt.execute("SlashCmdList['ACECONSOLE_RLS']('')")
 check(g.RLSuite.mainWindow.toggleCount == 1, "/rls (empty) toggles the main window")
+
+# minimap icon: faction texture + left/right click + drag + config icon gone
+check(bool(rt.eval("RLSuite.minimapIcon ~= nil")), "minimap icon created at login")
+check(bool(rt.eval("RLSuite:IsHorde() == false")), "Alliance player -> IsHorde() false")
+check(bool(rt.eval("RLSuite.minimapIcon.icon ~= nil")), "minimap icon has a texture")
+check(bool(rt.eval("RLSuite.minimapIcon.icon._texture == 'Interface\\\\AddOns\\\\RaidLeadSuite\\\\media\\\\allianceicon.tga'")), "minimap icon uses allianceicon.tga for an Alliance player")
+check(bool(rt.eval("RLSuite.mainWindow.configBtn == nil")), "config gear icon removed from the main bar")
+rt.execute("RLSuite.mainWindow.toggleCount = 0")
+rt.execute("local b = RLSuite.minimapIcon; if b._scripts.OnClick then b._scripts.OnClick(b, 'LeftButton') end")
+check(g.RLSuite.mainWindow.toggleCount == 1, "minimap left click toggles the main bar")
+rt.execute("local saved = RLSuite.config.Toggle; RLSuite.config.Toggle = function() RLSuite.config._spy = (RLSuite.config._spy or 0) + 1 end; local b = RLSuite.minimapIcon; if b._scripts.OnClick then b._scripts.OnClick(b, 'RightButton') end; RLSuite.config.Toggle = saved")
+check(bool(rt.eval("RLSuite.config._spy == 1")), "minimap right click opens Config")
+rt.execute("local b = RLSuite.minimapIcon; if b._scripts.OnDragStart then b._scripts.OnDragStart(b) end")
+check(bool(rt.eval("RLSuite.minimapIcon.dragging == nil")), "drag without Shift does not move the minimap icon")
+rt.execute("IsShiftKeyDown = function() return true end")
+rt.execute("local b = RLSuite.minimapIcon; if b._scripts.OnDragStart then b._scripts.OnDragStart(b) end")
+check(bool(rt.eval("RLSuite.minimapIcon.dragging == true")), "Shift + left drag starts moving the minimap icon")
 
 # save raid + load raid round trip through the new profile
 rt.execute("SAVED_ID = RLSuite:SaveRaid('TestRaid')")

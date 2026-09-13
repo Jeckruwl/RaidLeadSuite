@@ -186,6 +186,11 @@ do
     L["SaveRaid title:"] = true
     L["SaveRaid cancelled: no title entered."] = true
 
+    -- Minimap icon
+    L["Left click: open RLS"] = true
+    L["Right click: config"] = true
+    L["Shift + left drag: move"] = true
+
     -- Config
     L["Appearance"] = true
     L["Window"] = true

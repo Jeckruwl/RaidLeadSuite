@@ -114,6 +114,9 @@ local defaults = {
             fill = { r = 0.05, g = 0.05, b = 0.07, a = 1 },
             border = { r = 0.70, g = 0.70, b = 0.70, a = 1 },
         },
+        minimap = {
+            angle = 220,
+        },
         layout = {
             main = { width = 660, height = 700, scale = 1 },
             groupmaking = { scale = 1 },
@@ -183,6 +186,7 @@ function RLSuite:OnEnable()
     self:RegisterEvent("CHAT_MSG_RAID_LEADER", "OnRaidMessage")
     self:RegisterEvent("CHAT_MSG_LOOT", "OnLootMessage")
     self:InitModules()
+    self:CreateMinimapIcon()
 end
 
 function RLSuite:OnDisable()
@@ -705,6 +709,135 @@ end
 function RLSuite:AddonTexture(rel)
     local folder = self.addonFolder or "RaidLeadSuite"
     return "Interface\\AddOns\\" .. folder .. "\\" .. rel
+end
+
+-- ============================================================
+-- MINIMAP ICON
+-- Fazione: personaggio dell'Orda -> hordeicon, altrimenti allianceicon.
+-- Click sinistro  = apre/chiude la main bar di RLS.
+-- Click destro    = apre la Config.
+-- Shift + click sinistro + drag = sposta l'icona lungo la minimappa
+-- (l'angolo viene salvato nel profilo).
+-- ============================================================
+function RLSuite:IsHorde()
+    if UnitFactionGroup then
+        return UnitFactionGroup("player") == "Horde"
+    end
+    return false
+end
+
+-- Raggio dell'anello della minimappa (in 3.3.5 la forma puo' variare;
+-- fallback al raggio standard della minimappa).
+function RLSuite:MinimapIconRadius()
+    if Minimap and Minimap.GetWidth then
+        local w = Minimap:GetWidth()
+        if w and w > 0 then return w / 2 end
+    end
+    return 78
+end
+
+-- Angolo salvato (in gradi, 0 = est, cresce in senso antiorario).
+function RLSuite:MinimapIconAngle()
+    local mm = self.db and self.db.profile.minimap
+    local a = mm and tonumber(mm.angle)
+    if a then return a end
+    return 220
+end
+
+-- Crea l'icona della minimappa (una sola volta, al login).
+function RLSuite:CreateMinimapIcon()
+    if not Minimap then return end
+    if self.minimapIcon then return end
+
+    local btn = CreateFrame("Button", "RLSuiteMinimapIcon", Minimap)
+    btn:SetSize(31, 31)
+    btn:SetFrameStrata("MEDIUM")
+    btn:SetFrameLevel(8)
+
+    local tex = btn:CreateTexture(nil, "ARTWORK")
+    tex:SetAllPoints(btn)
+    local file = self:IsHorde() and "media\\hordeicon.tga" or "media\\allianceicon.tga"
+    tex:SetTexture(self:AddonTexture(file))
+    btn.icon = tex
+
+    btn:SetMovable(true)
+    btn:EnableMouse(true)
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn:RegisterForDrag("LeftButton")
+
+    btn:SetScript("OnClick", function(self2, button)
+        if button == "RightButton" then
+            if RLSuite.config and RLSuite.config.Toggle then
+                RLSuite.config:Toggle()
+            end
+        else
+            if RLSuite.mainWindow and RLSuite.mainWindow.Toggle then
+                RLSuite.mainWindow:Toggle()
+            end
+        end
+    end)
+
+    -- Solo con Shift premuto parte lo spostamento: un click sinistro
+    -- semplice resta un click (apre la barra), un drag semplice non fa
+    -- nulla, un drag con Shift sposta l'icona.
+    btn:SetScript("OnDragStart", function(self2)
+        if IsShiftKeyDown and IsShiftKeyDown() then
+            self2.dragging = true
+            self2:StartMoving()
+        end
+    end)
+
+    btn:SetScript("OnDragStop", function(self2)
+        self2:StopMovingOrSizing()
+        self2.dragging = nil
+        RLSuite:SaveMinimapIconPosition(self2)
+    end)
+
+    btn:SetScript("OnEnter", function(self2)
+        if not GameTooltip then return end
+        GameTooltip:SetOwner(self2, "ANCHOR_LEFT")
+        GameTooltip:SetText("RLSuite")
+        GameTooltip:AddLine(L["Left click: open RLS"], 1, 1, 1)
+        GameTooltip:AddLine(L["Right click: config"], 1, 1, 1)
+        GameTooltip:AddLine(L["Shift + left drag: move"], 0.8, 0.8, 0.8)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function()
+        if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+    end)
+
+    self.minimapIcon = btn
+    self:PlaceMinimapIcon()
+end
+
+-- Posiziona l'icona sulla minimappa all'angolo salvato.
+function RLSuite:PlaceMinimapIcon()
+    local btn = self.minimapIcon
+    if not btn or not Minimap then return end
+    local angle = math.rad(self:MinimapIconAngle())
+    local radius = self:MinimapIconRadius()
+    btn:ClearAllPoints()
+    btn:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
+end
+
+-- Salva la posizione dopo il drag: calcola l'angolo dal centro della
+-- minimappa e riporta l'icona esattamente sul bordo dell'anello.
+function RLSuite:SaveMinimapIconPosition(btn)
+    if not btn or not Minimap then return end
+    if not Minimap.GetCenter then return end
+    local cx, cy = Minimap:GetCenter()
+    if not cx then return end
+    local x = (btn:GetLeft() or 0) + (btn:GetWidth() or 31) / 2
+    local y = (btn:GetBottom() or 0) + (btn:GetHeight() or 31) / 2
+    local angle = math.deg(math.atan2(y - cy, x - cx))
+    if angle < 0 then angle = angle + 360 end
+    local mm = self.db.profile.minimap
+    if not mm then
+        mm = {}
+        self.db.profile.minimap = mm
+    end
+    mm.angle = angle
+    self:PlaceMinimapIcon()
 end
 
 function RLSuite:InRaid()

@@ -137,7 +137,8 @@ function MW:CreateFrame()
     RLSuite.utils:ClampWindow(f)
 
     -- Niente titolo: la barra contiene solo i bottoni (matrice + fase +
-    -- X di chiusura e rotellina Config). Il tab Config e' la rotellina.
+    -- X di chiusura e icona SaveRaid). La Config si apre dalla minimappa
+    -- (clic destro) o da /rls config.
 
     self.tabDefs = {
         { key = "group",     label = "Groupmaking" },
@@ -162,7 +163,7 @@ function MW:CreateFrame()
         table.insert(self.matrixButtons, tab)
     end
 
-    -- Icona fase singola: sotto la rotellina Config, cambia in base alla
+    -- Icona fase singola: accanto all'icona SaveRaid, cambia in base alla
     -- fase (occhio LFG animato / clessidra / spade da combattimento).
     -- Clic = passa alla fase successiva.
     self.phaseDefs = {
@@ -218,27 +219,10 @@ function MW:CreateFrame()
         f:Hide()
     end)
 
-    -- Config: icona a rotellina sotto la X rossa (sostituisce il tab Config)
-    self.configBtn = CreateFrame("Button", nil, f)
-    self.configBtn:SetSize(26, 26)
-    RLSuite.utils:SkinBox(self.configBtn)
-    local gear = self.configBtn:CreateTexture(nil, "ARTWORK")
-    gear:SetPoint("TOPLEFT", self.configBtn, "TOPLEFT", 3, -3)
-    gear:SetPoint("BOTTOMRIGHT", self.configBtn, "BOTTOMRIGHT", -3, 3)
-    gear:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
-    self.configBtn:EnableMouse(true)
-    self.configBtn:RegisterForClicks("LeftButtonUp")
-    self.configBtn:SetScript("OnClick", function()
-        if RLSuite.config then RLSuite.config:Toggle() end
-    end)
-    self.configBtn:SetScript("OnEnter", function(s)
-        GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Config")
-        GameTooltip:Show()
-    end)
-    self.configBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- Config: accessibile dal clic destro sull'icona della minimappa e da
+    -- /rls config (niente piu' icona rotellina nella barra principale).
 
-    -- SaveRaid: icona salvataggio tra la rotellina Config e l'icona fase
+    -- SaveRaid: icona salvataggio a sinistra dell'icona fase
     self.saveRaidBtn = CreateFrame("Button", "RLSuiteSaveRaidBtn", f)
     self.saveRaidBtn:SetSize(26, 26)
     RLSuite.utils:SkinBox(self.saveRaidBtn)
@@ -275,7 +259,7 @@ function MW:ApplyLayout()
     -- Bottoni matrice: colonne x righe configurabili dalla Config.
     local bw, bh, gapX, gapY = 90, 22, 8, 4
     local PAD = 12
-    local iconSize = 26                       -- icone (rotellina/save/fase)
+    local iconSize = 26                       -- icone (save/fase)
     local iconGap = 4                         -- spazio tra le icone
     local xSize = 32                          -- X di chiusura
     local rowGap = 6                          -- spazio tra riga icone e matrice
@@ -283,11 +267,11 @@ function MW:ApplyLayout()
     local matrixW = cols * bw + (cols - 1) * gapX
     local matrixH = rows * bh + (rows - 1) * gapY
 
-    -- Riga icone in alto, larga quanto la matrice: le 3 icone a sinistra,
+    -- Riga icone in alto, larga quanto la matrice: le 2 icone a sinistra,
     -- spazio vuoto, X rossa a destra. Se la matrice e' piu' stretta delle
     -- icone, riga e barra si allargano al minimo per contenerle.
     local iconRowH = math.max(iconSize, xSize)
-    local iconsW = 3 * iconSize + 2 * iconGap
+    local iconsW = 2 * iconSize + 1 * iconGap
     local minRowW = iconsW + iconGap + xSize
     local contentW = math.max(matrixW, minRowW)
 
@@ -308,19 +292,15 @@ function MW:ApplyLayout()
         btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", x0 + col * (bw + gapX), topY - row * (bh + gapY))
     end
 
-    -- riga icone in alto: rotellina -> save -> fase a sinistra, X a destra
+    -- riga icone in alto: save -> fase a sinistra, X a destra
     local iconY = -(iconRowH - iconSize) / 2
-    if self.configBtn then
-        self.configBtn:ClearAllPoints()
-        self.configBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", PAD, -PAD + iconY)
-    end
     if self.saveRaidBtn then
         self.saveRaidBtn:ClearAllPoints()
-        self.saveRaidBtn:SetPoint("TOPLEFT", self.configBtn or self.frame, "TOPRIGHT", iconGap, 0)
+        self.saveRaidBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", PAD, -PAD + iconY)
     end
     if self.phaseBtn then
         self.phaseBtn:ClearAllPoints()
-        self.phaseBtn:SetPoint("TOPLEFT", self.saveRaidBtn or self.configBtn or self.frame, "TOPRIGHT", iconGap, 0)
+        self.phaseBtn:SetPoint("TOPLEFT", self.saveRaidBtn or self.frame, "TOPRIGHT", iconGap, 0)
     end
     if self.closeBtn then
         self.closeBtn:ClearAllPoints()
