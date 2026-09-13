@@ -13,6 +13,7 @@ local GROUP_LABEL_H = 17
 
 -- Raid Group panel (InviteEngine rib): the REAL raid, one vertical column
 -- per raid group, each holding up to 5 class-colored name bars.
+local WL_GROUPS = 6
 local WL_BAR_H = 16
 local WL_BAR_GAP = 2
 local WL_COL_GAP = 4
@@ -1203,7 +1204,9 @@ function GM:CreateWhisplistWindow()
     -- sposta con lei e non e' trascinabile da solo.
     local f = CreateFrame("Frame", "RLSuiteInviteEngine", self.mainFrame)
     f:SetPoint("TOPLEFT", self.mainFrame, "TOPRIGHT", 6, 0)
-    f:SetWidth(380)
+    -- 6 colonne di gruppi (G1..G6) richiedono piu' larghezza della vecchia
+    -- costola a 5 colonne.
+    f:SetWidth(450)
     f:SetHeight(self:MinHeight())
     f:SetFrameStrata("HIGH")
     f:EnableMouse(true)
@@ -3046,7 +3049,7 @@ function GM:BuildWLGroupColumns()
     self.wlGroupLabels = {}
     self.wlGroupSlots = {}
     local box = self.wlGroupBox
-    for g = 1, 5 do
+    for g = 1, WL_GROUPS do
         local lbl = FontStr(box, "OVERLAY", 12)
         lbl:SetText("G" .. g)
         lbl:SetTextColor(1, 0.82, 0)
@@ -3071,6 +3074,25 @@ function GM:BuildWLGroupColumns()
             bar:SetBackdropBorderColor(0.40, 0.40, 0.42, 1)
             bar:EnableMouse(true)
 
+            -- Trascina un giocatore su un altro slot per riorganizzare i
+            -- gruppi: slot vuoto = spostamento, slot pieno = scambio.
+            bar:RegisterForDrag("LeftButton")
+            bar:SetScript("OnDragStart", function(self2)
+                if self2.playerName then
+                    GM._wlDragSource = self2
+                end
+            end)
+            bar:SetScript("OnDragStop", function()
+                GM._wlDragSource = nil
+            end)
+            bar:SetScript("OnReceiveDrag", function(self2)
+                local src = GM._wlDragSource
+                GM._wlDragSource = nil
+                if src and src ~= self2 and src.playerName then
+                    GM:MoveWLSlot(src, self2)
+                end
+            end)
+
             -- Nome in colore di classe su slot scuro (come il Raid Frame):
             -- sempre leggibile, con ombra chiara per i colori piu' scuri.
             local nameFS = FontStr(bar, "OVERLAY", 11)
@@ -3081,6 +3103,11 @@ function GM:BuildWLGroupColumns()
             nameFS:SetShadowColor(1, 1, 1, 0.8)
             nameFS:SetShadowOffset(1, -1)
             bar.nameFS = nameFS
+
+            bar.index = i
+            bar.group = g
+            bar.slot = s
+            bar.playerName = nil
 
             self.wlGroupSlots[i] = bar
         end
@@ -3096,23 +3123,29 @@ end
 function GM:UpdateWLGroups()
     if not self.wlGroupSlots then return end
 
-    local byGroup = { {}, {}, {}, {}, {} }
+    local byGroup = { {}, {}, {}, {}, {}, {} }
     local num = 0
     local debugMode = RLSuite.DebugMode and RLSuite:DebugMode()
     if debugMode then
-        -- Roster simulato: i sottogruppi sono assegnati da Core.
-        local ngroups = self:WlGroupColumnCount()
-        RLSuite:DebugRebalanceGroups(ngroups)
-        for _, m in ipairs(RLSuite:DebugRoster()) do
-            local subgroup = tonumber(m.subgroup) or 1
-            if subgroup < 1 then subgroup = 1 end
-            if subgroup > 5 then subgroup = 5 end
-            table.insert(byGroup[subgroup], { name = m.name, class = m.class or "WARRIOR" })
+        -- Roster simulato: gli slot sono SPARSI (un buco resta un buco),
+        -- cosi' il drag&drop puo' spostare un giocatore esattamente nello
+        -- slot libero scelto. byGroup[g][s] e' indicizzato per RIGA.
+        local slots = RLSuite:DebugRaidSlots()
+        for i = 1, 30 do
+            local m = slots[i]
+            if m then
+                local g = math.floor((i - 1) / 5) + 1
+                local s = (i - 1) % 5 + 1
+                if g >= 1 and g <= WL_GROUPS then
+                    byGroup[g][s] = { name = m.name, class = m.class or "WARRIOR" }
+                end
+            end
         end
     elseif IsInRaid and IsInRaid() and GetNumRaidMembers then
         num = GetNumRaidMembers()
     end
     if not debugMode then
+        local groupCount = { 0, 0, 0, 0, 0, 0 }
         for i = 1, num do
             local name, _, subgroup = GetRaidRosterInfo(i)
             if name then
@@ -3123,16 +3156,17 @@ function GM:UpdateWLGroups()
                 end
                 subgroup = tonumber(subgroup) or 1
                 if subgroup < 1 then subgroup = 1 end
-                if subgroup > 5 then subgroup = 5 end
-                table.insert(byGroup[subgroup], { name = name, class = class })
+                if subgroup > WL_GROUPS then subgroup = WL_GROUPS end
+                groupCount[subgroup] = groupCount[subgroup] + 1
+                byGroup[subgroup][groupCount[subgroup]] = { name = name, class = class, raidIndex = i }
             end
         end
     end
 
-    -- Numero di colonne dalla difficolta' di Groupmaking (2 per il 10, 5 per il 25).
+    -- Numero di colonne del pannello Raid Group (sempre 6: G1..G6).
     local ngroups = self:WlGroupColumnCount()
 
-    for g = 1, 5 do
+    for g = 1, WL_GROUPS do
         for s = 1, 5 do
             local bar = self.wlGroupSlots[(g - 1) * 5 + s]
             if bar then
@@ -3142,6 +3176,8 @@ function GM:UpdateWLGroups()
                 else
                     bar:Hide()
                 end
+                bar.playerName = member and member.name or nil
+                bar.raidIndex = member and member.raidIndex or nil
                 if member then
                     local r, gg, b = RLSuite.utils:GetClassColor(member.class)
                     -- Slot pieno: bordo in colore di classe e nome in colore
@@ -3184,13 +3220,10 @@ function GM:UpdateWLGroups()
     end
 end
 
--- Numero di colonne del pannello Raid Group dalla difficolta' di Groupmaking.
+-- Numero di colonne del pannello Raid Group: ora sempre 6 (G1..G6), come
+-- richiesto. Le colonne si riempiono in ordine, una per gruppo raid.
 function GM:WlGroupColumnCount()
-    local numSlots = tonumber(self.db.difficulty or "10") or 10
-    local ngroups = math.ceil(numSlots / 5)
-    if ngroups < 2 then ngroups = 2 end
-    if ngroups > 5 then ngroups = 5 end
-    return ngroups
+    return WL_GROUPS
 end
 
 -- Posiziona le colonne (una per gruppo raid) e le barre verticali al loro
@@ -3199,7 +3232,7 @@ function GM:LayoutWLGroupColumns(ngroups)
     local box = self.wlGroupBox
     if not box then return end
     box:Show()
-    ngroups = ngroups or 5
+    ngroups = ngroups or WL_GROUPS
     local w = box:GetWidth() or 0
     local inner = w - 12
     local colW = math.floor((inner - (ngroups - 1) * WL_COL_GAP) / ngroups)
@@ -3207,7 +3240,7 @@ function GM:LayoutWLGroupColumns(ngroups)
     if colW < 50 then colW = 50 end
     local totalW = ngroups * colW + (ngroups - 1) * WL_COL_GAP
     local startX = 6 + math.floor(math.max(0, (inner - totalW) / 2))
-    for g = 1, 5 do
+    for g = 1, WL_GROUPS do
         local x = startX + (g - 1) * (colW + WL_COL_GAP)
         local lbl = self.wlGroupLabels and self.wlGroupLabels[g]
         if lbl then
@@ -3227,6 +3260,56 @@ function GM:LayoutWLGroupColumns(ngroups)
         end
     end
     box:SetHeight(24 + WL_GROUP_LABEL_H + 5 * WL_BAR_H + 4 * WL_BAR_GAP + 8)
+end
+
+-- Riorganizza i gruppi trascinando un giocatore tra gli slot del pannello
+-- Raid Group. src/dst sono i frame delle due barre (source e destinazione).
+-- Slot di destinazione vuoto = spostamento; slot occupato = scambio.
+function GM:MoveWLSlot(src, dst)
+    if not src or not dst or src == dst then return end
+    if not src.playerName then return end
+
+    -- Roster simulato (debug): riordina direttamente la lista condivisa.
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        self:MoveWLSlotDebug(src, dst)
+        return
+    end
+
+    -- Raid reale: usa le API Blizzard (solo il capogruppo puo' riorganizzare).
+    if not (IsRaidLeader and (IsRaidLeader() or IsRaidOfficer())) then
+        RLSuite.utils:Print(L["Only the raid leader can rearrange groups."])
+        return
+    end
+    if not src.raidIndex then return end
+    if dst.playerName and dst.raidIndex then
+        -- Scambio: SwapRaidSubgroup inverte i due giocatori.
+        pcall(SwapRaidSubgroup, src.raidIndex, dst.raidIndex)
+    else
+        -- Spostamento: SetRaidSubgroup sposta il giocatore nel gruppo target.
+        pcall(SetRaidSubgroup, src.raidIndex, dst.group)
+    end
+end
+
+-- Riorganizza il roster simulato in debug: scambia due membri (slot pieno)
+-- oppure sposta un membro esattamente nello slot vuoto di destinazione.
+-- Gli slot sono SPARSI: spostare un giocatore lascia un buco nello slot di
+-- partenza, che il pannello Raid Group mostra correttamente.
+function GM:MoveWLSlotDebug(src, dst)
+    local slots = RLSuite:DebugRaidSlots()
+    local srcMember = slots[src.index]
+    local dstMember = slots[dst.index]
+    if not srcMember then return end
+
+    if dstMember then
+        -- Slot occupato: i due giocatori si invertono.
+        slots[src.index], slots[dst.index] = dstMember, srcMember
+    else
+        -- Slot vuoto: il giocatore viene spostato esattamente li'.
+        slots[dst.index] = srcMember
+        slots[src.index] = nil
+    end
+    RLSuite:DebugSyncSubgroups()
+    RLSuite:DebugRosterChanged()
 end
 
 function GM:OpenWhisplist()

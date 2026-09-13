@@ -560,20 +560,75 @@ end
 -- Both the Raid Group panel (GroupMaking) and the Raid Frame read from
 -- this table in debug mode, so an accepted fake invite updates the UI
 -- exactly like a real invite would.
+--
+-- La struttura di verita' e' un ARRAY SPARSO di slot (1..30): lo slot i-esimo
+-- contiene un membro oppure nil. Questo permette di spostare/scambiare i
+-- giocatori tra slot liberi e occupati (drag&drop nel pannello Raid Group)
+-- senza dover "ricompattare" la lista. DebugRoster() restituisce una vista
+-- DENSA (senza buchi) per chi vuole solo la lista dei membri (Raid Frame).
 -- ============================================================
+local DEBUG_MAX_SLOTS = 30
+local DEBUG_MAX_GROUPS = 6
+
+-- Vista DENSA del roster simulato (gli slot vuoti vengono saltati): usata
+-- dal Raid Frame, dai test e ovunque serva una lista compatta dei membri.
 function RLSuite:DebugRoster()
     if not self.debugRaid then self:ResetDebugRaid() end
-    return self.debugRaid.members
+    local list = {}
+    for i = 1, DEBUG_MAX_SLOTS do
+        local m = self.debugRaid.slots[i]
+        if m then list[#list + 1] = m end
+    end
+    return list
+end
+
+-- Array sparso degli slot (1..30): la fonte di verita' per la disposizione
+-- dei gruppi. Lo slot i-esimo sta nella colonna floor((i-1)/5)+1, riga
+-- (i-1)%5+1.
+function RLSuite:DebugRaidSlots()
+    if not self.debugRaid then self:ResetDebugRaid() end
+    return self.debugRaid.slots
 end
 
 function RLSuite:ResetDebugRaid()
     local me = UnitName("player") or "Player"
     local myClass = select(2, UnitClass("player")) or "WARRIOR"
+    local player = { name = me, class = myClass, isPlayer = true, subgroup = 1 }
     self.debugRaid = {
-        members = {
-            { name = me, class = myClass, isPlayer = true, subgroup = 1 },
-        },
+        slots = { [1] = player },
     }
+end
+
+-- Ricalcola m.subgroup dalla posizione dello slot (una colonna = un gruppo).
+function RLSuite:DebugSyncSubgroups()
+    if not self.debugRaid then self:ResetDebugRaid() end
+    for i, m in pairs(self.debugRaid.slots) do
+        if m then
+            local sub = math.floor((i - 1) / 5) + 1
+            if sub < 1 then sub = 1 end
+            if sub > DEBUG_MAX_GROUPS then sub = DEBUG_MAX_GROUPS end
+            m.subgroup = sub
+        end
+    end
+end
+
+-- Primo slot libero dell'intero pannello, oppure del sottogruppo indicato.
+function RLSuite:DebugFindEmptySlot(subgroup)
+    if not self.debugRaid then self:ResetDebugRaid() end
+    if subgroup then
+        local base = (tonumber(subgroup) - 1) * 5
+        for s = 1, 5 do
+            local idx = base + s
+            if idx >= 1 and idx <= DEBUG_MAX_SLOTS and not self.debugRaid.slots[idx] then
+                return idx
+            end
+        end
+        return nil
+    end
+    for i = 1, DEBUG_MAX_SLOTS do
+        if not self.debugRaid.slots[i] then return i end
+    end
+    return nil
 end
 
 -- A fake player accepts the invite: add them to the simulated roster and
@@ -586,13 +641,16 @@ function RLSuite:DebugInviteAccept(name, class, subgroup)
             return m
         end
     end
+    local slot = self:DebugFindEmptySlot(subgroup)
+    if not slot then return nil end
     local member = {
         name = name,
         class = class or "WARRIOR",
         isPlayer = false,
-        subgroup = subgroup or (math.floor(#roster / 5) + 1),
+        subgroup = math.floor((slot - 1) / 5) + 1,
     }
-    table.insert(roster, member)
+    self.debugRaid.slots[slot] = member
+    self:DebugSyncSubgroups()
     self:DebugRosterChanged()
     return member
 end
@@ -600,14 +658,17 @@ end
 -- Riempie i sottogruppi IN ORDINE, come un display raid normale: il gruppo 1
 -- si riempie per primo (slot 1..5), poi il gruppo 2, e cosi' via. niente
 -- distribuzione round-robin (che riempiva da sinistra a destra).
+-- Ricompatta anche eventuali buchi lasciati dal drag&drop.
 function RLSuite:DebugRebalanceGroups(ngroups)
+    local max = ngroups or DEBUG_MAX_GROUPS
+    if max < 1 then max = 1 end
+    if max > DEBUG_MAX_GROUPS then max = DEBUG_MAX_GROUPS end
     local roster = self:DebugRoster()
+    self.debugRaid.slots = {}
     for i, m in ipairs(roster) do
-        local sub = math.floor((i - 1) / 5) + 1
-        if sub < 1 then sub = 1 end
-        if sub > 5 then sub = 5 end
-        m.subgroup = sub
+        self.debugRaid.slots[i] = m
     end
+    self:DebugSyncSubgroups()
 end
 
 -- Called whenever the simulated roster changes (invite accepted, debug

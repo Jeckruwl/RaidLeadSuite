@@ -826,6 +826,24 @@ rt.execute("for i=1,6 do RLSuite:DebugInviteAccept('Fake'..i, 'WARRIOR') end")
 rt.execute("local subs={}; for _,m in ipairs(RLSuite:DebugRoster()) do subs[#subs+1]=m.name..':'..tostring(m.subgroup) end; SUBS=subs")
 check(bool(rt.eval("table.concat(SUBS, ',') == 'Testplayer:1,Fake1:1,Fake2:1,Fake3:1,Fake4:1,Fake5:2,Fake6:2'")), "groups fill vertically: G1 fills first (5), then G2")
 
+# --- Raid Group G6 column + widened rib + drag&drop reorder ---
+check(bool(rt.eval("#RLSuite.groupmaking.wlGroupSlots == 30")), "Raid Group now builds 30 slots (6 groups x 5)")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupLabels[6] ~= nil and RLSuite.groupmaking.wlGroupLabels[6]:GetText() == 'G6'")), "Raid Group shows the G6 label")
+check(bool(rt.eval("RLSuite.groupmaking.whisplistFrame:GetWidth() == 450")), "InviteEngine rib widened to 450 for the 6th column")
+
+# Drop onto an EMPTY slot: the player moves there exactly, source becomes empty.
+rt.execute("RLSuite:ResetDebugRaid()")
+rt.execute("for i=1,4 do RLSuite:DebugInviteAccept('Mv'..i, 'WARRIOR') end")
+rt.execute("RLSuite.groupmaking:MoveWLSlot(RLSuite.groupmaking.wlGroupSlots[2], RLSuite.groupmaking.wlGroupSlots[6])")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[2].playerName == nil")), "drag onto empty slot empties the source slot")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[6].playerName == 'Mv1'")), "dragged player lands exactly in the empty destination slot")
+check(bool(rt.eval("#RLSuite:DebugRoster() == 5")), "moving keeps the roster size unchanged")
+
+# Drop onto an OCCUPIED slot: the two players swap.
+rt.execute("RLSuite.groupmaking:MoveWLSlot(RLSuite.groupmaking.wlGroupSlots[1], RLSuite.groupmaking.wlGroupSlots[3])")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[1].playerName == 'Mv2' and RLSuite.groupmaking.wlGroupSlots[3].playerName == 'Testplayer'")), "dropping onto an occupied slot swaps the two players")
+check(bool(rt.eval("#RLSuite:DebugRoster() == 5")), "swapping keeps the roster size unchanged")
+
 # --- Calendar Event tab redo: editable event + class sidebar ---
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoCalBox ~= nil")), "Calendar Event tab has the event box")
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoLinkBtn ~= nil")), "'Link or create an event' button exists")
