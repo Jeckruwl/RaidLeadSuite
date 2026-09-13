@@ -713,7 +713,9 @@ end
 
 -- ============================================================
 -- MINIMAP ICON
--- Fazione: personaggio dell'Orda -> hordeicon, altrimenti allianceicon.
+-- Fazione: personaggio dell'Orda -> hordeicon, altrimenti allianceicon
+-- (entrambe .blp, come l'icona SaveRaid: le .tga originali non venivano
+-- renderizzate dal client).
 -- Click sinistro  = apre/chiude la main bar di RLS.
 -- Click destro    = apre la Config.
 -- Shift + click sinistro + drag = sposta l'icona lungo la minimappa
@@ -756,7 +758,7 @@ function RLSuite:CreateMinimapIcon()
 
     local tex = btn:CreateTexture(nil, "ARTWORK")
     tex:SetAllPoints(btn)
-    local file = self:IsHorde() and "media\\hordeicon.tga" or "media\\allianceicon.tga"
+    local file = self:IsHorde() and "media\\hordeicon.blp" or "media\\allianceicon.blp"
     tex:SetTexture(self:AddonTexture(file))
     btn.icon = tex
 

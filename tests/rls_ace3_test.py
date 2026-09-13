@@ -585,7 +585,7 @@ check(g.RLSuite.mainWindow.toggleCount == 1, "/rls (empty) toggles the main wind
 check(bool(rt.eval("RLSuite.minimapIcon ~= nil")), "minimap icon created at login")
 check(bool(rt.eval("RLSuite:IsHorde() == false")), "Alliance player -> IsHorde() false")
 check(bool(rt.eval("RLSuite.minimapIcon.icon ~= nil")), "minimap icon has a texture")
-check(bool(rt.eval("RLSuite.minimapIcon.icon._texture == 'Interface\\\\AddOns\\\\RaidLeadSuite\\\\media\\\\allianceicon.tga'")), "minimap icon uses allianceicon.tga for an Alliance player")
+check(bool(rt.eval("RLSuite.minimapIcon.icon._texture == 'Interface\\\\AddOns\\\\RaidLeadSuite\\\\media\\\\allianceicon.blp'")), "minimap icon uses allianceicon.blp for an Alliance player")
 check(bool(rt.eval("RLSuite.mainWindow.configBtn == nil")), "config gear icon removed from the main bar")
 rt.execute("RLSuite.mainWindow.toggleCount = 0")
 rt.execute("local b = RLSuite.minimapIcon; if b._scripts.OnClick then b._scripts.OnClick(b, 'LeftButton') end")
