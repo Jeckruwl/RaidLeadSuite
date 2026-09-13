@@ -82,9 +82,12 @@ local defaults = {
             showBuffs = true,
             showFlask = true,
             showFood = true,
+            showBuffBar = true,     -- pre-boss alert buff bar
+            showDebuffBar = true,   -- in-fight alert debuff bar
+            showAbilityBar = true,  -- vertical ability-check bar
             locked = true,
             scale = 1.0,
-            width = 350,
+            width = 380,
             height = 400,
             point = "LEFT",
             relPoint = "LEFT",
@@ -93,6 +96,7 @@ local defaults = {
             appearance = {
                 barHeight = 20,
                 iconSize = 16,
+                abilityBarWidth = 110,
                 border = true,
             },
             alerts = {},
@@ -496,6 +500,78 @@ RLSuite.buffData = {
     },
 }
 
+-- ============================================================
+-- Raid buff/debuff "coverage" checks for the Raid Frame HUD.
+-- Each entry describes a category the raid leader wants covered:
+--   key      unique id (used for tooltips/logic)
+--   label    short label shown in the alert bars / ability bar
+--   icon     texture path
+--   classes  provider classes (drives the vertical ability bar: the
+--            button only appears when one of these classes is in the
+--            raid composition)
+--   spells   spellIds to look for (aura present if ANY is found on a
+--            raid member, or on the boss for debuffs). Faction variations
+--            are covered by listing both faction spell IDs in the same
+--            list (e.g. Bloodlust 2825 + Heroism 32182 for "Haste").
+--   onlyWithClass (optional) for the alert bar: hide the entry entirely
+--            unless at least one provider class is in the comp
+-- Checks are locale-safe: spellIds resolve to names via GetSpellInfo and
+-- the aura's returned spellId is compared (see RaidFrame.lua).
+-- ============================================================
+RLSuite.raidBuffChecks = {
+    { key = "stats",       label = "%stat",    icon = "Interface\\Icons\\Spell_Magic_GreaterBlessingofKings",
+      classes = { "PALADIN" }, spells = { 20217, 25898 } },
+    { key = "mp5",         label = "MP5",      icon = "Interface\\Icons\\Spell_Holy_GreaterBlessingofWisdom",
+      classes = { "PALADIN", "SHAMAN" }, spells = { 48936, 48938, 58774 } },
+    { key = "atkpower",    label = "ATK",      icon = "Interface\\Icons\\Ability_Warrior_BattleShout",
+      classes = { "PALADIN", "WARRIOR", "HUNTER" }, spells = { 48932, 48934, 47436, 19506 } },
+    { key = "hp",          label = "HP",       icon = "Interface\\Icons\\Ability_Warrior_RallyingCry",
+      classes = { "WARRIOR", "WARLOCK" }, spells = { 47440, 27267, 47982 } },
+    { key = "spirit",      label = "Spirit",   icon = "Interface\\Icons\\Spell_Holy_DivineSpirit",
+      classes = { "PRIEST" }, spells = { 14752, 14753, 14754, 25566, 27681, 48073, 48075 } },
+    { key = "stamina",     label = "Stamina",  icon = "Interface\\Icons\\Spell_Holy_WordFortitude",
+      classes = { "PRIEST" }, spells = { 48161, 48162 } },
+    { key = "intellect",   label = "Intellect", icon = "Interface\\Icons\\Spell_Holy_MagicalSentry",
+      classes = { "MAGE" }, spells = { 42995, 43002, 61316 } },
+    { key = "armor",       label = "Armor",    icon = "Interface\\Icons\\Spell_Holy_DevotionAura",
+      classes = { "PALADIN", "DRUID" }, spells = { 48942, 48941, 48470 } },
+    { key = "wild",        label = "Gift",     icon = "Interface\\Icons\\Spell_Nature_Regeneration",
+      classes = { "DRUID" }, spells = { 21849, 21850, 48470 } },
+    { key = "strAgi",      label = "Str+Agi",  icon = "Interface\\Icons\\Spell_Nature_Strength",
+      classes = { "DEATHKNIGHT", "SHAMAN" }, spells = { 57330, 58643 } },
+    { key = "focusMagic",  label = "Focus Magic", icon = "Interface\\Icons\\Spell_Arcane_FocusedPower",
+      classes = { "MAGE" }, onlyWithClass = true, spells = { 54646 } },
+    -- Beyond-request 3.3.5 additions -------------------------------------
+    { key = "haste",       label = "Haste",    icon = "Interface\\Icons\\Ability_Shaman_Heroism",
+      classes = { "SHAMAN" }, spells = { 2825, 32182 } },
+    { key = "spellCrit",   label = "Spell crit", icon = "Interface\\Icons\\Spell_Nature_MoonGlow",
+      classes = { "DRUID", "SHAMAN" }, spells = { 24907, 51470 } },
+    { key = "shadow",      label = "Shadow Prot", icon = "Interface\\Icons\\Spell_Shadow_AntiShadow",
+      classes = { "PRIEST" }, spells = { 48169, 48170 } },
+    { key = "retAura",     label = "Ret Aura", icon = "Interface\\Icons\\Spell_Holy_AuraMastery",
+      classes = { "PALADIN" }, spells = { 54043, 54044 } },
+}
+
+RLSuite.raidDebuffChecks = {
+    { key = "magicTaken",   label = "%magic",   icon = "Interface\\Icons\\Spell_Nature_FaerieFire",
+      classes = { "DRUID", "WARLOCK", "DEATHKNIGHT", "HUNTER", "PALADIN" },
+      spells = { 770, 778, 9749, 9907, 26993, 16857, 17390, 17391, 17392, 27002,
+                 47865, 51161, 51735, 60431, 60432, 60433 } },
+    { key = "physicalTaken", label = "%physical", icon = "Interface\\Icons\\Ability_Warrior_BloodFrenzy",
+      classes = { "ROGUE", "WARRIOR" }, spells = { 51682, 51683, 29859, 29860 } },
+    { key = "critTaken",    label = "%crit",    icon = "Interface\\Icons\\Spell_Holy_CrusaderStrike",
+      classes = { "PALADIN", "ROGUE", "SHAMAN" },
+      spells = { 20335, 20336, 20337, 58410, 58411, 30706, 57720, 57721, 57722 } },
+    { key = "armorReduction", label = "Armor",  icon = "Interface\\Icons\\Ability_Warrior_Sunder",
+      classes = { "WARRIOR", "ROGUE", "DRUID", "HUNTER" },
+      spells = { 7386, 47467, 8647, 48660, 770, 16857, 64382, 55749 } },
+    { key = "bleedTaken",   label = "%bleed",   icon = "Interface\\Icons\\Ability_Druid_Mangle",
+      classes = { "DRUID", "WARRIOR" }, spells = { 48564, 48566, 46855, 46856 } },
+    -- Beyond-request 3.3.5 addition --------------------------------------
+    { key = "spellHit",     label = "%spell hit", icon = "Interface\\Icons\\Spell_Shadow_MindRot",
+      classes = { "PRIEST", "DRUID" }, spells = { 33191, 33192, 33193, 33600, 33601, 33602 } },
+}
+
 -- (Events, slash commands, database setup and module init are now handled
 --  by AceAddon-3.0 / AceEvent-3.0 / AceConsole-3.0 / AceDB-3.0 above.)
 
@@ -509,8 +585,8 @@ function RLSuite:PrintHelp()
     p(L["  /rls whisplist    InviteEngine panel (alias)"])
     p(L["  /rls macro        Config -> Macros (editor)"])
     p(L["  /rls macrobar     HUD MacroBar"])
-    p(L["  /rls raidframe    Raid Frame tab (settings)"])
-    p(L["  /rls rfhud        HUD Raid Frame"])
+    p(L["  /rls raidframe    Raid Frame HUD"])
+    p(L["  /rls rfhud        Raid Frame HUD (alias)"])
     p(L["  /rls ms           MS Manager tab"])
     p(L["  /rls loot         Loot Manager tab"])
     p(L["  /rls config       Config window"])
@@ -537,7 +613,7 @@ function RLSuite:ChatCommand(input)
             self.config:OpenMacroEditorPanel()
         end
     elseif msg == "raidframe" or msg == "rf" then
-        if self.mainWindow then self.mainWindow:ShowTab("raidframe") end
+        if self.raidFrame then self.raidFrame:Toggle() end
     elseif msg == "ms" then
         if self.mainWindow then self.mainWindow:ShowTab("ms") end
     elseif msg == "loot" then
@@ -1164,6 +1240,9 @@ function RLSuite:UpdatePhaseUI()
         if self.macrobar.UpdateKeypad then
             self.macrobar:UpdateKeypad(self.context)
         end
+    end
+    if self.raidFrame and self.raidFrame.UpdatePhase then
+        self.raidFrame:UpdatePhase()
     end
 end
 

@@ -61,6 +61,15 @@ function MW:OnTabClick(key)
         self:RefreshTabHighlights()
         return
     end
+    -- Il tasto Raid Frame mostra/nasconde l'HUD del raid (stessa logica
+    -- del Macrobar): le impostazioni stanno in Config -> Raid Frame.
+    if key == "raidframe" then
+        if RLSuite.raidFrame and RLSuite.raidFrame.Toggle then
+            RLSuite.raidFrame:Toggle()
+        end
+        self:RefreshTabHighlights()
+        return
+    end
     if self:IsTabOpen(key) then
         self:CloseOneTab(key)
         return
@@ -143,12 +152,11 @@ function MW:CreateFrame()
     self.tabDefs = {
         { key = "group",     label = "Groupmaking" },
         { key = "macro",     label = "Macrobar" },
-        { key = "raidframe", label = "Raid Manager" },
+        { key = "raidframe", label = "Raid Frame" },
         { key = "ms",        label = "MS" },
         { key = "loot",      label = "Loot" },
     }
     self.tabs = {}
-    self.tabPanels = {}
     self.currentTab = nil
 
     -- Matrice colonne x righe configurabile: 6 tab
@@ -209,8 +217,6 @@ function MW:CreateFrame()
     self.phaseText:SetTextColor(1, 0.82, 0)
     self.phaseText:SetJustifyH("LEFT")
     self.phaseText:Hide()
-
-    self:CreateRaidFrameSubTab()
 
     self.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     self.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
@@ -324,16 +330,18 @@ function MW:ApplyLayout()
 end
 
 function MW:SkinInner()
-    local u = RLSuite.utils
-    u:SkinBox(self.rfPreview)
-    u:SkinBox(self.rfAlertBox)
+    -- Il vecchio pannello Raid Frame (preview + alert messages) non esiste
+    -- piu' come finestra a tab: le impostazioni vivono in Config e l'HUD
+    -- non viene mai "skinnato" (nessuno sfondo/bordo). Niente da fare qui.
 end
 
 function MW:PaneForTab(key)
     if key == "group" then
         return RLSuite.groupmaking and RLSuite.groupmaking.mainFrame
     elseif key == "raidframe" then
-        return self.tabPanels and self.tabPanels.raidframe
+        -- Il tab Raid Frame non apre piu' una finestra: mostra/nasconde
+        -- l'HUD (vedi OnTabClick). Nessun pannello associato.
+        return nil
     elseif key == "ms" then
         return RLSuite.msManager and RLSuite.msManager.frame
     elseif key == "loot" then
@@ -392,16 +400,10 @@ function MW:RegisterAllWindows()
     RLSuite.windowMins.loot = function()
         return 480, 340
     end
-    RLSuite.windowMins.raidframe = function()
-        -- label+bottono HUD, box anteprima (100) e box Alert Messages
-        -- con 3 righe di edit: larghezza/altezza minime per il pannello tab.
-        return 420, 320
-    end
 
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
     local layoutKeys = {
         group = "groupmaking",
-        raidframe = "raidframe",
         ms = "ms",
         loot = "loot",
     }
@@ -426,12 +428,11 @@ function MW:RegisterAllWindows()
         end
     end
 
-    -- Grip di resize per Groupmaking, MS, Loot e Raid Frame tab
+    -- Grip di resize per Groupmaking, MS e Loot
     local resizable = {
         group = { "groupmaking", 420, 380, "groupmaking" },
         ms = { "ms", 320, 260, "ms" },
         loot = { "loot", 440, 300, "loot" },
-        raidframe = { "raidframe", 420, 320, "raidframe" },
     }
     for key, cfg in pairs(resizable) do
         local pane = self:PaneForTab(key)
@@ -564,99 +565,9 @@ function MW:UpdatePhaseButtons()
     end
 end
 
-function MW:CreateRaidFrameSubTab()
-    local sc = CreateFrame("Frame", "RLSuiteRaidFrameTab", self.frame)
-    sc:SetSize(660, 700)
-    sc:Hide()
-    self.tabPanels = self.tabPanels or {}
-    self.tabPanels.raidframe = sc
-
-    local rfLabel = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    rfLabel:SetPoint("TOPLEFT", sc, "TOPLEFT", 10, -10)
-    rfLabel:SetText("Raid Frame Appearance:")
-
-    local hudBtn = CreateFrame("Button", nil, sc, "UIPanelButtonTemplate")
-    hudBtn:SetSize(160, 22)
-    hudBtn:SetPoint("LEFT", rfLabel, "RIGHT", 16, 0)
-    hudBtn:SetText(L["Show/Hide HUD"])
-    hudBtn:SetScript("OnClick", function()
-        if RLSuite.raidFrame and RLSuite.raidFrame.Toggle then
-            RLSuite.raidFrame:Toggle()
-        end
-    end)
-
-    local preview = CreateFrame("Frame", nil, sc)
-    preview:SetPoint("TOPLEFT", rfLabel, "BOTTOMLEFT", 0, -10)
-    preview:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -10, -42)
-    preview:SetHeight(100)
-    RLSuite.utils:SkinBox(preview)
-    self.rfPreview = preview
-
-    local example = CreateFrame("Frame", nil, preview)
-    example:SetSize(280, 22)
-    example:SetPoint("TOPLEFT", preview, "TOPLEFT", 10, -10)
-
-    local alert = example:CreateTexture(nil, "OVERLAY")
-    alert:SetSize(16, 16)
-    alert:SetPoint("LEFT", example, "LEFT")
-    alert:SetTexture("Interface\\Icons\\INV_Alchemy_EndlessFlask_01")
-
-    local name = example:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    name:SetPoint("LEFT", alert, "RIGHT", 5, 0)
-    name:SetText("PlayerName")
-    name:SetTextColor(1, 0.8, 0.2)
-
-    local hpBar = CreateFrame("StatusBar", nil, example)
-    hpBar:SetSize(100, 16)
-    hpBar:SetPoint("LEFT", name, "RIGHT", 10, 0)
-    hpBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-    hpBar:SetStatusBarColor(0, 1, 0)
-    hpBar:SetMinMaxValues(0, 100)
-    hpBar:SetValue(75)
-
-    local hpText = hpBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    hpText:SetPoint("CENTER", hpBar, "CENTER")
-    hpText:SetText("75%")
-
-    for j = 1, 3 do
-        local cd = example:CreateTexture(nil, "OVERLAY")
-        cd:SetSize(16, 16)
-        cd:SetPoint("LEFT", hpBar, "RIGHT", 10 + (j-1)*18, 0)
-        cd:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-    end
-
-    local alertBox = CreateFrame("Frame", nil, sc)
-    alertBox:SetPoint("TOPLEFT", preview, "BOTTOMLEFT", 0, -10)
-    alertBox:SetPoint("BOTTOMRIGHT", sc, "BOTTOMRIGHT", -10, 10)
-    RLSuite.utils:SkinBox(alertBox)
-    self.rfAlertBox = alertBox
-
-    local alertLabel = alertBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    alertLabel:SetPoint("TOPLEFT", alertBox, "TOPLEFT", 10, -10)
-    alertLabel:SetText("Alert Messages")
-    alertLabel:SetTextColor(1, 0.82, 0)
-
-    local alertTypes = {"flask", "food", "buff"}
-    for i, atype in ipairs(alertTypes) do
-        local aLabel = alertBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        aLabel:SetPoint("TOPLEFT", alertBox, "TOPLEFT", 10, -32 - (i-1)*30)
-        aLabel:SetWidth(50)
-        aLabel:SetText(string.upper(atype) .. ":")
-
-        local edit = CreateFrame("EditBox", "RLSuiteAlertEdit_" .. atype, alertBox, "InputBoxTemplate")
-        edit:SetHeight(18)
-        edit:SetPoint("LEFT", aLabel, "RIGHT", 8, 0)
-        edit:SetPoint("RIGHT", alertBox, "RIGHT", -16, 0)
-        edit:SetAutoFocus(false)
-        local alerts = RLSuite.db.profile.raidframe.alerts or {}
-        edit:SetText(alerts[atype] or "")
-        edit:SetScript("OnTextChanged", function(s)
-            RLSuite.db.profile.raidframe.alerts = RLSuite.db.profile.raidframe.alerts or {}
-            RLSuite.db.profile.raidframe.alerts[atype] = s:GetText()
-        end)
-    end
-end
-
+-- Il vecchio pannello "Raid Frame" (anteprima + messaggi di alert) e'
+-- stato rimosso: il tab Raid Frame ora mostra/nasconde l'HUD (OnTabClick)
+-- e tutte le impostazioni vivono in Config -> Raid Frame (Config.lua).
 
 -- ============================================================
 -- SaveRaid: prompt titolo + salvataggio

@@ -76,8 +76,10 @@ local CATEGORIES = {
         { value = "editor", text = "Macro Editor" },
     } },
     { value = "raidframe", text = "Raid Frame", children = {
-        { value = "layout", text = "Layout" },
-        { value = "pos",    text = "Position" },
+        { value = "layout",   text = "Layout" },
+        { value = "behavior", text = "Checks" },
+        { value = "alerts",   text = "Alert Messages" },
+        { value = "pos",      text = "Position" },
     } },
     { value = "ms", text = "MS" },
     { value = "loot", text = "Loot" },
@@ -94,8 +96,10 @@ local NODES = {
     ["groupmaking"]        = { "groupmaking" },
     ["macros\001layout"]   = { "macros", "layout" },
     [EDITOR_NODE]          = "__editor__",
-    ["raidframe\001layout"] = { "raidframe", "layout" },
-    ["raidframe\001pos"]    = { "raidframe", "pos" },
+    ["raidframe\001layout"]   = { "raidframe", "layout" },
+    ["raidframe\001behavior"] = { "raidframe", "behavior" },
+    ["raidframe\001alerts"]   = { "raidframe", "alerts" },
+    ["raidframe\001pos"]      = { "raidframe", "pos" },
     ["ms"]                 = { "ms" },
     ["loot"]               = { "loot" },
 }
@@ -493,7 +497,7 @@ function CFG:BuildOptionsTable()
     -- --- Raid Frame ----------------------------------------------
     local rf = p.raidframe
     rf.appearance = rf.appearance or {}
-    rf.width = rf.width or 350
+    rf.width = rf.width or 380
     rf.scale = rf.scale or 1
 
     local raidLayout = {
@@ -506,9 +510,51 @@ function CFG:BuildOptionsTable()
         iconSize = slider(L["Icon size"], nil, 3, 10, 24, 1,
             function() return rf.appearance.iconSize or 16 end,
             function(_, v) rf.appearance.iconSize = v; self:ApplyAll() end),
-        scale = slider(L["Scale"], nil, 4, 0.70, 1.50, 0.05,
+        abilityBarWidth = slider(L["Ability bar width"], nil, 4, 80, 160, 5,
+            function() return rf.appearance.abilityBarWidth or 110 end,
+            function(_, v) rf.appearance.abilityBarWidth = v; self:ApplyAll() end),
+        scale = slider(L["Scale"], nil, 5, 0.70, 1.50, 0.05,
             function() return rf.scale end,
             function(_, v) rf.scale = v; self:ApplyAll() end),
+    }
+
+    local raidBehavior = {
+        enabled = toggle(L["Enabled"], L["Show or hide the Raid Frame HUD."], 1,
+            function() return rf.enabled ~= false end,
+            function(_, v) rf.enabled = v; self:ApplyAll() end),
+        showFlask = toggle(L["Check flasks"], L["Alert players missing a flask (left icons)."], 2,
+            function() return rf.showFlask ~= false end,
+            function(_, v) rf.showFlask = v; self:ApplyAll() end),
+        showFood = toggle(L["Check food"], L["Alert players missing Well Fed (left icons)."], 3,
+            function() return rf.showFood ~= false end,
+            function(_, v) rf.showFood = v; self:ApplyAll() end),
+        showBuffBar = toggle(L["Pre-boss buff bar"], L["Show the pre-boss alert buff bar."], 4,
+            function() return rf.showBuffBar ~= false end,
+            function(_, v) rf.showBuffBar = v; self:ApplyAll() end),
+        showDebuffBar = toggle(L["In-fight debuff bar"], L["Show the in-fight alert debuff bar."], 5,
+            function() return rf.showDebuffBar ~= false end,
+            function(_, v) rf.showDebuffBar = v; self:ApplyAll() end),
+        showAbilityBar = toggle(L["Ability bar"], L["Show the vertical ability-check bar."], 6,
+            function() return rf.showAbilityBar ~= false end,
+            function(_, v) rf.showAbilityBar = v; self:ApplyAll() end),
+    }
+
+    local function alertField(key, label, order)
+        return textarea(L[label], nil, order,
+            function()
+                local alerts = rf.alerts or {}
+                return alerts[key] or ""
+            end,
+            function(_, v)
+                rf.alerts = rf.alerts or {}
+                rf.alerts[key] = v
+            end)
+    end
+
+    local raidAlerts = {
+        flask = alertField("flask", "Flask whisper", 1),
+        food = alertField("food", "Food whisper", 2),
+        buff = alertField("buff", "Raid buffs whisper", 3),
     }
 
     local raidPos = {
@@ -526,7 +572,9 @@ function CFG:BuildOptionsTable()
 
     local raidframe = {
         layout = { type = "group", name = L["Layout"], order = 1, args = raidLayout },
-        pos = { type = "group", name = L["Position"], order = 2, args = raidPos },
+        behavior = { type = "group", name = L["Checks"], order = 2, args = raidBehavior },
+        alerts = { type = "group", name = L["Alert Messages"], order = 3, args = raidAlerts },
+        pos = { type = "group", name = L["Position"], order = 4, args = raidPos },
     }
 
     -- --- MS / Loot scales ----------------------------------------
@@ -1203,10 +1251,6 @@ function CFG:ApplyAll()
     scale(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame, "groupmaking")
     scale(RLSuite.msManager and RLSuite.msManager.frame, "ms")
     scale(RLSuite.lootManager and RLSuite.lootManager.frame, "loot")
-    local mw = RLSuite.mainWindow
-    if mw and mw.tabPanels then
-        scale(mw.tabPanels.raidframe, "raidframe")
-    end
 end
 
 function CFG:ApplyTheme(theme)

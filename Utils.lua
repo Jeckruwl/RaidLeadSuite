@@ -383,7 +383,7 @@ function Utils:AllWindows()
     add(RLSuite.mainWindow and RLSuite.mainWindow.frame)
     add(RLSuite.macrobar and RLSuite.macrobar.keypadFrame)
     add(RLSuite.macrobar and RLSuite.macrobar.editFrame)
-    add(RLSuite.raidFrame and RLSuite.raidFrame.frame)
+    -- Il Raid Frame HUD non viene mai skinnato: nessuno sfondo/bordo.
     return list
 end
 
@@ -395,9 +395,6 @@ function Utils:AllTabPanes()
     add(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame)
     add(RLSuite.msManager and RLSuite.msManager.frame)
     add(RLSuite.lootManager and RLSuite.lootManager.frame)
-    if RLSuite.mainWindow and RLSuite.mainWindow.tabPanels then
-        add(RLSuite.mainWindow.tabPanels.raidframe)
-    end
     return list
 end
 

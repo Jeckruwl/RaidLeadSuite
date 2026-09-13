@@ -1026,6 +1026,50 @@ check(bool(rt.eval("#RLSuite.groupmaking:AutoNameList() == 0")), "clicking X rem
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario D (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 
 print()
+print("== Scenario E: Raid Frame HUD rework ==")
+# --- tab renamed + toggles the HUD (no settings window) ---
+rt.execute("RLSuite.mainWindow._rfTabLabel = nil; for _, t in ipairs(RLSuite.mainWindow.tabDefs) do if t.key == 'raidframe' then RLSuite.mainWindow._rfTabLabel = t.label end end")
+check(bool(rt.eval("RLSuite.mainWindow._rfTabLabel == 'Raid Frame'")), "Raid Manager tab renamed to 'Raid Frame'")
+rt.execute("RLSuite.raidFrame.toggleCount = 0; RLSuite.raidFrame._origToggle = RLSuite.raidFrame.Toggle; RLSuite.raidFrame.Toggle = function(self) self.toggleCount = (self.toggleCount or 0) + 1 end")
+rt.execute("RLSuite.mainWindow:OnTabClick('raidframe')")
+check(bool(rt.eval("RLSuite.raidFrame.toggleCount == 1")), "Raid Frame tab toggles the HUD (like Macrobar)")
+rt.execute("RLSuite.raidFrame.Toggle = RLSuite.raidFrame._origToggle")
+
+# --- old settings window moved to Config ---
+check(bool(rt.eval("RLSuite.mainWindow.tabPanels == nil")), "old Raid Frame settings window removed from the tab bar")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.behavior ~= nil")), "Raid Frame -> Checks present in Config")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.alerts ~= nil")), "Raid Frame -> Alert Messages present in Config")
+
+# --- clean HUD: no backdrop / border / close button ---
+check(bool(rt.eval("RLSuite.raidFrame.frame:GetBackdrop() == nil")), "HUD has no backdrop")
+check(bool(rt.eval("RLSuite.raidFrame.frame.closeBtn == nil")), "HUD has no red-X close button")
+
+# --- rows: name inside the HP bar, left consumables, right CDs ---
+check(bool(rt.eval("RLSuite.raidFrame.rows ~= nil and #RLSuite.raidFrame.rows >= 2")), "debug roster renders rows")
+rt.execute("E5_ROW = RLSuite.raidFrame.rows and RLSuite.raidFrame.rows[1] or nil")
+check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar ~= nil and E5_ROW.bar.nameText ~= nil and E5_ROW.bar.hpText ~= nil")), "row has one HP bar with name + %% inside")
+check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.flaskIcon ~= nil and E5_ROW.foodIcon ~= nil")), "row has left flask + Well Fed icons")
+check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.cdIcons ~= nil and #E5_ROW.cdIcons > 0")), "row has class key CDs on the right")
+
+# --- vertical ability bar (driven by the composition) ---
+check(bool(rt.eval("RLSuite.raidFrame.abilityButtons ~= nil and #RLSuite.raidFrame.abilityButtons >= 4")), "ability bar shows abilities for the WARRIOR-heavy comp")
+
+# --- pre-boss buff bar / in-fight debuff bar switch by phase ---
+check(bool(rt.eval("#RLSuite.raidBuffChecks >= 11")), "pre-boss buff checks defined (>= 11)")
+check(bool(rt.eval("#RLSuite.raidDebuffChecks >= 5")), "in-fight debuff checks defined (>= 5)")
+rt.execute("RLSuite:SetContextPhase('preboss')")
+check(bool(rt.eval("RLSuite.raidFrame.buffBar:IsShown() == true")), "pre-boss: buff bar shown")
+check(bool(rt.eval("#RLSuite.raidFrame.buffBar.items >= 11")), "pre-boss: buff bar lists the buff categories")
+rt.execute("RLSuite:SetContextPhase('infight')")
+check(bool(rt.eval("RLSuite.raidFrame.debuffBar:IsShown() == true")), "in-fight: debuff bar shown")
+check(bool(rt.eval("RLSuite.raidFrame.buffBar:IsShown() == false")), "in-fight: buff bar hidden")
+check(bool(rt.eval("#RLSuite.raidFrame.debuffBar.items >= 5")), "in-fight: debuff bar lists the debuff categories")
+rt.execute("RLSuite:SetContextPhase('preraid')")
+check(bool(rt.eval("RLSuite.raidFrame.buffBar:IsShown() == false and RLSuite.raidFrame.debuffBar:IsShown() == false")), "preraid: both alert bars hidden")
+
+check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario E (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
+
+print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
     sys.exit(1)
