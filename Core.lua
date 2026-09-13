@@ -136,6 +136,7 @@ local defaults = {
 -- embeddable: it is called directly (AceDB:New) inside OnInitialize.
 -- ============================================================
 RLSuite = AceAddon:NewAddon(RLSuite, "RLSuite", "AceEvent-3.0", "AceConsole-3.0")
+LibStub("AceTimer-3.0"):Embed(RLSuite)
 
 -- One-time migration of the pre-Ace3 flat saved table (RLSuiteDB.* at the
 -- root) into the new profile section. Runs before any module touches db.
@@ -187,21 +188,14 @@ function RLSuite:OnEnable()
     self:RegisterEvent("CHAT_MSG_LOOT", "OnLootMessage")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     self:InitModules()
-    local ok, err = pcall(self.CreateMinimapIcon, self)
-    if not ok and self.utils and self.utils.Print then
-        self.utils:Print(string.format(L["RLSuite minimap error: %s"], tostring(err)))
-    end
+    self:EnsureMinimapIcon()
 end
 
 -- La minimappa (frame globale "Minimap") non sempre esiste gia' al
 -- PLAYER_LOGIN (dipende dal client e dagli addon di minimappa caricati):
--- creiamo/riproviamo l'icona quando entriamo nel mondo, dove Minimap c'e'
--- di sicuro. La funzione e' idempotente (non ricrea se gia' presente).
+-- riproviamo qui e, se serve, con un timer (vedi EnsureMinimapIcon).
 function RLSuite:OnPlayerEnteringWorld()
-    local ok, err = pcall(self.CreateMinimapIcon, self)
-    if not ok and self.utils and self.utils.Print then
-        self.utils:Print(string.format(L["RLSuite minimap error: %s"], tostring(err)))
-    end
+    self:EnsureMinimapIcon()
 end
 
 function RLSuite:OnDisable()
@@ -790,6 +784,32 @@ function RLSuite:MinimapIconAngle()
     return 220
 end
 
+-- Crea l'icona della minimappa appena possibile: prova subito, e se la
+-- minimappa non e' ancora pronta (o la creazione fallisce) riprova ogni
+-- secondo via timer, finche' il bottone non esiste davvero. Idempotente.
+function RLSuite:EnsureMinimapIcon()
+    if self.minimapIcon then return end
+    if self._mmTimer then return end -- tentativo gia' programmato
+
+    if Minimap then
+        local ok, err = pcall(self.CreateMinimapIcon, self)
+        if not ok and self.utils and self.utils.Print then
+            self.utils:Print(string.format(L["RLSuite minimap error: %s"], tostring(err)))
+        end
+    end
+
+    if self.minimapIcon then return end
+    self._mmRetries = (self._mmRetries or 0) + 1
+    if self._mmRetries <= 60 and self.ScheduleTimer then
+        self._mmTimer = self:ScheduleTimer("OnMinimapRetry", 1)
+    end
+end
+
+function RLSuite:OnMinimapRetry()
+    self._mmTimer = nil
+    self:EnsureMinimapIcon()
+end
+
 -- Crea l'icona della minimappa (una sola volta, al login o appena la
 -- minimappa e' disponibile).
 function RLSuite:CreateMinimapIcon()
@@ -934,8 +954,15 @@ function RLSuite:DiagnoseMinimapIcon()
     p("  Minimap frame exists: " .. tostring(Minimap ~= nil))
     local btn = self.minimapIcon
     if not btn then
-        p("|cffff0000  minimap button: NOT CREATED|r")
-        return
+        p("  minimap button not created yet; creating now...")
+        local ok, err = pcall(self.CreateMinimapIcon, self)
+        if ok and self.minimapIcon then
+            p("  created on demand: OK")
+        else
+            p("|cffff0000  create FAILED: " .. tostring(err) .. "|r")
+        end
+        btn = self.minimapIcon
+        if not btn then return end
     end
     p("  button shown: " .. tostring(btn:IsShown()))
     if btn.GetLeft and btn.GetBottom then
