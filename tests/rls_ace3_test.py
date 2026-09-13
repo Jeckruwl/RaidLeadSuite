@@ -834,15 +834,23 @@ check(bool(rt.eval("RLSuite.groupmaking.whisplistFrame:GetWidth() == 450")), "In
 # Drop onto an EMPTY slot: the player moves there exactly, source becomes empty.
 rt.execute("RLSuite:ResetDebugRaid()")
 rt.execute("for i=1,4 do RLSuite:DebugInviteAccept('Mv'..i, 'WARRIOR') end")
-rt.execute("RLSuite.groupmaking:MoveWLSlot(RLSuite.groupmaking.wlGroupSlots[2], RLSuite.groupmaking.wlGroupSlots[6])")
+# simulate the wired drag: press (OnMouseDown) on slot 2, release (OnMouseUp) on slot 6
+rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[2]; if s._scripts.OnMouseDown then s._scripts.OnMouseDown(s, 'LeftButton') end")
+rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[6]; if s._scripts.OnMouseUp then s._scripts.OnMouseUp(s, 'LeftButton') end")
 check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[2].playerName == nil")), "drag onto empty slot empties the source slot")
 check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[6].playerName == 'Mv1'")), "dragged player lands exactly in the empty destination slot")
 check(bool(rt.eval("#RLSuite:DebugRoster() == 5")), "moving keeps the roster size unchanged")
 
 # Drop onto an OCCUPIED slot: the two players swap.
-rt.execute("RLSuite.groupmaking:MoveWLSlot(RLSuite.groupmaking.wlGroupSlots[1], RLSuite.groupmaking.wlGroupSlots[3])")
+rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[1]; if s._scripts.OnMouseDown then s._scripts.OnMouseDown(s, 'LeftButton') end")
+rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[3]; if s._scripts.OnMouseUp then s._scripts.OnMouseUp(s, 'LeftButton') end")
 check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[1].playerName == 'Mv2' and RLSuite.groupmaking.wlGroupSlots[3].playerName == 'Testplayer'")), "dropping onto an occupied slot swaps the two players")
 check(bool(rt.eval("#RLSuite:DebugRoster() == 5")), "swapping keeps the roster size unchanged")
+
+# Releasing on the SAME slot (plain click) must not reorder anything.
+rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[1]; if s._scripts.OnMouseDown then s._scripts.OnMouseDown(s, 'LeftButton') end")
+rt.execute("local s=RLSuite.groupmaking.wlGroupSlots[1]; if s._scripts.OnMouseUp then s._scripts.OnMouseUp(s, 'LeftButton') end")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[1].playerName == 'Mv2'")), "clicking a slot without dropping elsewhere leaves it unchanged")
 
 # --- Calendar Event tab redo: editable event + class sidebar ---
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoCalBox ~= nil")), "Calendar Event tab has the event box")

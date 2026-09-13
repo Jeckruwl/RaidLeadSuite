@@ -3066,17 +3066,20 @@ function GM:BuildWLGroupColumns()
             bar:EnableMouse(true)
 
             -- Trascina un giocatore su un altro slot per riorganizzare i
-            -- gruppi: slot vuoto = spostamento, slot pieno = scambio.
-            bar:RegisterForDrag("LeftButton")
-            bar:SetScript("OnDragStart", function(self2)
-                if self2.playerName then
-                    GM._wlDragSource = self2
+            -- gruppi: tieni premuto sullo slot di partenza e rilascia su
+            -- quello di arrivo. Slot vuoto = spostamento, slot pieno =
+            -- scambio. Uso OnMouseDown/OnMouseUp invece di OnDragStart/
+            -- OnReceiveDrag: OnReceiveDrag non viene consegnato in modo
+            -- affidabile sui frame annidati (e dipende dall'ordine con
+            -- OnDragStop), mentre il rilascio col mouse e' sempre consegnato
+            -- al frame sotto il cursore.
+            bar:SetScript("OnMouseDown", function(self2, button)
+                if button == "LeftButton" then
+                    GM._wlDragSource = (self2.playerName and self2) or nil
                 end
             end)
-            bar:SetScript("OnDragStop", function()
-                GM._wlDragSource = nil
-            end)
-            bar:SetScript("OnReceiveDrag", function(self2)
+            bar:SetScript("OnMouseUp", function(self2, button)
+                if button ~= "LeftButton" then return end
                 local src = GM._wlDragSource
                 GM._wlDragSource = nil
                 if src and src ~= self2 and src.playerName then
