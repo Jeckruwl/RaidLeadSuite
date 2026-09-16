@@ -7,7 +7,32 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.6**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.7**.
+
+## Novità della sessione 1.5.7 (questo branch, dopo 1.5.6) — BORDINO DORATO DI DROP nel Raid Frame
+
+Richiesta utente: mentre trascini un player nel Raid Frame (Shift+sinistro, pre-boss) vedere
+ESATTAMENTE dove atterrerebbe il rilascio.
+
+1. `row.dropGlow` = Frame figlio decorativo per OGNI slot: `SetAllPoints(row)`,
+   backdrop `RF_DROP_GLOW_BACKDROP` (edgeFile UI-Tooltip-Border, edgeSize 10),
+   `SetBackdropBorderColor(1, 0.82, 0, 1)` dorato, riempimento trasparente, `Hide()`
+   di default. **Puro-visuale**: `EnableMouse(false)` QUI è sicuro e voluto (è un
+   overlay, NON lo slot — la regola ferrea sul non disabilitare il mouse vale per
+   gli slot; questo non tocca la hit-region e non ruba click).
+2. `RF:UpdateDropGlow()`: fonte di verità = CURSORE via `SlotAtCursor()` (gli hover
+   Enter/Leave dei frame sono inaffidabili durante il drag manuale a tasto premuto).
+   Solo se `_rfDragSource` attivo e drag abilitato (pre-boss); la sorgente non si
+   illumina mai (rilasciarla lì = no-op). Fuori drag → tutto spento.
+3. Chiamate: ogni tick del `_ArmManualDragWatchdog` (il bordino insegue il cursore
+   senza bisogno di eventi di frame) + fine di `RefreshDropTargets()` (accensione
+   immediata se già in hover; spegnimento totale a drop/cancel/fine drag).
+4. Cancella anche nel caso in cui il watchdog si disarmi per `_rfDragSource` nil.
+5. Fisica immutata: blocco pieno = swap, vuoto = move (`MoveSlot` invariato);
+   nessun RegisterForDrag / nessun EnableMouse(false) sulle righe.
+6. Test F.2h: glow esistente + mouse-immuned, avvio drag, nessun bordino senza
+   cursore sullo slot, bordino SOLO sulla destinazione puntata, spegnimento su
+   rilascio-esterno/cancel, roster integro; **374 check PASS**.
 
 ## Novità della sessione 1.5.6 (questo branch, dopo 1.5.5) — TARGET BY PRESS HARDWARE-LEVEL (engine SecureButton)
 
@@ -481,7 +506,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 368 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 374 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

@@ -84,6 +84,17 @@ local RF_EMPTY_BACKDROP = {
     insets = { left = 2, right = 2, top = 2, bottom = 2 },
 }
 
+-- Bordino DORATO di drop: indica lo slot in cui il player trascinato
+-- atterrerebbe se rilasciassi ADESSO (blocco pieno = swap, vuoto = move).
+-- Decorazione pura: bordo su frame figlio (MAI toccare il backdrop dello
+-- slot, che in pre-boss e' gia' occupato dai placeholder dei vuoti).
+local RF_DROP_GLOW_BACKDROP = {
+    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 16, edgeSize = 10,
+    insets = { left = 2, right = 2, top = 2, bottom = 2 },
+}
+
 -- Ace3: eventi (roster/aura/combat-log) via AceEvent-3.0, il refresh
 -- periodico a 0.5s via AceTimer-3.0 (al posto del vecchio frame OnUpdate).
 LibStub("AceEvent-3.0"):Embed(RF)
@@ -514,6 +525,20 @@ function RF:CreateSlotFrame(slotIndex, group)
     sec:SetScript("OnMouseDown", function(s, button) RowBodyOnMouseDown(row, button) end)
     sec:SetScript("OnMouseUp", function(s, button) RowBodyOnMouseUp(row, button) end)
 
+    -- Indicatore di DROP puro-visuale: bordino dorato su frame figlio.
+    -- EnableMouse(false) qui e' SICURO (decorazione, NON lo slot): non
+    -- ruba click, non tocca la hit-region della riga — mostra solo dove
+    -- atterra il player durante il drag manuale.
+    local glow = CreateFrame("Frame", nil, row)
+    glow:SetAllPoints(row)
+    glow:SetFrameLevel((row.GetFrameLevel and row:GetFrameLevel() or 1) + 2)
+    glow:EnableMouse(false)
+    glow:SetBackdrop(RF_DROP_GLOW_BACKDROP)
+    glow:SetBackdropColor(0, 0, 0, 0)
+    glow:SetBackdropBorderColor(1, 0.82, 0, 1) -- dorato
+    glow:Hide()
+    row.dropGlow = glow
+
     row:Hide()
     return row
 end
@@ -762,6 +787,29 @@ function RF:ClearSlot(slot)
     slot:Hide()
 end
 
+-- Bordino dorato sullo slot di destinazione del drag: la fonte di verità
+-- e' il CURSORE (SlotAtCursor), non gli hover dei frame (inaffidabili
+-- durante il drag manuale, dove il bottone resta premuto e i frame non
+-- risollevano Enter/Leave). Fuori drag → tutto nascosto.
+function RF:UpdateDropGlow()
+    local target = nil
+    local src = self._rfDragSource
+    if src and self:IsDragEnabled() then
+        target = self:SlotAtCursor()
+        if target == src then target = nil end
+    end
+    for _, slot in ipairs(self.slots or {}) do
+        if slot.dropGlow then
+            if slot == target then
+                slot.dropGlow:Show()
+            else
+                slot.dropGlow:Hide()
+            end
+        end
+    end
+    return target
+end
+
 -- Mostra/nasconde i blocchi vuoti dei gruppi e gli header dei gruppi
 -- vuoti: visibili SOLO in pre-boss mentre un drag e' attivo (servono come
 -- drop target); altrimenti l'HUD resta denso (solo player + header pieni).
@@ -795,6 +843,8 @@ function RF:RefreshDropTargets()
         end
     end
     self:ApplyLayout()
+    -- Bordino dorato: segue il cursore durante il drag, sparisce tutto fuori.
+    self:UpdateDropGlow()
 end
 
 -- ------------------------------------------------------------------
@@ -1370,8 +1420,10 @@ function RF:_ArmManualDragWatchdog()
         if not RF._rfDragSource then
             RF._dragWatchArmed = false
             RF._dragWatch:Hide()
+            RF:UpdateDropGlow() -- sicurezza: nessun bordino residuo appeso
             return
         end
+        RF:UpdateDropGlow() -- il bordino dorato insegue il cursore
         if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
             local src = RF._rfDragSource
             RF._rfDragSource = nil

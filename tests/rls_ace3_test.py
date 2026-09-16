@@ -1148,6 +1148,64 @@ rt.execute("RLSuite.raidFrame:MoveSlot(RLSuite.raidFrame.slots[1], RLSuite.raidF
 check(bool(rt.eval("RLSuite.raidFrame.slots[1].member ~= nil and RLSuite.raidFrame.slots[1].member.name == 'F5'")), "drag onto occupied slot swaps the two players")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7].member ~= nil and RLSuite.raidFrame.slots[7].member.name == 'Testplayer'")), "swapped player lands in the source slot")
 
+# --- F.2h golden drop-border: shows EXACTLY where the dragged player would land ---
+rt.execute("""
+local RFmod = RLSuite.raidFrame
+SAVED_ISD_H = IsShiftKeyDown
+IsShiftKeyDown = function() return true end
+SAVED_GCP_H = GetCursorPosition
+SAVED_IMBD_H = IsMouseButtonDown
+local src, dst = RFmod.slots[1], RFmod.slots[7]
+src._manualDrag = nil; src._pendingRowClick = nil; src:SetScript('OnUpdate', nil); src._targetT = nil
+src._scripts.OnMouseDown(src, 'LeftButton')            -- inizia il drag manuale di F5
+GLOW_DRAGSRC = (RFmod._rfDragSource == src)
+GLOW_NONE_AT_START = (dst.dropGlow:IsShown() == false) -- cursore altrove: nessun bordino
+-- cursore sopra dst: agli altri slot rettangoli lontani, a dst [100..120]x[60..80]
+for i, s in ipairs(RFmod.slots) do
+    if s ~= dst then
+        s.GetLeft = function() return 500 + i end
+        s.GetRight = function() return 501 + i end
+        s.GetBottom = function() return 500 end
+        s.GetTop = function() return 501 end
+    end
+end
+dst.GetLeft = function() return 100 end;  dst.GetRight = function() return 120 end
+dst.GetBottom = function() return 60 end; dst.GetTop = function() return 80 end
+GetCursorPosition = function() return 105, 70 end
+IsMouseButtonDown = function() return true end          -- tasto ancora giu': drag in corso
+RFmod._dragWatch:GetScript('OnUpdate')()                -- un tick: il bordino insegue il cursore
+GLOW_ON_DST = (dst.dropGlow:IsShown() == true)
+local n = 0
+for _, s in ipairs(RFmod.slots) do
+    if s.dropGlow:IsShown() then n = n + 1 end
+end
+GLOW_ONLY_DST = (n == 1)
+-- rilascio FUORI da ogni slot (cancel): nessun move, bordini spenti, stato pulito
+IsMouseButtonDown = function() return false end
+GetCursorPosition = function() return 9999, 9999 end
+RFmod._dragWatch:GetScript('OnUpdate')()
+local n2 = 0
+for _, s in ipairs(RFmod.slots) do
+    if s.dropGlow:IsShown() then n2 = n2 + 1 end
+end
+GLOW_ALL_OFF = (n2 == 0)
+GLOW_CANCEL_CLEAN = (RFmod._rfDragSource == nil)
+GLOW_ROSTER_INTACT = (RFmod.slots[7].member.name == 'Testplayer' and RFmod.slots[1].member.name == 'F5')
+-- ripristina mock: geometrie d'istanza → nil torna al metodo default (0), poi le globali
+for _, s in ipairs(RFmod.slots) do
+    s.GetLeft, s.GetRight, s.GetBottom, s.GetTop = nil, nil, nil, nil
+end
+GetCursorPosition = SAVED_GCP_H
+IsShiftKeyDown = SAVED_ISD_H
+IsMouseButtonDown = SAVED_IMBD_H
+""")
+check(bool(rt.eval("RLSuite.raidFrame.slots[1].dropGlow ~= nil and RLSuite.raidFrame.slots[1].dropGlow._enabledMouse == false")), "every slot has a golden drop-border overlay that never eats clicks")
+check(bool(rt.eval("GLOW_DRAGSRC")), "shift+down starts the manual drag (border logic armed)")
+check(bool(rt.eval("GLOW_NONE_AT_START")), "golden border hidden while the cursor is not over any slot")
+check(bool(rt.eval("GLOW_ON_DST") and bool(rt.eval("GLOW_ONLY_DST"))), "golden border follows the cursor onto the exact destination slot only (occupied = swap preview)")
+check(bool(rt.eval("GLOW_ALL_OFF")), "release outside any slot: every golden border turns off")
+check(bool(rt.eval("GLOW_CANCEL_CLEAN") and bool(rt.eval("GLOW_ROSTER_INTACT"))), "cancel outside: no move, roster untouched, drag state clean")
+
 # --- non pre-boss: empty slots hidden, drag disabled ---
 rt.execute("RLSuite:SetContextPhase('infight')")
 check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == false")), "drag & drop disabled outside pre-boss")
