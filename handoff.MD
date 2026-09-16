@@ -7,7 +7,34 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.5**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.6**.
+
+## Novità della sessione 1.5.6 (questo branch, dopo 1.5.5) — TARGET BY PRESS HARDWARE-LEVEL (engine SecureButton)
+
+Casus belli: TUTTI i fix Lua al canale click vicinale alla barra/nome producevano zero
+differenze osservabili in client; il suono-bonk del widget Button dimostrava la pressione
+ricevuta ma gli script erano inaffidabili/instradabili. Soluzione DEFINITIVA: togliere il
+target dal piano Lua e affidarlo ALL'ENGINE, cioè la tecnica di Grid/VuhDo/Clique per gli
+unit frame.
+
+1. `row.secTarget` = CreateFrame("Button", nil, content, **SecureActionButtonTemplate**),
+   `SetAllPoints(row)` (intera barra/nome), livello content+5 (sopra la riga, SOTTO le icone
+   consumabili a content+30), `RegisterForClicks("LeftButtonDown")` → TARGET AL PRIMO PIXEL
+   DI PRESSIONE in hardware, `SetAttribute("type1", "target")` + `SetAttribute("unit", X)`.
+   Attributi secure toccati SOLO fuori combattimento (`InCombatLockdown` guard in
+   FillSlot/ClearSlot conforme al divieto Blizzard).
+2. Gating: member con `unit` reale e non-fake → Show; fake/debug (unit nil) → Hide: la via
+   Lua con UnitExists/TargetByName/trace rfDbg resta dietro per il debug.
+3. **Handler Lua CONDIVISI** (`RowBodyOnMouseDown/Up`, estratti dai closure originali):
+   identici script sulla riga E sull'overlay secure, così Shift+destro (move HUD),
+   Shift+sinistro (manual drag player), icone/hit-test/RowBodyPoller/target-Lua continuano
+   a funzionare ESATTAMENTE come prima nella zona coperta dall'overlay. Il trucco dell'overlay
+   non ha cambiato
+4. Fingerprint in-game: all'avvio RF stampa in debug `RF RaidFrame <ver> click-module attivo
+   (secure overlay + press-target)` → verifica immediata di quale codice sta girando.
+5. Mock: Set/GetAttribute, RegisterForClicks record, InCombatLockdown=true/false globale.
+6. Test: F.2g nuovo overlay, type, LeftButtonDown, show/hide gating, gating una showed
+   gating la FillSlot real unit; **368 check PASS**.
 
 ## Novità della sessione 1.5.5 (questo branch, dopo 1.5.4) — TARGET ALLA PRESSIONE + PER NOME (esattamente lo spec irrogabile)
 
@@ -454,7 +481,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 362 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 368 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

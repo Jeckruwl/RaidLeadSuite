@@ -100,6 +100,9 @@ function RF:Init()
     self:RegisterEvents()
     self:ApplyLayout()
     self:UpdatePhase()
+    -- Version fingerprint (solo debug): cosi' verifichi SUBITO quale codice
+    -- sta girando nel client, senza fraintendimenti di pull stale.
+    rfDbg("RaidFrame %s click-module attivo (secure overlay + press-target)", tostring(RLSuite.version))
 end
 
 function RF:Toggle()
@@ -339,6 +342,91 @@ function RF:EnsureSlots()
     end
 end
 
+-- HANDLER CONDIVISI fra la riga-Button e l'overlay SECURE (la zona
+-- coperta dal secure overlay non consegna piu' input alla riga sotto: per
+-- questo aggiungi un misero correlate handler anche li').
+local function RowBodyOnMouseDown(self2, button)
+        if button == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() then
+            local f = RF.frame
+            if f and (not RF.db.locked or RLSuite.db.profile.anchorMode == true) then
+                f._rlsMoving = true
+                f:StartMoving()
+            end
+            self2._pressBtn = nil
+            return -- gesto con shift: mai trattato come click-icona
+        end
+        if IsShiftKeyDown and IsShiftKeyDown() then
+            self2._pressBtn = nil
+            if button == "LeftButton" and RF:IsDragEnabled() and self2.member then
+                -- SHIFT+sinistro = drag player MANUALE: source + mostra vuoti.
+                RF._rfDragSource = self2
+                self2._manualDrag = true
+                RF:RefreshDropTargets()
+                RF:_ArmManualDragWatchdog()
+            end
+            return -- gesti con shift: mai click/icone/target
+        end
+        self2._manualDrag = nil -- click nuovo: reset di un eventuale drag appeso
+        self2._pressBtn = button
+        self2._pressX, self2._pressY = nil, nil
+        if GetCursorPosition then
+            local x, y = GetCursorPosition()
+            self2._pressX, self2._pressY = x, y
+        end
+        if button == "LeftButton" then
+            -- TARGET ALLA PRESSIONE: il mouse-down e' l'evento che in client
+            -- arriva SEMPRE (il bonk/click del widget lo dimostra), come fanno
+            -- Grid/VuhDo/HealBot. Release/poller deduppano via row._targetT.
+            RF:TargetRow(self2)
+            -- Poller di riserva (stessa forma delle icone): senza drag
+            -- registrati l'OnMouseUp ora arriva, ma se qualche client lo
+            -- mangiasse comunque il release viene rilevato qui comunque.
+            self2._rowPollT0 = (GetTime and GetTime()) or 0
+            self2._pendingRowClick = true
+            self2:SetScript("OnUpdate", RowBodyPoller)
+        end
+end
+
+local function RowBodyOnMouseUp(self2, button)
+        if button == "RightButton" then
+            local f = RF.frame
+            if f and f._rlsMoving then
+                f._rlsMoving = false
+                f:StopMovingOrSizing()
+                RF:PersistAnchor(f, RF.db)
+            end
+        end
+        -- Completamento drag player MANUALE: al release, slot sotto il
+        -- cursore → move/swap. Serve anche se lo shift e' gia' rilasciato.
+        if button == "LeftButton" and RF._rfDragSource then
+            local src = RF._rfDragSource
+            RF._rfDragSource = nil
+            if src then src._manualDrag = nil end
+            if src and src.member then
+                local t = RF:SlotAtCursor()
+                if t and t ~= src then
+                    RF:MoveSlot(src, t)
+                end
+            end
+            RF:RefreshDropTargets()
+            return -- era un drag: NON un click-icona, NON un target
+        end
+        if IsShiftKeyDown and IsShiftKeyDown() then return end -- gesti con shift: NO messaggi
+        local pressed = self2._pressBtn
+        self2._pressBtn = nil
+        if pressed ~= button then return end
+        if button ~= "LeftButton" and button ~= "RightButton" then return end
+        if RF._rfDragSource then return end -- era un drag, non un click
+        if self2._pressX and GetCursorPosition then
+            local x, y = GetCursorPosition()
+            if x and (math.abs(x - self2._pressX) > 5 or math.abs((y or 0) - (self2._pressY or 0)) > 5) then
+                return -- il cursore si e' mosso: era un drag
+            end
+        end
+        self2._pressX, self2._pressY = nil, nil
+        RF:RowPlainClick(self2, button)
+end
+
 function RF:CreateSlotFrame(slotIndex, group)
     local row = CreateFrame("Button", "RLSuiteRaidRow" .. slotIndex, self.content)
     row.slot = slotIndex
@@ -405,86 +493,26 @@ function RF:CreateSlotFrame(slotIndex, group)
     --     il "sposta HUD" parte da qui.
     --   * Click nudo (nessuno shift): se il cursore e' su un'icona, hit-test
     --     e messaggio; sulla BARRA = target del player.
-    row:SetScript("OnMouseDown", function(self2, button)
-        if button == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() then
-            local f = RF.frame
-            if f and (not RF.db.locked or RLSuite.db.profile.anchorMode == true) then
-                f._rlsMoving = true
-                f:StartMoving()
-            end
-            self2._pressBtn = nil
-            return -- gesto con shift: mai trattato come click-icona
-        end
-        if IsShiftKeyDown and IsShiftKeyDown() then
-            self2._pressBtn = nil
-            if button == "LeftButton" and RF:IsDragEnabled() and self2.member then
-                -- SHIFT+sinistro = drag player MANUALE: source + mostra vuoti.
-                RF._rfDragSource = self2
-                self2._manualDrag = true
-                RF:RefreshDropTargets()
-                RF:_ArmManualDragWatchdog()
-            end
-            return -- gesti con shift: mai click/icone/target
-        end
-        self2._manualDrag = nil -- click nuovo: reset di un eventuale drag appeso
-        self2._pressBtn = button
-        self2._pressX, self2._pressY = nil, nil
-        if GetCursorPosition then
-            local x, y = GetCursorPosition()
-            self2._pressX, self2._pressY = x, y
-        end
-        if button == "LeftButton" then
-            -- TARGET ALLA PRESSIONE: il mouse-down e' l'evento che in client
-            -- arriva SEMPRE (il bonk/click del widget lo dimostra), come fanno
-            -- Grid/VuhDo/HealBot. Release/poller deduppano via row._targetT.
-            RF:TargetRow(self2)
-            -- Poller di riserva (stessa forma delle icone): senza drag
-            -- registrati l'OnMouseUp ora arriva, ma se qualche client lo
-            -- mangiasse comunque il release viene rilevato qui comunque.
-            self2._rowPollT0 = (GetTime and GetTime()) or 0
-            self2._pendingRowClick = true
-            self2:SetScript("OnUpdate", RowBodyPoller)
-        end
-    end)
-    row:SetScript("OnMouseUp", function(self2, button)
-        if button == "RightButton" then
-            local f = RF.frame
-            if f and f._rlsMoving then
-                f._rlsMoving = false
-                f:StopMovingOrSizing()
-                RF:PersistAnchor(f, RF.db)
-            end
-        end
-        -- Completamento drag player MANUALE: al release, slot sotto il
-        -- cursore → move/swap. Serve anche se lo shift e' gia' rilasciato.
-        if button == "LeftButton" and RF._rfDragSource then
-            local src = RF._rfDragSource
-            RF._rfDragSource = nil
-            if src then src._manualDrag = nil end
-            if src and src.member then
-                local t = RF:SlotAtCursor()
-                if t and t ~= src then
-                    RF:MoveSlot(src, t)
-                end
-            end
-            RF:RefreshDropTargets()
-            return -- era un drag: NON un click-icona, NON un target
-        end
-        if IsShiftKeyDown and IsShiftKeyDown() then return end -- gesti con shift: NO messaggi
-        local pressed = self2._pressBtn
-        self2._pressBtn = nil
-        if pressed ~= button then return end
-        if button ~= "LeftButton" and button ~= "RightButton" then return end
-        if RF._rfDragSource then return end -- era un drag, non un click
-        if self2._pressX and GetCursorPosition then
-            local x, y = GetCursorPosition()
-            if x and (math.abs(x - self2._pressX) > 5 or math.abs((y or 0) - (self2._pressY or 0)) > 5) then
-                return -- il cursore si e' mosso: era un drag
-            end
-        end
-        self2._pressX, self2._pressY = nil, nil
-        RF:RowPlainClick(self2, button)
-    end)
+    row:SetScript("OnMouseDown", RowBodyOnMouseDown)
+    row:SetScript("OnMouseUp", RowBodyOnMouseUp)
+
+    -- LAYERS SICURO ANTIFALLIMENTO: il "clicco il nome → target" lo fa
+    -- l'ENGINE stessa, come Grid/VuhDo/Clique: SecureActionButtonTemplate
+    -- type1="target" + unit=..., ALLA PRESSIONE (LeftButtonDown). Zero
+    -- scripting Lua per il target → nulla può mangiare l'evento: è la via
+    -- standard e immutabile degli unit frame. Livello: sopra la riga (+5),
+    -- SOTTO le icone consumabili (content+30) → le icone mantengono le loro
+    -- zone. Gli handler Lua condivisi coprono TUTTO il resto (Shift+destro
+    -- sposta HUD, Shift+sinistro drag player, hit-test icone, tracce di debug).
+    local sec = CreateFrame("Button", nil, self.content, "SecureActionButtonTemplate")
+    sec:SetAllPoints(row)
+    sec:SetFrameLevel((self.content.GetFrameLevel and self.content:GetFrameLevel() or 1) + 5)
+    sec:RegisterForClicks("LeftButtonDown")
+    sec:SetAttribute("type1", "target")
+    sec:Hide() -- mostrato quando la riga ha un'unit reale (vedi FillSlot)
+    row.secTarget = sec
+    sec:SetScript("OnMouseDown", function(s, button) RowBodyOnMouseDown(row, button) end)
+    sec:SetScript("OnMouseUp", function(s, button) RowBodyOnMouseUp(row, button) end)
 
     row:Hide()
     return row
@@ -676,6 +704,20 @@ function RF:FillSlot(slot, member)
     slot:SetBackdrop(nil)
     slot:Show()
 
+    -- Overlay sicuro per il target: gli attributi secure si toccano SOLO
+    -- fuori combattimento. Se c'e' una unit reale → l'engine targetta alla
+    -- pressione; in debug/fake (unit nil) → nascosto: via Lua con le guardie.
+    if slot.secTarget then
+        if not (InCombatLockdown and InCombatLockdown()) then
+            if member.unit and not member.fake then
+                slot.secTarget:SetAttribute("unit", member.unit)
+                slot.secTarget:Show()
+            else
+                slot.secTarget:Hide()
+            end
+        end
+    end
+
     if slot.bar then
         local r, g, b = RLSuite.utils:GetClassColor(member.class)
         slot.bar:SetStatusBarColor(r, g, b)
@@ -699,6 +741,9 @@ function RF:ClearSlot(slot)
     slot.class = nil
     slot.fake = false
     slot.raidIndex = nil
+    if slot.secTarget and not (InCombatLockdown and InCombatLockdown()) then
+        slot.secTarget:Hide()
+    end
 
     if slot.bar then
         slot.bar:SetValue(0)

@@ -47,7 +47,9 @@ function methods:EnableKeyboard(b) return self end
 function methods:SetMovable(b) return self end
 function methods:SetResizable(b) return self end
 function methods:RegisterForDrag(...) self._dragButtons = {...}; return self end
-function methods:RegisterForClicks(...) return self end
+function methods:RegisterForClicks(...) self._clickButtons = {...}; return self end
+function methods:SetAttribute(k, v) self._attrs = self._attrs or {}; self._attrs[k] = v; return self end
+function methods:GetAttribute(k) return self._attrs and self._attrs[k] or nil end
 function methods:RegisterEvent(e)
     EVENT_REG[self] = EVENT_REG[self] or {}
     EVENT_REG[self][e] = true
@@ -225,6 +227,7 @@ function geterrorhandler() return function(err) LAST_ERROR = err; return err end
 function IsLoggedIn() return LOGGED_IN end
 function GetTime() return os.clock() end
 function IsMouseButtonDown(btn) return false end  -- mock: sempre rilasciato
+function InCombatLockdown() return false end      -- mock: mai in combat
 function TargetUnit(u) LAST_TARGET = u end          -- mock: registra target
 function TargetByName(n) LAST_TARGNAME = n end       -- mock: registra target-by-name
 function UnitExists(u) return false end             -- mock: nessuna unit reale (debug)
@@ -1456,6 +1459,28 @@ check(rt.eval("TGT_PRESS") == 'raid7' and rt.eval("TGT1") == 'raid7', "plain lef
 check(rt.eval("TGT_NAME") == 'PippoRosso', "click on the NAME targets the player with THAT name (TargetByName fallback)")
 check(bool(rt.eval("TGT2 == nil")), "Shift+left on a bar does NOT target (drag gesture)")
 check(rt.eval("TGT_PRESS_BEFORE_MOVE") == 'raid7', "target fires on PRESS even before any movement (Grid-style, cursor-move cannot suppress it)")
+
+# --- F.2g SECURE anti-failure layer: engine-hardware click-to-target (Grid/Clique style) ---
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].secTarget ~= nil")), "every row has the SecureActionButtonTemplate target overlay")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].secTarget:GetAttribute('type1') == 'target'")), "secure overlay: engine action is /target")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].secTarget._clickButtons ~= nil and RLSuite.raidFrame.rows[1].secTarget._clickButtons[1] == 'LeftButtonDown'")), "secure overlay targets AT PRESS (LeftButtonDown)")
+# debug fake roster: member F5 fake → overlay hidden; FillSlot real unit → shown + unit
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+SEC_FAKE_HIDDEN = (row.secTarget:IsShown() == false)
+local savedMember = row.member
+RLSuite.raidFrame:FillSlot(row, { name = 'Realone', class = 'WARRIOR', unit = 'raid9', fake = false, raidIndex = 9 })
+SEC_UNIT = row.secTarget:GetAttribute('unit')
+SEC_SHOWN = row.secTarget:IsShown()
+SAVED_MEMBER_G = savedMember
+""")
+check(bool(rt.eval("SEC_FAKE_HIDDEN")), "fake/debug unit: secure target overlay stays hidden (Lua path traces instead)")
+check(rt.eval("SEC_UNIT") == 'raid9' and bool(rt.eval("SEC_SHOWN")), "real unit: secure overlay shows and stores the exact unit to target")
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+RLSuite.raidFrame:FillSlot(row, SAVED_MEMBER_G)
+""")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].member.name == 'F5'")), "roster restored after secure-layer test")
 
 # --- F.3 Raid Frame layout options: font / outline / bar texture / opacity ---
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.font ~= nil")), "Layout -> Font type present")
