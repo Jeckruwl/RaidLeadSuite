@@ -27,11 +27,6 @@ local RLS_BORDER = 12
 -- (bordino che evidenzia il riquadro in cui il player sta per essere rilasciato).
 local WL_GOLD_R, WL_GOLD_G, WL_GOLD_B = 1, 0.82, 0
 
--- Extra vertical room the InviteEngine rib needs for the tabbed panel
--- below the fixed Raid Group box (AceGUI-3.0 TabGroup: tab strip + border).
--- The rib keeps following Groupmaking's minimum resize height.
-local IE_TAB_EXTRA = 53
-
 -- All Groupmaking window fonts are +2pt over the default game fonts
 -- (window titles keep their large size).
 local FONT_FILE = "Fonts\\FRIZQT__.TTF"
@@ -557,17 +552,28 @@ function GM:LayoutGroupPanels(rowW)
     self:SyncWhisplistHeight()
 end
 
--- Altezza minima di resize di Groupmaking: topRow (dipende da 10/25) piu'
--- la pila fissa di title+dropdown, box richieste e blocco anteprima+bottoni.
--- IE_TAB_EXTRA copre la striscia a tab che l'InviteEngine aggiunge sotto
--- Raid Group: cosi' lista e dettaglio restano alti come prima.
+-- Altezza minima di resize di Groupmaking, SOMMATA dal layout reale cosi'
+-- da non lasciare spazio morto tra il box richieste e la fila di bottoni:
+--   66  intestazione (title + riga raid/diff/hc)
+--    8  gap
+-- topRow (topH: comp + class/spec bar, dipende da 10/25 e dal resize)
+--    8  gap
+--  140  box richieste (3 label + 3 edit + padding interno: misura del contenuto)
+--    8  gap
+--   24  fila bottoni (Start Spam / Preview / specs / InviteEngine)
+--    8  gap
+--   58  box anteprima messaggio
+--   16  margine inferiore
+-- Totale fisso = 66+8+8+140+8+24+8+58+16 = 328 + topH.
+-- IE_TAB_EXTRA (striscia tab della costola InviteEngine) non e' piu' sommato:
+-- il minimo calcolato copre comunque il contenuto dei tab del pannello.
 function GM:MinHeight()
     local topH = 156
     if self.topRow then
         local th = self.topRow:GetHeight()
         if th and th > 60 then topH = th end
     end
-    return topH + 336 + IE_TAB_EXTRA
+    return topH + 328
 end
 
 -- L'InviteEngine e' una costola di Groupmaking: la sua altezza segue sempre
@@ -642,7 +648,12 @@ end
 -- CLASS BAR - FIX: non usare GetNormalTexture()
 -- ============================================================
 function GM:BuildClassBar()
-    local classes = {"WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "DEATHKNIGHT", "SHAMAN", "MAGE", "WARLOCK", "DRUID"}
+    -- Classi su DUE colonne (LayoutClassBar riempie riga per riga a coppie):
+    --   col 1: Warrior, Rogue, Shaman, DK, Hunter
+    --   col 2: Paladin, Priest, Mage, Warlock, Druid
+    -- (Warlock sotto Mage, Druid sotto Warlock in col. 2, DK e Hunter
+    --  sotto Shaman in col. 1.)
+    local classes = {"WARRIOR", "PALADIN", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "DEATHKNIGHT", "WARLOCK", "HUNTER", "DRUID"}
     self.specCells = {}
     for _, class in ipairs(classes) do
         local data = RLSuite.classData[class]
@@ -708,7 +719,8 @@ function GM:LayoutClassBar()
     if not self.classBar or not self.specCells then return end
     local w = self.classBar:GetWidth() or 0
     if w < 40 then return end
-    local COLS = 3
+    -- Due colonne di classi: celle larghe e icone piu' grandi.
+    local COLS = 2
     local ICON_COLS = 3
     local GAP = 2
     local ROW_GAP = 0

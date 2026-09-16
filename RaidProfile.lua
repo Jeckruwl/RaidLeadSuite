@@ -442,7 +442,7 @@ function MW:RegisterAllWindows()
             local th = gm.topRow:GetHeight()
             if th and th > 60 then topH = th end
         end
-        return 560, topH + 336
+        return 560, topH + 328
     end
     RLSuite.windowMins.ms = function()
         return 350, 280

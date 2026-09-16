@@ -7,11 +7,29 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.1**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.2**.
 
-## Novità della sessione 1.4.1 (questo branch)
+## Novità della sessione 1.4.2 (questo branch, dopo 1.4.1)
 
-Richieste utente implementate (test: Scenario G, **288 check totali, tutti verdi**):
+Correzioni utente al pannello **Group Making** (test: blocco G.8 in Scenario G,
+**296 check totali, tutti verdi**):
+
+1. **Spazio morto eliminato riducendo l'altezza minima** (NON allargando i box):
+   `GM:MinHeight()` ora restituisce `topH + 328` (pila itemizzata nel commento:
+   66 title/righe dropdown + 8 + 8 + 140 reqBox-contenuto + 8 + 24 bottoni + 8 +
+   58 anteprima + 16 margine). Rimossa la costante `IE_TAB_EXTRA` (era 53): la
+   costola InviteEngine segue ancora `MinHeight()` via `SyncWhisplistHeight`,
+   sufficiente al contenuto dei tab. Allineato anche il fallback
+   `RaidProfile.lua` → `windowMins.groupmaking` (`topH + 328`).
+2. **Box "Select a spec" a 2 colonne**: `LayoutClassBar` `COLS = 2` e ordine
+   classi `WARRIOR, PALADIN, ROGUE, PRIEST, SHAMAN, MAGE, DEATHKNIGHT, WARLOCK,
+   HUNTER, DRUID` (riempimento riga-per-riga a coppie) → col 1: Warrior, Rogue,
+   Shaman, DK, Hunter; col 2: Paladin, Priest, Mage, Warlock, Druid
+   (Warlock sotto Mage, Druid sotto Warlock, DK+Hunter sotto Shaman).
+
+## Novità della sessione 1.4.1
+
+Richieste utente implementate (test: Scenario G):
 
 - **Main bar**: slider Config → General → Window (`matrixCols`, `matrixRows`,
   `barScale`) applicano il layout **in tempo reale** (`self:ApplyAll()` nei set).
@@ -147,7 +165,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 288 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 296 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
@@ -156,7 +174,8 @@ F gruppi 6 + drag & drop pre-boss (17 check: 30 slot + 6 header, fill in ordine,
 move su vuoto, swap su occupato, hiding fuori pre-boss) ·
 **G** novità 1.4.1 (config colonne real-time, MT/OT, reqBox→bottoni, bordi 12,
 debug-off svuota loot, join raid formato, bordino dorato drag, stack finestre
-pickup + layout slim).
+pickup + layout slim) · **G.8** correzioni 1.4.2 (ordine classi 2 colonne con
+posizioni Mage/Warlock/Druid e Shaman/DK/Hunter, MinHeight = topRow + 328).
 
 ## 5. Punti aperti per la prossima sessione
 

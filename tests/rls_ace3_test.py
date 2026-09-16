@@ -1282,6 +1282,34 @@ rt.execute("local p, rel, rp, x, y = RLSuite.lootManager.tradeWindows[1]:GetPoin
 check(bool(rt.eval("RISE_OK == true")), "closing the first pickup window makes the next one rise to the base anchor")
 rt.execute("RLSuite.lootManager:CloseAllTradeWindows()")
 
+# --- G.8 Groupmaking: 2-column class bar order + reduced minimum height ---
+rt.execute("""
+CLASSSEQ = {}
+for i, cell in ipairs(RLSuite.groupmaking.specCells) do
+    local b = cell.buttons and cell.buttons[1]
+    CLASSSEQ[#CLASSSEQ+1] = b and b.class or '?'
+end
+CLASSSEQ = table.concat(CLASSSEQ, ',')
+""")
+check(rt.eval("CLASSSEQ") == "WARRIOR,PALADIN,ROGUE,PRIEST,SHAMAN,MAGE,DEATHKNIGHT,WARLOCK,HUNTER,DRUID",
+    "class bar order for the 2-column layout (col1 Warrior/Rogue/Shaman/DK/Hunter, col2 Paladin/Priest/Mage/Warlock/Druid)")
+rt.execute("""
+RLSuite.groupmaking.classBar:SetWidth(316)
+RLSuite.groupmaking:LayoutClassBar()
+CELLPOS = {}
+for i, cell in ipairs(RLSuite.groupmaking.specCells) do
+    local p, rel, rp, x, y = cell.frame:GetPoint(1)
+    CELLPOS[i] = math.floor((x or 0) + 0.5) .. '/' .. math.floor((y or 0) + 0.5)
+end
+""")
+check(rt.eval("CELLPOS[5]") == "0/-96", "Shaman -> first column, row 3")
+check(rt.eval("CELLPOS[6]") == "159/-96", "Mage -> second column, row 3")
+check(rt.eval("CELLPOS[8]") == "159/-144", "Warlock -> second column, directly under Mage")
+check(rt.eval("CELLPOS[10]") == "159/-192", "Druid -> second column, directly under Warlock")
+check(rt.eval("CELLPOS[7]") == "0/-144", "DK -> first column, directly under Shaman")
+check(rt.eval("CELLPOS[9]") == "0/-192", "Hunter -> first column, under DK (Shaman column)")
+check(bool(rt.eval("RLSuite.groupmaking:MinHeight() == RLSuite.groupmaking.topRow:GetHeight() + 328")), "minimum window height reduced to topRow + 328 (dead space removed)")
+
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario G (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 
 print()
