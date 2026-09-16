@@ -5,17 +5,11 @@
 RLSuite.mainWindow = {}
 local MW = RLSuite.mainWindow
 
+local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
+
 function MW:Init()
     self:CreateFrame()
-end
-
-function MW:BarHeight()
-    return 72
-end
-
-function MW:PaneSize()
-    local L = RLSuiteDB and RLSuiteDB.layout and RLSuiteDB.layout.main or {}
-    return L.width or 660, L.height or 700
+    self:RegisterAllWindows()
 end
 
 function MW:Toggle()
@@ -25,10 +19,33 @@ function MW:Toggle()
     elseif self.frame then
         self.frame:Show()
         self:CloseTab()
+        -- /rls mostra anche l'HUD MacroBar (se abilitata e non gia' visibile)
+        self:ShowMacrobarHud()
     end
 end
 
+-- Mostra la HUD MacroBar insieme alla barra (usata da /rls).
+function MW:ShowMacrobarHud()
+    local mb = RLSuite.macrobar
+    if not mb or not mb.frame then return end
+    if RLSuite.db.profile.macrobar and RLSuite.db.profile.macrobar.enabled == false then return end
+    local pset = mb.PhaseSettings and mb:PhaseSettings()
+    if pset and pset.enabled == false then return end
+    if not mb.frame:IsShown() then
+        mb.frame:Show()
+        if mb.ApplyLayout then mb:ApplyLayout() end
+    end
+    self:RefreshTabHighlights()
+end
+
 function MW:ShowTab(key)
+    if key == "config" then
+        -- Config is now a self-contained Ace3 window, not a tab pane.
+        if RLSuite.config and RLSuite.config.Toggle then
+            RLSuite.config:Toggle()
+        end
+        return
+    end
     if not self.frame then return end
     self.frame:Show()
     self:SelectTab(key)
@@ -36,8 +53,25 @@ end
 
 function MW:OnTabClick(key)
     if not self.frame then return end
-    if self.frame:IsShown() and self.currentTab == key then
-        self:CloseTab()
+    -- Il tasto Macrobar mostra/nasconde l'HUD (non apre una finestra tab).
+    if key == "macro" then
+        if RLSuite.macrobar and RLSuite.macrobar.Toggle then
+            RLSuite.macrobar:Toggle()
+        end
+        self:RefreshTabHighlights()
+        return
+    end
+    -- Il tasto Raid Frame mostra/nasconde l'HUD del raid (stessa logica
+    -- del Macrobar): le impostazioni stanno in Config -> Raid Frame.
+    if key == "raidframe" then
+        if RLSuite.raidFrame and RLSuite.raidFrame.Toggle then
+            RLSuite.raidFrame:Toggle()
+        end
+        self:RefreshTabHighlights()
+        return
+    end
+    if self:IsTabOpen(key) then
+        self:CloseOneTab(key)
         return
     end
     self.frame:Show()
@@ -45,16 +79,60 @@ function MW:OnTabClick(key)
 end
 
 function MW:CloseTab()
-    self:HideDocked()
+    self:HideAllWindows()
     self.currentTab = nil
-    for _, tab in pairs(self.tabs or {}) do
+    self:RefreshTabHighlights()
+end
+
+-- Una finestra e' "aperta" quando il suo pannello e' visibile.
+function MW:IsTabOpen(key)
+    local pane = self:PaneForTab(key)
+    return pane ~= nil and pane:IsShown()
+end
+
+-- Chiude una singola finestra e aggiorna l'evidenziazione del suo tab.
+function MW:CloseOneTab(key)
+    if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+    local pane = self:PaneForTab(key)
+    if pane then pane:Hide() end
+    if self.currentTab == key then self.currentTab = nil end
+    self:UpdateTabHighlight(key)
+end
+
+-- I tab restano bistabili (click = apri/chiudi la finestra) ma non
+-- vengono piu' illuminati quando la finestra e' aperta: il bottone torna
+-- al suo aspetto normale (evidenziato solo al passaggio del mouse).
+function MW:UpdateTabHighlight(key)
+    local tab = self.tabs and self.tabs[key]
+    if not tab then return end
+    if tab.UnlockHighlight then
         tab:UnlockHighlight()
     end
 end
 
+function MW:RefreshTabHighlights()
+    for _, def in ipairs(self.tabDefs or {}) do
+        self:UpdateTabHighlight(def.key)
+    end
+end
+
+-- Offset a cascata per le finestre senza posizione salvata: cosi'
+-- aprendone piu' d'una non si sovrappongono tutte nello stesso punto.
+function MW:DefaultCascadeOffset(ignoreKey)
+    local ALL_KEYS = { "group", "raidframe", "ms", "loot" }
+    local n = 0
+    for _, k in ipairs(ALL_KEYS) do
+        if k ~= ignoreKey and self:IsTabOpen(k) then
+            n = n + 1
+        end
+    end
+    local m = n % 6
+    return m * 26, -(m * 26)
+end
+
 function MW:CreateFrame()
     local f = CreateFrame("Frame", "RLSuiteMainWindow", UIParent)
-    f:SetSize(660, self:BarHeight())
+    f:SetSize(240, 150)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
     f:SetMovable(true)
@@ -65,136 +143,315 @@ function MW:CreateFrame()
     f:Hide()
     self.frame = f
     RLSuite.utils:SkinFrame(f)
+    RLSuite.utils:ClampWindow(f)
 
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", f, "TOP", 0, -14)
-    title:SetText("RLSuite v" .. RLSuite.version)
-    self.titleFS = title
+    -- Niente titolo: la barra contiene solo i bottoni (matrice + fase +
+    -- X di chiusura e icona SaveRaid). La Config si apre dalla minimappa
+    -- (clic destro) o da /rls config.
 
     self.tabDefs = {
         { key = "group",     label = "Groupmaking" },
-        { key = "whisplist", label = "Whisplist" },
         { key = "macro",     label = "Macrobar" },
         { key = "raidframe", label = "Raid Frame" },
         { key = "ms",        label = "MS" },
         { key = "loot",      label = "Loot" },
-        { key = "config",    label = "Config" },
     }
     self.tabs = {}
-    self.tabPanels = {}
-    self.currentTab = "group"
+    self.currentTab = nil
 
+    -- Matrice colonne x righe configurabile: 6 tab
+    self.matrixButtons = {}
     for i, def in ipairs(self.tabDefs) do
         local tab = CreateFrame("Button", "RLSuiteTab" .. def.key, f, "UIPanelButtonTemplate")
-        tab:SetSize(84, 22)
-        tab:SetPoint("TOPLEFT", f, "TOPLEFT", 16 + (i - 1) * 90, -40)
+        tab:SetSize(90, 22)
         tab:SetText(def.label)
         tab.tabKey = def.key
         tab:SetScript("OnClick", function() self:OnTabClick(def.key) end)
         self.tabs[def.key] = tab
+        table.insert(self.matrixButtons, tab)
     end
 
-    self:CreateMacrobarSubTab()
-    self:CreateRaidFrameSubTab()
+    -- Icona fase singola: accanto all'icona SaveRaid, cambia in base alla
+    -- fase (occhio LFG animato / clessidra / spade da combattimento).
+    -- Clic = passa alla fase successiva.
+    self.phaseDefs = {
+        preraid = { label = "Pre-raid",
+            file = "Interface\\LFGFrame\\LFG-Eye",
+            static = { 0, 0.125, 0, 0.25 },
+            anim = { frames = 29, cols = 8, rows = 4, delay = 0.1 } },
+        preboss = { label = "Pre-boss",
+            file = "Interface\\Icons\\Spell_Holy_BorrowedTime" },
+        infight = { label = "In-fight",
+            file = "Interface\\CharacterFrame\\UI-StateIcon",
+            static = { 0.5, 1.0, 0, 0.5 } },
+    }
+    self.phaseBtn = CreateFrame("Button", "RLSuitePhaseBtn", f)
+    self.phaseBtn:SetSize(26, 26)
+    self.phaseBtn:EnableMouse(true)
+    self.phaseBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    RLSuite.utils:SkinBox(self.phaseBtn)
+    local phaseIcon = self.phaseBtn:CreateTexture(nil, "ARTWORK")
+    phaseIcon:SetPoint("TOPLEFT", self.phaseBtn, "TOPLEFT", 3, -3)
+    phaseIcon:SetPoint("BOTTOMRIGHT", self.phaseBtn, "BOTTOMRIGHT", -3, 3)
+    self.phaseBtn.icon = phaseIcon
+    self.phaseBtn:SetScript("OnClick", function(s, button)
+        if not RLSuite.CycleContextPhase then return end
+        if button == "RightButton" then
+            RLSuite:CycleContextPhase(-1)
+        else
+            RLSuite:CycleContextPhase(1)
+        end
+    end)
+    self.phaseBtn:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L["Phase indicator"])
+        GameTooltip:AddLine(L["Left click: next phase"], 1, 1, 1)
+        GameTooltip:AddLine(L["Right click: previous phase"], 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    self.phaseBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    -- Testo con il nome della fase, mostrato accanto all'icona fase
+    -- quando c'e' spazio sufficiente fino alla X di chiusura.
+    self.phaseText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.phaseText:SetTextColor(1, 0.82, 0)
+    self.phaseText:SetJustifyH("LEFT")
+    self.phaseText:Hide()
 
     self.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     self.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    self.closeBtn:SetScript("OnClick", function() f:Hide() end)
+    self.closeBtn:SetScript("OnClick", function()
+        self:CloseTab()
+        f:Hide()
+    end)
 
-    self.currentTab = nil
+    -- Config: accessibile dal clic destro sull'icona della minimappa e da
+    -- /rls config (niente piu' icona rotellina nella barra principale).
+
+    -- SaveRaid: icona salvataggio a sinistra dell'icona fase
+    self.saveRaidBtn = CreateFrame("Button", "RLSuiteSaveRaidBtn", f)
+    self.saveRaidBtn:SetSize(26, 26)
+    RLSuite.utils:SkinBox(self.saveRaidBtn)
+    local saveIcon = self.saveRaidBtn:CreateTexture(nil, "ARTWORK")
+    saveIcon:SetPoint("TOPLEFT", self.saveRaidBtn, "TOPLEFT", 3, -3)
+    saveIcon:SetPoint("BOTTOMRIGHT", self.saveRaidBtn, "BOTTOMRIGHT", -3, 3)
+    saveIcon:SetTexture(RLSuite:AddonTexture("media\\save.blp"))
+    self.saveRaidBtn:EnableMouse(true)
+    self.saveRaidBtn:RegisterForClicks("LeftButtonUp")
+    self.saveRaidBtn:SetScript("OnClick", function() self:OnSaveRaid() end)
+    self.saveRaidBtn:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+        GameTooltip:SetText("SaveRaid")
+        GameTooltip:Show()
+    end)
+    self.saveRaidBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
     self:ApplyLayout()
 end
 
 function MW:ApplyLayout()
-    local L = RLSuiteDB and RLSuiteDB.layout and RLSuiteDB.layout.main
+    local L = RLSuite.db and RLSuite.db.profile.layout and RLSuite.db.profile.layout.main
     if not self.frame then return end
     L = L or {}
-    local w = L.width or 660
-    self.frame:SetSize(w, self:BarHeight())
-    self.frame:SetScale(L.scale or 1)
-    local font, size = RLSuite.utils:GetUIFont()
-    if self.titleFS then
-        self.titleFS:SetFont(font, size + 2)
-        self.titleFS:SetText("RLSuite v" .. RLSuite.version)
+    local cols = math.max(1, math.min(8, tonumber(L.matrixCols) or 2))
+    local rows = math.max(1, math.min(8, tonumber(L.matrixRows) or 4))
+    -- la matrice deve sempre contenere tutti i bottoni (6 tab):
+    -- se le colonne sono poche, le righe minime crescono per non sforare
+    local nButtons = #(self.matrixButtons or {})
+    if nButtons > 0 then
+        rows = math.max(rows, math.ceil(nButtons / cols))
     end
-    RLSuite.utils:SkinFrame(self.frame)
-    if self.currentTab then
-        local pane = self:PaneForTab(self.currentTab)
-        if pane then
-            pane:SetHeight(L.height or 700)
+
+    -- Bottoni matrice: colonne x righe configurabili dalla Config.
+    local bw, bh, gapX, gapY = 90, 22, 8, 4
+    local PAD = 12
+    local iconSize = 26                       -- icone (save/fase)
+    local iconGap = 4                         -- spazio tra le icone
+    local xSize = 32                          -- X di chiusura
+    local rowGap = 6                          -- spazio tra riga icone e matrice
+
+    local matrixW = cols * bw + (cols - 1) * gapX
+    local matrixH = rows * bh + (rows - 1) * gapY
+
+    -- Riga icone in alto, larga quanto la matrice: le 2 icone a sinistra,
+    -- spazio vuoto, X rossa a destra. Se la matrice e' piu' stretta delle
+    -- icone, riga e barra si allargano al minimo per contenerle.
+    local iconRowH = math.max(iconSize, xSize)
+    local iconsW = 2 * iconSize + 1 * iconGap
+    local minRowW = iconsW + iconGap + xSize
+    local contentW = math.max(matrixW, minRowW)
+
+    local h = 2 * PAD + iconRowH + rowGap + matrixH
+    local w = 2 * PAD + contentW
+
+    self.frame:SetSize(w, h)
+    self.frame:SetScale(L.scale or 1)
+
+    -- matrice (sotto la riga icone, allineata a sinistra)
+    local x0 = PAD
+    local topY = -PAD - iconRowH - rowGap
+    for i, btn in ipairs(self.matrixButtons or {}) do
+        local col = (i - 1) % cols
+        local row = math.floor((i - 1) / cols)
+        btn:ClearAllPoints()
+        btn:SetSize(bw, bh)
+        btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", x0 + col * (bw + gapX), topY - row * (bh + gapY))
+    end
+
+    -- riga icone in alto: save -> fase a sinistra, X a destra
+    local iconY = -(iconRowH - iconSize) / 2
+    if self.saveRaidBtn then
+        self.saveRaidBtn:ClearAllPoints()
+        self.saveRaidBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", PAD, -PAD + iconY)
+    end
+    if self.phaseBtn then
+        self.phaseBtn:ClearAllPoints()
+        self.phaseBtn:SetPoint("TOPLEFT", self.saveRaidBtn or self.frame, "TOPRIGHT", iconGap, 0)
+    end
+    if self.closeBtn then
+        self.closeBtn:ClearAllPoints()
+        self.closeBtn:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", -PAD, -PAD)
+    end
+
+    -- nome della fase accanto all'icona, solo se c'e' spazio fino alla X
+    if self.phaseText and self.phaseBtn then
+        self.phaseText:ClearAllPoints()
+        self.phaseText:SetPoint("LEFT", self.phaseBtn, "RIGHT", iconGap + 2, 0)
+        local available = contentW - iconsW - xSize - iconGap
+        if available >= 58 then
+            self.phaseText:Show()
+        else
+            self.phaseText:Hide()
         end
     end
+
+    RLSuite.utils:SkinFrame(self.frame)
+    self:UpdatePhaseButtons()
 end
 
 function MW:SkinInner()
-    local u = RLSuite.utils
-    u:SkinBox(self.macroPreview)
-    u:SkinBox(self.macroEditor)
-    u:SkinBox(self.macroListFrame)
-    u:SkinBox(self.macroBodyFrame)
-    u:SkinBox(self.rfPreview)
-    u:SkinBox(self.rfAlertBox)
+    -- Il vecchio pannello Raid Frame (preview + alert messages) non esiste
+    -- piu' come finestra a tab: le impostazioni vivono in Config e l'HUD
+    -- non viene mai "skinnato" (nessuno sfondo/bordo). Niente da fare qui.
 end
 
 function MW:PaneForTab(key)
     if key == "group" then
         return RLSuite.groupmaking and RLSuite.groupmaking.mainFrame
-    elseif key == "whisplist" then
-        return RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame
-    elseif key == "macro" then
-        return self.tabPanels and self.tabPanels.macro
     elseif key == "raidframe" then
-        return self.tabPanels and self.tabPanels.raidframe
+        -- Il tab Raid Frame non apre piu' una finestra: mostra/nasconde
+        -- l'HUD (vedi OnTabClick). Nessun pannello associato.
+        return nil
     elseif key == "ms" then
         return RLSuite.msManager and RLSuite.msManager.frame
     elseif key == "loot" then
         return RLSuite.lootManager and RLSuite.lootManager.frame
-    elseif key == "config" then
-        return RLSuite.config and RLSuite.config.frame
     end
     return nil
 end
 
-function MW:Dock(frame)
-    if not frame or not self.frame then return end
-    local w, h = self:PaneSize()
-    frame:SetParent(self.frame)
-    frame:ClearAllPoints()
-    frame:SetPoint("TOPLEFT", self.frame, "BOTTOMLEFT", 0, -2)
-    frame:SetPoint("TOPRIGHT", self.frame, "BOTTOMRIGHT", 0, -2)
-    frame:SetHeight(h)
-    frame:SetScale(1)
-    frame:SetFrameStrata(self.frame:GetFrameStrata())
-    frame:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 2)
-    frame:SetMovable(false)
-    frame:EnableMouse(true)
-    frame:SetScript("OnDragStart", nil)
-    frame:SetScript("OnDragStop", nil)
-    if frame.rlsBgFill then frame.rlsBgFill:Hide() end
-    if not frame.closeBtn then
-        frame.closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-        frame.closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -4)
-    end
-    frame.closeBtn:Show()
-    frame.closeBtn:SetScript("OnClick", function()
-        MW:CloseTab()
-    end)
-    RLSuite.utils:SkinFrame(frame)
-    frame:Show()
+-- Layout key usato per salvare posizione/dimensione di ogni tab.
+function MW:LayoutKeyForTab(key)
+    if key == "group" then return "groupmaking" end
+    if key == "raidframe" then return "raidframe" end
+    return key -- ms / loot
 end
 
-function MW:HideDocked()
-    local frames = {
-        RLSuite.groupmaking and RLSuite.groupmaking.mainFrame,
-        RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame,
-        RLSuite.msManager and RLSuite.msManager.frame,
-        RLSuite.lootManager and RLSuite.lootManager.frame,
-        RLSuite.config and RLSuite.config.frame,
-        self.tabPanels and self.tabPanels.macro,
-        self.tabPanels and self.tabPanels.raidframe,
+function MW:HideAllWindows()
+    if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+    local keys = { "group", "raidframe", "ms", "loot" }
+    for _, k in ipairs(keys) do
+        local pane = self:PaneForTab(k)
+        if pane then pane:Hide() end
+    end
+    -- L'InviteEngine (ex-Whisplist) e' una costola di Groupmaking:
+    -- nascondendo la finestra principale si chiude anche il pannello ancorato.
+    if RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame then
+        RLSuite.groupmaking.whisplistFrame:Hide()
+    end
+end
+
+function MW:RegisterAllWindows()
+    -- Minimi di contenuto per le finestre ridimensionabili.
+    -- Vengono ri-calcolati a ogni drag; quello di Groupmaking dipende
+    -- dalla composizione corrente (10/25), gli altri sono fissi perche'
+    -- i loro layout interni non cambiano con la difficolta'.
+    RLSuite.windowMins = RLSuite.windowMins or {}
+    RLSuite.windowMins.groupmaking = function()
+        -- Larghezza minima: fila di controlli in basso (Start Spam,
+        -- Preview Msg, checkbox "Show specs in message" e bottone
+        -- InviteEngine) e le due colonne comp/class.
+        -- Altezza: pila verticale title+dropdowns, gruppo slot (topRow),
+        -- box "richieste" e blocco basso anteprima+bottoni.
+        local gm = RLSuite.groupmaking
+        if gm and gm.MinHeight then
+            return 560, gm:MinHeight()
+        end
+        local topH = 156
+        if gm and gm.topRow then
+            local th = gm.topRow:GetHeight()
+            if th and th > 60 then topH = th end
+        end
+        return 560, topH + 336
+    end
+    RLSuite.windowMins.ms = function()
+        return 350, 280
+    end
+    RLSuite.windowMins.loot = function()
+        return 480, 340
+    end
+
+    -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
+    local layoutKeys = {
+        group = "groupmaking",
+        ms = "ms",
+        loot = "loot",
     }
-    for _, fr in ipairs(frames) do
-        if fr then fr:Hide() end
+    for key, lkey in pairs(layoutKeys) do
+        local pane = self:PaneForTab(key)
+        if pane and not pane._rlsWindow then
+            pane._rlsWindow = true
+            RLSuite.utils:MakeDraggable(pane, lkey)
+            RLSuite.utils:MakeClickToFront(pane)
+            -- la X della finestra chiude anche lo stato del tab nella barra
+            if pane.closeBtn then
+                local oldClick = pane.closeBtn:GetScript("OnClick")
+                pane.closeBtn:SetScript("OnClick", function()
+                    pane:Hide()
+                    MW:UpdateTabHighlight(key)
+                    if MW.currentTab == key then
+                        MW.currentTab = nil
+                    end
+                    if oldClick then oldClick() end
+                end)
+            end
+        end
+    end
+
+    -- Grip di resize per Groupmaking, MS e Loot
+    local resizable = {
+        group = { "groupmaking", 420, 380, "groupmaking" },
+        ms = { "ms", 320, 260, "ms" },
+        loot = { "loot", 440, 300, "loot" },
+    }
+    for key, cfg in pairs(resizable) do
+        local pane = self:PaneForTab(key)
+        if pane then
+            RLSuite.utils:AddResizeGrip(pane, cfg[1], cfg[2], cfg[3], function()
+                if key == "group" and RLSuite.groupmaking then
+                    if RLSuite.groupmaking.LayoutGroupPanels then RLSuite.groupmaking:LayoutGroupPanels() end
+                end
+                if key == "ms" and RLSuite.msManager then
+                    if RLSuite.msManager.UpdateList then RLSuite.msManager:UpdateList() end
+                end
+                if key == "loot" and RLSuite.lootManager then
+                    if RLSuite.lootManager.UpdateHistory then RLSuite.lootManager:UpdateHistory() end
+                end
+            end)
+            -- Se una dimensione salvata in passato era sotto il minimo,
+            -- riportala subito a una dimensione che non sovrappone i contenuti.
+            RLSuite.utils:EnforceWindowMin(pane, cfg[1])
+        end
     end
 end
 
@@ -203,18 +460,49 @@ function MW:SelectTab(key)
         local def = self.tabDefs and self.tabDefs[key]
         key = def and def.key or "group"
     end
-    self.currentTab = key or "group"
-    for k, tab in pairs(self.tabs or {}) do
-        if k == self.currentTab then
-            tab:LockHighlight()
-        else
-            tab:UnlockHighlight()
-        end
+    if key ~= "group" and key ~= "raidframe"
+        and key ~= "ms" and key ~= "loot" then
+        key = "group"
     end
+    self.currentTab = key
 
-    self:HideDocked()
-    self:Dock(self:PaneForTab(self.currentTab))
+    -- Finestre a schede: si aprono come pannelli indipendenti e spostabili,
+    -- e possono restare aperte piu' d'una alla volta.
+    local pane = self:PaneForTab(key)
+    if pane then
+        -- panes creati come figli della barra (raidframe) tornano a UIParent
+        if pane:GetParent() == self.frame then
+            pane:SetParent(UIParent)
+        end
+        local lkey = self:LayoutKeyForTab(key)
+        local L = RLSuite.utils:WindowLayout(lkey)
+        -- Default: come quando i pannelli erano agganciati sotto la barra
+        -- (larghezza/altezza della tab in Config -> General -> Finestra).
+        local mL = (RLSuite.db.profile.layout and RLSuite.db.profile.layout.main) or {}
+        local pw = L.width or mL.width or 660
+        local ph = L.height or mL.height or 700
+        -- mai piu' piccolo del contenuto della finestra
+        local mw, mh = RLSuite.utils:WindowMin(lkey, pane)
+        if mw then
+            pw = math.max(pw, mw)
+            ph = math.max(ph, mh)
+        end
+        pane:SetSize(pw, ph)
+        RLSuite.utils:ApplySavedPos(pane, lkey, function()
+            return self:DefaultCascadeOffset(key)
+        end)
+        -- porta la finestra in primo piano sopra le altre (strata HIGH +
+        -- frame level distanziato: niente sovrapposizioni parziali)
+        RLSuite.utils:RaiseWindow(pane)
+        pane:Show()
+        self:RefreshTabContents(key)
+        -- evidenzia i tab dopo l'apertura: il tab resta acceso finche'
+        -- la sua finestra e' visibile (anche con piu' finestre aperte)
+        self:RefreshTabHighlights()
+    end
+end
 
+function MW:RefreshTabContents(key)
     if key == "group" then
         if RLSuite.groupmaking and RLSuite.groupmaking.UpdateMessagePreview then
             RLSuite.groupmaking:UpdateMessagePreview()
@@ -222,12 +510,6 @@ function MW:SelectTab(key)
         if RLSuite.groupmaking and RLSuite.groupmaking.LayoutGroupPanels then
             RLSuite.groupmaking:LayoutGroupPanels()
         end
-    elseif key == "whisplist" then
-        if RLSuite.groupmaking and RLSuite.groupmaking.UpdateWhisplist then
-            RLSuite.groupmaking:UpdateWhisplist()
-        end
-    elseif key == "macro" then
-        self:RefreshMacroTab()
     elseif key == "ms" then
         if RLSuite.msManager and RLSuite.msManager.UpdateList then
             RLSuite.msManager:UpdateList()
@@ -239,629 +521,134 @@ function MW:SelectTab(key)
     end
 end
 
-function MW:CreateMacrobarSubTab()
-    local sc = CreateFrame("Frame", "RLSuiteMacroTab", self.frame)
-    sc:SetSize(660, 700)
-    sc:Hide()
-    self.tabPanels = self.tabPanels or {}
-    self.tabPanels.macro = sc
-    self.macroPhase = RLSuite.context or "preraid"
-    self.macroPreviewBtns = {}
-    self.macroPhaseBtns = {}
-    self.macroLoading = false
-    self.macroEditIndex = nil
-    self.macroEditIcon = nil
+function MW:UpdatePhaseButtons()
+    local phase = RLSuite.context or "preraid"
+    local def = self.phaseDefs and self.phaseDefs[phase]
+    local btn = self.phaseBtn
+    if not btn or not def then return end
 
-    local phaseLabel = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    phaseLabel:SetPoint("TOPLEFT", sc, "TOPLEFT", 10, -10)
-    phaseLabel:SetText("Fase:")
-
-    local phases = {
-        {key = "preraid", label = "Pre-raid"},
-        {key = "preboss", label = "Pre-boss"},
-        {key = "infight", label = "In-fight"},
-    }
-    for i, pdata in ipairs(phases) do
-        local btn = CreateFrame("Button", nil, sc, "UIPanelButtonTemplate")
-        btn:SetSize(90, 22)
-        btn:SetPoint("LEFT", phaseLabel, "RIGHT", 8 + (i - 1) * 96, 0)
-        btn:SetText(pdata.label)
-        btn.phaseKey = pdata.key
-        btn:SetScript("OnClick", function()
-            self:SelectMacroPhase(pdata.key)
-        end)
-        self.macroPhaseBtns[pdata.key] = btn
+    btn.label = def.label
+    if self.phaseText then
+        self.phaseText:SetText(def.label or "")
+    end
+    btn.icon:SetTexture(def.file)
+    if def.static then
+        btn.icon:SetTexCoord(def.static[1], def.static[2], def.static[3], def.static[4])
+    elseif not def.anim then
+        -- icona intera: azzera il ritaglio lasciato da una fase precedente
+        btn.icon:SetTexCoord(0, 1, 0, 1)
     end
 
-    local openBtn = CreateFrame("Button", nil, sc, "UIPanelButtonTemplate")
-    openBtn:SetSize(150, 22)
-    openBtn:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -10, -8)
-    openBtn:SetText("Mostra/Nascondi HUD")
-    openBtn:SetScript("OnClick", function()
-        if RLSuite.macrobar and RLSuite.macrobar.Toggle then
-            RLSuite.macrobar:Toggle()
-        end
-    end)
-
-    local hudLabel = sc:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    hudLabel:SetPoint("TOPLEFT", phaseLabel, "BOTTOMLEFT", 0, -12)
-    hudLabel:SetText("Anteprima HUD (clic sinistro = editor):")
-
-    local mbPreview = CreateFrame("Frame", nil, sc)
-    mbPreview:SetSize(616, 52)
-    mbPreview:SetPoint("TOPLEFT", hudLabel, "BOTTOMLEFT", 0, -4)
-    RLSuite.utils:SkinBox(mbPreview)
-    self.macroPreview = mbPreview
-
-    for i = 1, 12 do
-        local btn = CreateFrame("Button", nil, mbPreview)
-        btn:SetSize(36, 36)
-        btn:SetPoint("TOPLEFT", mbPreview, "TOPLEFT", 10 + (i - 1) * 50, -8)
-        btn.icon = btn:CreateTexture(nil, "ARTWORK")
-        btn.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-        btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        RLSuite.utils:SkinMacroButton(btn)
-        btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        btn:SetScript("OnClick", function()
-            MW:OpenMacroEditor(i)
-        end)
-        local num = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        num:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 2, 2)
-        num:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
-        num:SetText(i)
-        self.macroPreviewBtns[i] = btn
-    end
-
-    local editor = CreateFrame("Frame", "RLSuiteMacroEditor", sc)
-    editor:SetPoint("TOPLEFT", mbPreview, "BOTTOMLEFT", 0, -8)
-    editor:SetPoint("BOTTOMRIGHT", sc, "BOTTOMRIGHT", -10, 10)
-    RLSuite.utils:SkinBox(editor)
-    editor:Show()
-    self.macroEditor = editor
-
-    local list = CreateFrame("Frame", nil, editor)
-    list:SetPoint("TOPRIGHT", editor, "TOPRIGHT", -8, -8)
-    list:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -8, 8)
-    list:SetWidth(300)
-    RLSuite.utils:SkinBox(list)
-    self.macroListFrame = list
-
-    local listTitle = list:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    listTitle:SetPoint("TOPLEFT", list, "TOPLEFT", 8, -8)
-    listTitle:SetText("Tutte le macro")
-
-    self.macroListRows = {}
-    for i = 1, 12 do
-        local row = CreateFrame("Button", nil, list)
-        row:SetHeight(20)
-        row:SetPoint("TOPLEFT", list, "TOPLEFT", 6, -26 - (i - 1) * 22)
-        row:SetPoint("RIGHT", list, "RIGHT", -6, 0)
-        local num = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        num:SetPoint("LEFT", row, "LEFT", 2, 0)
-        num:SetWidth(16)
-        num:SetJustifyH("LEFT")
-        num:SetText(tostring(i))
-        local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetPoint("LEFT", num, "RIGHT", 4, 0)
-        fs:SetPoint("RIGHT", row, "RIGHT", -2, 0)
-        fs:SetJustifyH("LEFT")
-        fs:SetText("")
-        row.fs = fs
-        row.idx = i
-        row:SetScript("OnClick", function()
-            MW:OpenMacroEditor(i)
-        end)
-        self.macroListRows[i] = row
-    end
-
-    local slotFS = editor:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    slotFS:SetPoint("TOPLEFT", editor, "TOPLEFT", 12, -10)
-    slotFS:SetText("Macro")
-    self.macroSlotFS = slotFS
-
-    local nameLabel = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    nameLabel:SetPoint("TOPLEFT", slotFS, "BOTTOMLEFT", 0, -10)
-    nameLabel:SetText("Nome:")
-
-    local nameEdit = CreateFrame("EditBox", "RLSuiteMacroNameEdit", editor, "InputBoxTemplate")
-    nameEdit:SetSize(140, 20)
-    nameEdit:SetPoint("LEFT", nameLabel, "RIGHT", 8, 0)
-    nameEdit:SetAutoFocus(false)
-    nameEdit:SetMaxLetters(32)
-    nameEdit:SetScript("OnTextChanged", function()
-        MW:SaveMacroSlot()
-    end)
-    nameEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
-    nameEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
-    self.macroNameEdit = nameEdit
-
-    local iconBtn = CreateFrame("Button", nil, editor)
-    iconBtn:SetSize(36, 36)
-    iconBtn:SetPoint("LEFT", nameEdit, "RIGHT", 16, 0)
-    iconBtn.icon = iconBtn:CreateTexture(nil, "ARTWORK")
-    iconBtn.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-    iconBtn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    RLSuite.utils:SkinMacroButton(iconBtn)
-    iconBtn:SetScript("OnClick", function()
-        MW:ToggleMacroIconPicker()
-    end)
-    self.macroIconBtn = iconBtn
-
-    local iconHint = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    iconHint:SetPoint("LEFT", iconBtn, "RIGHT", 8, 0)
-    iconHint:SetText("Clic = scegli icona")
-
-    local bodyFrame = CreateFrame("Frame", nil, editor)
-    bodyFrame:SetPoint("TOPLEFT", editor, "TOPLEFT", 12, -78)
-    bodyFrame:SetPoint("BOTTOMLEFT", editor, "BOTTOMLEFT", 12, 40)
-    bodyFrame:SetPoint("RIGHT", list, "LEFT", -8, 0)
-    bodyFrame:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = {left = 4, right = 4, top = 4, bottom = 4},
-    })
-    bodyFrame:SetBackdropColor(0, 0, 0, 0.85)
-    self.macroBodyFrame = bodyFrame
-
-    local body = CreateFrame("EditBox", "RLSuiteMacroBodyEdit", bodyFrame)
-    body:SetMultiLine(true)
-    body:SetAutoFocus(false)
-    body:SetFontObject(ChatFontNormal)
-    body:SetTextInsets(6, 6, 6, 6)
-    body:SetMaxLetters(1024)
-    body:SetPoint("TOPLEFT", bodyFrame, "TOPLEFT", 6, -6)
-    body:SetPoint("BOTTOMRIGHT", bodyFrame, "BOTTOMRIGHT", -6, 6)
-    body:EnableMouse(true)
-    body:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
-    body:SetScript("OnTextChanged", function()
-        MW:SaveMacroSlot()
-    end)
-    self.macroBodyEdit = body
-
-    local util = CreateFrame("Frame", nil, editor)
-    util:SetPoint("BOTTOMLEFT", editor, "BOTTOMLEFT", 10, 8)
-    util:SetPoint("RIGHT", list, "LEFT", -8, 0)
-    util:SetHeight(26)
-    self.macroUtilBar = util
-
-    local raidIcons = {
-        { token = "{rt1}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1" },
-        { token = "{rt2}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_2" },
-        { token = "{rt3}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_3" },
-        { token = "{rt4}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_4" },
-        { token = "{rt5}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_5" },
-        { token = "{rt6}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_6" },
-        { token = "{rt7}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_7" },
-        { token = "{rt8}", tex = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8" },
-    }
-    for i, data in ipairs(raidIcons) do
-        local ib = CreateFrame("Button", nil, util)
-        ib:SetSize(22, 22)
-        ib:SetPoint("LEFT", util, "LEFT", (i - 1) * 26, 0)
-        local tex = ib:CreateTexture(nil, "ARTWORK")
-        tex:SetAllPoints(ib)
-        tex:SetTexture(data.tex)
-        ib:SetScript("OnClick", function()
-            MW:InsertMacroText(data.token)
-        end)
-    end
-
-    local capsBtn = CreateFrame("Button", nil, util, "UIPanelButtonTemplate")
-    capsBtn:SetSize(70, 22)
-    capsBtn:SetPoint("LEFT", util, "LEFT", 8 * 26 + 8, 0)
-    capsBtn:SetText("CAPS")
-    capsBtn:SetScript("OnClick", function()
-        MW:ToggleMacroCaps()
-    end)
-
-    self:HookMacroInsertLink()
-    self:CreateMacroIconPicker(editor)
-    self:SelectMacroPhase(self.macroPhase)
-    self:OpenMacroEditor(1)
-end
-
-function MW:HookMacroInsertLink()
-    if self._insertLinkHooked then return end
-    self._insertLinkHooked = true
-    RLSuite.utils:RegisterInsertLink(self.macroBodyEdit, function()
-        MW:SaveMacroSlot()
-    end)
-end
-
-function MW:CreateMacroIconPicker(parent)
-    local picker = CreateFrame("Frame", "RLSuiteMacroIconPicker", parent)
-    picker:SetSize(280, 220)
-    picker:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 12, 44)
-    picker:SetFrameStrata("FULLSCREEN_DIALOG")
-    RLSuite.utils:SkinFrame(picker)
-    picker:Hide()
-    picker:EnableMouse(true)
-    self.macroIconPicker = picker
-
-    local title = picker:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", picker, "TOPLEFT", 10, -8)
-    title:SetText("Icona macro")
-
-    local close = CreateFrame("Button", nil, picker, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", picker, "TOPRIGHT", -2, -2)
-    close:SetScript("OnClick", function() picker:Hide() end)
-
-    local scroll = CreateFrame("ScrollFrame", "RLSuiteMacroIconScroll", picker, "FauxScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", picker, "TOPLEFT", 8, -28)
-    scroll:SetPoint("BOTTOMRIGHT", picker, "BOTTOMRIGHT", -28, 8)
-    scroll:SetScript("OnVerticalScroll", function(s, offset)
-        FauxScrollFrame_OnVerticalScroll(s, offset, 32, function()
-            MW:UpdateMacroIconPicker()
-        end)
-    end)
-    self.macroIconScroll = scroll
-
-    self.macroIconBtns = {}
-    local cols, rows, size, gap = 10, 6, 28, 2
-    for i = 1, cols * rows do
-        local btn = CreateFrame("Button", nil, picker)
-        btn:SetSize(size, size)
-        local col = (i - 1) % cols
-        local row = math.floor((i - 1) / cols)
-        btn:SetPoint("TOPLEFT", scroll, "TOPLEFT", col * (size + gap), -row * (size + gap))
-        btn.icon = btn:CreateTexture(nil, "ARTWORK")
-        btn.icon:SetAllPoints(btn)
-        btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        btn:SetScript("OnClick", function(s)
-            if s.texPath then
-                MW:SetMacroIcon(s.texPath)
+    if def.anim then
+        local a = btn._anim or {}
+        a.frames = def.anim.frames
+        a.cols = def.anim.cols
+        a.rows = def.anim.rows
+        a.delay = def.anim.delay
+        a.t = 0
+        a.frame = 0
+        btn._anim = a
+        btn:SetScript("OnUpdate", function(s, elapsed)
+            local aa = s._anim
+            aa.t = aa.t + elapsed
+            while aa.t >= aa.delay do
+                aa.t = aa.t - aa.delay
+                aa.frame = aa.frame + 1
+                if aa.frame >= aa.frames then aa.frame = 0 end
             end
+            local col = aa.frame % aa.cols
+            local row = math.floor(aa.frame / aa.cols)
+            s.icon:SetTexCoord(col / aa.cols, (col + 1) / aa.cols, row / aa.rows, (row + 1) / aa.rows)
         end)
-        self.macroIconBtns[i] = btn
+    else
+        btn:SetScript("OnUpdate", nil)
     end
 end
 
-function MW:GetMacroIconList()
-    if self.macroIconList then return self.macroIconList end
-    local list = {}
-    if GetNumMacroIcons and GetMacroIconInfo then
-        local n = GetNumMacroIcons() or 0
-        for i = 1, n do
-            local tex = GetMacroIconInfo(i)
-            if tex then table.insert(list, tex) end
+-- Il vecchio pannello "Raid Frame" (anteprima + messaggi di alert) e'
+-- stato rimosso: il tab Raid Frame ora mostra/nasconde l'HUD (OnTabClick)
+-- e tutte le impostazioni vivono in Config -> Raid Frame (Config.lua).
+
+-- ============================================================
+-- SaveRaid: prompt titolo + salvataggio
+-- ============================================================
+function MW:OnSaveRaid()
+    self:AskRaidTitle(function(title)
+        if not title or title == "" then
+            RLSuite.utils:Print(L["SaveRaid cancelled: no title entered."])
+            return
         end
-    end
-    if #list == 0 then
-        table.insert(list, "Interface\\Icons\\INV_Misc_QuestionMark")
-        if RLSuite.abilityByName then
-            for _, meta in pairs(RLSuite.abilityByName) do
-                if meta.icon then table.insert(list, meta.icon) end
-            end
+        if RLSuite.SaveRaid then
+            RLSuite:SaveRaid(title)
         end
-    end
-    self.macroIconList = list
-    return list
+    end)
 end
 
-function MW:ToggleMacroIconPicker()
-    if not self.macroIconPicker then return end
-    if self.macroIconPicker:IsShown() then
-        self.macroIconPicker:Hide()
+function MW:AskRaidTitle(callback)
+    if self.savePrompt then
+        self.savePrompt:Show()
+        local edit = self.savePrompt.edit
+        edit:SetText("")
+        edit:SetFocus()
+        self.savePrompt._cb = callback
         return
     end
-    self:GetMacroIconList()
-    self.macroIconPicker:Show()
-    self:UpdateMacroIconPicker()
-end
 
-function MW:UpdateMacroIconPicker()
-    local list = self:GetMacroIconList()
-    local cols, rows = 10, 6
-    local per = cols * rows
-    local numRows = math.ceil(#list / cols)
-    FauxScrollFrame_Update(self.macroIconScroll, numRows, rows, 32)
-    local offset = FauxScrollFrame_GetOffset(self.macroIconScroll) or 0
-    for i = 1, per do
-        local idx = offset * cols + i
-        local btn = self.macroIconBtns[i]
-        local tex = list[idx]
-        if tex then
-            btn.icon:SetTexture(tex)
-            btn.texPath = tex
-            btn:Show()
-        else
-            btn.texPath = nil
-            btn:Hide()
-        end
-    end
-end
+    local f = CreateFrame("Frame", "RLSuiteSaveRaidPrompt", UIParent)
+    f:SetSize(340, 110)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("DIALOG")
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    RLSuite.utils:ClampWindow(f)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 16,
+        insets = {left = 4, right = 4, top = 4, bottom = 4},
+    })
+    RLSuite.utils:SkinFrame(f)
+    f:Hide()
 
-function MW:SetMacroIcon(tex)
-    self.macroEditIcon = tex
-    if self.macroIconBtn and self.macroIconBtn.icon then
-        self.macroIconBtn.icon:SetTexture(tex)
-    end
-    if self.macroIconPicker then self.macroIconPicker:Hide() end
-    self:SaveMacroSlot()
-end
+    local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -14)
+    label:SetText(L["SaveRaid title:"])
 
-function MW:OpenMacroEditor(index)
-    self.macroEditIndex = index
-    if self.macroEditor then self.macroEditor:Show() end
-    if self.macroIconPicker then self.macroIconPicker:Hide() end
-    for i, btn in ipairs(self.macroPreviewBtns or {}) do
-        if btn and not btn.sel then
-            btn.sel = btn:CreateTexture(nil, "OVERLAY")
-            btn.sel:SetAllPoints(btn)
-            btn.sel:SetTexture("Interface\\Buttons\\CheckButtonHilight")
-            btn.sel:SetBlendMode("ADD")
-            btn.sel:Hide()
-        end
-        if btn and btn.sel then
-            if i == index then btn.sel:Show() else btn.sel:Hide() end
-        end
-    end
-    if self.macroSlotFS then
-        self.macroSlotFS:SetText("Macro " .. tostring(index))
-    end
-    local macros = self:GetMacroDB()
-    local data = macros[index] or {}
-    self.macroLoading = true
-    self.macroEditIcon = data.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
-    if self.macroNameEdit then
-        self.macroNameEdit:SetText(data.name or "")
-    end
-    if self.macroBodyEdit then
-        self.macroBodyEdit:SetText(data.text or "")
-        self.macroBodyEdit:SetFocus()
-    end
-    if self.macroIconBtn and self.macroIconBtn.icon then
-        self.macroIconBtn.icon:SetTexture(self.macroEditIcon)
-    end
-    self.macroLoading = false
-    self:RefreshMacroList()
-end
+    local edit = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+    edit:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -40)
+    edit:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -40)
+    edit:SetHeight(20)
+    edit:SetAutoFocus(false)
+    edit:SetMaxLetters(64)
+    f.edit = edit
 
-function MW:InsertMacroText(token)
-    if not self.macroBodyEdit then return end
-    self.macroBodyEdit:SetFocus()
-    self.macroBodyEdit:Insert(token)
-    self:SaveMacroSlot()
-end
-
-function MW:ToggleMacroCaps()
-    local edit = self.macroBodyEdit
-    if not edit then return end
-    local full = edit:GetText() or ""
-    if full == "" then return end
-    edit:SetFocus()
-    edit:Insert("\001")
-    local after = edit:GetText() or ""
-    local pos = string.find(after, "\001", 1, true)
-    local selected, s, e
-    if not pos then
-        selected, s, e = full, 1, string.len(full)
-        edit:SetText(full)
-    else
-        local prefix = string.sub(after, 1, pos - 1)
-        local suffix = string.sub(after, pos + 1)
-        s = string.len(prefix) + 1
-        e = string.len(full) - string.len(suffix)
-        if e < s then
-            selected, s, e = full, 1, string.len(full)
-        else
-            selected = string.sub(full, s, e)
-            if selected == "" then
-                selected, s, e = full, 1, string.len(full)
-            end
-        end
-    end
-    local repl
-    if selected == string.upper(selected) then
-        repl = string.lower(selected)
-    else
-        repl = string.upper(selected)
-    end
-    local newText = string.sub(full, 1, s - 1) .. repl .. string.sub(full, e + 1)
-    self.macroLoading = true
-    edit:SetText(newText)
-    self.macroLoading = false
-    self:SaveMacroSlot()
-end
-
-function MW:SelectMacroPhase(phase)
-    self.macroPhase = phase or "preraid"
-    for key, btn in pairs(self.macroPhaseBtns or {}) do
-        if key == self.macroPhase then
-            btn:LockHighlight()
-        else
-            btn:UnlockHighlight()
-        end
-    end
-    self:RefreshMacroTab()
-    if self.macroEditIndex then
-        self:OpenMacroEditor(self.macroEditIndex)
-    end
-end
-
-function MW:GetMacroDB(phase)
-    phase = phase or self.macroPhase or "preraid"
-    if not RLSuiteDB or not RLSuiteDB.macrobar then return {} end
-    RLSuiteDB.macrobar.macros = RLSuiteDB.macrobar.macros or {}
-    RLSuiteDB.macrobar.macros[phase] = RLSuiteDB.macrobar.macros[phase] or {}
-    return RLSuiteDB.macrobar.macros[phase]
-end
-
-function MW:SaveMacroSlot()
-    if self.macroLoading then return end
-    local index = self.macroEditIndex
-    if not index then return end
-    local macros = self:GetMacroDB()
-    local current = macros[index] or {}
-    current.text = (self.macroBodyEdit and self.macroBodyEdit:GetText()) or current.text or ""
-    current.name = (self.macroNameEdit and self.macroNameEdit:GetText()) or current.name or ""
-    current.icon = self.macroEditIcon or current.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
-    macros[index] = current
-    local phase = self.macroPhase or "preraid"
-    if RLSuite.macrobar and RLSuite.macrobar.LoadMacrosForPhase then
-        if (RLSuite.context or "preraid") == phase then
-            RLSuite.macrobar:LoadMacrosForPhase(phase)
-        end
-    end
-    self:RefreshMacroPreview()
-end
-
-function MW:SaveMacroLine(index, text)
-    local macros = self:GetMacroDB()
-    local current = macros[index] or {text = "", icon = "Interface\\Icons\\INV_Misc_QuestionMark"}
-    current.text = text or ""
-    current.icon = current.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
-    macros[index] = current
-    local phase = self.macroPhase or "preraid"
-    if RLSuite.macrobar and RLSuite.macrobar.LoadMacrosForPhase then
-        if (RLSuite.context or "preraid") == phase then
-            RLSuite.macrobar:LoadMacrosForPhase(phase)
-        end
-    end
-    self:RefreshMacroPreview()
-end
-
-function MW:RefreshMacroTab()
-    self:RefreshMacroPreview()
-end
-
-function MW:MacroPreviewText(data)
-    if not data then return "" end
-    local name = data.name or ""
-    local text = data.text or ""
-    text = string.gsub(text, "\n", " | ")
-    if name ~= "" and text ~= "" then
-        return name .. "  " .. text
-    end
-    if name ~= "" then return name end
-    return text
-end
-
-function MW:RefreshMacroList()
-    local macros = self:GetMacroDB(self.macroPhase)
-    local sel = self.macroEditIndex
-    for i, row in ipairs(self.macroListRows or {}) do
-        local data = macros[i]
-        if row.fs then
-            local line = self:MacroPreviewText(data)
-            if line == "" then line = " " end
-            row.fs:SetText(line)
-            if sel == i then
-                row.fs:SetTextColor(1, 0.82, 0)
-            else
-                row.fs:SetTextColor(0.9, 0.9, 0.9)
-            end
-        end
-    end
-end
-
-function MW:RefreshMacroPreview()
-    local macros = self:GetMacroDB(self.macroPhase)
-    for i, btn in ipairs(self.macroPreviewBtns or {}) do
-        local data = macros[i]
-        if btn and btn.icon then
-            local icon = (data and data.icon) or "Interface\\Icons\\INV_Misc_QuestionMark"
-            if data and ((data.text and data.text ~= "") or (data.name and data.name ~= "") or data.icon) then
-                btn.icon:SetTexture(icon)
-            else
-                btn.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-            end
-        end
-    end
-    self:RefreshMacroList()
-end
-
-function MW:CreateRaidFrameSubTab()
-    local sc = CreateFrame("Frame", "RLSuiteRaidFrameTab", self.frame)
-    sc:SetSize(660, 700)
-    sc:Hide()
-    self.tabPanels = self.tabPanels or {}
-    self.tabPanels.raidframe = sc
-
-    local rfLabel = sc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    rfLabel:SetPoint("TOPLEFT", sc, "TOPLEFT", 10, -10)
-    rfLabel:SetText("Raid Frame Appearance:")
-
-    local hudBtn = CreateFrame("Button", nil, sc, "UIPanelButtonTemplate")
-    hudBtn:SetSize(160, 22)
-    hudBtn:SetPoint("LEFT", rfLabel, "RIGHT", 16, 0)
-    hudBtn:SetText("Mostra/Nascondi HUD")
-    hudBtn:SetScript("OnClick", function()
-        if RLSuite.raidFrame and RLSuite.raidFrame.Toggle then
-            RLSuite.raidFrame:Toggle()
-        end
+    local ok = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    ok:SetSize(90, 22)
+    ok:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
+    ok:SetText(L["Save"])
+    ok:SetScript("OnClick", function()
+        local cb = f._cb
+        f:Hide()
+        if cb then cb(edit:GetText() or "") end
     end)
 
-    local preview = CreateFrame("Frame", nil, sc)
-    preview:SetPoint("TOPLEFT", rfLabel, "BOTTOMLEFT", 0, -10)
-    preview:SetPoint("TOPRIGHT", sc, "TOPRIGHT", -10, -42)
-    preview:SetHeight(100)
-    RLSuite.utils:SkinBox(preview)
-    self.rfPreview = preview
+    local cancel = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    cancel:SetSize(90, 22)
+    cancel:SetPoint("RIGHT", ok, "LEFT", -8, 0)
+    cancel:SetText(L["Cancel"])
+    cancel:SetScript("OnClick", function()
+        f:Hide()
+    end)
 
-    local example = CreateFrame("Frame", nil, preview)
-    example:SetSize(280, 22)
-    example:SetPoint("TOPLEFT", preview, "TOPLEFT", 10, -10)
+    edit:SetScript("OnEnterPressed", ok.GetScript(ok, "OnClick"))
+    edit:SetScript("OnEscapePressed", function(s) s:ClearFocus() f:Hide() end)
+    f.edit = edit
+    f._cb = callback
 
-    local alert = example:CreateTexture(nil, "OVERLAY")
-    alert:SetSize(16, 16)
-    alert:SetPoint("LEFT", example, "LEFT")
-    alert:SetTexture("Interface\Icons\INV_Alchemy_EndlessFlask_01")
-
-    local name = example:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    name:SetPoint("LEFT", alert, "RIGHT", 5, 0)
-    name:SetText("PlayerName")
-    name:SetTextColor(1, 0.8, 0.2)
-
-    local hpBar = CreateFrame("StatusBar", nil, example)
-    hpBar:SetSize(100, 16)
-    hpBar:SetPoint("LEFT", name, "RIGHT", 10, 0)
-    hpBar:SetStatusBarTexture("Interface\TargetingFrame\UI-StatusBar")
-    hpBar:SetStatusBarColor(0, 1, 0)
-    hpBar:SetMinMaxValues(0, 100)
-    hpBar:SetValue(75)
-
-    local hpText = hpBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    hpText:SetPoint("CENTER", hpBar, "CENTER")
-    hpText:SetText("75%")
-
-    for j = 1, 3 do
-        local cd = example:CreateTexture(nil, "OVERLAY")
-        cd:SetSize(16, 16)
-        cd:SetPoint("LEFT", hpBar, "RIGHT", 10 + (j-1)*18, 0)
-        cd:SetTexture("Interface\Icons\INV_Misc_QuestionMark")
-    end
-
-    local alertBox = CreateFrame("Frame", nil, sc)
-    alertBox:SetPoint("TOPLEFT", preview, "BOTTOMLEFT", 0, -10)
-    alertBox:SetPoint("BOTTOMRIGHT", sc, "BOTTOMRIGHT", -10, 10)
-    RLSuite.utils:SkinBox(alertBox)
-    self.rfAlertBox = alertBox
-
-    local alertLabel = alertBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    alertLabel:SetPoint("TOPLEFT", alertBox, "TOPLEFT", 10, -10)
-    alertLabel:SetText("Alert Messages")
-    alertLabel:SetTextColor(1, 0.82, 0)
-
-    local alertTypes = {"flask", "food", "buff"}
-    for i, atype in ipairs(alertTypes) do
-        local aLabel = alertBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        aLabel:SetPoint("TOPLEFT", alertBox, "TOPLEFT", 10, -32 - (i-1)*30)
-        aLabel:SetWidth(50)
-        aLabel:SetText(string.upper(atype) .. ":")
-
-        local edit = CreateFrame("EditBox", "RLSuiteAlertEdit_" .. atype, alertBox, "InputBoxTemplate")
-        edit:SetHeight(18)
-        edit:SetPoint("LEFT", aLabel, "RIGHT", 8, 0)
-        edit:SetPoint("RIGHT", alertBox, "RIGHT", -16, 0)
-        edit:SetAutoFocus(false)
-        local alerts = RLSuiteDB.raidframe.alerts or {}
-        edit:SetText(alerts[atype] or "")
-        edit:SetScript("OnTextChanged", function(s)
-            RLSuiteDB.raidframe.alerts = RLSuiteDB.raidframe.alerts or {}
-            RLSuiteDB.raidframe.alerts[atype] = s:GetText()
-        end)
-    end
+    self.savePrompt = f
+    f:Show()
+    edit:SetFocus()
 end
-

@@ -5,14 +5,21 @@
 RLSuite.macrobar = {}
 local MB = RLSuite.macrobar
 
+local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
+
+-- Non-overlapping pull/break countdowns (AceTimer named timers): starting a
+-- new pull/break cancels the previous one instead of stacking a second
+-- OnUpdate timer (which used to double the announcements).
+LibStub("AceTimer-3.0"):Embed(MB)
+
 local KEYPAD_BTN_W = 75
 local KEYPAD_BTN_H = 22
 local KEYPAD_GAP = 6
 local KEYPAD_PAD = 8
-local KEYPAD_COUNT = 4
+local KEYPAD_VGAP = 4
 
 function MB:Init()
-    self.db = RLSuiteDB.macrobar
+    self.db = RLSuite.db.profile.macrobar
     self:EnsurePhases()
     self.buttons = {}
     self.keypadButtons = {}
@@ -28,19 +35,27 @@ function MB:Toggle()
     if not self.frame then return end
     if self.frame:IsShown() then
         self.frame:Hide()
-        return
+    else
+        local pset = self:PhaseSettings()
+        if pset and pset.enabled == false then
+            RLSuite.utils:Print(L["Macrobar is disabled in Config."])
+            return
+        end
+        self.frame:Show()
     end
-    local pset = self:PhaseSettings()
-    if pset and pset.enabled == false then
-        RLSuite.utils:Print("Macrobar disabilitata in Config.")
-        return
+    -- Sincronizza l'evidenziazione del bottone Macrobar nella barra
+    -- (acceso finche' l'HUD e' visibile, da qualunque parte si toggli).
+    if RLSuite.mainWindow and RLSuite.mainWindow.RefreshTabHighlights then
+        RLSuite.mainWindow:RefreshTabHighlights()
     end
-    self.frame:Show()
 end
 
 function MB:KeypadSize()
-    local w = KEYPAD_PAD * 2 + KEYPAD_COUNT * KEYPAD_BTN_W + (KEYPAD_COUNT - 1) * KEYPAD_GAP
-    local h = KEYPAD_PAD * 2 + KEYPAD_BTN_H
+    local counts, maxPerRow = self:KeypadRowsForPhase()
+    local activeRows = 0
+    for _ in pairs(counts) do activeRows = activeRows + 1 end
+    local w = KEYPAD_PAD * 2 + maxPerRow * KEYPAD_BTN_W + (maxPerRow > 1 and (maxPerRow - 1) or 0) * KEYPAD_GAP
+    local h = KEYPAD_PAD * 2 + activeRows * KEYPAD_BTN_H + (activeRows > 1 and (activeRows - 1) or 0) * KEYPAD_VGAP
     return w, h
 end
 
@@ -67,7 +82,7 @@ end
 
 function MB:BeginShiftDrag()
     local p = self:PhaseSettings()
-    if p and p.locked then return end
+    if p and p.locked and not (RLSuite.db and RLSuite.db.profile.anchorMode) then return end
     if not self.frame then return end
     self._shiftDrag = true
     self.frame:StartMoving()
@@ -88,6 +103,44 @@ function MB:AttachShiftDrag(fr)
     end)
 end
 
+-- Anchor mode (stile ElvUI): la HUD diventa trascinabile anche da
+-- bloccata, quando "Toggle Anchors" e' attivo in Config.
+function MB:SetAnchorMode(on)
+    local f = self.frame
+    if not f then return end
+    on = on and true or false
+    local function start(self2)
+        if not (RLSuite.db and RLSuite.db.profile.anchorMode) then return end
+        self2:StartMoving()
+    end
+    local function stop(self2)
+        self2:StopMovingOrSizing()
+        MB:SaveHolderPosition()
+    end
+    if on then
+        f:SetMovable(true)
+        RLSuite.utils:ClampWindow(f)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", start)
+        f:SetScript("OnDragStop", stop)
+        if self.macroHost then
+            RLSuite.utils:ClampWindow(self.macroHost)
+            self.macroHost:RegisterForDrag("LeftButton")
+            self.macroHost:SetScript("OnDragStart", start)
+            self.macroHost:SetScript("OnDragStop", stop)
+        end
+    else
+        f:SetScript("OnDragStart", nil)
+        f:SetScript("OnDragStop", nil)
+        if self.macroHost then
+            self.macroHost:SetScript("OnDragStart", nil)
+            self.macroHost:SetScript("OnDragStop", nil)
+        end
+        local p = self:PhaseSettings()
+        f:SetMovable(not p.locked)
+    end
+end
+
 function MB:CreateFrame()
     local f = CreateFrame("Frame", "RLSuiteMacroBar", UIParent)
     f:SetSize(350, 80)
@@ -99,6 +152,7 @@ function MB:CreateFrame()
     f:SetBackdrop(nil)
     f:Hide()
     self.frame = f
+    RLSuite.utils:ClampWindow(f)
     self:AttachShiftDrag(f)
 
     local host = CreateFrame("Frame", "RLSuiteMacroHost", f)
@@ -130,8 +184,8 @@ function MB:CreateButtons()
 
         -- Background visibile
         btn:SetBackdrop({
-            bgFile = "Interface\Buttons\UI-Quickslot",
-            edgeFile = "Interface\Buttons\UI-Quickslot",
+            bgFile = "Interface\\Buttons\\UI-Quickslot",
+            edgeFile = "Interface\\Buttons\\UI-Quickslot",
             tile = false, tileSize = 32, edgeSize = 32,
         })
         btn:SetBackdropColor(0.2, 0.2, 0.2, 0.8)
@@ -139,13 +193,13 @@ function MB:CreateButtons()
         -- Icon texture (CREATA MANUALMENTE)
         btn.icon = btn:CreateTexture(nil, "ARTWORK")
         btn.icon:SetAllPoints(btn)
-        btn.icon:SetTexture("Interface\Icons\INV_Misc_QuestionMark")
+        btn.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
         -- Highlight
         btn.highlight = btn:CreateTexture(nil, "HIGHLIGHT")
         btn.highlight:SetAllPoints(btn)
-        btn.highlight:SetTexture("Interface\Buttons\ButtonHilight-Square")
+        btn.highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
         btn.highlight:SetBlendMode("ADD")
         btn.highlight:Hide()
         btn:SetHighlightTexture(btn.highlight)
@@ -153,7 +207,7 @@ function MB:CreateButtons()
         -- Pushed
         btn.pushed = btn:CreateTexture(nil, "OVERLAY")
         btn.pushed:SetAllPoints(btn)
-        btn.pushed:SetTexture("Interface\Buttons\UI-Quickslot-Depress")
+        btn.pushed:SetTexture("Interface\\Buttons\\UI-Quickslot-Depress")
         btn.pushed:Hide()
         btn:SetPushedTexture(btn.pushed)
 
@@ -163,12 +217,12 @@ function MB:CreateButtons()
 
         btn.hotkey = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         btn.hotkey:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -2, -2)
-        btn.hotkey:SetFont("Fonts\FRIZQT__.TTF", 9, "OUTLINE")
+        btn.hotkey:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
         btn.hotkey:SetText("")
 
         btn.numText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         btn.numText:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 2, 2)
-        btn.numText:SetFont("Fonts\FRIZQT__.TTF", 8, "OUTLINE")
+        btn.numText:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
         btn.numText:SetText(i)
 
         RLSuite.utils:SkinMacroButton(btn)
@@ -178,8 +232,8 @@ function MB:CreateButtons()
 end
 
 function MB:DB()
-    if RLSuiteDB and RLSuiteDB.macrobar then
-        self.db = RLSuiteDB.macrobar
+    if RLSuite.db and RLSuite.db.profile.macrobar then
+        self.db = RLSuite.db.profile.macrobar
     end
     return self.db
 end
@@ -189,7 +243,7 @@ MB.phaseList = { "preraid", "preboss", "infight" }
 function MB:PhaseDefaults()
     return {
         enabled = true,
-        locked = false,
+        locked = true,
         scale = 1,
         point = "CENTER",
         relPoint = "CENTER",
@@ -214,7 +268,7 @@ function MB:PhaseDefaults()
 end
 
 function MB:EnsurePhases()
-    local db = self:DB() or (RLSuiteDB and RLSuiteDB.macrobar)
+    local db = self:DB() or (RLSuite.db and RLSuite.db.profile.macrobar)
     if not db then return end
     self.db = db
     local defs = self:PhaseDefaults()
@@ -347,16 +401,31 @@ function MB:ApplyLayout()
             if self.keypadFrame.rlsBgFill then self.keypadFrame.rlsBgFill:Hide() end
             self.keypadFrame:SetBackdrop(nil)
         end
+        local kcounts = self:KeypadRowsForPhase()
+        local activeRows = {}
+        for r in pairs(kcounts) do table.insert(activeRows, r) end
+        table.sort(activeRows)
+        local renderIdx = {}
+        for i, r in ipairs(activeRows) do renderIdx[r] = i end
         local kpad = KEYPAD_PAD
+        local colCount = {}
         for i, kbtn in ipairs(self.keypadButtons or {}) do
-            kbtn:ClearAllPoints()
-            kbtn:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
-            kbtn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", kpad + (i - 1) * (KEYPAD_BTN_W + KEYPAD_GAP), -kpad)
+            if kbtn:IsShown() and kbtn.def then
+                local r = renderIdx[kbtn.def.row or 1]
+                if r then
+                    colCount[r] = (colCount[r] or 0) + 1
+                    local col = colCount[r]
+                    local y = -(kpad + (r - 1) * (KEYPAD_BTN_H + KEYPAD_VGAP))
+                    kbtn:ClearAllPoints()
+                    kbtn:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
+                    kbtn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", kpad + (col - 1) * (KEYPAD_BTN_W + KEYPAD_GAP), y)
+                end
+            end
         end
     end
 
     self.frame:EnableMouse(true)
-    self.frame:SetMovable(not p.locked)
+    self.frame:SetMovable((not p.locked) or (RLSuite.db and RLSuite.db.profile.anchorMode == true))
     if self.macroHost then
         self.macroHost:EnableMouse(true)
     end
@@ -432,6 +501,44 @@ function MB:ApplyVisibility()
     end
 end
 
+-- Bottoni del keypad, mostrati a seconda della fase corrente.
+MB.KeypadDefs = {
+    { key = "pull15", text = "Pull 15", row = 1, phases = { preboss = true }, func = function() MB:StartPullTimer(15) end },
+    { key = "pull20", text = "Pull 20", row = 1, phases = { preboss = true }, func = function() MB:StartPullTimer(20) end },
+    { key = "pull30", text = "Pull 30", row = 1, phases = { preboss = true }, func = function() MB:StartPullTimer(30) end },
+    { key = "ready",  text = "Ready",    row = 2, phases = { preraid = true, preboss = true }, func = function() MB:DoReadyCheck() end },
+    { key = "break5", text = "Break 5m", row = 2, phases = { preboss = true }, func = function() MB:StartBreakTimer(300) end },
+    { key = "break3", text = "Break 3m", row = 2, phases = { preboss = true }, func = function() MB:StartBreakTimer(180) end },
+    { key = "break2", text = "Break 2m", row = 2, phases = { preboss = true }, func = function() MB:StartBreakTimer(120) end },
+}
+
+function MB:KeypadButtonsForPhase(phase)
+    phase = phase or self.keypadPhase or RLSuite.context or "preraid"
+    local list = {}
+    for _, def in ipairs(MB.KeypadDefs or {}) do
+        if def.phases and def.phases[phase] then
+            table.insert(list, def)
+        end
+    end
+    return list
+end
+
+-- Counts the visible buttons per row (empty rows stay absent).
+-- Returns: counts[row] = n buttons, maxPerRow = fullest row.
+function MB:KeypadRowsForPhase(phase)
+    phase = phase or self.keypadPhase or RLSuite.context or "preraid"
+    local counts = {}
+    local maxPerRow = 0
+    for _, def in ipairs(MB.KeypadDefs or {}) do
+        if def.phases and def.phases[phase] then
+            local r = def.row or 1
+            counts[r] = (counts[r] or 0) + 1
+            if counts[r] > maxPerRow then maxPerRow = counts[r] end
+        end
+    end
+    return counts, maxPerRow
+end
+
 function MB:CreateKeypad()
     local kw, kh = self:KeypadSize()
     self.keypadFrame = CreateFrame("Frame", "RLSuiteMacroKeypad", self.frame)
@@ -439,27 +546,24 @@ function MB:CreateKeypad()
     self.keypadFrame:SetPoint("TOP", self.macroHost or self.frame, "BOTTOM", 0, -4)
     self:AttachShiftDrag(self.keypadFrame)
 
-    local buttons = {
-        {text = "Pull 15", func = function() MB:StartPullTimer(15) end},
-        {text = "Pull 20", func = function() MB:StartPullTimer(20) end},
-        {text = "Pull 30", func = function() MB:StartPullTimer(30) end},
-        {text = "Ready", func = function() MB:DoReadyCheck() end},
-    }
-
-    for i, data in ipairs(buttons) do
+    self.keypadButtons = {}
+    for i, def in ipairs(MB.KeypadDefs) do
         local btn = CreateFrame("Button", nil, self.keypadFrame, "UIPanelButtonTemplate")
         btn:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
-        btn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", KEYPAD_PAD + (i - 1) * (KEYPAD_BTN_W + KEYPAD_GAP), -KEYPAD_PAD)
-        btn:SetText(data.text)
+        local r = def.row or 1
+        btn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", KEYPAD_PAD, -(KEYPAD_PAD + (r - 1) * (KEYPAD_BTN_H + KEYPAD_VGAP)))
+        btn:SetText(def.text)
+        btn.def = def
         btn:SetScript("OnClick", function()
             if IsShiftKeyDown() or MB._shiftDrag then
                 MB:EndShiftDrag()
                 return
             end
-            data.func()
+            def.func()
         end)
         self:AttachShiftDrag(btn)
         -- AttachShiftDrag overwrites OnMouseDown; keep click via OnClick
+        btn:Hide()
         self.keypadButtons[i] = btn
     end
 
@@ -467,9 +571,26 @@ function MB:CreateKeypad()
     self.keypadFrame:Hide()
 end
 
-function MB:ShowKeypad(show)
+-- Mostra il keypad con i soli bottoni previsti per la fase corrente.
+-- preraid: solo Ready; preboss: Pull 15/20/30, Ready e Break 5m/3m/2m;
+-- infight: nessuno (keypad nascosto).
+function MB:UpdateKeypad(phase)
     if not self.keypadFrame then return end
-    if show then
+    phase = phase or RLSuite.context or "preraid"
+    self.keypadPhase = phase
+    local visible = self:KeypadButtonsForPhase(phase)
+    local shown = {}
+    for _, def in ipairs(visible) do
+        shown[def.key] = true
+    end
+    for _, btn in ipairs(self.keypadButtons or {}) do
+        if btn and btn.def and shown[btn.def.key] then
+            btn:Show()
+        elseif btn then
+            btn:Hide()
+        end
+    end
+    if #visible > 0 then
         self.keypadFrame:Show()
     else
         self.keypadFrame:Hide()
@@ -482,7 +603,7 @@ end
 function MB:UpdatePhase()
     local phase = RLSuite.context or "preraid"
     if self.phaseText then
-        self.phaseText:SetText("Fase: " .. string.upper(phase))
+        self.phaseText:SetText(string.format(L["Phase: %s"], string.upper(phase)))
     end
     self:LoadMacrosForPhase(phase)
     self:LoadKeybinds(phase)
@@ -510,7 +631,7 @@ end
 
 function MB:GetMacroData(index, phase)
     phase = phase or RLSuite.context or "preraid"
-    local db = self:DB() or (RLSuiteDB and RLSuiteDB.macrobar)
+    local db = self:DB() or (RLSuite.db and RLSuite.db.profile.macrobar)
     if not db then return nil end
     db.macros = db.macros or {}
     local macros = db.macros[phase] or {}
@@ -534,9 +655,9 @@ function MB:LoadMacrosForPhase(phase)
     if self.UpdateEmptyButtons then
         self:UpdateEmptyButtons()
     end
-    if RLSuite.mainWindow and RLSuite.mainWindow.RefreshMacroPreview then
-        if RLSuite.mainWindow.macroPhase == phase then
-            RLSuite.mainWindow:RefreshMacroPreview()
+    if RLSuite.config and RLSuite.config.RefreshMacroPreview then
+        if RLSuite.config.macroPhase == phase then
+            RLSuite.config:RefreshMacroPreview()
         end
     end
 end
@@ -587,7 +708,7 @@ function MB:RunMacroLine(line)
             edit:SetText(line)
             ChatEdit_SendText(edit, 1)
         else
-            RLSuite.utils:Print("Chat edit box non trovato.")
+            RLSuite.utils:Print(L["Chat edit box not found."])
         end
     else
         RLSuite.utils:SendChat(line, "RAID_WARNING")
@@ -601,23 +722,24 @@ function MB:OpenMacroEdit(index)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true, tileSize = 32, edgeSize = 16,
     })
     f:SetMovable(true)
     f:EnableMouse(true)
+    RLSuite.utils:ClampWindow(f)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", f, "TOP", 0, -10)
-    title:SetText("Modifica Macro " .. index)
+    title:SetText(string.format(L["Edit Macro %d"], index))
 
     local phaseLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     phaseLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 15, -40)
-    phaseLabel:SetText("Fase:")
+    phaseLabel:SetText(L["Phase:"])
 
     local phase = RLSuite.context or "preraid"
     local phaseText = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -626,7 +748,7 @@ function MB:OpenMacroEdit(index)
 
     local macroLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     macroLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 15, -65)
-    macroLabel:SetText("Macro (max 10 righe):")
+    macroLabel:SetText(L["Macro (max 10 lines):"])
 
     local edit = CreateFrame("EditBox", "RLSuiteMacroEditBox", f)
     edit:SetMultiLine(true)
@@ -634,7 +756,7 @@ function MB:OpenMacroEdit(index)
     edit:SetPoint("TOPLEFT", macroLabel, "BOTTOMLEFT", 0, -5)
     edit:SetFontObject("ChatFontNormal")
     edit:SetBackdrop({
-        bgFile = "Interface\Tooltips\UI-Tooltip-Background",
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         tile = true, tileSize = 16,
     })
     edit:SetBackdropColor(0, 0, 0, 0.8)
@@ -648,25 +770,25 @@ function MB:OpenMacroEdit(index)
     local saveBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     saveBtn:SetSize(80, 22)
     saveBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 20, 15)
-    saveBtn:SetText("Salva")
+    saveBtn:SetText(L["Save"])
     saveBtn:SetScript("OnClick", function()
         self.db.macros[phase] = self.db.macros[phase] or {}
         self.db.macros[phase][index] = {
             text = edit:GetText(),
-            icon = current.icon or "Interface\Icons\INV_Misc_QuestionMark",
+            icon = current.icon or "Interface\\Icons\\INV_Misc_QuestionMark",
         }
         self:LoadMacrosForPhase(phase)
-        if RLSuite.mainWindow and RLSuite.mainWindow.RefreshMacroTab then
-            RLSuite.mainWindow:RefreshMacroTab()
+        if RLSuite.config and RLSuite.config.RefreshMacroTab then
+            RLSuite.config:RefreshMacroTab()
         end
         f:Hide()
-        RLSuite.utils:Print("Macro " .. index .. " salvata per fase " .. phase)
+        RLSuite.utils:Print(string.format(L["Macro %d saved for phase %s"], index, phase))
     end)
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     closeBtn:SetSize(80, 22)
     closeBtn:SetPoint("LEFT", saveBtn, "RIGHT", 10, 0)
-    closeBtn:SetText("Annulla")
+    closeBtn:SetText(L["Cancel"])
     closeBtn:SetScript("OnClick", function() f:Hide() end)
 
     RLSuite.utils:SkinFrame(f)
@@ -707,7 +829,7 @@ function MB:WireButtonClicks(btn, index)
         if txt ~= "" then
             GameTooltip:AddLine(txt, 0.9, 0.9, 0.9, true)
         elseif name == "" then
-            GameTooltip:AddLine("Vuota", 0.6, 0.6, 0.6)
+            GameTooltip:AddLine(L["Empty"], 0.6, 0.6, 0.6)
         end
         GameTooltip:Show()
         if MB._hoverEnter then MB._hoverEnter() end
@@ -815,6 +937,7 @@ function MB:OpenKeybindUI(phase)
     f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:SetMovable(true)
     f:EnableMouse(true)
+    RLSuite.utils:ClampWindow(f)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
@@ -837,7 +960,7 @@ function MB:OpenKeybindUI(phase)
     hint:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -28)
     hint:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -28)
     hint:SetJustifyH("LEFT")
-    hint:SetText("Clicca una riga, poi premi un tasto. Backspace o click destro: togli.")
+    hint:SetText(L["Click a row, then press a key. Backspace or right-click to clear."])
     self.bindHint = hint
 
     self.bindRows = {}
@@ -920,38 +1043,89 @@ function MB:RefreshKeybindUI()
     end
     if self.bindHint then
         if self.bindingIndex then
-            self.bindHint:SetText("Premi un tasto per Macro " .. self.bindingIndex .. " (Esc annulla).")
+            self.bindHint:SetText(string.format(L["Press a key for Macro %d (Esc cancels)."], self.bindingIndex))
         else
-            self.bindHint:SetText("Clicca una riga, poi premi un tasto. Backspace o click destro: togli.")
+            self.bindHint:SetText(L["Click a row, then press a key. Backspace or right-click to clear."])
         end
     end
 end
 
 function MB:StartPullTimer(seconds)
     if not (RLSuite.IsOfficer and RLSuite:IsOfficer()) then
-        RLSuite.utils:Print("Devi essere RL o assist per il pull timer.")
+        RLSuite.utils:Print(L["You must be raid leader or assist to use the pull timer."])
         return
     end
-    RLSuite.utils:SendChat("Pull in " .. seconds .. " seconds!", "RAID_WARNING")
-    local remaining = seconds
-    local timerFrame = CreateFrame("Frame")
-    timerFrame:SetScript("OnUpdate", function(self2, elapsed)
-        self2.elapsed = (self2.elapsed or 0) + elapsed
-        if self2.elapsed >= 1 then
-            self2.elapsed = 0
-            remaining = remaining - 1
-            if remaining <= 0 then
-                RLSuite.utils:SendChat("PULL NOW!", "RAID_WARNING")
-                self2:SetScript("OnUpdate", nil)
-                self2:Hide()
-                return
-            end
-            if remaining <= 5 or remaining == 10 or remaining == 15 or remaining == 20 then
-                RLSuite.utils:SendChat("Pull in " .. remaining .. "...", "RAID")
-            end
-        end
-    end)
-    timerFrame:Show()
+    RLSuite.utils:SendChat(string.format(L["Pull in %d seconds!"], seconds), "RAID_WARNING")
+    -- barra-timer in DBM/BigWigs se installati
+    RLSuite.utils:StartDbmTimer(seconds, "Pull", "Interface\\Icons\\Ability_Warrior_Charge")
+    -- Non-overlapping: a second click replaces the running countdown.
+    self:CancelPullTimer()
+    self.pullRemaining = seconds
+    self.pullTimer = self:ScheduleRepeatingTimer("PullTick", 1)
+end
+
+function MB:CancelPullTimer()
+    if self.pullTimer then
+        self:CancelTimer(self.pullTimer, true)
+        self.pullTimer = nil
+    end
+end
+
+function MB:PullTick()
+    self.pullRemaining = (self.pullRemaining or 0) - 1
+    if self.pullRemaining <= 0 then
+        self:CancelPullTimer()
+        RLSuite.utils:SendChat(L["PULL NOW!"], "RAID_WARNING")
+        return
+    end
+    if self.pullRemaining <= 5 or self.pullRemaining == 10 or self.pullRemaining == 15 or self.pullRemaining == 20 then
+        RLSuite.utils:SendChat(string.format(L["Pull in %d..."], self.pullRemaining), "RAID")
+    end
+end
+
+function MB:FormatDuration(seconds)
+    local m = math.floor(seconds / 60)
+    local s = seconds % 60
+    if m > 0 and s > 0 then return m .. "m " .. s .. "s" end
+    if m > 0 then return m .. "m" end
+    return s .. "s"
+end
+
+-- Timer di pausa (break): annuncia in raid warning, crea una barra in
+-- DBM/BigWigs e ricorda lo scadere nei minuti intermedi e nel countdown
+-- finale, come lo StartPullTimer.
+function MB:StartBreakTimer(seconds)
+    if not (RLSuite.IsOfficer and RLSuite:IsOfficer()) then
+        RLSuite.utils:Print(L["You must be raid leader or assist to use the break timer."])
+        return
+    end
+    RLSuite.utils:SendChat(string.format(L["BREAK TIME - %s!"], self:FormatDuration(seconds)), "RAID_WARNING")
+    RLSuite.utils:StartDbmTimer(seconds, "Break", "Interface\\Icons\\INV_Drink_05")
+    -- Non-overlapping: a second click replaces the running countdown.
+    self:CancelBreakTimer()
+    self.breakRemaining = seconds
+    self.breakTimer = self:ScheduleRepeatingTimer("BreakTick", 1)
+end
+
+function MB:CancelBreakTimer()
+    if self.breakTimer then
+        self:CancelTimer(self.breakTimer, true)
+        self.breakTimer = nil
+    end
+end
+
+function MB:BreakTick()
+    self.breakRemaining = (self.breakRemaining or 0) - 1
+    if self.breakRemaining <= 0 then
+        self:CancelBreakTimer()
+        RLSuite.utils:SendChat(L["BREAK OVER - back in position!"], "RAID_WARNING")
+        return
+    end
+    if self.breakRemaining <= 5 then
+        RLSuite.utils:SendChat(string.format(L["Break ends in %d..."], self.breakRemaining), "RAID_WARNING")
+    elseif self.breakRemaining % 60 == 0 then
+        RLSuite.utils:SendChat(string.format(L["Break ends in %d min..."], self.breakRemaining / 60), "RAID")
+    end
 end
 
 function MB:DoReadyCheck()

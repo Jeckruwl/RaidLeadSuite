@@ -5,8 +5,25 @@
 RLSuite.lootManager = {}
 local LM = RLSuite.lootManager
 
+local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
+
+-- Listato: le righe hanno un'altezza UNICA calcolata sulla voce che va a
+-- capo su piu' righe (il nome dell'item, che fa word-wrap nella colonna).
+-- Padding verticale e gap tra le righe come nella versione a riga singola.
+local LM_ROW_TOP = 6      -- spazio sopra/sotto il testo dentro la riga
+local LM_ROW_GAP = 2      -- spazio tra una riga e l'altra
+local LM_ROW_MIN_H = 26   -- altezza minima (una sola riga di testo)
+
+-- Non-overlapping roll/reroll countdowns (AceTimer named timers):
+-- restarting a roll cancels the previous timer instead of stacking a
+-- second one (which used to double the announcements).
+-- AceEvent-3.0 sostituisce il vecchio frame dedicato a CHAT_MSG_SYSTEM
+-- (roll di sistema); AceTimer-3.0 sostituisce ticker/pending OnUpdate.
+LibStub("AceTimer-3.0"):Embed(LM)
+LibStub("AceEvent-3.0"):Embed(LM)
+
 function LM:Init()
-    self.db = RLSuiteDB.loot
+    self.db = RLSuite.db.profile.loot
     self.history = self.db.history or {}
     self.db.history = self.history
     self.currentRoll = nil
@@ -40,6 +57,7 @@ function LM:CreateFrame()
     f:Hide()
     self.frame = f
     RLSuite.utils:SkinFrame(f)
+    RLSuite.utils:ClampWindow(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
@@ -121,7 +139,7 @@ function LM:CreateFrame()
     self.selectedItemText:SetPoint("LEFT", self.selectedItemIcon, "RIGHT", 8, 0)
     self.selectedItemText:SetPoint("RIGHT", self.selBox, "RIGHT", -8, 0)
     self.selectedItemText:SetJustifyH("LEFT")
-    self.selectedItemText:SetText("Nessun item selezionato")
+    self.selectedItemText:SetText(L["No item selected"])
 
     self.rollMSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     self.rollMSBtn:SetSize(80, 24)
@@ -207,35 +225,40 @@ function LM:LayoutHeader()
     local header = self.histHeader
     if not header or not self.histHeads then return end
     local w = header:GetWidth()
-    if not w or w < 80 then w = 420 end
-    local m = self:HistMetrics(w)
+    if not w or w < 80 then w = 452 end
+    -- Il listato vive dentro lo scroll frame, che rispetto al riquadro
+    -- (e quindi all'header) e' rientrato di 6px a sinistra e 26px a
+    -- destra (scrollbar). Le intestazioni usano la STESSA larghezza del
+    -- contenuto e gli stessi offset delle righe, cosi' colonne e header
+    -- restano allineati a qualsiasi dimensione della finestra.
+    local insetL, insetR = 6, 26
+    local m = self:HistMetrics(w - insetL - insetR)
     local h = self.histHeads
+    h.num:ClearAllPoints()
+    h.num:SetPoint("LEFT", header, "LEFT", insetL + 6, 0)
     h.item:ClearAllPoints()
-    h.item:SetPoint("LEFT", header, "LEFT", m.itemX, 0)
+    h.item:SetPoint("LEFT", header, "LEFT", insetL + m.itemX, 0)
     h.boss:ClearAllPoints()
-    h.boss:SetPoint("LEFT", header, "LEFT", m.bossX, 0)
+    h.boss:SetPoint("LEFT", header, "LEFT", insetL + m.bossX, 0)
     h.type:ClearAllPoints()
-    h.type:SetPoint("LEFT", header, "LEFT", m.typeX, 0)
+    h.type:SetPoint("LEFT", header, "LEFT", insetL + m.typeX, 0)
     h.assigned:ClearAllPoints()
-    h.assigned:SetPoint("LEFT", header, "LEFT", m.assignedX, 0)
+    h.assigned:SetPoint("LEFT", header, "LEFT", insetL + m.assignedX, 0)
     h.time:ClearAllPoints()
-    h.time:SetPoint("RIGHT", header, "RIGHT", -m.padR, 0)
+    h.time:SetPoint("RIGHT", header, "RIGHT", -(insetR + m.padR), 0)
 end
 
 function LM:EnsureTicker()
     if self.remainTicker then return end
-    local f = CreateFrame("Frame")
-    f:SetScript("OnUpdate", function(s, elapsed)
-        s.t = (s.t or 0) + elapsed
-        if s.t < 1 then return end
-        s.t = 0
-        for _, rec in ipairs(LM.remainTexts or {}) do
-            if rec.fs and rec.entry then
-                rec.fs:SetText(LM:TradeRemaining(rec.entry))
-            end
+    self.remainTicker = self:ScheduleRepeatingTimer("TickRemaining", 1)
+end
+
+function LM:TickRemaining()
+    for _, rec in ipairs(self.remainTexts or {}) do
+        if rec.fs and rec.entry then
+            rec.fs:SetText(self:TradeRemaining(rec.entry))
         end
-    end)
-    self.remainTicker = f
+    end
 end
 
 function LM:SetPreMessage(msg)
@@ -246,7 +269,7 @@ function LM:SetPreMessage(msg)
 end
 
 function LM:SpawnDebugLoot()
-    local raid = (RLSuiteDB.groupmaking and RLSuiteDB.groupmaking.raid) or "Icecrown Citadel"
+    local raid = (RLSuite.db.profile.groupmaking and RLSuite.db.profile.groupmaking.raid) or "Icecrown Citadel"
     local pool = (RLSuite.debugLoot and RLSuite.debugLoot[raid]) or {49623, 49908, 52025}
     local bosses = (RLSuite.raidDB[raid] and RLSuite.raidDB[raid].bosses) or {"Unknown"}
     local ids = {}
@@ -279,7 +302,7 @@ function LM:SpawnDebugLoot()
         })
     end
     self:UpdateHistory()
-    RLSuite.utils:Print("Loot debug: " .. n .. " item da " .. raid)
+    RLSuite.utils:Print(string.format(L["Loot debug: %d items from %s"], n, raid))
 end
 
 function LM:OnLootMessage(msg)
@@ -296,38 +319,36 @@ end
 function LM:QueuePendingLoot(itemLink)
     self.pendingLoot = self.pendingLoot or {}
     table.insert(self.pendingLoot, {link = itemLink, tries = 0})
-    if self.pendingFrame then return end
-    local f = CreateFrame("Frame")
-    f.elapsed = 0
-    f:SetScript("OnUpdate", function(self2, elapsed)
-        self2.elapsed = self2.elapsed + elapsed
-        if self2.elapsed < 0.25 then return end
-        self2.elapsed = 0
-        local pending = LM.pendingLoot or {}
-        if #pending == 0 then
-            self2:SetScript("OnUpdate", nil)
-            LM.pendingFrame = nil
-            return
+    if self.pendingTimer then return end
+    self.pendingTimer = self:ScheduleRepeatingTimer("ProcessPendingLoot", 0.25)
+end
+
+function LM:ProcessPendingLoot()
+    local pending = self.pendingLoot or {}
+    if #pending == 0 then
+        if self.pendingTimer then
+            self:CancelTimer(self.pendingTimer)
+            self.pendingTimer = nil
         end
-        for i = #pending, 1, -1 do
-            local p = pending[i]
-            GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
-            pcall(function() GameTooltip:SetHyperlink(p.link) end)
-            GameTooltip:Hide()
-            local itemName, _, quality, _, _, _, _, _, _, itemTexture = GetItemInfo(p.link)
-            if itemName then
-                LM:AddToHistory(p.link, itemName, itemTexture, quality)
+        return
+    end
+    for i = #pending, 1, -1 do
+        local p = pending[i]
+        GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+        pcall(function() GameTooltip:SetHyperlink(p.link) end)
+        GameTooltip:Hide()
+        local itemName, _, quality, _, _, _, _, _, _, itemTexture = GetItemInfo(p.link)
+        if itemName then
+            self:AddToHistory(p.link, itemName, itemTexture, quality)
+            table.remove(pending, i)
+        else
+            p.tries = (p.tries or 0) + 1
+            if p.tries > 20 then
+                self:AddToHistory(p.link, "Unknown Item", "Interface\\Icons\\INV_Misc_QuestionMark")
                 table.remove(pending, i)
-            else
-                p.tries = (p.tries or 0) + 1
-                if p.tries > 20 then
-                    LM:AddToHistory(p.link, "Unknown Item", "Interface\\Icons\\INV_Misc_QuestionMark")
-                    table.remove(pending, i)
-                end
             end
         end
-    end)
-    self.pendingFrame = f
+    end
 end
 
 function LM:AddToHistory(itemLink, itemName, itemTexture, quality)
@@ -339,7 +360,7 @@ function LM:AddToHistory(itemLink, itemName, itemTexture, quality)
         id = #self.history + 1,
         itemLink = itemLink,
         itemName = itemName,
-        itemTexture = itemTexture or "Interface\Icons\INV_Misc_QuestionMark",
+        itemTexture = itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark",
         boss = "Unknown",
         itemType = self:DetectItemType(itemLink, itemName),
         quality = quality,
@@ -403,12 +424,14 @@ end
 
 function LM:UpdateHistory()
     if not self.histContent then return end
+    if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
     self:SkinBox(self.histBox)
     self:SkinBox(self.selBox)
-    for _, child in ipairs({self.histContent:GetChildren()}) do
+    for _, child in ipairs(self.histRows or {}) do
         child:Hide()
         child:SetParent(nil)
     end
+    self.histRows = {}
     self.remainTexts = {}
 
     local w = self.histContent:GetWidth() or 420
@@ -420,71 +443,88 @@ function LM:UpdateHistory()
         end
     end
 
+    local m = self:HistMetrics(w)
+    self:LayoutHeader()
+
+    -- Pass 1: costruisce le righe e misura quante righe di testo servono
+    -- al nome dell'item (che fa word-wrap nella sua colonna). Il numero
+    -- massimo di righe definisce l'altezza UNICA di tutte le righe.
+    local lineH = nil
+    local maxLines = 1
     local y = 0
     for i = #self.history, 1, -1 do
         local entry = self.history[i]
         if self:MatchesFilter(entry) then
             local row = CreateFrame("Button", nil, self.histContent)
-            row:SetHeight(26)
-            row:SetPoint("TOPLEFT", self.histContent, "TOPLEFT", 0, -y)
-            row:SetPoint("TOPRIGHT", self.histContent, "TOPRIGHT", 0, -y)
+            self.histRows[#self.histRows + 1] = row
+            row:EnableMouse(true)
+            row:RegisterForClicks("LeftButtonUp")
             row.entry = entry
             RLSuite.utils:SkinRow(row, self.selectedItem == entry)
 
             local num = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            num:SetPoint("LEFT", row, "LEFT", 6, 0)
             num:SetWidth(28)
             num:SetJustifyH("LEFT")
             num:SetText("#" .. (entry.id or 0))
+            if not lineH then
+                lineH = num:GetStringHeight() or 14
+            end
 
             local icon = row:CreateTexture(nil, "ARTWORK")
             icon:SetSize(18, 18)
-            icon:SetPoint("LEFT", row, "LEFT", 36, 0)
-            icon:SetTexture(entry.itemTexture or "Interface\Icons\INV_Misc_QuestionMark")
+            icon:SetTexture(entry.itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
             icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-            local m = self:HistMetrics(w)
-            self:LayoutHeader()
-
             local name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            name:SetPoint("LEFT", row, "LEFT", m.itemX, 0)
             name:SetWidth(m.itemW)
+            name:SetWordWrap(true)
             name:SetJustifyH("LEFT")
+            name:SetJustifyV("TOP")
             name:SetText(entry.itemName or "Unknown")
             local q = self:EntryQuality(entry)
             if GetItemQualityColor and q and q >= 0 then
                 local r, g, b = GetItemQualityColor(q)
                 name:SetTextColor(r or 1, g or 1, b or 1)
             end
+            -- righe occupate dal nome con wrap (minimo una)
+            local lines = math.max(1, math.ceil((name:GetStringHeight() or lineH) / lineH))
+            row._lines = lines
+            if lines > maxLines then maxLines = lines end
+            row.name = name
 
             local boss = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            boss:SetPoint("LEFT", row, "LEFT", m.bossX, 0)
             boss:SetWidth(m.bossW)
             boss:SetJustifyH("LEFT")
             boss:SetText(entry.boss or "Unknown")
 
             local itype = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            itype:SetPoint("LEFT", row, "LEFT", m.typeX, 0)
             itype:SetWidth(m.typeW)
             itype:SetJustifyH("LEFT")
             itype:SetText(entry.itemType or "BOP")
 
             local remain = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            remain:SetPoint("RIGHT", row, "RIGHT", -m.padR, 0)
             remain:SetWidth(m.timeW)
             remain:SetJustifyH("RIGHT")
             remain:SetText(self:TradeRemaining(entry))
 
             local assigned = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            assigned:SetPoint("LEFT", row, "LEFT", m.assignedX, 0)
             assigned:SetWidth(m.assignedW)
             assigned:SetJustifyH("LEFT")
             assigned:SetText(entry.assignedTo or "-")
             table.insert(self.remainTexts, { fs = remain, entry = entry })
 
+            -- riferimenti ai figli per il secondo passaggio (posizionamento)
+            row.num = num
+            row.icon = icon
+            row.name = name
+            row.boss = boss
+            row.itype = itype
+            row.remain = remain
+            row.assigned = assigned
+
             row:SetScript("OnClick", function()
                 self:SelectItem(entry)
-                self:UpdateHistory()
+                self:RefreshHistoryHighlight()
             end)
             row:SetScript("OnEnter", function(s)
                 if entry.itemLink then
@@ -496,9 +536,34 @@ function LM:UpdateHistory()
             row:SetScript("OnLeave", function()
                 GameTooltip:Hide()
             end)
-
-            y = y + 28
         end
+    end
+
+    if not lineH then lineH = 14 end
+
+    -- Pass 2: altezza unica per tutte le righe (quella della voce piu' alta)
+    -- e posizionamento verticale con contenuto allineato in alto.
+    local rowH = math.max(LM_ROW_MIN_H, 2 * LM_ROW_TOP + maxLines * lineH)
+    y = 0
+    for _, row in ipairs(self.histRows) do
+        row:SetHeight(rowH)
+        row:SetPoint("TOPLEFT", self.histContent, "TOPLEFT", 0, -y)
+        row:SetPoint("TOPRIGHT", self.histContent, "TOPRIGHT", 0, -y)
+
+        -- Riposiziona i figli (num, icon, name, boss, itype, remain,
+        -- assigned) allineandoli in alto, dentro la riga.
+        if row.num then row.num:SetPoint("TOPLEFT", row, "TOPLEFT", 6, -LM_ROW_TOP) end
+        if row.icon then row.icon:SetPoint("TOPLEFT", row, "TOPLEFT", 36, -LM_ROW_TOP) end
+        if row.name then
+            row.name:SetPoint("TOPLEFT", row, "TOPLEFT", m.itemX, -LM_ROW_TOP)
+            row.name:SetHeight((row._lines or 1) * lineH)
+        end
+        if row.boss then row.boss:SetPoint("TOPLEFT", row, "TOPLEFT", m.bossX, -LM_ROW_TOP) end
+        if row.itype then row.itype:SetPoint("TOPLEFT", row, "TOPLEFT", m.typeX, -LM_ROW_TOP) end
+        if row.remain then row.remain:SetPoint("TOPRIGHT", row, "TOPRIGHT", -m.padR, -LM_ROW_TOP) end
+        if row.assigned then row.assigned:SetPoint("TOPLEFT", row, "TOPLEFT", m.assignedX, -LM_ROW_TOP) end
+
+        y = y + rowH + LM_ROW_GAP
     end
     self.histContent:SetHeight(math.max(y, 1))
     self:EnsureTicker()
@@ -507,16 +572,26 @@ end
 function LM:SelectItem(entry)
     self.selectedItem = entry
     if self.selectedItemIcon then
-        self.selectedItemIcon:SetTexture(entry.itemTexture or "Interface\Icons\INV_Misc_QuestionMark")
+        self.selectedItemIcon:SetTexture(entry.itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
     end
     if self.selectedItemText then
         self.selectedItemText:SetText(entry.itemName or "Unknown")
     end
 end
 
+-- Highlights the selected row without rebuilding the list (see notes on
+-- RefreshWhisperHighlight: rebuilding inside the click breaks future clicks).
+function LM:RefreshHistoryHighlight()
+    for _, row in ipairs(self.histRows or {}) do
+        if row and row.SetBackdrop then
+            RLSuite.utils:SkinRow(row, self.selectedItem == row.entry)
+        end
+    end
+end
+
 function LM:StartRoll(rollType)
     if not self.selectedItem then
-        RLSuite.utils:Print("Seleziona un item dalla history!")
+        RLSuite.utils:Print(L["Select an item from the history first!"])
         return
     end
 
@@ -534,13 +609,17 @@ function LM:StartRoll(rollType)
         msg = self.preMessage .. " " .. msg
     end
     RLSuite.utils:SendChat(msg, "RAID")
+    -- barra-timer in DBM/BigWigs se installati (durata del roll)
+    RLSuite.utils:StartDbmTimer(self.db.rollDuration or 10, "Roll " .. (self.selectedItem.itemName or "Unknown"),
+        self.selectedItem.itemTexture)
 
     if RLSuite.DebugMode and RLSuite:DebugMode() then
         local me = UnitName("player") or "You"
         local names = {me, "Tankbot", "Healbot", "Dpsbot", "Huntbot"}
+        local template = self:GetRollTemplate()
         for _, n in ipairs(names) do
             if math.random(1, 10) > 2 then
-                self:OnSystemRoll(n .. " rolls " .. math.random(1, 100) .. " (1-100).")
+                self:OnSystemRoll(string.format(template, n, math.random(1, 100), 1, 100))
             end
         end
     end
@@ -549,40 +628,72 @@ function LM:StartRoll(rollType)
     if self.rollOSBtn then self.rollOSBtn:Disable() end
     if self.rollOtherBtn then self.rollOtherBtn:Disable() end
 
-    local remaining = self.currentRoll.timer
-    local timerFrame = CreateFrame("Frame")
-    timerFrame:SetScript("OnUpdate", function(self2, elapsed)
-        self2.elapsed = (self2.elapsed or 0) + elapsed
-        if self2.elapsed >= 1 then
-            self2.elapsed = 0
-            remaining = remaining - 1
-            if remaining <= 0 then
-                LM:AnnounceWinner()
-                self2:SetScript("OnUpdate", nil)
-                self2:Hide()
-                return
-            end
-            if remaining <= 3 then
-                RLSuite.utils:SendChat("Roll ending in " .. remaining .. "...", "RAID")
-            end
-        end
-    end)
-    timerFrame:Show()
-    self.rollTimerFrame = timerFrame
+    -- Non-overlapping: cancel any previous roll/reroll countdown.
+    self:CancelRollTimers()
+    self.rollRemaining = self.currentRoll.timer
+    self.rollTimer = self:ScheduleRepeatingTimer("RollTick", 1)
 
-    if self.rollFrame then
-        self.rollFrame:UnregisterEvent("CHAT_MSG_SYSTEM")
+    self:RegisterEvent("CHAT_MSG_SYSTEM", "OnSystemRollMessage")
+end
+
+function LM:OnSystemRollMessage(event, msg)
+    self:OnSystemRoll(msg)
+end
+
+-- Cancels the running roll and reroll countdown timers, if any.
+function LM:CancelRollTimers()
+    if self.rollTimer then
+        self:CancelTimer(self.rollTimer, true)
+        self.rollTimer = nil
     end
-    self.rollFrame = CreateFrame("Frame")
-    self.rollFrame:RegisterEvent("CHAT_MSG_SYSTEM")
-    self.rollFrame:SetScript("OnEvent", function(self2, event, msg)
-        LM:OnSystemRoll(msg)
-    end)
+    if self.rerollTimer then
+        self:CancelTimer(self.rerollTimer, true)
+        self.rerollTimer = nil
+    end
+end
+
+function LM:RollTick()
+    self.rollRemaining = (self.rollRemaining or 0) - 1
+    if self.rollRemaining <= 0 then
+        if self.rollTimer then
+            self:CancelTimer(self.rollTimer, true)
+            self.rollTimer = nil
+        end
+        self:AnnounceWinner()
+        return
+    end
+    if self.rollRemaining <= 3 then
+        RLSuite.utils:SendChat("Roll ending in " .. self.rollRemaining .. "...", "RAID")
+    end
+end
+
+-- Localized roll template, e.g. "%s rolls %d (%d-%d)" on enUS.
+function LM:GetRollTemplate()
+    return RANDOM_ROLL_RESULT or "%s rolls %d (%d-%d)"
+end
+
+-- Builds a Lua pattern from the localized RANDOM_ROLL_RESULT template so
+-- system roll messages are parsed on any client locale (enUS "Name rolls 42
+-- (1-100)", itIT "Name tira 42 (1-100)", deDE "Name wuerfelt 42 (1-100)",
+-- etc.) instead of matching English-only wording.
+function LM:GetRollPattern()
+    if self._rollPattern then return self._rollPattern end
+    local t = self:GetRollTemplate()
+    -- Mark the substitution tokens so the remaining text can be escaped.
+    t = string.gsub(t, "%%s", "\001NAME\001")
+    t = string.gsub(t, "%%d", "\001NUM\001")
+    -- Escape Lua pattern magic characters in the literal text.
+    t = string.gsub(t, "([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+    -- Restore capture groups.
+    t = string.gsub(t, "\001NAME\001", "(.+)")
+    t = string.gsub(t, "\001NUM\001", "(%%d+)")
+    self._rollPattern = t
+    return t
 end
 
 function LM:OnSystemRoll(msg)
     if not self.currentRoll or not self.currentRoll.active then return end
-    local name, roll, minRoll, maxRoll = string.match(msg or "", "(.+) rolls (%d+) %((%d+)%-(%d+)%)%.")
+    local name, roll, _, maxRoll = string.match(msg or "", self:GetRollPattern())
     if name and roll and maxRoll == "100" then
         table.insert(self.currentRoll.rolls, {name = name, roll = tonumber(roll)})
     end
@@ -595,6 +706,7 @@ function LM:AnnounceWinner()
     if #self.currentRoll.rolls == 0 then
         RLSuite.utils:SendChat("No rolls received for " .. (self.currentRoll.item.itemName or "Unknown"), "RAID")
         self:ResetButtons()
+        self:UnregisterEvent("CHAT_MSG_SYSTEM")
         return
     end
 
@@ -624,9 +736,7 @@ function LM:AnnounceWinner()
     end
 
     self:ResetButtons()
-    if self.rollFrame then
-        self.rollFrame:UnregisterEvent("CHAT_MSG_SYSTEM")
-    end
+    self:UnregisterEvent("CHAT_MSG_SYSTEM")
 end
 
 function LM:DoReroll()
@@ -637,27 +747,29 @@ function LM:DoReroll()
     for _, w in ipairs(winners) do table.insert(names, w.name or "?") end
 
     RLSuite.utils:SendChat("Reroll! Only " .. table.concat(names, ", ") .. " can roll for " .. (self.currentRoll.item.itemName or "Unknown"), "RAID")
+    -- barra-timer in DBM/BigWigs se installati (durata del reroll)
+    RLSuite.utils:StartDbmTimer(self.db.rerollDuration or 5, "Reroll " .. (self.currentRoll.item.itemName or "Unknown"),
+        self.currentRoll.item.itemTexture)
 
     self.currentRoll.rolls = {}
     self.currentRoll.active = true
     if self.rerollBtn then self.rerollBtn:Disable() end
 
-    local remaining = self.db.rerollDuration or 5
-    local timerFrame = CreateFrame("Frame")
-    timerFrame:SetScript("OnUpdate", function(self2, elapsed)
-        self2.elapsed = (self2.elapsed or 0) + elapsed
-        if self2.elapsed >= 1 then
-            self2.elapsed = 0
-            remaining = remaining - 1
-            if remaining <= 0 then
-                LM:ProcessReroll()
-                self2:SetScript("OnUpdate", nil)
-                self2:Hide()
-                return
-            end
+    -- Non-overlapping: cancel any previous reroll/roll countdown.
+    self:CancelRollTimers()
+    self.rerollRemaining = self.db.rerollDuration or 5
+    self.rerollTimer = self:ScheduleRepeatingTimer("RerollTick", 1)
+end
+
+function LM:RerollTick()
+    self.rerollRemaining = (self.rerollRemaining or 0) - 1
+    if self.rerollRemaining <= 0 then
+        if self.rerollTimer then
+            self:CancelTimer(self.rerollTimer, true)
+            self.rerollTimer = nil
         end
-    end)
-    timerFrame:Show()
+        self:ProcessReroll()
+    end
 end
 
 function LM:ProcessReroll()
@@ -705,7 +817,7 @@ function LM:ShowTradeWindow(item)
     local icon = f:CreateTexture(nil, "ARTWORK")
     icon:SetSize(40, 40)
     icon:SetPoint("TOP", f, "TOP", 0, -15)
-    icon:SetTexture(item.itemTexture or "Interface\Icons\INV_Misc_QuestionMark")
+    icon:SetTexture(item.itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
 
     local text = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     text:SetPoint("TOP", icon, "BOTTOM", 0, -5)
@@ -713,6 +825,8 @@ function LM:ShowTradeWindow(item)
 
     local btn = CreateFrame("Button", nil, f)
     btn:SetAllPoints(icon)
+    btn:EnableMouse(true)
+    btn:RegisterForClicks("LeftButtonUp")
     btn:SetScript("OnClick", function()
         if item.itemLink then
             PickupItem(item.itemLink)

@@ -5,9 +5,15 @@
 RLSuite.msManager = {}
 local MSM = RLSuite.msManager
 
+local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
+
+-- Ace3: il conto alla rovescia dei 40s di ascolto usa AceTimer-3.0
+-- (prima era un frame OnUpdate con accumulo manuale del tempo).
+LibStub("AceTimer-3.0"):Embed(MSM)
+
 function MSM:Init()
-    self.db = RLSuiteDB.mschanges or {}
-    RLSuiteDB.mschanges = self.db
+    self.db = RLSuite.db.profile.mschanges or {}
+    RLSuite.db.profile.mschanges = self.db
     self:CreateFrame()
 end
 
@@ -37,6 +43,7 @@ function MSM:CreateFrame()
     f:Hide()
     self.frame = f
     RLSuite.utils:SkinFrame(f)
+    RLSuite.utils:ClampWindow(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
@@ -81,13 +88,13 @@ function MSM:CreateFrame()
     self.addName:SetSize(100, 20)
     self.addName:SetPoint("LEFT", addLabel, "RIGHT", 8, 0)
     self.addName:SetAutoFocus(false)
-    self.addName:SetText("Nome")
+    self.addName:SetText(L["Name"])
 
     self.addSpec = CreateFrame("EditBox", "RLSuiteMSAddSpec", self.addBox, "InputBoxTemplate")
     self.addSpec:SetSize(100, 20)
     self.addSpec:SetPoint("LEFT", self.addName, "RIGHT", 8, 0)
     self.addSpec:SetAutoFocus(false)
-    self.addSpec:SetText("Spec")
+    self.addSpec:SetText(L["Spec"])
 
     local addBtn = CreateFrame("Button", nil, self.addBox, "UIPanelButtonTemplate")
     addBtn:SetSize(60, 22)
@@ -124,10 +131,9 @@ end
 function MSM:StopListening(announce)
     self.listening = false
     self.listenUntil = nil
-    if self.listenFrame then
-        self.listenFrame:SetScript("OnUpdate", nil)
-        self.listenFrame:Hide()
-        self.listenFrame = nil
+    if self.listenTimer then
+        self:CancelTimer(self.listenTimer)
+        self.listenTimer = nil
     end
     if announce then
         RLSuite.utils:SendChat("MS CHANGES closed, no more MS changes will be saved", "RAID")
@@ -145,7 +151,7 @@ function MSM:ParseMSMessage(sender, msg)
         spec = string.gsub(string.gsub(spec, "^%s+", ""), "%s+$", "")
         if spec == "" then return end
         self:AddEntry(sender, spec)
-        RLSuite.utils:Print("MS change rilevato: " .. sender .. " -> " .. spec)
+        RLSuite.utils:Print(string.format(L["MS change detected: %s -> %s"], sender, spec))
     end
 end
 
@@ -163,10 +169,10 @@ end
 function MSM:AddManual()
     local name = self.addName and self.addName:GetText() or ""
     local spec = self.addSpec and self.addSpec:GetText() or ""
-    if name ~= "" and name ~= "Nome" and spec ~= "" and spec ~= "Spec" then
+    if name ~= "" and name ~= L["Name"] and spec ~= "" and spec ~= L["Spec"] then
         self:AddEntry(name, spec)
-        self.addName:SetText("Nome")
-        self.addSpec:SetText("Spec")
+        self.addName:SetText(L["Name"])
+        self.addSpec:SetText(L["Spec"])
     end
 end
 
@@ -178,10 +184,11 @@ end
 function MSM:UpdateList()
     if not self.listContent then return end
     self:SkinInner()
-    for _, child in ipairs({self.listContent:GetChildren()}) do
+    for _, child in ipairs(self.listRows or {}) do
         child:Hide()
         child:SetParent(nil)
     end
+    self.listRows = {}
     if self.listScroll then
         local w = self.listScroll:GetWidth()
         if w and w > 40 then self.listContent:SetWidth(w) end
@@ -190,6 +197,7 @@ function MSM:UpdateList()
     local y = 0
     for i, entry in ipairs(self.db) do
         local row = CreateFrame("Frame", nil, self.listContent)
+        self.listRows[#self.listRows + 1] = row
         row:SetHeight(24)
         row:SetPoint("TOPLEFT", self.listContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.listContent, "TOPRIGHT", 0, -y)
@@ -204,7 +212,9 @@ function MSM:UpdateList()
         local delBtn = CreateFrame("Button", nil, row)
         delBtn:SetSize(14, 14)
         delBtn:SetPoint("RIGHT", row, "RIGHT", -6, 0)
-        delBtn:SetNormalTexture("Interface\Buttons\UI-Panel-MinimizeButton-Up")
+        delBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
+        delBtn:EnableMouse(true)
+        delBtn:RegisterForClicks("LeftButtonUp")
         delBtn:SetScript("OnClick", function()
             self:RemoveEntry(i)
         end)
@@ -219,25 +229,21 @@ function MSM:RequestChanges()
     self.listening = true
     local dur = 40
     self.listenUntil = GetTime() + dur
-    local msg = "Requesting MS changes — type in raid: ms <spec> you have only 40s"
+    local msg = L["Requesting MS changes - type in raid: ms <spec> you have only 40s"]
     RLSuite.utils:SendChat(msg, "RAID")
-    local f = CreateFrame("Frame")
-    f:SetScript("OnUpdate", function(self2, elapsed)
-        if not MSM.listening or not MSM.listenUntil then
-            MSM:StopListening(false)
-            return
-        end
-        if GetTime() >= MSM.listenUntil then
-            MSM:StopListening(true)
-        end
-    end)
-    f:Show()
-    self.listenFrame = f
+    -- bar timer in DBM/BigWigs if installed
+    RLSuite.utils:StartDbmTimer(dur, "MS Changes", "Interface\\Icons\\Spell_Nature_AstralRecall")
+    self.listenTimer = self:ScheduleTimer("OnListenExpire", dur)
+end
+
+function MSM:OnListenExpire()
+    if not self.listening then return end
+    self:StopListening(true)
 end
 
 function MSM:GenerateMessage()
     if #self.db == 0 then
-        RLSuite.utils:Print("Nessun MS change registrato.")
+        RLSuite.utils:Print(L["No MS changes recorded."])
         return
     end
     local parts = {}

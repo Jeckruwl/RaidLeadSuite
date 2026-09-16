@@ -6,12 +6,14 @@ RLSuite = RLSuite or {}
 RLSuite.utils = {}
 local Utils = RLSuite.utils
 
+local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
+
 function Utils:Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[RLSuite]|r " .. tostring(msg))
 end
 
 function Utils:Debug(msg)
-    if RLSuiteDB and RLSuiteDB.debug then
+    if RLSuite.db and RLSuite.db.profile.debug then
         DEFAULT_CHAT_FRAME:AddMessage("|cff999999[RLSuite-Debug]|r " .. tostring(msg))
     end
 end
@@ -65,10 +67,43 @@ function Utils:FormatCD(seconds)
     return tostring(seconds)
 end
 
+-- Protegge SendChatMessage (3.3.5): una "|" non seguita da una sequenza di
+-- escape valida (|c colore, |H..|h link oggetti/incantesimi, |T..|t texture,
+-- |r reset, |n newline, |1..|4 forme grammaticali, || pipe letterale) fa
+-- scattare "Invalid escape code in chat message". Raddoppia solo le pipe
+-- "orfane", lasciando intatti i link degli oggetti (|c..|H..|h..|r).
+function Utils:SanitizeChat(text)
+    if type(text) ~= "string" then return text end
+    local valid = { c=true, C=true, r=true, R=true, h=true, H=true, t=true, T=true,
+                    n=true, N=true, ["1"]=true, ["2"]=true, ["3"]=true, ["4"]=true,
+                    ["|"]=true }
+    local out = {}
+    local i = 1
+    while i <= #text do
+        local c = text:sub(i, i)
+        if c == "|" then
+            local nxt = text:sub(i + 1, i + 1)
+            if nxt ~= "" and valid[nxt] then
+                out[#out + 1] = "|"
+                out[#out + 1] = nxt
+                i = i + 2
+            else
+                out[#out + 1] = "||"
+                i = i + 1
+            end
+        else
+            out[#out + 1] = c
+            i = i + 1
+        end
+    end
+    return table.concat(out)
+end
+
 function Utils:SendChat(msg, channel)
     if not msg or msg == "" then return end
     channel = channel or "RAID"
-    if RLSuiteDB and RLSuiteDB.debug then
+    msg = self:SanitizeChat(msg)
+    if RLSuite.db and RLSuite.db.profile.debug then
         local me = UnitName("player")
         if me then
             SendChatMessage("[" .. channel .. "] " .. msg, "WHISPER", nil, me)
@@ -83,8 +118,9 @@ end
 
 function Utils:Whisper(name, msg)
     if not msg or msg == "" then return end
+    msg = self:SanitizeChat(msg)
     local dest = name
-    if RLSuiteDB and RLSuiteDB.debug then
+    if RLSuite.db and RLSuite.db.profile.debug then
         dest = UnitName("player")
     end
     if dest then
@@ -237,7 +273,7 @@ function Utils:ColorToArray(c)
 end
 
 function Utils:GetThemeColors(theme)
-    local a = RLSuiteDB and RLSuiteDB.appearance or {}
+    local a = RLSuite.db and RLSuite.db.profile.appearance or {}
     if a.bg and a.bg.r then
         return {
             fill = self:ColorToArray(a.fill),
@@ -250,15 +286,15 @@ function Utils:GetThemeColors(theme)
 end
 
 function Utils:GetUIFont()
-    local a = RLSuiteDB and RLSuiteDB.appearance or {}
+    local a = RLSuite.db and RLSuite.db.profile.appearance or {}
     return a.font or "Fonts\\FRIZQT__.TTF", a.fontSize or 12
 end
 
 function Utils:WindowBackdrop(f)
     -- Tooltip border sits on the frame edge. insets 0 = fill goes to that same edge.
     local edge = 16
-    if RLSuiteDB and RLSuiteDB.appearance and RLSuiteDB.appearance.edgeSize then
-        edge = RLSuiteDB.appearance.edgeSize
+    if RLSuite.db and RLSuite.db.profile.appearance and RLSuite.db.profile.appearance.edgeSize then
+        edge = RLSuite.db.profile.appearance.edgeSize
     end
     if edge > 16 then edge = 16 end
     if edge < 8 then edge = 8 end
@@ -347,7 +383,7 @@ function Utils:AllWindows()
     add(RLSuite.mainWindow and RLSuite.mainWindow.frame)
     add(RLSuite.macrobar and RLSuite.macrobar.keypadFrame)
     add(RLSuite.macrobar and RLSuite.macrobar.editFrame)
-    add(RLSuite.raidFrame and RLSuite.raidFrame.frame)
+    -- Il Raid Frame HUD non viene mai skinnato: nessuno sfondo/bordo.
     return list
 end
 
@@ -357,25 +393,15 @@ function Utils:AllTabPanes()
         if fr then table.insert(list, fr) end
     end
     add(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame)
-    add(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame)
     add(RLSuite.msManager and RLSuite.msManager.frame)
     add(RLSuite.lootManager and RLSuite.lootManager.frame)
-    add(RLSuite.config and RLSuite.config.frame)
-    if RLSuite.mainWindow and RLSuite.mainWindow.tabPanels then
-        add(RLSuite.mainWindow.tabPanels.macro)
-        add(RLSuite.mainWindow.tabPanels.raidframe)
-    end
     return list
 end
 
 function Utils:AllDockedPanels()
-    local list = {}
-    local function add(fr)
-        if fr then table.insert(list, fr) end
-    end
-    add(RLSuite.config and RLSuite.config.left)
-    add(RLSuite.config and RLSuite.config.right)
-    return list
+    -- The Config surface is now a self-contained AceGUI window (not a
+    -- docked tab pane with inner panels), so there is nothing to skin.
+    return {}
 end
 
 function Utils:SkinBox(box)
@@ -568,4 +594,274 @@ function Utils:ToggleDropdownMenu(dd)
     end
 
     self.activeMenu = menu
+end
+
+-- ============================================================
+-- Window layout helpers (finestre staccabili / anchors)
+-- ============================================================
+
+-- Ritorna (creandola se serve) la sottotabella layout per una finestra.
+function Utils:WindowLayout(key)
+    RLSuite.db.profile.layout = RLSuite.db.profile.layout or {}
+    local t = RLSuite.db.profile.layout[key]
+    if not t then
+        t = {}
+        RLSuite.db.profile.layout[key] = t
+    end
+    return t
+end
+
+-- Salva la posizione corrente di un frame nella layout della finestra.
+function Utils:PersistFramePos(frame, key)
+    if not frame then return end
+    local point, _, relPoint, x, y = frame:GetPoint()
+    local L = self:WindowLayout(key)
+    L.point = point
+    L.relPoint = relPoint
+    L.x = x
+    L.y = y
+end
+
+-- Applica la posizione salvata a una finestra; se non c'e', la ancora
+-- sotto la barra principale (comportamento dock-like iniziale) e, se
+-- passata, applica un offset a cascata per non sovrapporre le finestre.
+-- NOTA: SetPoint(point, relativeTo, relativePoint, x, y): relativeTo
+-- deve essere un frame (o il suo nome), relativePoint un punto valido.
+function Utils:ApplySavedPos(frame, key, cascadeOffset)
+    if not frame then return end
+    frame:ClearAllPoints()
+    local L = self:WindowLayout(key)
+    if L.point then
+        frame:SetPoint(L.point, UIParent, L.relPoint or L.point, L.x or 0, L.y or 0)
+    else
+        local dx, dy = 0, 0
+        if type(cascadeOffset) == "function" then
+            dx, dy = cascadeOffset()
+        end
+        local bar = RLSuite.mainWindow and RLSuite.mainWindow.frame
+        if bar then
+            frame:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", dx, -2 + dy)
+        else
+            frame:SetPoint("CENTER", UIParent, "CENTER", dx, dy)
+        end
+    end
+end
+
+-- Porta una finestra in primo piano sopra le altre (stessa strata).
+-- Assegna un frame level esplicito e distanziato (passo 50): cosi' i
+-- figli con frameLevel relativo (+5..+20: grip di resize, editbox, ecc.)
+-- restano dentro la "fascia" della loro finestra e non sbucano sopra le
+-- finestre vicine, evitando le sovrapposizioni parziali (parti di una
+-- finestra sopra e parti sotto un'altra) quando si spostano le finestre.
+function Utils:RaiseWindow(frame)
+    if not frame then return end
+    RLSuite.windowLevel = (RLSuite.windowLevel or 10) + 50
+    frame:SetFrameStrata("HIGH")
+    frame:SetFrameLevel(RLSuite.windowLevel)
+end
+
+-- Clic su una finestra = portala in primo piano. Vale per i click che
+-- arrivano al frame (sfondo/titolo): i bottoni figli continuano a fare
+-- il loro lavoro. Preserva un eventuale OnMouseDown gia' presente.
+function Utils:MakeClickToFront(frame)
+    if not frame or frame._rlsFront then return end
+    frame._rlsFront = true
+    frame:EnableMouse(true)
+    local old = frame:GetScript("OnMouseDown")
+    frame:SetScript("OnMouseDown", function(self2, button)
+        Utils:RaiseWindow(frame)
+        if old then old(self2, button) end
+    end)
+end
+
+-- Impedisce che una finestra venga trascinata (o ridimensionata) fuori
+-- dallo schermo: Blizzard riporta il frame dentro UIParent a ogni drag.
+-- Vale anche per i pannelli ancorati (es. la costola InviteEngine).
+function Utils:ClampWindow(frame)
+    if not frame then return end
+    if frame.SetClampedToScreen then
+        frame:SetClampedToScreen(true)
+    end
+end
+
+-- Rende un frame trascinabile e salva la posizione nel layout.
+-- NOTA: non sovrascrive script gia' presenti: si aggancia solo se il
+-- frame non ha gia' un comportamento di trascinamento registrato.
+function Utils:MakeDraggable(frame, key)
+    if not frame then return end
+    if frame._rlsDraggable then return end
+    frame._rlsDraggable = true
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    self:ClampWindow(frame)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", function(self2)
+        Utils:RaiseWindow(frame)
+        self2:StartMoving()
+    end)
+    frame:SetScript("OnDragStop", function(self2)
+        self2:StopMovingOrSizing()
+        Utils:PersistFramePos(self2, key)
+    end)
+end
+
+-- Grip di ridimensionamento in basso a destra. Salva width/height nel
+-- layout e (se fornita) invoca la callback dopo il ridimensionamento.
+-- I limiti minimi vengono ricalcolati a ogni drag da RLSuite.windowMins
+-- (fallback: i valori minW/minH passati qui), cosi' la finestra non puo'
+-- diventare piu' piccola del contenuto: SetMinResize blocca durante il
+-- trascinamento e OnMouseUp ri-clampa a sicurezza.
+function Utils:AddResizeGrip(frame, key, minW, minH, onResized)
+    if not frame or frame._rlsGrip then return end
+    minW = minW or 300
+    minH = minH or 200
+    frame._rlsGrip = true
+    frame:SetResizable(true)
+    local L = self:WindowLayout(key)
+
+    local function currentMin()
+        local fn = RLSuite.windowMins and RLSuite.windowMins[key]
+        local mw, mh
+        if fn then
+            mw, mh = fn(frame)
+        end
+        if not mw or not (mw > 0) then mw = minW end
+        if not mh or not (mh > 0) then mh = minH end
+        return mw, mh
+    end
+
+    local grip = CreateFrame("Button", nil, frame)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
+    grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    grip:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
+    grip:SetFrameLevel((frame:GetFrameLevel() or 1) + 20)
+    grip:EnableMouse(true)
+
+    local sizing = false
+    grip:SetScript("OnMouseDown", function(self2, button)
+        if button ~= "LeftButton" then return end
+        sizing = true
+        local mw, mh = currentMin()
+        if frame.SetMinResize then
+            frame:SetMinResize(mw, mh)
+        end
+        frame:StartSizing("BOTTOMRIGHT")
+    end)
+    grip:SetScript("OnMouseUp", function()
+        if not sizing then return end
+        sizing = false
+        frame:StopMovingOrSizing()
+        local mw, mh = currentMin()
+        local w = math.max(mw, frame:GetWidth() or mw)
+        local h = math.max(mh, frame:GetHeight() or mh)
+        frame:SetSize(w, h)
+        L.width = w
+        L.height = h
+        if frame.SetMinResize then
+            frame:SetMinResize(mw, mh)
+        end
+        if onResized then onResized(w, h) end
+    end)
+    return grip
+end
+
+-- Minimo attuale per una finestra, dalla tabella registrata in
+-- RLSuite.windowMins (funzioni per-chiave che leggono il contenuto).
+function Utils:WindowMin(key, frame)
+    local fn = RLSuite.windowMins and RLSuite.windowMins[key]
+    if not fn then return nil end
+    local mw, mh = fn(frame)
+    if mw and mw > 0 and mh and mh > 0 then
+        return mw, mh
+    end
+    return nil
+end
+
+-- Allinea una finestra ridimensionabile ai suoi minimi: se la
+-- dimensione attuale (o salvata) e' piu' piccola del contenuto,
+-- la porta almeno al minimo. Ritorna mw, mh.
+function Utils:EnforceWindowMin(frame, key)
+    if not frame then return nil end
+    local mw, mh = self:WindowMin(key, frame)
+    if not mw then return nil end
+    local w = math.max(mw, frame:GetWidth() or mw)
+    local h = math.max(mh, frame:GetHeight() or mh)
+    if w ~= frame:GetWidth() or h ~= frame:GetHeight() then
+        frame:SetSize(w, h)
+    end
+    local L = self:WindowLayout(key)
+    if L.width and L.width < mw then L.width = mw end
+    if L.height and L.height < mh then L.height = mh end
+    if frame.SetMinResize then
+        frame:SetMinResize(mw, mh)
+    end
+    return mw, mh
+end
+
+-- Overlay "anchor" (bordo evidenziato) per le HUD quando si usa
+-- toggle anchors in Config.
+function Utils:SetAnchorVisual(frame, on)
+    if not frame then return end
+    if not frame.rlsAnchorBox then
+        local box = CreateFrame("Frame", nil, frame)
+        box:SetAllPoints(frame)
+        box:SetFrameLevel((frame:GetFrameLevel() or 1) + 5)
+        box:EnableMouse(false)
+        box:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 12,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        box:SetBackdropColor(0, 0, 0, 0.25)
+        box:SetBackdropBorderColor(1, 0.82, 0, 0.9)
+        box:Hide()
+        frame.rlsAnchorBox = box
+    end
+    if on then
+        frame.rlsAnchorBox:Show()
+    else
+        frame.rlsAnchorBox:Hide()
+    end
+end
+
+-- ============================================================
+-- DBM / BigWigs: timer visibili (pull, MS changes, roll, ecc.)
+-- ============================================================
+
+-- Avvia una barra-timer in DBM se l'addon e' presente (fallback:
+-- BigWigs). Non genera errori se nessuno dei due e' installato.
+-- Ritorna true se il timer e' partito.
+function Utils:StartDbmTimer(seconds, label, icon)
+    if not seconds or seconds <= 0 then return false end
+    label = label or "Timer"
+    icon = icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+
+    if DBM then
+        -- API pubblica "pizza timer" (DBM moderno e classico)
+        local ok = pcall(DBM.CreatePizzaTimer, DBM, seconds, label, icon)
+        if ok then return true end
+        -- fallback: barre interne dei DBM piu' vecchi
+        if DBM.Bars and DBM.Bars.CreateBar then
+            ok = pcall(DBM.Bars.CreateBar, DBM.Bars, seconds, label, icon)
+            if ok then return true end
+        end
+    end
+
+    if BigWigs then
+        if BigWigs.CreatePizzaTimer then
+            local ok = pcall(BigWigs.CreatePizzaTimer, BigWigs, seconds, label, icon)
+            if ok then return true end
+        elseif BigWigs.CreateBar then
+            local ok = pcall(BigWigs.CreateBar, BigWigs, seconds, label, icon)
+            if ok then return true end
+        end
+    end
+
+    if RLSuite.db and RLSuite.db.profile.debug then
+        self:Debug(string.format(L['DBM/BigWigs not available: timer "%s" not started.'], label))
+    end
+    return false
 end
