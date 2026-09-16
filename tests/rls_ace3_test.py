@@ -1201,34 +1201,50 @@ CHAT_LOG = {}
 row._lastAlert = nil
 row._scripts.OnMouseDown(row, 'LeftButton')
 row._scripts.OnMouseUp(row, 'LeftButton')
-""")
-check(bool(rt.eval("CHAT_LOG[1] and string.sub(CHAT_LOG[1], 1, 8) == 'WHISPER|' and string.find(CHAT_LOG[1], 'Missing') == nil")), "row fallback: left click under the cursor on the icon whispers the player")
+RFB_W = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then RFB_W = RFB_W + 1 end end
+""")  # scan-pattern (i print diagnostici debug riempiono la chat-log)
+check(rt.eval("RFB_W") == 1, "row fallback: left click under the cursor on the icon whispers the player")
 rt.execute("""
 local row = RLSuite.raidFrame.rows[1]
 GetCursorPosition = function() return 35, 110 end  -- sopra l'icona food
 row._lastAlert = nil
 row._scripts.OnMouseDown(row, 'RightButton')
 row._scripts.OnMouseUp(row, 'RightButton')
+RFB_RW = false
+for _, e in ipairs(CHAT_LOG) do
+    if string.find(e, '%[RAID_WARNING%]') and string.find(e, MISSING_NAME) then RFB_RW = true end
+end
 """)
-check(bool(rt.eval("CHAT_LOG[2] and string.find(CHAT_LOG[2], '%[RAID_WARNING%]') ~= nil and string.find(CHAT_LOG[2], MISSING_NAME) ~= nil")), "row fallback: right click on the icon warns everyone missing")
+check(bool(rt.eval("RFB_RW")), "row fallback: right click on the icon warns everyone missing")
 # press elsewhere on the row (NOT on the icons) -> nothing
 rt.execute("""
 local row = RLSuite.raidFrame.rows[1]
 GetCursorPosition = function() return 200, 110 end
 row._lastAlert = nil
+local before = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then before = before + 1 end end
 row._scripts.OnMouseDown(row, 'LeftButton')
 row._scripts.OnMouseUp(row, 'LeftButton')
+RFB_BODY = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then RFB_BODY = RFB_BODY + 1 end end
+RFB_BODY = RFB_BODY - before
 """)
-check(bool(rt.eval("CHAT_LOG[3] == nil")), "clicking the row body (not an icon) sends nothing")
+check(rt.eval("RFB_BODY") == 0, "clicking the row body (not an icon) sends nothing")
 # drag-detect: cursor moved between down and up -> nothing
 rt.execute("""
 local row = RLSuite.raidFrame.rows[1]
+local before = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then before = before + 1 end end
 GetCursorPosition = function() return 15, 110 end
 row._scripts.OnMouseDown(row, 'LeftButton')
 GetCursorPosition = function() return 60, 118 end
 row._scripts.OnMouseUp(row, 'LeftButton')
+RFB_DRAG = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then RFB_DRAG = RFB_DRAG + 1 end end
+RFB_DRAG = RFB_DRAG - before
 """)
-check(bool(rt.eval("CHAT_LOG[3] == nil")), "moved cursor between down/up (drag) sends nothing")
+check(rt.eval("RFB_DRAG") == 0, "moved cursor between down/up (drag) sends nothing")
 # dedupe: same click through icon(poll) + row(fallback) -> one whisper only; later click fires again
 rt.execute("""
 local row = RLSuite.raidFrame.rows[1]
@@ -1337,6 +1353,30 @@ f._scripts.OnMouseUp(f, 'RightButton')
 IsShiftKeyDown = SAVED_ISD2
 """)
 check(bool(rt.eval("FPLAIN == nil and FSHIFT == true and FSHIFT_MOVING == true")), "Shift+right on the HUD background also starts/stops the move")
+
+# --- F.2e silent-kill hardening: empty-string saved msg, missing row.name ---
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+local b = row.flaskIcon
+CHAT_LOG = {}
+row._lastAlert = nil
+RLSuite.raidFrame.db.alerts = { flask = "" }  -- HQ killer: config salvata vuota = STOP silenzioso in ogni versione precedente
+b._scripts.OnMouseDown(b, 'LeftButton'); b._scripts.OnMouseUp(b, 'LeftButton'); if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end
+EMPTYCFG_W = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then EMPTYCFG_W = EMPTYCFG_W + 1 end end
+RLSuite.raidFrame.db.alerts = {}
+CHAT_LOG = {}
+row._lastAlert = nil
+SAVED_ROW_NAME = row.name
+row.name = nil  -- stessa fonte-datata del ramo destro: member.name
+b._scripts.OnMouseDown(b, 'LeftButton'); b._scripts.OnMouseUp(b, 'LeftButton'); if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end
+NONAME_W = 0
+NONAME_DEST = false
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then NONAME_W = NONAME_W + 1; if string.find(e, row.member.name) then NONAME_DEST = true end end end
+row.name = SAVED_ROW_NAME
+""")
+check(rt.eval("EMPTYCFG_W") == 1, "empty saved alert message now falls back to the default whisper (was a silent dead-end)")
+check(rt.eval("NONAME_W") == 1 and bool(rt.eval("NONAME_DEST")), "left click works even with row.name missing (falls back to member.name)")
 
 # --- F.3 Raid Frame layout options: font / outline / bar texture / opacity ---
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.font ~= nil")), "Layout -> Font type present")

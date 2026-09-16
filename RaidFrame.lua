@@ -21,6 +21,15 @@ local RF = RLSuite.raidFrame
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
+-- Diagnostica click icone (solo debug): ogni passaggio del click lascia una
+-- riga in chat, cosi' un eventuale punto morto e' VISIBILE subito in game.
+local function rfDbg(fmt, ...)
+    if RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.debug then
+        local ok, txt = pcall(string.format, fmt, ...)
+        RLSuite.utils:Print("RF " .. (ok and txt or tostring(fmt)))
+    end
+end
+
 local RF_GROUPS = 6
 local RF_PER_GROUP = 5
 local RF_MAX_CDS = 4
@@ -483,6 +492,7 @@ function RF:MakeConsumableIcon(row, atype)
         -- Rilascio rilevato dal poll: e' un CLICK sinistro.
         if not (IsMouseButtonDown and IsMouseButtonDown("LeftButton")) then
             s._pendingLeft = nil
+            rfDbg("poll fire: %s", tostring(atype))
             s:SetScript("OnUpdate", nil)
             if self:OnAlertClick(row, atype, "LeftButton") then
                 return
@@ -515,6 +525,7 @@ function RF:MakeConsumableIcon(row, atype)
         end
     end)
     btn:SetScript("OnMouseUp", function(s, button)
+        rfDbg("icon up: %s %s", tostring(button), tostring(atype))
         local pressed, shifted = s._pressed, s._shiftedAtDown
         s._pressed, s._shiftedAtDown = nil, nil
         if shifted then return end -- gesto con shift: mai un messaggio
@@ -900,6 +911,7 @@ end
 
 function RF:OnAlertClick(row, atype, button)
     if not row or not atype then return false end
+    rfDbg("alert: %s %s", tostring(atype), tostring(button))
     -- Dedup: icona e riga possono INSEGNARE lo stesso click (icona figlia di
     -- content ABOVE row, entrambe ricevono down/up). Nello stesso click
     -- (stesso tasto, < 0.3s) mando UN SOL messaggio.
@@ -907,6 +919,7 @@ function RF:OnAlertClick(row, atype, button)
     local key = atype .. "|" .. tostring(button)
     local now = (GetTime and GetTime()) or 0
     if row._lastAlert[key] and (now - row._lastAlert[key]) < 0.3 then
+        rfDbg("dedup: stesso click ignorato")
         return true
     end
     row._lastAlert[key] = now
@@ -919,11 +932,24 @@ function RF:OnAlertClick(row, atype, button)
 
     -- SINISTRO: whisper al player singolo (in debug: whisper a se stessi
     -- col messaggio che verrebbe mandato al player - vedi Utils:Whisper).
-    local name = row.name
+    -- Dati presi dalle stesse fonti del ramo destro (che in game funziona):
+    -- nome da member con fallback row; msg vuoto = torna al default.
+    local name = row.name or (row.member and row.member.name)
+    if not name or name == "" then
+        rfDbg("abort: nessun nome sulla riga")
+        return false
+    end
     local alerts = self.db.alerts or {}
-    local msg = alerts[atype] or self:GetDefaultAlertMessage(atype)
-    if not (msg and name and msg ~= "") then return false end
+    local msg = alerts[atype]
+    if not msg or msg == "" then
+        msg = self:GetDefaultAlertMessage(atype)
+    end
+    if not msg or msg == "" then
+        rfDbg("abort: nessun messaggio per %s", tostring(atype))
+        return false
+    end
     msg = string.gsub(msg, "%$name", name)
+    rfDbg("whisper -> %s: %s", tostring(name), tostring(msg))
     RLSuite.utils:Whisper(name, msg)
     return true
 end

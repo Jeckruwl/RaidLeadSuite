@@ -7,7 +7,32 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.0**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.1**.
+
+## Novità della sessione 1.5.1 (questo branch, dopo 1.5.0) — TRACCIATURA + SILENT-KILL LEFT CLICK
+
+Dato utente: DESTRO funziona, SINISTRO mostra solo il print "RF icon down" e zero whisper.
+Il ramo destro (funzionava) non usa `row.name` né il messaggio da config: il ramo sinistro di
+`OnAlertClick` sì → **due gate silenziosi senza errori**: (a) `alerts[atype] == ""` (config salvata
+con campo svuotato dall'utente in QUEL momento → per sempre nei SavedVariables, niente fallback)
+e (b) `row.name` nil. In 7 versioni il whisper poteva morire lì in silenzio — o il click poteva
+non arrivare, ma nessuno ne sapeva nulla: **da 1.5.1 il punto morto NON PUO' piu' nascondersi**.
+
+1. `rfDbg()` locale in cima a RaidFrame.lua: ogni passaggio in debug stampa in chat
+   "RF -- diagnostica click icone (solo debug): ogni passaggio del click lascia una
+   riga in chat, cosi' un eventuale punto morto e' VISIBILE subito in game."...
+   - `OnAlertClick` in ingresso: `RF alert: <atype> <button>`
+   - dedup: `RF dedup: stesso click ignorato`
+   - aborts: `RF abort: nessun nome sulla riga` / `RF abort: nessun messaggio per <atype>`
+   - successo: `RF whisper -> <nome>: <msg>`
+   - icon OnMouseUp: `RF icon up: <button> <atype>` (prova che l'up arriva)
+   - Poller fire: `RF poll fire: <atype>` (prova del canale di riserva)
+2. OnAlertClick sinistro HARDENED: `name = row.name or row.member.name` (stessa fonte del ramo
+   destro che funziona in game); `msg = alerts[atype]; se nil o "" → GetDefaultAlertMessage(atype)`.
+3. Test F.2e: config salvata `""` → whisper col msg default; `row.name=nil` → whisper con member.name.
+4. Suite-row-fallback F.2b convertita a scan-pattern (i print debug shiftano gli indici di CHAT_LOG).
+
+**356 check PASS**.
 
 ## Novità della sessione 1.5.0 (questo branch, dopo 1.4.9) — MODELLO INTERAZIONE DECISO DALL'UTENTE
 
@@ -357,7 +382,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 354 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 356 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
