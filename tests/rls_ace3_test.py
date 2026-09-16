@@ -1206,6 +1206,86 @@ check(bool(rt.eval("GLOW_ON_DST") and bool(rt.eval("GLOW_ONLY_DST"))), "golden b
 check(bool(rt.eval("GLOW_ALL_OFF")), "release outside any slot: every golden border turns off")
 check(bool(rt.eval("GLOW_CANCEL_CLEAN") and bool(rt.eval("GLOW_ROSTER_INTACT"))), "cancel outside: no move, roster untouched, drag state clean")
 
+# --- F.2i hit-test con finestra SCALATA: la scala del cursore deve seguire la finestra, non UIParent ---
+rt.execute("""
+local RFmod = RLSuite.raidFrame
+SAVED_ISD_I = IsShiftKeyDown
+IsShiftKeyDown = function() return true end
+SAVED_GCP_I = GetCursorPosition
+SAVED_IMBD_I = IsMouseButtonDown
+local src, dst = RFmod.slots[1], RFmod.slots[7]
+src._manualDrag = nil; src._pendingRowClick = nil; src:SetScript('OnUpdate', nil); src._targetT = nil
+src._scripts.OnMouseDown(src, 'LeftButton')
+-- finestra ridotta al 50%: i rettangoli degli slot (GetLeft & co.) sono in
+-- slot-space; due volte piu' grandi rispetto alle coordinate UIParent.
+for i, s in ipairs(RFmod.slots) do
+    s.GetEffectiveScale = function() return 0.5 end
+    s.GetLeft = function() return 500 + i end
+    s.GetRight = function() return 501 + i end
+    s.GetBottom = function() return 500 end
+    s.GetTop = function() return 501 end
+end
+dst.GetLeft = function() return 100 end;  dst.GetRight = function() return 120 end
+dst.GetBottom = function() return 60 end; dst.GetTop = function() return 80 end
+-- cursore al punto GREZZO che il vecchio codice matchava: (110,70) -> slot-space (220,140) -> NESSUNO
+IsMouseButtonDown = function() return true end
+GetCursorPosition = function() return 110, 70 end
+RFmod._dragWatch:GetScript('OnUpdate')()
+G2_NEG_RAW = (dst.dropGlow:IsShown() == false)
+-- cursore al CENTRO VISIVO di dst: UI-space (55,35) -> slot-space (110,70) -> dst
+GetCursorPosition = function() return 55, 35 end
+RFmod._dragWatch:GetScript('OnUpdate')()
+G2_SCALED_ON = (dst.dropGlow:IsShown() == true)
+local n = 0
+for _, s in ipairs(RFmod.slots) do
+    if s.dropGlow:IsShown() then n = n + 1 end
+end
+G2_SCALED_ONLY = (n == 1)
+-- cancel + restore
+IsMouseButtonDown = function() return false end
+GetCursorPosition = function() return 9999, 9999 end
+RFmod._dragWatch:GetScript('OnUpdate')()
+G2_ALL_OFF = true
+for _, s in ipairs(RFmod.slots) do
+    if s.dropGlow:IsShown() then G2_ALL_OFF = false end
+    s.GetEffectiveScale, s.GetLeft, s.GetRight, s.GetBottom, s.GetTop = nil, nil, nil, nil, nil
+end
+G2_INTACT = (RFmod.slots[7].member.name == 'Testplayer')
+GetCursorPosition = SAVED_GCP_I
+IsShiftKeyDown = SAVED_ISD_I
+IsMouseButtonDown = SAVED_IMBD_I
+""")
+check(bool(rt.eval("G2_SCALED_ON") and bool(rt.eval("G2_SCALED_ONLY"))), "scaled RF window (50%): golden border lands on the slot under the VISUAL cursor (cursor rescaled to the window's own effective scale)")
+check(bool(rt.eval("G2_NEG_RAW")), "scaled RF window (50%): the old raw UIParent-space point hits NOTHING (proves the rescale is real, not a tautology)")
+check(bool(rt.eval("G2_ALL_OFF") and bool(rt.eval("G2_INTACT"))), "scaled-window test cleanup: borders off, roster untouched")
+
+# --- F.2i bis: stessa correzione sul pannello Group Making (WlSlotAtCursor) ---
+rt.execute("""
+local GMmod = RLSuite.groupmaking
+SAVED_GCP_G = GetCursorPosition
+local bars = GMmod.wlGroupSlots
+local target = bars[2]
+for i, b in ipairs(bars) do
+    b.GetEffectiveScale = function() return 0.5 end
+    b.GetLeft = function() return 800 + i end
+    b.GetRight = function() return 801 + i end
+    b.GetBottom = function() return 800 end
+    b.GetTop = function() return 801 end
+end
+target.GetLeft = function() return 300 end;  target.GetRight = function() return 360 end
+target.GetBottom = function() return 200 end; target.GetTop = function() return 240 end
+GetCursorPosition = function() return 160, 110 end  -- centro UI-space: slot-space (320,220)
+GM_HIT = (GMmod:WlSlotAtCursor() == target)
+GetCursorPosition = function() return 320, 220 end  -- vecchio punto grezzo: NIENTE
+GM_NOHIT = (GMmod:WlSlotAtCursor() == nil)
+for _, b in ipairs(bars) do
+    b.GetEffectiveScale, b.GetLeft, b.GetRight, b.GetBottom, b.GetTop = nil, nil, nil, nil, nil
+end
+GetCursorPosition = SAVED_GCP_G
+""")
+check(bool(rt.eval("GM_HIT")), "Group Making panel (50% scale): WlSlotAtCursor returns the bar under the visual cursor")
+check(bool(rt.eval("GM_NOHIT")), "Group Making panel (50% scale): old raw point matches nothing (rescale applied)")
+
 # --- non pre-boss: empty slots hidden, drag disabled ---
 rt.execute("RLSuite:SetContextPhase('infight')")
 check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == false")), "drag & drop disabled outside pre-boss")

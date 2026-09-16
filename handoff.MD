@@ -7,7 +7,35 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.7**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.8**.
+
+## Novità della sessione 1.5.8 (questo branch, dopo 1.5.7) — HIT-TEST CON FINESTRA SCALATA (bug storico SlotAtCursor)
+
+Bug segnalato dall'utente (respo VISIBILE dal bordino dorato 1.5.7, ma il drop era
+sbagliato anche prima): trascinando un player, lo slot evidenziato era ~un gruppo
+PIU' IN ALTO del cursore (es. cursore su G2/pos5 → highlight su G1/pos3).
+
+Causa radice: i rettangoli `GetLeft/GetBottom/...` sono nello spazio della **scala
+EFFETTIVA DEL FRAME**, non di UIParent. Se la finestra ha una scala propria
+(`RF.frame:SetScale(db.scale)`, slider config 0.70–1.30), `SlotAtCursor()` normalizzava
+il cursore per `UIParent:GetEffectiveScale()` → mismatch frazionale che cresce con la
+distanza dall'ancora (finestra ancorata LEFT, scala < 1 → banda evidenziata sopra il
+cursore). **Regola corretta: il cursore si divide per `frame:GetEffectiveScale()` del
+frame testato.**
+
+Fix applicato a TUTTI gli hit-test a cursore dello stesso tipo:
+1. `RF:SlotAtCursor()` — per-slot `slot:GetEffectiveScale()` (drop slot + bordino dorato).
+2. `RF:FireConsumableFromCursor()` — per-icona `btn:GetEffectiveScale()` (click sulle
+   icone consumabili con finestra scalata).
+3. `GM:WlSlotAtCursor()` — per-barra `bar:GetEffectiveScale()` (stesso bug nel pannello
+   Group Making, che ha il suo slider di scala).
+
+Non toccati (voluto): i confronti cursore-cursore per la soglia drag/click (`_pressX` vs
+posizione attuale) — entrambi i lati sono nello stesso spazio grezzo, nessun mismatch.
+
+Test F.2i: finestra/pannello al 50%: bordino sullo slot sotto il cursore VISIVO, il
+vecchio punto grezzo non matcha più niente (controprova del rescale), cleanup integro;
+stesso per GM (`WlSlotAtCursor`). **379 check PASS**.
 
 ## Novità della sessione 1.5.7 (questo branch, dopo 1.5.6) — BORDINO DORATO DI DROP nel Raid Frame
 
@@ -506,7 +534,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 374 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 379 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

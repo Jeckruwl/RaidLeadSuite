@@ -1125,13 +1125,16 @@ function RF:FireConsumableFromCursor(row, button)
     if not (row and row.member and row.member.name) then return false end
     local x, y = GetCursorPosition()
     if not (x and y) then return false end
-    local scale = UIParent:GetEffectiveScale() or 1
-    if scale > 0 then x, y = x / scale, y / scale end
     local pair = { flask = row.flaskIcon, food = row.foodIcon }
     for atype, btn in pairs(pair) do
         if btn and btn.IsShown and btn:IsShown() and btn._missing then
+            -- Scala EFFETTIVA DELL'ICONA (la finestra RF puo' avere scala
+            -- propria): normalizzare per UIParent disallinea l'hit-test.
+            local scale = (btn.GetEffectiveScale and btn:GetEffectiveScale()) or 1
+            if not (scale and scale > 0) then scale = 1 end
+            local cx, cy = x / scale, y / scale
             local l, r, b, t = btn:GetLeft(), btn:GetRight(), btn:GetBottom(), btn:GetTop()
-            if l and r and b and t and x >= l and x <= r and y >= b and y <= t then
+            if l and r and b and t and cx >= l and cx <= r and cy >= b and cy <= t then
                 return self:OnAlertClick(row, atype, button)
             end
         end
@@ -1446,19 +1449,24 @@ function RF:SlotAtCursor()
     if not GetCursorPosition then return nil end
     local x, y = GetCursorPosition()
     if not x or not y then return nil end
-    local scale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-    if scale and scale > 0 then
-        x = x / scale
-        y = y / scale
-    end
     for _, slot in ipairs(self.slots or {}) do
         if slot and slot.IsShown and slot:IsShown() then
+            -- SCALA: GetLeft/GetBottom/... sono nello spazio della scala
+            -- EFFETTIVA DELLO SLOT, non di UIParent. Se la finestra RF ha
+            -- una scala propria (config "Scale"), il cursore va riportato in
+            -- QUELLA scala: normalizzare per UIParent sposta l'hit-test di
+            -- una frazione proporzionale alla distanza dall'ancora (bug
+            -- osservato: bordino di drop evidenziato ~un gruppo piu' in
+            -- alto del cursore).
+            local scale = (slot.GetEffectiveScale and slot:GetEffectiveScale()) or 1
+            if not (scale and scale > 0) then scale = 1 end
+            local cx, cy = x / scale, y / scale
             local left = slot:GetLeft()
             local right = slot:GetRight()
             local bottom = slot:GetBottom()
             local top = slot:GetTop()
             if left and right and bottom and top
-                and x >= left and x <= right and y >= bottom and y <= top then
+                and cx >= left and cx <= right and cy >= bottom and cy <= top then
                 return slot
             end
         end

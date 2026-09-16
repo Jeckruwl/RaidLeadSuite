@@ -3366,19 +3366,20 @@ function GM:WlSlotAtCursor()
     if not GetCursorPosition then return nil end
     local x, y = GetCursorPosition()
     if not x or not y then return nil end
-    local scale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-    if scale and scale > 0 then
-        x = x / scale
-        y = y / scale
-    end
     for i, bar in ipairs(self.wlGroupSlots or {}) do
         if bar and bar.IsShown and bar:IsShown() then
+            -- Scala EFFETTIVA DELLA BARRA (il pannello Group Making puo'
+            -- avere scala propria): normalizzare per UIParent disallinea
+            -- l'hit-test di una frazione proporzionale alla distanza.
+            local scale = (bar.GetEffectiveScale and bar:GetEffectiveScale()) or 1
+            if not (scale and scale > 0) then scale = 1 end
+            local cx, cy = x / scale, y / scale
             local left = bar:GetLeft()
             local right = bar:GetRight()
             local bottom = bar:GetBottom()
             local top = bar:GetTop()
             if left and right and bottom and top
-                and x >= left and x <= right and y >= bottom and y <= top then
+                and cx >= left and cx <= right and cy >= bottom and cy <= top then
                 return bar
             end
         end
