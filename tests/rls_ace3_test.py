@@ -40,13 +40,13 @@ function methods:IsShown() return self._shown end
 function methods:IsVisible() return self._shown end
 function methods:SetParent(p) self._parent=p; return self end
 function methods:GetParent() return self._parent end
-function methods:SetFrameStrata(s) return self end
-function methods:SetFrameLevel(l) return self end
-function methods:EnableMouse(b) return self end
+function methods:SetFrameStrata(s) self._strata = s; return self end
+function methods:SetFrameLevel(l) self._level = l; return self end
+function methods:EnableMouse(b) self._enabledMouse = b and true or false; return self end
 function methods:EnableKeyboard(b) return self end
 function methods:SetMovable(b) return self end
 function methods:SetResizable(b) return self end
-function methods:RegisterForDrag(...) return self end
+function methods:RegisterForDrag(...) self._dragButtons = {...}; return self end
 function methods:RegisterForClicks(...) return self end
 function methods:RegisterEvent(e)
     EVENT_REG[self] = EVENT_REG[self] or {}
@@ -153,7 +153,7 @@ function methods:SetFormattedText(...) return self end
 
 function methods:SetDrawLayer(...) return self end
 function methods:EnableMouseWheel(b) return self end
-function methods:EnableMouse(b) return self end
+function methods:EnableMouse(b) self._enabledMouse = b and true or false; return self end
 function methods:SetToplevel(b) return self end
 function methods:Raise() return self end
 function methods:Lower() return self end
@@ -1099,6 +1099,10 @@ check(bool(rt.eval("RLSuite.raidFrame.slots[6].member ~= nil and RLSuite.raidFra
 
 # --- pre-boss: empty slots + empty headers hidden by default; drag enabled ---
 check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == true")), "drag & drop enabled in pre-boss (debug)")
+check(bool(rt.eval("RLSuite.raidFrame.frame._strata == 'MEDIUM'")), "RF HUD sits on MEDIUM strata (clicks not eaten by UI chrome)")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]._enabledMouse == true")), "slots are ALWAYS mouse-enabled (children stay clickable)")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]._dragButtons ~= nil and RLSuite.raidFrame.slots[7]._dragButtons[1] == 'LeftButton'")), "pre-boss: LeftButton drag registered on slots")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon._level ~= nil and RLSuite.raidFrame.rows[1].flaskIcon._level > (RLSuite.raidFrame.rows[1]._level or 1)")), "consumable icons sit above the row (explicit frame level)")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == false")), "empty slots hidden by default (even in pre-boss)")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "empty group headers hidden by default")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[1]:IsShown() == true")), "non-empty group headers shown")
@@ -1123,6 +1127,7 @@ check(bool(rt.eval("RLSuite.raidFrame.slots[7].member ~= nil and RLSuite.raidFra
 # --- non pre-boss: empty slots hidden, drag disabled ---
 rt.execute("RLSuite:SetContextPhase('infight')")
 check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == false")), "drag & drop disabled outside pre-boss")
+check(bool(rt.eval("RLSuite.raidFrame.slots[1]._enabledMouse == true and (RLSuite.raidFrame.slots[1]._dragButtons == nil or RLSuite.raidFrame.slots[1]._dragButtons[1] == nil)")), "outside pre-boss: mouse still ENABLED, only the drag registration is removed")
 check(bool(rt.eval("RLSuite.raidFrame.slots[8]:IsShown() == false")), "outside pre-boss empty slots are hidden")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "outside pre-boss empty groups hide their header")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[1]:IsShown() == true")), "groups with members keep their header")

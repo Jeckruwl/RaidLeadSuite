@@ -73,7 +73,10 @@ function RF:CreateFrame()
     local f = CreateFrame("Frame", "RLSuiteRaidFrame", UIParent)
     f:SetSize(db.width or 380, 300)
     f:SetPoint(db.point or "LEFT", UIParent, db.relPoint or "LEFT", db.x or 10, db.y or 0)
-    f:SetFrameStrata("LOW")
+    -- Strata MEDIUM (non LOW): l'HUD e' trasparente, ma in LOW le righe e le
+    -- icone finivano SOTTO il chrome default della UI nell'hit-test e alcuni
+    -- click venivano divorati da pannelli invisibili soprastanti.
+    f:SetFrameStrata("MEDIUM")
     f:SetMovable(true)
     f:EnableMouse(true)
     RLSuite.utils:ClampWindow(f)
@@ -275,6 +278,10 @@ function RF:CreateSlotFrame(slotIndex, group)
     row.group = group
     row.member = nil
     row.fakeHP = 70 + ((slotIndex * 13) % 31)
+    -- MAI disabilitare il mouse sullo slot (vedi UpdateDragState): in 3.3.5
+    -- EnableMouse(false) sul genitore blocca la hit-region ANCHE dei figli,
+    -- quindi le icone consumabili diventavano non cliccabili fuori pre-boss.
+    row:EnableMouse(true)
 
     -- Left: flask / Well Fed missing-consumable icons.
     row.flaskIcon = self:MakeConsumableIcon(row, "flask")
@@ -353,6 +360,9 @@ function RF:MakeConsumableIcon(row, atype)
     local btn = CreateFrame("Button", nil, row)
     btn.consType = atype
     btn:EnableMouse(true)
+    -- Livello esplicito sopra le texture della barra: cosi' il bottone
+    -- vince sempre l'hit-test nella sua area cliccabile.
+    btn:SetFrameLevel((row.GetFrameLevel and row:GetFrameLevel() or 1) + 2)
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints(btn)
@@ -965,11 +975,13 @@ end
 function RF:UpdateDragState()
     local enabled = self:IsDragEnabled()
     for _, slot in ipairs(self.slots or {}) do
+        -- Il mouse resta SEMPRE attivo: solo il SET dei bottoni di drag
+        -- cambia con la fase (OnDragStart fa gia' il check di IsDragEnabled).
+        -- EnableMouse(false) qui fuori pre-boss rendeva clinicamente mute le
+        -- icone consumabili (hit-region dei figli bloccata dal genitore).
         if enabled then
-            slot:EnableMouse(true)
             slot:RegisterForDrag("LeftButton")
         else
-            slot:EnableMouse(false)
             slot:RegisterForDrag()
         end
     end

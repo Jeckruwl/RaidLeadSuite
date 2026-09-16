@@ -7,7 +7,37 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.5**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.6**.
+
+## Novità della sessione 1.4.6 (questo branch, dopo 1.4.5)
+
+Fix vero per "**ste dannate icone non cliccabili**" (confermato dal test in
+game dopo 1.4.5, test: assert in Scenario F, **340 check totali**):
+
+**Causa radice**: `RF:UpdateDragState` chiamava `slot:EnableMouse(false)`
+fuori pre-boss. In 3.3.5 un genitore con mouse disabilitato blocca la
+hit-region ANCHE dei figli → i bottoni flask/Well Fed (figli della riga)
+non ricevevano NIENTE in qualunque fase diversa da pre-boss, cioè sempre
+quando servono davvero. I test con il mock non lo vedevano mai.
+
+Fix su 4 livelli:
+1. `UpdateDragState` NON tocca più `EnableMouse`: solo
+   `RegisterForDrag("LeftButton")` in pre-boss / `RegisterForDrag()` fuori
+   (`OnDragStart` controlla già `IsDragEnabled()`); la riga nasce con
+   `row:EnableMouse(true)` in `CreateSlotFrame`.
+2. I bottoni consumabili hanno frame level esplicito sopra la riga
+   (`+2`) così vincono sempre l'hit-test nella loro area.
+3. Strata dell'HUD `LOW` → `MEDIUM` (in LOW le righe potevano finire sotto
+   il chrome UI nell'hit-test; l'HUD resta trasparente, nessun impatto
+   visivo).
+4. Le semantiche click e debug restano: sinistro=whisper al player,
+   destro=RAID_WARNING su qualsiasi icona; in debug entrambe arrivano come
+   whisper a se stessi (RW con tag `[RAID_WARNING]`).
+
+Mock: `EnableMouse → _enabledMouse`, `RegisterForDrag → _dragButtons`,
+`SetFrameStrata → _strata`, `SetFrameLevel → _level`.
+Nota test: in lupa (Lua 5.4) `table.getn` NON esiste → usare `#` o
+`_dragButtons[1] == nil`.
 
 ## Novità della sessione 1.4.5 (questo branch, dopo 1.4.4)
 
@@ -243,7 +273,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 335 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 340 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
