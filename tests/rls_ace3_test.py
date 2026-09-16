@@ -224,6 +224,7 @@ LAST_ERROR = nil
 function geterrorhandler() return function(err) LAST_ERROR = err; return err end end
 function IsLoggedIn() return LOGGED_IN end
 function GetTime() return os.clock() end
+function IsMouseButtonDown(btn) return false end  -- mock: sempre rilasciato
 function time() return os.time() end
 function date(fmt, t) return "2026-09-11" end
 function GetGameTime() return 20, 30 end
@@ -1144,8 +1145,12 @@ local row = RLSuite.raidFrame.rows[1]
 ALERT_NAME = row.member.name
 MISSING_NAME = RLSuite.raidFrame.rows[2].member.name
 row._lastAlert = nil
-row.flaskIcon._scripts.OnMouseDown(row.flaskIcon, 'LeftButton')
-row.flaskIcon._scripts.OnMouseUp(row.flaskIcon, 'LeftButton')
+-- sinistro: OnMouseUp in client e' divorato dal drag degli antenati; il
+-- rilascio lo rileva il poll OnUpdate (IsMouseButtonDown mock = false)
+local b = row.flaskIcon
+b._scripts.OnMouseDown(b, 'LeftButton')
+b._pressed = nil  -- simula epoca in cui l'up non arrivera' comunque
+b._scripts.OnUpdate(b, 0.016)
 FOUND_W = 0
 for _, e in ipairs(CHAT_LOG) do
     if string.sub(e, 1, 8) == 'WHISPER|' and string.find(e, ALERT_NAME) then FOUND_W = FOUND_W + 1 end
@@ -1209,7 +1214,7 @@ GetCursorPosition = function() return 60, 118 end
 row._scripts.OnMouseUp(row, 'LeftButton')
 """)
 check(bool(rt.eval("CHAT_LOG[3] == nil")), "moved cursor between down/up (drag) sends nothing")
-# dedupe: same click through icon + row -> one whisper only; new click later -> fires again
+# dedupe: same click through icon(poll) + row(fallback) -> one whisper only; later click fires again
 rt.execute("""
 local row = RLSuite.raidFrame.rows[1]
 local b = row.flaskIcon
@@ -1223,7 +1228,7 @@ local function wcount()
     for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then n = n + 1 end end
     return n
 end
-b._scripts.OnMouseDown(b, 'LeftButton'); b._scripts.OnMouseUp(b, 'LeftButton')
+b._scripts.OnMouseDown(b, 'LeftButton'); b._pressed = nil; b._scripts.OnUpdate(b, 0.016)
 T_DEDUP = 1000.1
 row._scripts.OnMouseDown(row, 'LeftButton'); row._scripts.OnMouseUp(row, 'LeftButton')
 DEDUP1 = wcount()
@@ -1235,9 +1240,36 @@ GetCursorPosition = SAVED_GCP
 local b2 = RLSuite.raidFrame.rows[1].flaskIcon
 b2.GetLeft, b2.GetRight, b2.GetBottom, b2.GetTop = nil, nil, nil, nil
 RLSuite.raidFrame.rows[1].foodIcon.GetLeft = nil
+b2._pendingLeft = nil
+b2:SetScript('OnUpdate', nil)
 """)
 check(rt.eval("DEDUP1") == 1, "icon + row double channel of the SAME click dedupes to one message")
 check(rt.eval("DEDUP2") == 2, "a later identical click (> 0.3s) fires again")
+
+# --- F.2c left-click vs drag on the icon: moved cursor cancels, no double-fire ---
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+local b = row.flaskIcon
+CHAT_LOG = {}
+row._lastAlert = nil
+SAVED_GCP2 = GetCursorPosition
+SAVED_IMBD = IsMouseButtonDown
+GetCursorPosition = function() return 100, 100 end
+IsMouseButtonDown = function() return true end  -- tenuto giu'
+b._scripts.OnMouseDown(b, 'LeftButton')
+GetCursorPosition = function() return 160, 130 end  -- mosso mentre tenuto giu' => drag
+b._scripts.OnUpdate(b, 0.016)
+DRAG1 = 0  -- conta solo i MESSAGGI (il print diagnostico down polucia il log)
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then DRAG1 = DRAG1 + 1 end end
+IsMouseButtonDown = function() return false end -- ora rilascia: nessun click (era drag)
+if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end  -- disarmato dal dopo-drag: non deve esserci
+DRAG2 = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then DRAG2 = DRAG2 + 1 end end
+GetCursorPosition = SAVED_GCP2
+IsMouseButtonDown = SAVED_IMBD
+""")
+check(rt.eval("DRAG1") == 0, "holding left and moving the cursor on the icon is a drag, no message")
+check(bool(rt.eval("DRAG2 == 0 and RLSuite.raidFrame.rows[1].flaskIcon._pendingLeft == nil")), "canceled drag: release sends nothing, poller disarmed")
 
 # --- F.3 Raid Frame layout options: font / outline / bar texture / opacity ---
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.font ~= nil")), "Layout -> Font type present")

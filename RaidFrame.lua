@@ -400,21 +400,71 @@ function RF:MakeConsumableIcon(row, atype)
     icon:SetTexture(self:GetAlertIcon(atype))
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
-    -- Click "primitivo" OnMouseDown/OnMouseUp: niente OnClick +
-    -- RegisterForClicks (qui inaffidabili su 3.3.5); alla pressione
-    -- fotografo il tasto, al rilascio sullo STESSO bottone si conferma.
-    -- (Vale solo per click semplici, il drag non la usa - vedi handoff.)
+    -- SINISTRO: il mouse-DOWN arriva sempre (provato in client dal print
+    -- diagnostico), ma il mouse-UP sinistro viene DIVORATO dal drag
+    -- manager - un antenato (finestra HUD / riga in preboss) ha
+    -- RegisterForDrag("LeftButton") e in 3.3.5 si prende il release di
+    -- ogni click nel suo albero. Quindi il rilascio-sinistro lo rilevo a
+    -- POLLING da OnUpdate con IsMouseButtonDown + GetCursorPosition, lo
+    -- stesso canale dell'hit-test dei drop-target che in client funziona.
+    -- Se il cursore si muove > 6px mentre il tasto e' tenuto giu' era un
+    -- DRAG, e il click si cancella. DESTRO: nessun drag sul tasto destro,
+    -- OnMouseUp arriva sempre, resta la coppia down/up (piu' reattiva).
+    -- NB: il poller si AUTODISARMA (SetScript nil) dopo uso - ogni
+    -- mouse-down sinistro lo RIARMA esplicitamente.
+    local function Poller(s, elapsed)
+        if not s._pendingLeft then
+            s:SetScript("OnUpdate", nil)
+            return
+        end
+        -- Tenuto giu' troppo a lungo immobile: non lo tratto come click.
+        if GetTime and (GetTime() - (s._t0 or 0)) > 4 then
+            s._pendingLeft = nil
+            s:SetScript("OnUpdate", nil)
+            return
+        end
+        -- Cursore mosso oltre soglia => e' un drag: cancello il click.
+        if s._px and GetCursorPosition then
+            local x, y = GetCursorPosition()
+            if x then
+                local dx, dy = x - s._px, (y or 0) - (s._py or 0)
+                if dx > 6 or dx < -6 or dy > 6 or dy < -6 then
+                    s._pendingLeft = nil
+                    s:SetScript("OnUpdate", nil)
+                    return
+                end
+            end
+        end
+        -- Rilascio rilevato dal poll: e' un CLICK sinistro.
+        if not (IsMouseButtonDown and IsMouseButtonDown("LeftButton")) then
+            s._pendingLeft = nil
+            s:SetScript("OnUpdate", nil)
+            if self:OnAlertClick(row, atype, "LeftButton") then
+                return
+            end
+        end
+    end
     btn:SetScript("OnMouseDown", function(s, button)
         s._pressed = button
         -- Diagnostica in-game (solo debug): prova che l'input arriva.
         if RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.debug then
             RLSuite.utils:Print("RF icon down: " .. tostring(button) .. " " .. tostring(atype))
         end
+        if button == "LeftButton" then
+            if GetCursorPosition then
+                s._px, s._py = GetCursorPosition()
+            else
+                s._px, s._py = nil, nil
+            end
+            s._t0 = (GetTime and GetTime()) or 0
+            s._pendingLeft = true
+            s:SetScript("OnUpdate", Poller) -- riarma: il poller si disarma da solo
+        end
     end)
     btn:SetScript("OnMouseUp", function(s, button)
         local pressed = s._pressed
         s._pressed = nil
-        if pressed == button and (button == "LeftButton" or button == "RightButton") then
+        if pressed == button and button == "RightButton" then
             self:OnAlertClick(row, atype, button)
         end
     end)

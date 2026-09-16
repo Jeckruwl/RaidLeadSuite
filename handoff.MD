@@ -7,7 +7,29 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.8**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.9**.
+
+## Novità della sessione 1.4.9 (questo branch, dopo 1.4.8)
+
+- **CAUSA DEFINITIVA trovata col dato in-game dell'utente**: il DESTRO funzionava
+  (nessun antenato ha drag sul tasto destro), il SINISTRO mostrava solo il print
+  diagnostico del mouse-DOWN → **in 3.3.5 un antenato con
+  `RegisterForDrag("LeftButton")` divora il mouse-UP sinistro di OGNI click
+  nel suo albero** (finestra HUD draggabile + righe draggabili in preboss).
+  OnMouseUp per LeftButton NEL Raid Frame e' quindi INAFFIDABILE per definizione.
+- **Fix**: il rilascio-sinistro si rileva a POLLING col canale gia' provato in
+  client (bordo oro drop-target): al down si arma un `OnUpdate` che controlla
+  `IsMouseButtonDown("LeftButton")`; rilascio + cursore non mosso (> 6px = drag →
+  cancello) = CLICK → whisper. Timeout 4s = tenuto giu', non click. **REGOLA §3
+  NUOVA**: dentro l'albero di un frame con drag left NON usare mai OnMouseUp per
+  click sinistri: usare polling IsMouseButtonDown + GetCursorPosition.
+- Il DESTRO resta sulla coppia down/up (nessun drag sul tasto destro, e'
+  piu' reattiva del poll), con hit-test riga e dedup TTL di 1.4.8 invariati.
+- Lezione test: il poller si autodisarma (`SetScript(nil)` dopo l'uso); ogni
+  down-sinistro lo riarma - il primo click funzionava e i successivi no, i
+  test lo hanno beccato subito. Nuovi test F.2c: drag-ermo su icona non invia,
+  release dopo drag-cancel non invia; smoke drag reale.
+- Test: **346 check PASS**.
 
 ## Novità della sessione 1.4.8 (questo branch, dopo 1.4.7)
 
@@ -316,7 +338,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 344 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 346 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
