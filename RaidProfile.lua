@@ -319,21 +319,40 @@ function MW:ApplyLayout()
     self.frame:SetSize(w, h)
     self.frame:SetScale(L.scale or 1)
 
-    -- matrice (sotto la riga icone, allineata a sinistra)
+    -- Bottoni matrice: colonne x righe configurabili dalla Config.
+    -- La coppia MT/OT sta SOTTO il tasto "Raid Frame" (cella
+    -- i_raidframe + colonne) se quella cella e' dentro la matrice: i
+    -- tasti seguenti scalano di una cella per lasciare il posto libero.
+    -- Altrimenti (colonne troppe larghe) la coppia finisce nella cella
+    -- subito dopo l'ultimo tasto, come prima.
     local x0 = PAD
     local topY = -PAD - iconRowH - rowGap
+    local totalCells = nButtons + extraCells
+    local rfIdx = nil
     for i, btn in ipairs(self.matrixButtons or {}) do
-        local col = (i - 1) % cols
-        local row = math.floor((i - 1) / cols)
+        if btn.tabKey == "raidframe" then rfIdx = i break end
+    end
+    local pinnedIdx = nil
+    if rfIdx and extraCells > 0 then
+        local p = rfIdx + cols
+        if p <= totalCells then pinnedIdx = p end
+    end
+    local pairCell = pinnedIdx or totalCells
+    local cell = 0
+    for i, btn in ipairs(self.matrixButtons or {}) do
+        cell = cell + 1
+        if pinnedIdx and cell == pinnedIdx then cell = cell + 1 end
+        local col = (cell - 1) % cols
+        local row = math.floor((cell - 1) / cols)
         btn:ClearAllPoints()
         btn:SetSize(bw, bh)
         btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", x0 + col * (bw + gapX), topY - row * (bh + gapY))
     end
 
-    -- Coppia MT / OT: la cella subito dopo l'ultimo tasto, divisa in due
-    -- mezzi tasti affiancati (insieme occupano lo spazio di un tasto solo).
+    -- Coppia MT / OT nella cella scelta sopra: due mezzi tasti affiancati
+    -- (insieme occupano lo spazio di un tasto solo).
     if self.mtBtn and self.otBtn then
-        local idx = nButtons + 1
+        local idx = pairCell
         local col = (idx - 1) % cols
         local row = math.floor((idx - 1) / cols)
         local halfGap = 4

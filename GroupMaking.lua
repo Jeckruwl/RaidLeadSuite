@@ -19,9 +19,11 @@ local WL_BAR_GAP = 2
 local WL_COL_GAP = 4
 local WL_GROUP_LABEL_H = 14
 
--- Spessore dei bordi (icone comp, icone spec e caselle Raid Group):
--- prima 8, reso un po' piu' corposo su richiesta.
-local RLS_BORDER = 12
+-- Spessore dei bordi: icone "comp" e "select a spec" (RLS_BORDER) e,
+-- ancora piu' spesse, le caselle del pannello Raid Group (WL_BORDER).
+-- (Storia: 8 -> 12 -> 16 comp/spec, 12 -> 18 caselle Raid Group.)
+local RLS_BORDER = 16
+local WL_BORDER = 18
 
 -- Bordo dorato dello slot-drop durante il drag nel pannello Raid Group
 -- (bordino che evidenzia il riquadro in cui il player sta per essere rilasciato).
@@ -3110,7 +3112,7 @@ function GM:BuildWLGroupColumns()
             bar:SetBackdrop({
                 bgFile = "Interface\\Buttons\\UI-Quickslot",
                 edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-                tile = false, tileSize = 32, edgeSize = RLS_BORDER,
+                tile = false, tileSize = 32, edgeSize = WL_BORDER,
                 insets = {left=2, right=2, top=2, bottom=2},
             })
             bar:SetBackdropColor(0.15, 0.15, 0.17, 0.95)

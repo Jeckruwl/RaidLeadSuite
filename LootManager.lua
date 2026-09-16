@@ -513,6 +513,21 @@ function LM:UpdateHistory()
             assigned:SetText(entry.assignedTo or "-")
             table.insert(self.remainTexts, { fs = remain, entry = entry })
 
+            -- Pezzo gia' rollato e vinto: riga ingrigita nel listato (il
+            -- vincitore resta in oro, l'icona desaturata). Visibile ma
+            -- chiaramente "chiuso": il prossimo pezzo da rollare salta
+            -- all'occhio.
+            if entry.assignedTo then
+                local GR = 0.45
+                num:SetTextColor(GR, GR, GR, 1)
+                name:SetTextColor(GR, GR, GR, 1)
+                boss:SetTextColor(GR, GR, GR, 1)
+                itype:SetTextColor(GR, GR, GR, 1)
+                remain:SetTextColor(GR, GR, GR, 1)
+                assigned:SetTextColor(1, 0.82, 0, 1) -- chi ha vinto, in oro
+                if icon.SetDesaturated then icon:SetDesaturated(true) end
+            end
+
             -- riferimenti ai figli per il secondo passaggio (posizionamento)
             row.num = num
             row.icon = icon
@@ -579,6 +594,18 @@ function LM:SelectItem(entry)
     end
 end
 
+-- Svuota la riga "selected item": chiamata dopo ogni vincita, cosi' le
+-- finestre pickup aperte non bloccano la preparazione del roll seguente.
+function LM:ClearSelection()
+    self.selectedItem = nil
+    if self.selectedItemIcon then
+        self.selectedItemIcon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    end
+    if self.selectedItemText then
+        self.selectedItemText:SetText(L["No item selected"])
+    end
+end
+
 -- Highlights the selected row without rebuilding the list (see notes on
 -- RefreshWhisperHighlight: rebuilding inside the click breaks future clicks).
 function LM:RefreshHistoryHighlight()
@@ -608,7 +635,9 @@ function LM:StartRoll(rollType)
     if self.preMessage and self.preMessage ~= "" then
         msg = self.preMessage .. " " .. msg
     end
-    RLSuite.utils:SendChat(msg, "RAID")
+    -- I messaggi dei tasti di roll vanno in RAID WARNING
+    -- (Utils:SendChat torna a RAID se non leader/assistant).
+    RLSuite.utils:SendChat(msg, "RAID_WARNING")
     -- barra-timer in DBM/BigWigs se installati (durata del roll)
     RLSuite.utils:StartDbmTimer(self.db.rollDuration or 10, "Roll " .. (self.selectedItem.itemName or "Unknown"),
         self.selectedItem.itemTexture)
@@ -732,6 +761,9 @@ function LM:AnnounceWinner()
         RLSuite.utils:SendChat((winner.name or "?") .. " wins " .. (self.currentRoll.item.itemName or "Unknown") .. " with " .. (winner.roll or 0) .. "! Please trade.", "RAID")
         self.currentRoll.item.assignedTo = winner.name
         self:ShowTradeWindow(self.currentRoll.item)
+        -- La riga "selected item" torna vuota: con la finestra pickup aperta
+        -- si puo' subito selezionare e rollare un altro pezzo.
+        self:ClearSelection()
         self:UpdateHistory()
     end
 
@@ -746,7 +778,7 @@ function LM:DoReroll()
     local names = {}
     for _, w in ipairs(winners) do table.insert(names, w.name or "?") end
 
-    RLSuite.utils:SendChat("Reroll! Only " .. table.concat(names, ", ") .. " can roll for " .. (self.currentRoll.item.itemName or "Unknown"), "RAID")
+    RLSuite.utils:SendChat("Reroll! Only " .. table.concat(names, ", ") .. " can roll for " .. (self.currentRoll.item.itemName or "Unknown"), "RAID_WARNING")
     -- barra-timer in DBM/BigWigs se installati (durata del reroll)
     RLSuite.utils:StartDbmTimer(self.db.rerollDuration or 5, "Reroll " .. (self.currentRoll.item.itemName or "Unknown"),
         self.currentRoll.item.itemTexture)
@@ -796,6 +828,7 @@ function LM:ProcessReroll()
     RLSuite.utils:SendChat((winner.name or "?") .. " wins the reroll for " .. (self.currentRoll.item.itemName or "Unknown") .. " with " .. (winner.roll or 0) .. "! Please trade.", "RAID")
     self.currentRoll.item.assignedTo = winner.name
     self:ShowTradeWindow(self.currentRoll.item)
+    self:ClearSelection()
     self:UpdateHistory()
 end
 
@@ -839,14 +872,23 @@ function LM:ShowTradeWindow(item)
     icon:SetTexture(item.itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
     f.icon = icon
 
-    -- "Click to pick up item" a DESTRA dell'icona
+    -- "Click to pick up item" a DESTRA dell'icona; sotto, la riga
+    -- "give to: <nome del vincitore>" che indica a chi va consegnato.
     local text = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    text:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+    text:SetPoint("LEFT", icon, "RIGHT", 8, 7)
     text:SetPoint("RIGHT", f, "RIGHT", -34, 0) -- lascia spazio alla X
     text:SetJustifyH("LEFT")
     text:SetWordWrap(true)
     text:SetText("Click to pick up item")
     f.text = text
+
+    local giveTo = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    giveTo:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -2)
+    giveTo:SetPoint("RIGHT", text, "RIGHT", 0, 0)
+    giveTo:SetJustifyH("LEFT")
+    giveTo:SetText("give to: " .. (item.assignedTo or "?"))
+    giveTo:SetTextColor(1, 0.82, 0) -- oro, in evidenza
+    f.giveTo = giveTo
 
     local btn = CreateFrame("Button", nil, f)
     btn:SetAllPoints(icon)

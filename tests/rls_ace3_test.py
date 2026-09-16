@@ -75,7 +75,7 @@ function methods:SetFont(...) return self end
 function methods:SetJustifyH(...) return self end
 function methods:SetJustifyV(...) return self end
 function methods:SetWordWrap(b) self._wordWrap = b and true or false; return self end
-function methods:SetTextColor(...) return self end
+function methods:SetTextColor(...) self._tc = {...}; return self end
 function methods:SetShadowColor(...) return self end
 function methods:SetShadowOffset(...) return self end
 function methods:SetMaxLines(...) return self end
@@ -241,7 +241,7 @@ function GetRaidRosterInfo(i) return nil end
 function IsRaidLeader() return false end
 function IsRaidOfficer() return false end
 function InviteUnit(name) end
-function SendChatMessage(msg, typ, lang, dest) end
+function SendChatMessage(msg, typ, lang, dest) CHAT_LOG = CHAT_LOG or {}; CHAT_LOG[#CHAT_LOG+1] = tostring(typ) .. '|' .. tostring(msg) end
 function GetItemInfo(link) return "Item", link, 4, 1, 1, 1, 1, 1, 1, "Interface\\Icons\\INV_Misc_QuestionMark" end
 function GetItemQualityColor(q) return 1, 0.5, 0 end
 function GetSpellInfo(id) return "Spell" end
@@ -405,7 +405,7 @@ function methods:GetTextWidth() return self:GetStringWidth() end
 function methods:GetRightBorderWidth() return 0 end
 function methods:GetVerticalScroll() return 0 end
 function methods:SetCountInvisibleLetters(b) return self end
-function methods:SetDesaturated(b) return self end
+function methods:SetDesaturated(b) self._desat = b and true or false; return self end
 function methods:SetGradient(...) return self end
 function methods:SetGradientAlpha(...) return self end
 function methods:SetSnapToPixelGrid(...) return self end
@@ -1142,6 +1142,15 @@ check(bool(rt.eval("RLSuite.mainWindow.mtBtn:GetWidth() == 43 and RLSuite.mainWi
 check(bool(rt.eval("RLSuite.mainWindow.mtBtn:GetHeight() == 22 and RLSuite.mainWindow.otBtn:GetHeight() == 22")), "MT / OT keep the matrix button height (22px)")
 check(bool(rt.eval("select(1, RLSuite.mainWindow.mtBtn:GetPoint(1)) == 'TOPLEFT' and select(1, RLSuite.mainWindow.otBtn:GetPoint(1)) == 'TOPLEFT'")), "MT / OT positioned inside the matrix")
 rt.execute("""
+local mw = RLSuite.mainWindow
+MTXOF, MTYOF = select(4, mw.mtBtn:GetPoint(1)), select(5, mw.mtBtn:GetPoint(1))
+RFXOF, RFYOF = select(4, mw.tabs['raidframe']:GetPoint(1)), select(5, mw.tabs['raidframe']:GetPoint(1))
+LOOTXOF, LOOTYOF = select(4, mw.tabs['loot']:GetPoint(1)), select(5, mw.tabs['loot']:GetPoint(1))
+""")
+check(bool(rt.eval("MTXOF == RFXOF")), "MT / OT pair shares the Raid Frame column (cell under it)")
+check(bool(rt.eval("MTYOF == RFYOF - (22 + 4)")), "MT / OT sits directly UNDER the Raid Frame button")
+check(bool(rt.eval("LOOTXOF == RFXOF + 90 + 8 and LOOTYOF == MTYOF")), "Loot shifts one cell aside to free the spot under Raid Frame")
+rt.execute("""
 _OLD_UnitExists = UnitExists
 _OLD_UnitName = UnitName
 _OLD_IsRaidLeader = IsRaidLeader
@@ -1175,9 +1184,9 @@ SetPartyAssignment = nil
 # --- G.3 Groupmaking: reqBox hugs the button row + thicker icon borders ---
 rt.execute("local p, rel, rp, x, y = RLSuite.groupmaking.reqBox:GetPoint(3); REQBOX_OK = (p == 'BOTTOMLEFT' and rel == RLSuite.groupmaking.spamBtn and rp == 'TOPLEFT' and y == 8)")
 check(bool(rt.eval("REQBOX_OK == true")), "requirements box bottom-anchored 8px above the buttons (no dead space)")
-check(bool(rt.eval("RLSuite.groupmaking.compSlots[1]._backdrop.edgeSize == 12")), "comp slot icons use thicker borders (edgeSize 12)")
-check(bool(rt.eval("RLSuite.groupmaking.specCells[1].buttons[1]._backdrop.edgeSize == 12")), "class bar spec icons use thicker borders (edgeSize 12)")
-check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[1]._backdrop.edgeSize == 12")), "Raid Group slots use thicker borders (edgeSize 12)")
+check(bool(rt.eval("RLSuite.groupmaking.compSlots[1]._backdrop.edgeSize == 16")), "comp slot icons use even thicker borders (edgeSize 16)")
+check(bool(rt.eval("RLSuite.groupmaking.specCells[1].buttons[1]._backdrop.edgeSize == 16")), "class bar spec icons use even thicker borders (edgeSize 16)")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[1]._backdrop.edgeSize == 18")), "Raid Group slots use the thickest borders (edgeSize 18)")
 
 # --- G.7 Debug OFF empties the Loot Manager (history + pickup windows) ---
 rt.execute("RLSuite.lootManager:AddToHistory('|cffff8000|Hitem:1|h[Test]|h|r', 'Test Item', 'tex', 4)")
@@ -1317,6 +1326,55 @@ check(bool(rt.eval("RLSuite.groupmaking:MinWidth() == 380 + math.ceil(RLSuite.gr
 check(bool(rt.eval("select(1, RLSuite.windowMins.groupmaking()) == RLSuite.groupmaking:MinWidth()")),
     "registered windowMins.groupmaking uses the button-row width as minimum width")
 check(bool(rt.eval("RLSuite.groupmaking:MinWidth() >= 500")), "minimum width fits the whole button row (>= 500)")
+
+# --- G.10 Loot Manager: roll keys -> RAID WARNING, give-to line, keep rolling with pickup open ---
+rt.execute("""
+RLSuite.db.profile.debug = true
+CHAT_LOG = {}
+local lm = RLSuite.lootManager
+lm:AddToHistory('|cffff8000|Hitem:42|h[Rolled Item]|h|r', 'Rolled Item', 'tex', 4)
+lm:SelectItem(lm.history[#lm.history])
+lm:StartRoll('MS')
+""")
+rt.execute("""
+FOUND_RW = false
+for _, e in ipairs(CHAT_LOG or {}) do
+    if string.find(e, '%[RAID_WARNING%]') and string.find(e, 'Roll MS for Rolled Item') then FOUND_RW = true end
+end
+""")
+check(bool(rt.eval("FOUND_RW")), "clicking a roll key sends the announce as RAID WARNING (debug echo: [RAID_WARNING])")
+rt.execute("""
+local lm = RLSuite.lootManager
+lm.currentRoll.rolls = { {name = 'Winnerbot', roll = 99} }  -- deterministic winner (no ties)
+lm:AnnounceWinner()
+local tw = lm.tradeWindows[#lm.tradeWindows]
+W10_WINNER = lm.currentRoll and lm.currentRoll.item.assignedTo
+W10_SELTEXT = lm.selectedItemText and lm.selectedItemText:GetText() or '?'
+W10_NOSEL = (lm.selectedItem == nil)
+W10_GIVETO = (tw and tw.giveTo) and tw.giveTo:GetText() or '?'
+W10_GBELOW = false
+if tw and tw.giveTo and tw.text then
+    local p, rel = tw.giveTo:GetPoint(1)
+    W10_GBELOW = (p == 'TOPLEFT' and rel == tw.text)
+end
+W10_GRAY = false
+W10_DESAT = false
+for _, row in ipairs(lm.histRows or {}) do
+    if row.entry and row.entry.assignedTo == 'Winnerbot' then
+        W10_GRAY = row.name and row.name._tc and row.name._tc[1] ~= nil
+            and math.abs(row.name._tc[1] - 0.45) < 0.001
+        W10_DESAT = row.icon and row.icon._desat == true or false
+    end
+end
+""")
+check(rt.eval("W10_WINNER") == "Winnerbot", "winner recorded on the rolled item")
+check(bool(rt.eval("W10_NOSEL")), "selected item cleared after the win (roll another piece with pickup open)")
+check(rt.eval("W10_SELTEXT") == rt.eval("RLSuite.L['No item selected']"), "selected item row shows 'No item selected' again")
+check(rt.eval("W10_GIVETO") == "give to: Winnerbot", "pickup window shows 'give to: <winner>' under the pickup line")
+check(bool(rt.eval("W10_GBELOW")), "give-to line is anchored below the 'Click to pick up item' text")
+check(bool(rt.eval("W10_GRAY")), "rolled item row is greyed out in the loot list")
+check(bool(rt.eval("W10_DESAT")), "rolled item icon is desaturated in the loot list")
+rt.execute("RLSuite.lootManager:CloseAllTradeWindows()")
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario G (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 

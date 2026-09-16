@@ -7,7 +7,32 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.2**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.3**.
+
+## Novità della sessione 1.4.3 (questo branch, dopo 1.4.2)
+
+Richieste utente su 3 aree (test: blocco G.10 + aggiornamento G.2/G.3 in
+Scenario G, **311 check totali**):
+
+1. **Bordi**: comp slots + icone "select a spec" `RLS_BORDER` 12→16; caselle
+   del pannello **Raid Group** (InviteEngine) con costante separata
+   `WL_BORDER = 18` (ancora più spesso, come chiesto).
+2. **Loot Manager**:
+   - i tasti Roll MS/OS/FFA e **Reroll** annunciano in `RAID_WARNING`
+     (`Utils:SendChat` già declassa a RAID se non leader/assistant; in debug
+     resta il whisper a se stessi con tag `[RAID_WARNING]`).
+   - finestra pickup: sotto "Click to pick up item" c'è ora la riga dorata
+     **"give to: <vincitore>"** (`f.giveTo`, testo spostato a +7y).
+   - dopo una vincita (`AnnounceWinner` e `ProcessReroll`): nuovo
+     `LM:ClearSelection()` svuota la riga selected item → si rollano altri
+     pezzi anche con finestre pickup aperte; in `UpdateHistory` le righe con
+     `entry.assignedTo` sono **ingrigite** (testi 0.45, icona desaturata) con
+     il nome del vincitore in oro.
+3. **Main bar**: la coppia **MT/OT sta SOTTO il tasto "Raid Frame"** (cella
+   `i_raidframe + cols` in `MW:ApplyLayout`, con skip dei tasti seguenti; se la
+   cella sarebbe fuori matrice la coppia resta dopo l'ultimo tasto).
+4. Estensioni al mock dei test: `SendChatMessage` → log globale `CHAT_LOG`,
+   `SetTextColor` → `o._tc`, `SetDesaturated` → `o._desat`.
 
 ## Novità della sessione 1.4.2 (questo branch, dopo 1.4.1)
 
@@ -171,7 +196,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 300 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 311 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
@@ -182,7 +207,10 @@ move su vuoto, swap su occupato, hiding fuori pre-boss) ·
 debug-off svuota loot, join raid formato, bordino dorato drag, stack finestre
 pickup + layout slim) · **G.8** correzioni 1.4.2 (ordine classi 2 colonne con
 posizioni Mage/Warlock/Druid e Shaman/DK/Hunter, MinHeight = topRow + 328) ·
-**G.9** larghezza minima Groupmaking = fila bottoni bassa (MinWidth, windowMins).
+**G.9** larghezza minima Groupmaking = fila bottoni bassa (MinWidth, windowMins) ·
+**G.10** novità 1.4.3 (roll→RAID_WARNING, "give to" nella pickup, selezione
+svuotata dopo la vincita, riga rollata ingrigita + desaturata) + G.2/G.3
+aggiornati (MT/OT sotto Raid Frame, bordi 16/16/18).
 
 ## 5. Punti aperti per la prossima sessione
 
