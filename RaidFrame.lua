@@ -357,20 +357,35 @@ function RF:CreateSlotFrame(slotIndex, group)
 end
 
 function RF:MakeConsumableIcon(row, atype)
-    local btn = CreateFrame("Button", nil, row)
+    -- Figlie di CONTENT (sorelle delle righe), NON delle righe-Button:
+    -- dentro un Button con drag attivo il mouse-down viene intercettato
+    -- dal drag del genitore e il click del figlio non si chiude mai (in
+    -- gioco gli alert non partivano proprio per questo). L'ancora resta
+    -- alla riga in LayoutSlotGeometry, quindi posizione e show/hide non
+    -- cambiano.
+    local btn = CreateFrame("Button", nil, self.content)
     btn.consType = atype
     btn:EnableMouse(true)
-    -- Livello esplicito sopra le texture della barra: cosi' il bottone
-    -- vince sempre l'hit-test nella sua area cliccabile.
-    btn:SetFrameLevel((row.GetFrameLevel and row:GetFrameLevel() or 1) + 2)
-    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn:SetFrameLevel((self.content.GetFrameLevel and self.content:GetFrameLevel() or 1) + 30)
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints(btn)
     icon:SetTexture(self:GetAlertIcon(atype))
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
-    -- Sinistro = whisper al singolo player, destro = annuncio in raid warning.
-    btn:SetScript("OnClick", function(_, button) self:OnAlertClick(row, atype, button) end)
+    -- Click "primitivo" OnMouseDown/OnMouseUp: niente OnClick +
+    -- RegisterForClicks (qui inaffidabili su 3.3.5); alla pressione
+    -- fotografo il tasto, al rilascio sullo STESSO bottone si conferma.
+    -- (Vale solo per click semplici, il drag non la usa - vedi handoff.)
+    btn:SetScript("OnMouseDown", function(s, button)
+        s._pressed = button
+    end)
+    btn:SetScript("OnMouseUp", function(s, button)
+        local pressed = s._pressed
+        s._pressed = nil
+        if pressed == button and (button == "LeftButton" or button == "RightButton") then
+            self:OnAlertClick(row, atype, button)
+        end
+    end)
     btn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
         if atype == "flask" then

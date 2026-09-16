@@ -1102,7 +1102,8 @@ check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == true")), "drag & drop e
 check(bool(rt.eval("RLSuite.raidFrame.frame._strata == 'MEDIUM'")), "RF HUD sits on MEDIUM strata (clicks not eaten by UI chrome)")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]._enabledMouse == true")), "slots are ALWAYS mouse-enabled (children stay clickable)")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]._dragButtons ~= nil and RLSuite.raidFrame.slots[7]._dragButtons[1] == 'LeftButton'")), "pre-boss: LeftButton drag registered on slots")
-check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon._level ~= nil and RLSuite.raidFrame.rows[1].flaskIcon._level > (RLSuite.raidFrame.rows[1]._level or 1)")), "consumable icons sit above the row (explicit frame level)")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon:GetParent() == RLSuite.raidFrame.content")), "consumable icons are siblings of the rows (no drag-swallowing ancestor)")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon._level ~= nil and RLSuite.raidFrame.rows[1].flaskIcon._level > (RLSuite.raidFrame.rows[1]._level or 1)")), "consumable icons sit above the rows (explicit frame level)")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == false")), "empty slots hidden by default (even in pre-boss)")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "empty group headers hidden by default")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[1]:IsShown() == true")), "non-empty group headers shown")
@@ -1139,11 +1140,12 @@ rt.execute("""
 CHAT_LOG = {}
 local row = RLSuite.raidFrame.rows[1]
 ALERT_NAME = row.member.name
-row.flaskIcon._scripts.OnClick(row.flaskIcon, 'LeftButton')
+row.flaskIcon._scripts.OnMouseDown(row.flaskIcon, 'LeftButton')
+row.flaskIcon._scripts.OnMouseUp(row.flaskIcon, 'LeftButton')
 """)
 check(bool(rt.eval("CHAT_LOG[1] and string.sub(CHAT_LOG[1], 1, 8) == 'WHISPER|'")), "left click on a consumable icon whispers the single player")
 check(bool(rt.eval("CHAT_LOG[1] and string.find(CHAT_LOG[1], ALERT_NAME) ~= nil")), "whisper carries the clicked player name")
-rt.execute("local row = RLSuite.raidFrame.rows[1]; row.foodIcon._scripts.OnClick(row.foodIcon, 'RightButton')")
+rt.execute("local row = RLSuite.raidFrame.rows[1]; row.foodIcon._scripts.OnMouseDown(row.foodIcon, 'RightButton'); row.foodIcon._scripts.OnMouseUp(row.foodIcon, 'RightButton')")
 check(bool(rt.eval("CHAT_LOG[2] and string.find(CHAT_LOG[2], '%[RAID_WARNING%]') ~= nil")), "right click on a consumable icon alerts in RAID WARNING")
 check(bool(rt.eval("CHAT_LOG[2] and string.find(CHAT_LOG[2], ALERT_NAME) ~= nil")), "raid warning carries the clicked player name")
 check(bool(rt.eval("CHAT_LOG[3] == nil")), "only one message per click")

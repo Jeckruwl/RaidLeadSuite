@@ -7,7 +7,37 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.6**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.7**.
+
+## Novità della sessione 1.4.7 (questo branch, dopo 1.4.6)
+
+Fix DEFINITIVO icone consumabili non cliccabili (2° reclamo utente in game,
+test: aggiornamenti Scenario F, **341 check totali**):
+
+**Causa**: i bottoni flask/food erano **figli della riga-Button**, che ha
+drag registrato. In 3.3.5 il mouse-down dentro un Button del genere viene
+intercettato dal meccanismo di drag del genitore stesso/ancestale e il
+ciclo press+release del click figlio non si chiude mai → zero alert in
+qualsiasi fase, e i due fix (1.4.5/1.4.6) non bastavano.
+
+**Soluzione strutturale** (`RF:MakeConsumableIcon`):
+1. le icone ora nascono **figlie di `self.content` (sorelle delle righe)**,
+   con ancoraggio alla riga in `LayoutSlotGeometry` come prima → nessun
+   antenato interattivo che possa divorare il click, level content+30;
+2. implementazione click **"primitiva" OnMouseDown/OnMouseUp** (fotografa il
+   tasto al down, al rilascio conferma se stesso tasto+stesso bottone),
+   `OnClick`/`RegisterForClicks` rimossi — il canale più affidabile su
+   3.3.5 per click semplici. Semantiche invariate: sinistro=whisper player,
+   destro=RAID_WARNING; in debug entrambe → whisper a se stessi.
+
+**Lezione handoff aggiornata a §3**: il divieto di OnMouseDown/OnMouseUp
+vale SOLO per implementare DRAG&DROP (in quel caso OnMouseUp viene
+risucchiato durante il drag). Per CLICK semplici su bottoni senza drag è il
+contrario: OnMouseDown/OnMouseUp è il canale più robusto, e **mai fare
+bottoni cliccabili figli di un Button con RegisterForDrag**.
+Nota sandbox: questa sessione era una clone fresca (branch reset al base,
+file però coerenti col remote) → fix con `git fetch origin <branch>` +
+`git reset --soft FETCH_HEAD` (working tree == tip remoto, nessuna perdità).
 
 ## Novità della sessione 1.4.6 (questo branch, dopo 1.4.5)
 
@@ -273,7 +303,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 340 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 341 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
