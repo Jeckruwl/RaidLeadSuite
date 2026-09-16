@@ -7,7 +7,25 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.1**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.2**.
+
+## Novità della sessione 1.5.2 (questo branch, dopo 1.5.1) — CLICK SU BARRA = TARGET PLAYER
+
+- Feature utente: **click sinistro nudo sulla barra di un player = TargetUnit(unit)**
+  (qualsiasi fase, pre-boss e boss). Realizzata col pattern 1.5.x dimostrato in game:
+  - `RF:RowPlainClick(row, button)`: prima hit-test icone (messaggi missing buff hanno
+    precedenza), poi se nessuna icona e tasto sinistro → `RF:TargetRow(row)`.
+  - `RF:TargetRow`: `TargetUnit(row.unit or row.member.unit)` con guardia TTL 0.3s
+    (dedup con il poller di riserva); in debug fake roster senza unit stampa solo
+    `RF target -> ...` (rfDbg) senza errori.
+  - **RowBodyPoller** (locale file-level): le righe hanno RegisterForDrag("LeftButton")
+    in pre-boss → riserva release via IsMouseButtonDown (si arma ad ogni down sinistro,
+    si autodisarma; cursore mosso > 6px = drag → cancello; timeout 4s). OnMouseUp della
+    riga resta canale primario: stesso codice `RF:RowPlainClick`.
+  - Shift+click barra = NO target (gesti drag); cursore mosso = NO target; click su
+    icona = messaggio (NON target!) — icone hanno la precedenza.
+- Mock: `TargetUnit(u) → LAST_TARGET`. Test F.2f: target barra (coppia+poller a 1),
+  shift+click = niente, cursore mosso = niente. **359 check PASS**.
 
 ## Novità della sessione 1.5.1 (questo branch, dopo 1.5.0) — TRACCIATURA + SILENT-KILL LEFT CLICK
 
@@ -382,7 +400,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 356 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 359 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

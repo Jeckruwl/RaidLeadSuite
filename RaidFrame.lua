@@ -30,6 +30,40 @@ local function rfDbg(fmt, ...)
     end
 end
 
+-- Poller di riserva per il CLICK NUDO SINISTRO sulla BARRA del player
+-- (= target!). Le righe hanno RegisterForDrag("LeftButton") in pre-boss:
+-- su client dove OnMouseUp-left viene digerito, il release viene rilevato
+-- qui via IsMouseButtonDown. Cursore mosso > 6px = drag → cancello; 4s
+-- tenuto giu' = cancello. La dedup di RF:TargetRow evita doppioni con
+-- OnMouseUp. Si AUTODISARMA e viene riarmato a ogni down sinistro.
+local function RowBodyPoller(s, elapsed)
+    if not s._pendingRowClick then
+        s:SetScript("OnUpdate", nil)
+        return
+    end
+    if GetTime and (GetTime() - (s._rowPollT0 or 0)) > 4 then
+        s._pendingRowClick = nil
+        s:SetScript("OnUpdate", nil)
+        return
+    end
+    if s._pressX and GetCursorPosition then
+        local x, y = GetCursorPosition()
+        if x then
+            local dx, dy = x - s._pressX, (y or 0) - (s._pressY or 0)
+            if dx > 6 or dx < -6 or dy > 6 or dy < -6 then
+                s._pendingRowClick = nil
+                s:SetScript("OnUpdate", nil)
+                return
+            end
+        end
+    end
+    if not (IsMouseButtonDown and IsMouseButtonDown("LeftButton")) then
+        s._pendingRowClick = nil
+        s:SetScript("OnUpdate", nil)
+        RF:RowPlainClick(s, "LeftButton")
+    end
+end
+
 local RF_GROUPS = 6
 local RF_PER_GROUP = 5
 local RF_MAX_CDS = 4
@@ -389,7 +423,7 @@ function RF:CreateSlotFrame(slotIndex, group)
     --   * Shift+destro sulla riga: le righe coprono il piano della finestra,
     --     il "sposta HUD" parte da qui.
     --   * Click nudo (nessuno shift): se il cursore e' su un'icona, hit-test
-    --     e messaggio; se il cursore si e' mosso > 5px era un drag, no messaggio.
+    --     e messaggio; sulla BARRA = target del player.
     row:SetScript("OnMouseDown", function(self2, button)
         if button == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() then
             local f = RF.frame
@@ -409,6 +443,14 @@ function RF:CreateSlotFrame(slotIndex, group)
         if GetCursorPosition then
             local x, y = GetCursorPosition()
             self2._pressX, self2._pressY = x, y
+        end
+        -- Poller di riserva (stesso pattern delle icone): la riga ha
+        -- RegisterForDrag("LeftButton") in pre-boss e il suo OnMouseUp potrebbe
+        -- non arrivare sui client pignoli; release via IsMouseButtonDown.
+        if button == "LeftButton" then
+            self2._rowPollT0 = (GetTime and GetTime()) or 0
+            self2._pendingRowClick = true
+            self2:SetScript("OnUpdate", RowBodyPoller)
         end
     end)
     row:SetScript("OnMouseUp", function(self2, button)
@@ -433,7 +475,7 @@ function RF:CreateSlotFrame(slotIndex, group)
             end
         end
         self2._pressX, self2._pressY = nil, nil
-        RF:FireConsumableFromCursor(self2, button)
+        RF:RowPlainClick(self2, button)
     end)
 
     row:Hide()
@@ -991,6 +1033,37 @@ function RF:FireConsumableFromCursor(row, button)
             end
         end
     end
+    return false
+end
+
+-- Click nudo (qualsiasi tasto) sulla BARRA di una riga: prima prova il
+-- hit-test sulle icone (messaggi missing buff); se nessuna icona, un click
+-- SINISTRO sulla barra = target del player.
+function RF:RowPlainClick(row, button)
+    local fired = self:FireConsumableFromCursor(row, button)
+    if not fired and button == "LeftButton" then
+        self:TargetRow(row)
+    end
+end
+
+-- Target del player della riga (click sinistro nudo sulla barra).
+-- Dedup TTL: coppia down/up e poller di riserva possono entrambi sparare
+-- lo stesso click: TargetUnit due volte sullo STESSO target e' innocuo, ma
+-- mantengo il 0.3s di guardia per simmetria col sistema degli alert.
+function RF:TargetRow(row)
+    if not row then return false end
+    local now = (GetTime and GetTime()) or 0
+    if row._targetT and (now - row._targetT) < 0.3 then return true end
+    row._targetT = now
+    local unit = row.unit or (row.member and row.member.unit)
+    local name = row.name or (row.member and row.member.name)
+    if unit and TargetUnit then
+        rfDbg("target -> %s (%s)", tostring(name), tostring(unit))
+        TargetUnit(unit)
+        return true
+    end
+    -- roster finto/debug senza unit reale: solo traccia, niente errori
+    rfDbg("target (no unit) -> %s", tostring(name))
     return false
 end
 

@@ -225,6 +225,7 @@ function geterrorhandler() return function(err) LAST_ERROR = err; return err end
 function IsLoggedIn() return LOGGED_IN end
 function GetTime() return os.clock() end
 function IsMouseButtonDown(btn) return false end  -- mock: sempre rilasciato
+function TargetUnit(u) LAST_TARGET = u end          -- mock: registra target
 function time() return os.time() end
 function date(fmt, t) return "2026-09-11" end
 function GetGameTime() return 20, 30 end
@@ -1377,6 +1378,49 @@ row.name = SAVED_ROW_NAME
 """)
 check(rt.eval("EMPTYCFG_W") == 1, "empty saved alert message now falls back to the default whisper (was a silent dead-end)")
 check(rt.eval("NONAME_W") == 1 and bool(rt.eval("NONAME_DEST")), "left click works even with row.name missing (falls back to member.name)")
+
+# --- F.2f click on the PLAYER BAR targets the player (user feature) ---
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+row._targetT = nil
+SAVED_MU = (row.member and row.member.unit) or nil
+SAVED_RU = row.unit
+if row.member then row.member.unit = 'raid7' end
+row.unit = 'raid7'
+LAST_TARGET = nil
+row._lastAlert = nil
+SAVED_GCP4 = GetCursorPosition
+GetCursorPosition = function() return 200, 110 end  -- su una barra, sotto NESSUNA icona
+-- coppia down/up (canale primario) + poller riserva (dedup interno a TargetRow)
+row._scripts.OnMouseDown(row, 'LeftButton')
+row._scripts.OnMouseUp(row, 'LeftButton')
+if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
+TGT1 = LAST_TARGET
+-- SHIFT+click: NON targettare (gesto di drag player)
+LAST_TARGET = nil
+IsShiftKeyDown = function() return true end
+row._targetT = nil
+row._scripts.OnMouseDown(row, 'LeftButton')
+row._scripts.OnMouseUp(row, 'LeftButton')
+if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
+TGT2 = LAST_TARGET
+IsShiftKeyDown = SAVED_ISD2
+-- cursore mosso: era un drag, NON targettare
+LAST_TARGET = nil
+row._targetT = nil
+GetCursorPosition = function() return 200, 110 end
+row._scripts.OnMouseDown(row, 'LeftButton')
+GetCursorPosition = function() return 260, 115 end
+row._scripts.OnMouseUp(row, 'LeftButton')
+if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
+TGT3 = LAST_TARGET
+if row.member then row.member.unit = SAVED_MU end
+row.unit = SAVED_RU
+GetCursorPosition = SAVED_GCP4
+""")
+check(rt.eval("TGT1") == 'raid7', "plain left click on a player bar targets that player")
+check(bool(rt.eval("TGT2 == nil")), "Shift+left on a bar does NOT target (drag gesture)")
+check(bool(rt.eval("TGT3 == nil")), "moved cursor on a bar (drag) does NOT target")
 
 # --- F.3 Raid Frame layout options: font / outline / bar texture / opacity ---
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.font ~= nil")), "Layout -> Font type present")
