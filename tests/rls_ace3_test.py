@@ -1133,22 +1133,111 @@ check(bool(rt.eval("RLSuite.raidFrame.slots[8]:IsShown() == false")), "outside p
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "outside pre-boss empty groups hide their header")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[1]:IsShown() == true")), "groups with members keep their header")
 
-# --- F.2 consumable alerts: left click = whisper, right click = raid warning ---
+# --- F.2 consumable alerts: left click = whisper, right click = raid warning with ALL missing ---
+# NB: in debug un print diagnostico ("RF icon down") finisce anch'esso nel log:
+# le asserzioni scansionano CHAT_LOG per pattern, non per indice.
 rt.execute("RLSuite:SetContextPhase('preboss')")
 check(bool(rt.eval("RLSuite.raidFrame.rows[1].bar.hpText == nil")), "no percentage text on player bars")
 rt.execute("""
 CHAT_LOG = {}
 local row = RLSuite.raidFrame.rows[1]
 ALERT_NAME = row.member.name
+MISSING_NAME = RLSuite.raidFrame.rows[2].member.name
+row._lastAlert = nil
 row.flaskIcon._scripts.OnMouseDown(row.flaskIcon, 'LeftButton')
 row.flaskIcon._scripts.OnMouseUp(row.flaskIcon, 'LeftButton')
+FOUND_W = 0
+for _, e in ipairs(CHAT_LOG) do
+    if string.sub(e, 1, 8) == 'WHISPER|' and string.find(e, ALERT_NAME) then FOUND_W = FOUND_W + 1 end
+end
 """)
-check(bool(rt.eval("CHAT_LOG[1] and string.sub(CHAT_LOG[1], 1, 8) == 'WHISPER|'")), "left click on a consumable icon whispers the single player")
-check(bool(rt.eval("CHAT_LOG[1] and string.find(CHAT_LOG[1], ALERT_NAME) ~= nil")), "whisper carries the clicked player name")
-rt.execute("local row = RLSuite.raidFrame.rows[1]; row.foodIcon._scripts.OnMouseDown(row.foodIcon, 'RightButton'); row.foodIcon._scripts.OnMouseUp(row.foodIcon, 'RightButton')")
-check(bool(rt.eval("CHAT_LOG[2] and string.find(CHAT_LOG[2], '%[RAID_WARNING%]') ~= nil")), "right click on a consumable icon alerts in RAID WARNING")
-check(bool(rt.eval("CHAT_LOG[2] and string.find(CHAT_LOG[2], ALERT_NAME) ~= nil")), "raid warning carries the clicked player name")
-check(bool(rt.eval("CHAT_LOG[3] == nil")), "only one message per click")
+check(rt.eval("FOUND_W") == 1, "left click on a consumable icon whispers the single player (debug: whisper to self with the player's message)")
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+row._lastAlert = nil
+row.foodIcon._scripts.OnMouseDown(row.foodIcon, 'RightButton')
+row.foodIcon._scripts.OnMouseUp(row.foodIcon, 'RightButton')
+FOUND_RW_ALL = false
+for _, e in ipairs(CHAT_LOG) do
+    if string.find(e, '%[RAID_WARNING%]') and string.find(e, ALERT_NAME) and string.find(e, MISSING_NAME) then
+        FOUND_RW_ALL = true
+    end
+end
+""")
+check(bool(rt.eval("FOUND_RW_ALL")), "right click on a consumable icon warns the whole raid listing ALL players missing it")
+
+# --- F.2b ROW-LEVEL fallback (the channel client-proven by drag): cursor hit-test on the icons ---
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+local b = row.flaskIcon
+b.GetLeft = function() return 11 end; b.GetRight = function() return 27 end
+b.GetBottom = function() return 101 end; b.GetTop = function() return 117 end
+local f = row.foodIcon
+f.GetLeft = function() return 29 end; f.GetRight = function() return 45 end
+f.GetBottom = function() return 101 end; f.GetTop = function() return 117 end
+SAVED_GCP = GetCursorPosition
+GetCursorPosition = function() return 15, 110 end
+CHAT_LOG = {}
+row._lastAlert = nil
+row._scripts.OnMouseDown(row, 'LeftButton')
+row._scripts.OnMouseUp(row, 'LeftButton')
+""")
+check(bool(rt.eval("CHAT_LOG[1] and string.sub(CHAT_LOG[1], 1, 8) == 'WHISPER|' and string.find(CHAT_LOG[1], 'Missing') == nil")), "row fallback: left click under the cursor on the icon whispers the player")
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+GetCursorPosition = function() return 35, 110 end  -- sopra l'icona food
+row._lastAlert = nil
+row._scripts.OnMouseDown(row, 'RightButton')
+row._scripts.OnMouseUp(row, 'RightButton')
+""")
+check(bool(rt.eval("CHAT_LOG[2] and string.find(CHAT_LOG[2], '%[RAID_WARNING%]') ~= nil and string.find(CHAT_LOG[2], MISSING_NAME) ~= nil")), "row fallback: right click on the icon warns everyone missing")
+# press elsewhere on the row (NOT on the icons) -> nothing
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+GetCursorPosition = function() return 200, 110 end
+row._lastAlert = nil
+row._scripts.OnMouseDown(row, 'LeftButton')
+row._scripts.OnMouseUp(row, 'LeftButton')
+""")
+check(bool(rt.eval("CHAT_LOG[3] == nil")), "clicking the row body (not an icon) sends nothing")
+# drag-detect: cursor moved between down and up -> nothing
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+GetCursorPosition = function() return 15, 110 end
+row._scripts.OnMouseDown(row, 'LeftButton')
+GetCursorPosition = function() return 60, 118 end
+row._scripts.OnMouseUp(row, 'LeftButton')
+""")
+check(bool(rt.eval("CHAT_LOG[3] == nil")), "moved cursor between down/up (drag) sends nothing")
+# dedupe: same click through icon + row -> one whisper only; new click later -> fires again
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+local b = row.flaskIcon
+SAVED_GT = GetTime
+T_DEDUP = 1000
+GetTime = function() return T_DEDUP end
+CHAT_LOG = {}
+GetCursorPosition = function() return 15, 110 end
+local function wcount()
+    local n = 0
+    for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then n = n + 1 end end
+    return n
+end
+b._scripts.OnMouseDown(b, 'LeftButton'); b._scripts.OnMouseUp(b, 'LeftButton')
+T_DEDUP = 1000.1
+row._scripts.OnMouseDown(row, 'LeftButton'); row._scripts.OnMouseUp(row, 'LeftButton')
+DEDUP1 = wcount()
+T_DEDUP = 1001.0
+row._scripts.OnMouseDown(row, 'LeftButton'); row._scripts.OnMouseUp(row, 'LeftButton')
+DEDUP2 = wcount()
+GetTime = SAVED_GT
+GetCursorPosition = SAVED_GCP
+local b2 = RLSuite.raidFrame.rows[1].flaskIcon
+b2.GetLeft, b2.GetRight, b2.GetBottom, b2.GetTop = nil, nil, nil, nil
+RLSuite.raidFrame.rows[1].foodIcon.GetLeft = nil
+""")
+check(rt.eval("DEDUP1") == 1, "icon + row double channel of the SAME click dedupes to one message")
+check(rt.eval("DEDUP2") == 2, "a later identical click (> 0.3s) fires again")
 
 # --- F.3 Raid Frame layout options: font / outline / bar texture / opacity ---
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.font ~= nil")), "Layout -> Font type present")

@@ -352,6 +352,34 @@ function RF:CreateSlotFrame(slotIndex, group)
         RF:RefreshDropTargets()
     end)
 
+    -- Fallback SICURO per il click sulle icone a sinistra del nome: le righe
+    -- ricevono input in client (il drag pre-boss funziona), i bottoni-figli
+    -- no. Al down registro la posizione; all'up, se il cursore non si e'
+    -- mosso (click, non drag), hit-test sulle icone col cursore.
+    row:SetScript("OnMouseDown", function(self2, button)
+        self2._pressBtn = button
+        self2._pressX, self2._pressY = nil, nil
+        if GetCursorPosition then
+            local x, y = GetCursorPosition()
+            self2._pressX, self2._pressY = x, y
+        end
+    end)
+    row:SetScript("OnMouseUp", function(self2, button)
+        local pressed = self2._pressBtn
+        self2._pressBtn = nil
+        if pressed ~= button then return end
+        if button ~= "LeftButton" and button ~= "RightButton" then return end
+        if RF._rfDragSource then return end -- era un drag, non un click
+        if self2._pressX and GetCursorPosition then
+            local x, y = GetCursorPosition()
+            if x and (math.abs(x - self2._pressX) > 5 or math.abs((y or 0) - (self2._pressY or 0)) > 5) then
+                return -- il cursore si e' mosso: era un drag
+            end
+        end
+        self2._pressX, self2._pressY = nil, nil
+        RF:FireConsumableFromCursor(self2, button)
+    end)
+
     row:Hide()
     return row
 end
@@ -378,6 +406,10 @@ function RF:MakeConsumableIcon(row, atype)
     -- (Vale solo per click semplici, il drag non la usa - vedi handoff.)
     btn:SetScript("OnMouseDown", function(s, button)
         s._pressed = button
+        -- Diagnostica in-game (solo debug): prova che l'input arriva.
+        if RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.debug then
+            RLSuite.utils:Print("RF icon down: " .. tostring(button) .. " " .. tostring(atype))
+        end
     end)
     btn:SetScript("OnMouseUp", function(s, button)
         local pressed = s._pressed
@@ -394,7 +426,7 @@ function RF:MakeConsumableIcon(row, atype)
             GameTooltip:SetText(L["Missing food buff"])
         end
         GameTooltip:AddLine(L["Left click: whisper"], 1, 1, 1)
-        GameTooltip:AddLine(L["Right click: raid warning"], 1, 1, 1)
+        GameTooltip:AddLine(L["Right click: raid warning (everyone missing)"], 1, 1, 1)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -678,8 +710,10 @@ function RF:SetConsumable(btn, state)
     if not btn then return end
     if state == "off" then
         btn:Hide()
+        btn._missing = false
     else
         btn:Show()
+        btn._missing = true -- origine della lista "chi manca" per il destro
         if btn.icon then
             btn.icon:SetVertexColor(1, 1, 1)
         end
@@ -759,19 +793,73 @@ function RF:GetAlertIcon(alertType)
 end
 
 function RF:OnAlertClick(row, atype, button)
-    if not row or not atype then return end
+    if not row or not atype then return false end
+    -- Dedup: icona e riga possono INSEGNARE lo stesso click (icona figlia di
+    -- content ABOVE row, entrambe ricevono down/up). Nello stesso click
+    -- (stesso tasto, < 0.3s) mando UN SOL messaggio.
+    row._lastAlert = row._lastAlert or {}
+    local key = atype .. "|" .. tostring(button)
+    local now = (GetTime and GetTime()) or 0
+    if row._lastAlert[key] and (now - row._lastAlert[key]) < 0.3 then
+        return true
+    end
+    row._lastAlert[key] = now
+
+    if button == "RightButton" then
+        -- DESTRO su QUALSIASI icona consumabile: avviso a TUTTO il raid con
+        -- TUTTI i player a cui manca quel consumabile.
+        return self:SendMissingConsumableAlert(atype)
+    end
+
+    -- SINISTRO: whisper al player singolo (in debug: whisper a se stessi
+    -- col messaggio che verrebbe mandato al player - vedi Utils:Whisper).
     local name = row.name
     local alerts = self.db.alerts or {}
     local msg = alerts[atype] or self:GetDefaultAlertMessage(atype)
-    if not (msg and name and msg ~= "") then return end
+    if not (msg and name and msg ~= "") then return false end
     msg = string.gsub(msg, "%$name", name)
-    if button == "RightButton" then
-        -- Destro su QUALSIASI icona consumabile: alert in raid warning.
-        RLSuite.utils:SendChat(msg, "RAID_WARNING")
-    else
-        -- Sinistro: alert al player singolo (whisper).
-        RLSuite.utils:Whisper(name, msg)
+    RLSuite.utils:Whisper(name, msg)
+    return true
+end
+
+-- Raid warning elenco di TUTTI i player a cui manca il consumabile, letto
+-- dai flag _missing mostrati attualmente sulle righe (cioe' esattamente le
+-- icone che il leader vede). In debug SendChat whispera a se stessi col tag
+-- [RAID_WARNING].
+function RF:SendMissingConsumableAlert(atype)
+    local missing = {}
+    for _, r in ipairs(self.rows or {}) do
+        local btn = (atype == "flask") and r.flaskIcon or r.foodIcon
+        if btn and btn._missing and r.member and r.member.name then
+            missing[#missing + 1] = r.member.name
+        end
     end
+    if #missing == 0 then return false end
+    local label = (atype == "flask") and "flask" or "food buff"
+    RLSuite.utils:SendChat("Missing " .. label .. ": " .. table.concat(missing, ", "), "RAID_WARNING")
+    return true
+end
+
+-- Fallback di click a livello di RIGA (canale che in client riceve sicuro
+-- input, vedi drag pre-boss): hit-test col cursore su TUTTE le icone della
+-- riga, come i drop-target del Raid Group.
+function RF:FireConsumableFromCursor(row, button)
+    if not (GetCursorPosition and UIParent and UIParent.GetEffectiveScale) then return false end
+    if not (row and row.member and row.member.name) then return false end
+    local x, y = GetCursorPosition()
+    if not (x and y) then return false end
+    local scale = UIParent:GetEffectiveScale() or 1
+    if scale > 0 then x, y = x / scale, y / scale end
+    local pair = { flask = row.flaskIcon, food = row.foodIcon }
+    for atype, btn in pairs(pair) do
+        if btn and btn.IsShown and btn:IsShown() and btn._missing then
+            local l, r, b, t = btn:GetLeft(), btn:GetRight(), btn:GetBottom(), btn:GetTop()
+            if l and r and b and t and x >= l and x <= r and y >= b and y <= t then
+                return self:OnAlertClick(row, atype, button)
+            end
+        end
+    end
+    return false
 end
 
 function RF:GetDefaultAlertMessage(alertType)

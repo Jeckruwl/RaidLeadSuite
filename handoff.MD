@@ -7,7 +7,20 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.7**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.8**.
+
+## Novità della sessione 1.4.8 (questo branch, dopo 1.4.7)
+
+- **ULTIMATUM FIX click icone consumabili — smette di passare dai bottoni-icona, passa per il canale PROVATO in client**: l'utente trascina le righe del Raid Frame pre-boss → l'input mouse a livello RIGA arriva sempre; i bottoni figli (anche ri-parentati come sorelle in content, v1.4.7) restano muti in client.
+  - `CreateSlotFrame`: la riga ora ha `OnMouseDown` (registra tasto + `GetCursorPosition`) e `OnMouseUp` (stesso tasto, schippa se `_rfDragSource` attivo, schippa se il cursore si è mosso > 5px = drag) → `RF:FireConsumableFromCursor(row, button)` fa hit-test col cursore (`GetCursorPosition` scalato per `UIParent:GetEffectiveScale`, stesso pattern dei drop-target WL/gold-border che in client funzionano) sui rettangoli di `row.flaskIcon`/`row.foodIcon` (GetLeft/Right/Bottom/Top), solo se l'icona è visibile e `btn._missing`.
+  - **`_missing` in `SetConsumable`** (true se lo stato non è "off"): la lista "chi manca" riflette esattamente ciò che il leader vede.
+  - **Dedup TTL in `OnAlertClick`**: `row._lastAlert[atype.."|"..button] = GetTime()`, schippa < 0.3s — se icona (v1.4.7, invariata) AND fallback riga entrambi sparano lo stesso click, parte UN solo messaggio.
+  - Diagnostica in-game: in debug `OnMouseDown` dell'icona stampa `RF icon down: <tasto> <tipo>` (prova che l'input arriva ancora al bottone).
+- **Semantica click cambiata allo spec ESATTO dell'utente**:
+  - SINISTRO: whisper al player cliccato (debug: whisper a se stessi col messaggio del player — come da `Utils:Whisper`).
+  - DESTRO: UN RAID WARNING che elenca TUTTI i player a cui manca quel consumabile: `"Missing flask|food buff: n1, n2, ..."` via `RF:SendMissingConsumableAlert` (debug: whisper a se stessi col tag `[RAID_WARNING]` — come da `Utils:SendChat`).
+- Tooltip icona: riga destra ora dice "raid warning (everyone missing)".
+- Test Scenario F: F.2 riscrive le asserzioni come SCAN pattern-based di CHAT_LOG (il print diagnostico in debug finisce nel log); F.2b nuovo: fallback riga (hit-test con geometry per-istanza + `GetCursorPosition` override, cleanup dopo), click fuori icona = niente, cursore mosso = niente, dedup TTL con `GetTime` override (1000→1000.1 = 1 msg, →1001.0 = 2 msg).
 
 ## Novità della sessione 1.4.7 (questo branch, dopo 1.4.6)
 
@@ -303,7 +316,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 341 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 344 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

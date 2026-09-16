@@ -173,6 +173,7 @@ do
     L["Hey $name, you're missing some raid buffs!"] = true
     L["Left click: whisper"] = true
     L["Right click: raid warning"] = true
+    L["Right click: raid warning (everyone missing)"] = true
     L["Pull in %d seconds!"] = true
     L["Pull in %d..."] = true
     L["PULL NOW!"] = true
