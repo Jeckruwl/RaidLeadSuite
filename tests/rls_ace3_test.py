@@ -1105,32 +1105,34 @@ check(bool(rt.eval("RLSuite.raidFrame.slots[6].member ~= nil and RLSuite.raidFra
 check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == true")), "drag & drop enabled in pre-boss (debug)")
 check(bool(rt.eval("RLSuite.raidFrame.frame._strata == 'MEDIUM'")), "RF HUD sits on MEDIUM strata (clicks not eaten by UI chrome)")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]._enabledMouse == true")), "slots are ALWAYS mouse-enabled (children stay clickable)")
-check(bool(rt.eval("RLSuite.raidFrame.slots[7]._dragButtons ~= nil and RLSuite.raidFrame.slots[7]._dragButtons[1] == 'LeftButton'")), "pre-boss: LeftButton drag registered on slots")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]._dragButtons == nil or RLSuite.raidFrame.slots[7]._dragButtons[1] == nil")), "rows have NO drag registered at all (drag-eats-click-scripts root cause removed everywhere)")
 check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon:GetParent() == RLSuite.raidFrame.content")), "consumable icons are siblings of the rows (no drag-swallowing ancestor)")
 check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon._level ~= nil and RLSuite.raidFrame.rows[1].flaskIcon._level > (RLSuite.raidFrame.rows[1]._level or 1)")), "consumable icons sit above the rows (explicit frame level)")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == false")), "empty slots hidden by default (even in pre-boss)")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "empty group headers hidden by default")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[1]:IsShown() == true")), "non-empty group headers shown")
-# --- empty blocks appear ONLY while a player is being dragged (SHIFT+left, user model) ---
+# --- empty blocks appear ONLY while a player is being dragged (SHIFT+left MANUAL drag) ---
 rt.execute("""
 local row = RLSuite.raidFrame.slots[6]
 SAVED_ISD = IsShiftKeyDown
 IsShiftKeyDown = function() return false end
-row._scripts.OnDragStart(row)
+row._scripts.OnMouseDown(row, 'LeftButton')
+row._scripts.OnMouseUp(row, 'LeftButton')
 NOSHIFT_SRC = RLSuite.raidFrame._rfDragSource
 IsShiftKeyDown = function() return true end
-row._scripts.OnDragStart(row)
+row._scripts.OnMouseDown(row, 'LeftButton')
 """)
-check(bool(rt.eval("NOSHIFT_SRC == nil")), "no Shift: OnDragStart does NOT start a player drag (shift gates drag from plain clicks)")
+check(bool(rt.eval("NOSHIFT_SRC == nil")), "no Shift: plain click does NOT start a player drag (shift gates drag from clicks)")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == true")), "shift+drag: empty slots become visible ONLY while dragging a player")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == true")), "shift+drag: empty group headers appear during the drag (drop targets)")
 rt.execute("""
 local row = RLSuite.raidFrame.slots[6]
-row._scripts.OnDragStop(row)
+row._scripts.OnMouseUp(row, 'LeftButton')  -- manual drop (watchdog covers release fuori HUD)
 IsShiftKeyDown = SAVED_ISD
 """)
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == false")), "empty slots hidden again after the drag ends")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "empty group headers hidden again after the drag")
+check(bool(rt.eval("RLSuite.raidFrame._rfDragSource == nil")), "manual drag source cleared on release")
 
 # --- move a player into an empty slot ---
 rt.execute("RLSuite.raidFrame:MoveSlot(RLSuite.raidFrame.slots[6], RLSuite.raidFrame.slots[7])")

@@ -41,6 +41,11 @@ local function RowBodyPoller(s, elapsed)
         s:SetScript("OnUpdate", nil)
         return
     end
+    if s._manualDrag then
+        s._pendingRowClick = nil
+        s:SetScript("OnUpdate", nil)
+        return -- era un drag player: il poller NON targetta
+    end
     if GetTime and (GetTime() - (s._rowPollT0 or 0)) > 4 then
         s._pendingRowClick = nil
         s:SetScript("OnUpdate", nil)
@@ -386,38 +391,14 @@ function RF:CreateSlotFrame(slotIndex, group)
     end
     row._cdClass = nil
 
-    -- Drag & drop (active only in pre-boss, enabled via UpdateDragState).
-    -- I blocchi vuoti e gli header dei gruppi vuoti compaiono solo mentre
-    -- il drag e' attivo (RefreshDropTargets) e spariscono a fine drag.
-    -- SHIFT+TASTO SINISTRO trascina il player (era: drag nudo). Lo shift
-    -- separa il gesto dai click nudi sulle icone: il drag manager di 3.3.5
-    -- non puo' piu' mangiare i click semplici perche' NON PARTE MAI senza
-    -- shift, pur restando registrato su LeftButton.
-    row:SetScript("OnDragStart", function(self2)
-        if not RF:IsDragEnabled() then return end
-        if not (IsShiftKeyDown and IsShiftKeyDown()) then return end
-        RF._rfDragSource = (self2.member and self2) or nil
-        RF:RefreshDropTargets()
-    end)
-    row:SetScript("OnDragStop", function()
-        local src = RF._rfDragSource
-        RF._rfDragSource = nil
-        if src and src.member then
-            local target = RF:SlotAtCursor()
-            if target and target ~= src then
-                RF:MoveSlot(src, target)
-            end
-        end
-        RF:RefreshDropTargets()
-    end)
-    row:SetScript("OnReceiveDrag", function(self2)
-        local src = RF._rfDragSource
-        RF._rfDragSource = nil
-        if src and src ~= self2 and src.member then
-            RF:MoveSlot(src, self2)
-        end
-        RF:RefreshDropTargets()
-    end)
+    -- Drag player SHIFT+SINISTRO = gestito INTERAMENTE A MANO
+    -- (OnMouseDown/Up + watchdog su frame dedicato), come il move HUD.
+    -- MAI piu' RegisterForDrag sulle righe: in 3.3.5 la registrazione-drag
+    -- fa digerire al drag manager GLI SCRIPT di pressione/rilascio di quel
+    -- tasto (i widget Button suonano comunque il click: per questo si
+    -- sentiva "il rumore" ma non partiva mai nulla, nemmeno con unit
+    -- valida). Senza registrazione, i click nudi sulle barre arrivano
+    -- sempre agli script.
 
     -- Fallback SICURO per il click sulle icone + proxy dei gesti con SHIFT:
     --   * Shift+destro sulla riga: le righe coprono il piano della finestra,
@@ -436,17 +417,25 @@ function RF:CreateSlotFrame(slotIndex, group)
         end
         if IsShiftKeyDown and IsShiftKeyDown() then
             self2._pressBtn = nil
-            return -- Shift+sinistro = drag player (gestito dal drag manager)
+            if button == "LeftButton" and RF:IsDragEnabled() and self2.member then
+                -- SHIFT+sinistro = drag player MANUALE: source + mostra vuoti.
+                RF._rfDragSource = self2
+                self2._manualDrag = true
+                RF:RefreshDropTargets()
+                RF:_ArmManualDragWatchdog()
+            end
+            return -- gesti con shift: mai click/icone/target
         end
+        self2._manualDrag = nil -- click nuovo: reset di un eventuale drag appeso
         self2._pressBtn = button
         self2._pressX, self2._pressY = nil, nil
         if GetCursorPosition then
             local x, y = GetCursorPosition()
             self2._pressX, self2._pressY = x, y
         end
-        -- Poller di riserva (stesso pattern delle icone): la riga ha
-        -- RegisterForDrag("LeftButton") in pre-boss e il suo OnMouseUp potrebbe
-        -- non arrivare sui client pignoli; release via IsMouseButtonDown.
+        -- Poller di riserva (stessa forma delle icone): senza drag
+        -- registrati l'OnMouseUp ora arriva, ma se qualche client lo
+        -- mangiasse comunque il release viene rilevato qui comunque.
         if button == "LeftButton" then
             self2._rowPollT0 = (GetTime and GetTime()) or 0
             self2._pendingRowClick = true
@@ -461,6 +450,21 @@ function RF:CreateSlotFrame(slotIndex, group)
                 f:StopMovingOrSizing()
                 RF:PersistAnchor(f, RF.db)
             end
+        end
+        -- Completamento drag player MANUALE: al release, slot sotto il
+        -- cursore → move/swap. Serve anche se lo shift e' gia' rilasciato.
+        if button == "LeftButton" and RF._rfDragSource then
+            local src = RF._rfDragSource
+            RF._rfDragSource = nil
+            if src then src._manualDrag = nil end
+            if src and src.member then
+                local t = RF:SlotAtCursor()
+                if t and t ~= src then
+                    RF:MoveSlot(src, t)
+                end
+            end
+            RF:RefreshDropTargets()
+            return -- era un drag: NON un click-icona, NON un target
         end
         if IsShiftKeyDown and IsShiftKeyDown() then return end -- gesti con shift: NO messaggi
         local pressed = self2._pressBtn
@@ -1285,18 +1289,48 @@ function RF:IsDragEnabled()
 end
 
 function RF:UpdateDragState()
-    local enabled = self:IsDragEnabled()
+    -- Drag delle righe = MANUALE (nessun RegisterForDrag, manco per fase):
+    -- le righe restano SEMPRE con mouse attivo e click liberi; il drag del
+    -- player parte su Shift+down in pre-boss (OnMouseDown → _rfDragSource).
+    -- EnableMouse(false) / RegisterForDrag qui in passato rendevano mute le
+    -- righe: il tasto premuto veniva divorato dal drag manager di 3.3.5.
     for _, slot in ipairs(self.slots or {}) do
-        -- Il mouse resta SEMPRE attivo: solo il SET dei bottoni di drag
-        -- cambia con la fase (OnDragStart fa gia' il check di IsDragEnabled).
-        -- EnableMouse(false) qui fuori pre-boss rendeva clinicamente mute le
-        -- icone consumabili (hit-region dei figli bloccata dal genitore).
-        if enabled then
-            slot:RegisterForDrag("LeftButton")
-        else
-            slot:RegisterForDrag()
-        end
+        slot:RegisterForDrag() -- sì: svuota esplicitamente qualunque set ereditato
     end
+end
+
+-- Watchdog del drag player MANUALE: se il release avviene FUORI dalle righe
+-- (cursore uscito dall'HUD), i singoli OnMouseUp non lo vedono. Pollo su
+-- frame dedicato: tasto rilasciato mentre _rfDragSource → drop/cancel.
+function RF:_ArmManualDragWatchdog()
+    if self._dragWatchArmed then return end
+    if not self.frame then return end
+    if not self._dragWatch then
+        self._dragWatch = CreateFrame("Frame", nil, self.frame)
+        self._dragWatch:SetSize(1, 1)
+        self._dragWatch:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, 0)
+    end
+    self._dragWatch:Show()
+    self._dragWatchArmed = true
+    self._dragWatch:SetScript("OnUpdate", function()
+        if not RF._rfDragSource then
+            RF._dragWatchArmed = false
+            RF._dragWatch:Hide()
+            return
+        end
+        if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+            local src = RF._rfDragSource
+            RF._rfDragSource = nil
+            if src then src._manualDrag = nil end
+            if src and src.member then
+                local t = RF:SlotAtCursor()
+                if t and t ~= src then
+                    RF:MoveSlot(src, t)
+                end
+            end
+            RF:RefreshDropTargets()
+        end
+    end)
 end
 
 -- Slot under the mouse cursor (nil if none). Mirrors GroupMaking's

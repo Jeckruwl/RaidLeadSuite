@@ -7,7 +7,31 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.3**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.4**.
+
+## Novità della sessione 1.5.4 (questo branch, dopo 1.5.3) — RADICE FINALE: RegisterForDrag sulle righe MANGIA GLI SCRIPT CLICK
+
+Dato in-game: click sulla barra del PROPRIO player (unit "player" reale, fake=false) = solo il
+suono del Button, nessun target, nessuna traccia rfDbg. Ne deduzione meccanica: **il frame-riga
+con RegisterForDrag("LeftButton") non riceve nemmeno OnMouseDown/OnMouseUp-left su quel tasto**
+(il drag manager di 3.3.5 si prende tutto il canale sinistro REGISTRATO, anche senza drag avviato;
+il suono e' del widget Button, a livello sottostante, non prova di script eseguiti). Le icone
+non avevano registrazione → le loro coppie down/up funzionavano (confurmato in game).
+
+Soluzione strutturale (stessa scuola della finestra HUD 1.5.0): **Drag player 100% MANUALE**.
+1. `UpdateDragState`: righe `slot:RegisterForDrag()` (senza tasti = unregister) SEMPRE, qualunque
+   fase → i click nudi arrivano a TUTTI gli script, pre-boss incluso.
+2. OnMouseDown Shift+sinistro: se pre-boss e c'e' un member → `_rfDragSource = row`,
+   `RefreshDropTargets()` (mostra i vuoti) + `_ArmManualDragWatchdog()` (frame dedicato 1x1 con
+   OnUpdate: se il release avviene FUORI dall'HUD completa comunque il drop via SlotAtCursor).
+   OnMouseUp completamento: slot sotto il cursore → `MoveSlot(src, t)` + nasconde i vuoti.
+3. Handlers OnDragStart/OnDragStop/OnReceiveDrag ELIMINATI (morti, il gesto non li usa piu').
+4. RowBodyPoller: cancello se `_manualDrag` (il poller non targetta durante un drag); reset a ogni
+   nuovo plain down.
+5. Comportamento invariato per: move HUD (Shift+destro), icone (click nudi = messaggi), target
+   barra (click nudo sinistro = target, ora FINALMENTE gli script vengono consegnati in qualsiasi fase).
+6. Test aggiornati: le righe NON hanno drag registrato (inversione dell'invariante); simulazione
+   drag via OnMouseDown/Up shift + drop fuori observer; **360 check PASS**.
 
 ## Novità della sessione 1.5.3 (questo branch, dopo 1.5.2) — TARGET BAR: era un bug DEBUG, non di click
 
