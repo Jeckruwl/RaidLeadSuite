@@ -301,11 +301,7 @@ function RF:CreateSlotFrame(slotIndex, group)
     nameFS:SetTextColor(1, 1, 1)
     bar.nameText = nameFS
 
-    local pctFS = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    pctFS:SetPoint("RIGHT", bar, "RIGHT", -3, 0)
-    pctFS:SetText("")
-    pctFS:SetTextColor(1, 1, 1)
-    bar.hpText = pctFS
+    -- Niente percentuale HP: la barra mostra solo il nome del player.
 
     -- Class key cooldowns (up to 4, pooled; filled per class in ApplySlotCDs).
     row.cdIcons = {}
@@ -322,9 +318,12 @@ function RF:CreateSlotFrame(slotIndex, group)
     row._cdClass = nil
 
     -- Drag & drop (active only in pre-boss, enabled via UpdateDragState).
+    -- I blocchi vuoti e gli header dei gruppi vuoti compaiono solo mentre
+    -- il drag e' attivo (RefreshDropTargets) e spariscono a fine drag.
     row:SetScript("OnDragStart", function(self2)
         if not RF:IsDragEnabled() then return end
         RF._rfDragSource = (self2.member and self2) or nil
+        RF:RefreshDropTargets()
     end)
     row:SetScript("OnDragStop", function()
         local src = RF._rfDragSource
@@ -335,6 +334,7 @@ function RF:CreateSlotFrame(slotIndex, group)
                 RF:MoveSlot(src, target)
             end
         end
+        RF:RefreshDropTargets()
     end)
     row:SetScript("OnReceiveDrag", function(self2)
         local src = RF._rfDragSource
@@ -342,6 +342,7 @@ function RF:CreateSlotFrame(slotIndex, group)
         if src and src ~= self2 and src.member then
             RF:MoveSlot(src, self2)
         end
+        RF:RefreshDropTargets()
     end)
 
     row:Hide()
@@ -351,12 +352,15 @@ end
 function RF:MakeConsumableIcon(row, atype)
     local btn = CreateFrame("Button", nil, row)
     btn.consType = atype
+    btn:EnableMouse(true)
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints(btn)
     icon:SetTexture(self:GetAlertIcon(atype))
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
-    btn:SetScript("OnClick", function() self:OnAlertClick(row, atype) end)
+    -- Sinistro = whisper al singolo player, destro = annuncio in raid warning.
+    btn:SetScript("OnClick", function(_, button) self:OnAlertClick(row, atype, button) end)
     btn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
         if atype == "flask" then
@@ -365,6 +369,7 @@ function RF:MakeConsumableIcon(row, atype)
             GameTooltip:SetText(L["Missing food buff"])
         end
         GameTooltip:AddLine(L["Left click: whisper"], 1, 1, 1)
+        GameTooltip:AddLine(L["Right click: raid warning"], 1, 1, 1)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -393,11 +398,21 @@ function RF:LayoutSlotGeometry(slot, m)
         slot.bar:ClearAllPoints()
         slot.bar:SetSize(m.barWidth, m.barHeight)
         slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", leftX, 0)
+        -- Texture della barra (fill + track), configurabile.
+        local app = self.db and self.db.appearance or {}
+        local tex = app.barTexture or "Interface\\TargetingFrame\\UI-StatusBar"
+        slot.bar:SetStatusBarTexture(tex)
+        if slot.bar.bg then slot.bar.bg:SetTexture(tex) end
+        -- Font del nome: tipo, dimensione e outline configurabili.
+        local fontFile = app.font or RLSuite.utils:GetUIFont()
+        local flags = (app.fontOutline == false) and "" or "OUTLINE"
         if slot.bar.nameText then
-            slot.bar.nameText:SetFont(RLSuite.utils:GetUIFont(), m.nameFontSize, "OUTLINE")
+            slot.bar.nameText:SetFont(fontFile, m.nameFontSize, flags)
         end
-        if slot.bar.hpText then
-            slot.bar.hpText:SetFont(RLSuite.utils:GetUIFont(), m.nameFontSize, "OUTLINE")
+        for j, cd in ipairs(slot.cdIcons or {}) do
+            if cd and cd.timer then
+                cd.timer:SetFont(fontFile, 8, flags)
+            end
         end
     end
     for j, cd in ipairs(slot.cdIcons or {}) do
@@ -443,7 +458,6 @@ function RF:FillSlot(slot, member)
         slot.bar:SetMinMaxValues(0, 100)
         slot.bar:SetValue(100)
         if slot.bar.nameText then slot.bar.nameText:SetText(member.name) end
-        if slot.bar.hpText then slot.bar.hpText:SetText("100%") end
         slot.bar:Show()
     end
 
@@ -465,7 +479,6 @@ function RF:ClearSlot(slot)
     if slot.bar then
         slot.bar:SetValue(0)
         if slot.bar.nameText then slot.bar.nameText:SetText("") end
-        if slot.bar.hpText then slot.bar.hpText:SetText("") end
     end
     self:SetConsumable(slot.flaskIcon, "off")
     self:SetConsumable(slot.foodIcon, "off")
@@ -473,16 +486,46 @@ function RF:ClearSlot(slot)
         cd:Hide()
     end
 
-    if self:IsDragEnabled() then
-        -- Empty drop target (pre-boss): subtle outline, no fill.
-        slot:SetBackdrop(RF_EMPTY_BACKDROP)
-        slot:SetBackdropColor(0, 0, 0, 0)
-        slot:SetBackdropBorderColor(0.32, 0.32, 0.36, 0.9)
-        slot:Show()
-    else
-        slot:SetBackdrop(nil)
-        slot:Hide()
+    -- Slot vuoto = invisibile (in QUALSIASI fase). Riemerge come drop
+    -- target SOLO mentre un player e' in trascinamento (RefreshDropTargets,
+    -- chiamata da OnDragStart/OnDragStop/OnReceiveDrag).
+    slot:SetBackdrop(nil)
+    slot:Hide()
+end
+
+-- Mostra/nasconde i blocchi vuoti dei gruppi e gli header dei gruppi
+-- vuoti: visibili SOLO in pre-boss mentre un drag e' attivo (servono come
+-- drop target); altrimenti l'HUD resta denso (solo player + header pieni).
+function RF:RefreshDropTargets()
+    local dragging = self:IsDragEnabled() and self._rfDragSource ~= nil
+    for g = 1, RF_GROUPS do
+        local anyMember = false
+        for s = 1, RF_PER_GROUP do
+            local slot = self.slots and self.slots[(g - 1) * RF_PER_GROUP + s]
+            if slot then
+                if slot.member then
+                    anyMember = true
+                elseif dragging then
+                    slot:SetBackdrop(RF_EMPTY_BACKDROP)
+                    slot:SetBackdropColor(0, 0, 0, 0)
+                    slot:SetBackdropBorderColor(0.32, 0.32, 0.36, 0.9)
+                    slot:Show()
+                else
+                    slot:SetBackdrop(nil)
+                    slot:Hide()
+                end
+            end
+        end
+        local hdr = self.groupHeaders and self.groupHeaders[g]
+        if hdr then
+            if anyMember or dragging then
+                hdr:Show()
+            else
+                hdr:Hide()
+            end
+        end
     end
+    self:ApplyLayout()
 end
 
 -- ------------------------------------------------------------------
@@ -492,33 +535,26 @@ function RF:Rebuild()
     self:EnsureSlots()
     local m = self:LayoutMetrics()
     local groups = self:GetGroupedRoster()
-    local preboss = self:IsDragEnabled()
 
     self.rows = {}
     for g = 1, RF_GROUPS do
-        local anyMember = false
         for s = 1, RF_PER_GROUP do
             local slot = self.slots[(g - 1) * RF_PER_GROUP + s]
             local member = groups[g][s]
             if member then
                 self:FillSlot(slot, member)
                 self.rows[#self.rows + 1] = slot
-                anyMember = true
             else
                 self:ClearSlot(slot)
             end
-        end
-        local hdr = self.groupHeaders[g]
-        if anyMember or preboss then
-            hdr:Show()
-        else
-            hdr:Hide()
         end
     end
 
     self:BuildAbilityBar()
     self:RefreshAlertBars()
     self:UpdateDragState()
+    -- Header e blocchi vuoti: gestiti insieme (blocchi solo durante il drag).
+    self:RefreshDropTargets()
 end
 
 -- ------------------------------------------------------------------
@@ -548,7 +584,6 @@ function RF:UpdateRow(row)
         local pct = row.fakeHP or 100
         bar:SetMinMaxValues(0, 100)
         bar:SetValue(pct)
-        bar.hpText:SetText(pct .. "%")
         self:UpdateConsumables(row)
         return
     end
@@ -562,7 +597,6 @@ function RF:UpdateRow(row)
     local pct = math.floor((hp / hpMax) * 100)
     bar:SetMinMaxValues(0, hpMax)
     bar:SetValue(hp)
-    bar.hpText:SetText(pct .. "%")
 
     self:UpdateConsumables(row)
 
@@ -699,13 +733,18 @@ function RF:GetAlertIcon(alertType)
     return icons[alertType] or "Interface\\Icons\\INV_Misc_QuestionMark"
 end
 
-function RF:OnAlertClick(row, atype)
+function RF:OnAlertClick(row, atype, button)
     if not row or not atype then return end
     local name = row.name
     local alerts = self.db.alerts or {}
     local msg = alerts[atype] or self:GetDefaultAlertMessage(atype)
-    if msg and name then
-        msg = string.gsub(msg, "%$name", name)
+    if not (msg and name and msg ~= "") then return end
+    msg = string.gsub(msg, "%$name", name)
+    if button == "RightButton" then
+        -- Destro su QUALSIASI icona consumabile: alert in raid warning.
+        RLSuite.utils:SendChat(msg, "RAID_WARNING")
+    else
+        -- Sinistro: alert al player singolo (whisper).
         RLSuite.utils:Whisper(name, msg)
     end
 end
@@ -1130,6 +1169,8 @@ function RF:ApplyLayout()
     local m = self:LayoutMetrics()
     self.frame:SetWidth(m.W)
     self.frame:SetScale(db.scale or 1)
+    -- Trasparenza complessiva dell'HUD (Config -> Raid Frame -> Layout).
+    self.frame:SetAlpha(db.alpha or 1)
 
     -- Pack group headers + visible slots vertically (G1..G6).
     local y = 0

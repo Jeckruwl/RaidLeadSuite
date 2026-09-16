@@ -519,6 +519,27 @@ function CFG:BuildOptionsTable()
         scale = slider(L["Scale"], nil, 6, 0.70, 1.50, 0.05,
             function() return rf.scale end,
             function(_, v) rf.scale = v; self:ApplyAll() end),
+        font = select(L["Font"], L["Font used for the player name on the bars."], 7, {
+            ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata (default)",
+            ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
+            ["Fonts\\SKURRI.TTF"] = "Skurri",
+            ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
+        },
+            function() return rf.appearance.font or "Fonts\\FRIZQT__.TTF" end,
+            function(_, v) rf.appearance.font = v; self:ApplyAll() end),
+        fontOutline = toggle(L["Font outline"], L["Draw the player name with an outline."], 8,
+            function() return rf.appearance.fontOutline ~= false end,
+            function(_, v) rf.appearance.fontOutline = v; self:ApplyAll() end),
+        barTexture = select(L["Bar texture"], L["Texture of the player HP bars."], 9, {
+            ["Interface\\TargetingFrame\\UI-StatusBar"] = "Blizzard (default)",
+            ["Interface\\PAPERDOLLINFOFRAME\\UI-Character-Skills-Bar"] = "Skill bar",
+            ["Interface\\Buttons\\WHITE8x8"] = "Flat",
+        },
+            function() return rf.appearance.barTexture or "Interface\\TargetingFrame\\UI-StatusBar" end,
+            function(_, v) rf.appearance.barTexture = v; self:ApplyAll() end),
+        alpha = slider(L["Opacity"], L["Overall transparency of the Raid Frame HUD."], 10, 0.30, 1.00, 0.05,
+            function() return rf.alpha or 1 end,
+            function(_, v) rf.alpha = v; self:ApplyAll() end),
     }
 
     local raidBehavior = {

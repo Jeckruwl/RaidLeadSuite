@@ -71,7 +71,7 @@ function methods:CreateTexture(n, layer) local t=newFrame({_parent=self}); t._la
 function methods:CreateFontString(n, layer, tmpl) local f=newFrame({}); f._layer=layer; f._isFontString=true; return f end
 function methods:SetText(t) self._text = t or ""; return self end
 function methods:GetText() return self._text end
-function methods:SetFont(...) return self end
+function methods:SetFont(...) self._fontArgs = {...}; return self end
 function methods:SetJustifyH(...) return self end
 function methods:SetJustifyV(...) return self end
 function methods:SetWordWrap(b) self._wordWrap = b and true or false; return self end
@@ -114,9 +114,9 @@ function methods:SetThumbTexture(...) return self end
 function methods:GetMinMaxValues() return 0, 100 end
 function methods:GetValue() return self._value end
 function methods:SetMinMaxValues(...) return self end
-function methods:SetStatusBarTexture(...) return self end
+function methods:SetStatusBarTexture(...) self._statusbarTex = select(1, ...); return self end
 function methods:SetStatusBarColor(...) return self end
-function methods:SetAlpha(a) return self end
+function methods:SetAlpha(a) self._alpha = a; return self end
 function methods:StartMoving() return self end
 function methods:StopMovingOrSizing() return self end
 function methods:StartSizing(...) return self end
@@ -1061,7 +1061,7 @@ check(bool(rt.eval("RLSuite.raidFrame.frame.closeBtn == nil")), "HUD has no red-
 # --- rows: name inside the HP bar, left consumables, right CDs ---
 check(bool(rt.eval("RLSuite.raidFrame.rows ~= nil and #RLSuite.raidFrame.rows >= 2")), "debug roster renders rows")
 rt.execute("E5_ROW = RLSuite.raidFrame.rows and RLSuite.raidFrame.rows[1] or nil")
-check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar ~= nil and E5_ROW.bar.nameText ~= nil and E5_ROW.bar.hpText ~= nil")), "row has one HP bar with name + %% inside")
+check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar ~= nil and E5_ROW.bar.nameText ~= nil and E5_ROW.bar.hpText == nil")), "row has one HP bar with the name inside (no %% text)")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.flaskIcon ~= nil and E5_ROW.foodIcon ~= nil")), "row has left flask + Well Fed icons")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.cdIcons ~= nil and #E5_ROW.cdIcons > 0")), "row has class key CDs on the right")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar:GetWidth() == RLSuite.db.profile.raidframe.appearance.barWidth")), "player HP bar uses the configured bar width")
@@ -1097,10 +1097,18 @@ check(bool(rt.eval("#RLSuite.raidFrame.rows == 6")), "6 players render 6 populat
 check(bool(rt.eval("RLSuite.raidFrame.slots[1].member ~= nil and RLSuite.raidFrame.slots[1].member.name == 'Testplayer'")), "player sits in G1 slot 1")
 check(bool(rt.eval("RLSuite.raidFrame.slots[6].member ~= nil and RLSuite.raidFrame.slots[6].member.name == 'F5'")), "6th member lands in G2 slot 1 (groups fill in order)")
 
-# --- pre-boss: empty slots visible as drop targets; drag enabled ---
+# --- pre-boss: empty slots + empty headers hidden by default; drag enabled ---
 check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == true")), "drag & drop enabled in pre-boss (debug)")
-check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == true")), "pre-boss: empty slot shown as drop target")
-check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[6]:IsShown() == true")), "pre-boss: all 6 group headers shown")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == false")), "empty slots hidden by default (even in pre-boss)")
+check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "empty group headers hidden by default")
+check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[1]:IsShown() == true")), "non-empty group headers shown")
+# --- empty blocks appear ONLY while a player is being dragged ---
+rt.execute("local row = RLSuite.raidFrame.slots[6]; row._scripts.OnDragStart(row)")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == true")), "empty slots become visible ONLY while dragging a player")
+check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == true")), "empty group headers appear during the drag (drop targets)")
+rt.execute("local row = RLSuite.raidFrame.slots[6]; row._scripts.OnDragStop(row)")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == false")), "empty slots hidden again after the drag ends")
+check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "empty group headers hidden again after the drag")
 
 # --- move a player into an empty slot ---
 rt.execute("RLSuite.raidFrame:MoveSlot(RLSuite.raidFrame.slots[6], RLSuite.raidFrame.slots[7])")
@@ -1118,6 +1126,46 @@ check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == false")), "drag & drop 
 check(bool(rt.eval("RLSuite.raidFrame.slots[8]:IsShown() == false")), "outside pre-boss empty slots are hidden")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "outside pre-boss empty groups hide their header")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[1]:IsShown() == true")), "groups with members keep their header")
+
+# --- F.2 consumable alerts: left click = whisper, right click = raid warning ---
+rt.execute("RLSuite:SetContextPhase('preboss')")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].bar.hpText == nil")), "no percentage text on player bars")
+rt.execute("""
+CHAT_LOG = {}
+local row = RLSuite.raidFrame.rows[1]
+ALERT_NAME = row.member.name
+row.flaskIcon._scripts.OnClick(row.flaskIcon, 'LeftButton')
+""")
+check(bool(rt.eval("CHAT_LOG[1] and string.sub(CHAT_LOG[1], 1, 8) == 'WHISPER|'")), "left click on a consumable icon whispers the single player")
+check(bool(rt.eval("CHAT_LOG[1] and string.find(CHAT_LOG[1], ALERT_NAME) ~= nil")), "whisper carries the clicked player name")
+rt.execute("local row = RLSuite.raidFrame.rows[1]; row.foodIcon._scripts.OnClick(row.foodIcon, 'RightButton')")
+check(bool(rt.eval("CHAT_LOG[2] and string.find(CHAT_LOG[2], '%[RAID_WARNING%]') ~= nil")), "right click on a consumable icon alerts in RAID WARNING")
+check(bool(rt.eval("CHAT_LOG[2] and string.find(CHAT_LOG[2], ALERT_NAME) ~= nil")), "raid warning carries the clicked player name")
+check(bool(rt.eval("CHAT_LOG[3] == nil")), "only one message per click")
+
+# --- F.3 Raid Frame layout options: font / outline / bar texture / opacity ---
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.font ~= nil")), "Layout -> Font type present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.fontOutline ~= nil")), "Layout -> Font outline toggle present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.barTexture ~= nil")), "Layout -> Bar texture present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.alpha ~= nil")), "Layout -> Opacity slider present")
+rt.execute(r"""
+local o = RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args
+o.barTexture.set(nil, 'Interface\\Buttons\\WHITE8x8')
+o.font.set(nil, 'Fonts\\MORPHEUS.TTF')
+o.fontOutline.set(nil, false)
+o.alpha.set(nil, 0.8)
+""")
+check(rt.eval("RLSuite.raidFrame.rows[1].bar._statusbarTex") == r"Interface\Buttons\WHITE8x8", "bar texture option applied to the HP bars")
+check(bool(rt.eval(r"RLSuite.raidFrame.rows[1].bar.nameText._fontArgs[1] == 'Fonts\\MORPHEUS.TTF'")), "font type option applied to the player names")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].bar.nameText._fontArgs[3] == ''")), "font outline toggle removes the outline")
+check(rt.eval("RLSuite.raidFrame.frame._alpha") == 0.8, "opacity option applied to the whole HUD")
+rt.execute(r"""
+local o = RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args
+o.barTexture.set(nil, 'Interface\\TargetingFrame\\UI-StatusBar')
+o.font.set(nil, 'Fonts\\FRIZQT__.TTF')
+o.fontOutline.set(nil, true)
+o.alpha.set(nil, 1)
+""")
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario F (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 

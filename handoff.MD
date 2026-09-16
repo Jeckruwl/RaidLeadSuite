@@ -7,7 +7,37 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.4**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.5**.
+
+## Novità della sessione 1.4.5 (questo branch, dopo 1.4.4)
+
+Richieste utente sul **Raid Frame** (test: blocchi F.2/F.3 + aggiornamento
+E5/F1 in Scenario E/F, **335 check totali**):
+
+1. **Alert icone consumabili**: il bottone icona ora dichiara
+   `EnableMouse(true)` + `RegisterForClicks("LeftButtonUp","RightButtonUp")`
+   (la causa probabile degli alert che non partivano sui player reali).
+   `RF:OnAlertClick(row, atype, button)` — **sinistro → whisper al player
+   singolo**; **destro su QUALSIASI icona consumabile → `RAID_WARNING`**
+   (Utils:SendChat declassa a RAID se non leader; in debug whisper taggato
+   `[RAID_WARNING]` a se stessi). Tooltip aggiornato, chiavi aggiunte in
+   Locale.lua.
+2. **Percentuale HP tolta dalle barre**: `bar.hpText` rimosso del tutto
+   (creation + tutti i SetText in Fill/Clear/Update/Layout).
+3. **Blocchi vuoti dei gruppi invisibili di default**: `ClearSlot` nasconde
+   sempre; nuovo `RF:RefreshDropTargets()` (blocchi vuoti + header gruppi
+   vuoti compaiono SOLO in pre-boss con `RF._rfDragSource ~= nil`, cioè
+   mentre si trascina un player), chiamato da `Rebuild` e dagli script
+   `OnDragStart/OnDragStop/OnReceiveDrag`. `RF_EMPTY_BACKDROP` resta per il
+   drop target durante il drag.
+4. **Nuove opzioni** in Config → Raid Frame → **Layout**: `font` (Friz
+   Quadrata/Arial Narrow/Skurri/Morpheus), `fontOutline` toggle,
+   `barTexture` (Blizzard / Skill bar / Flat WHITE8x8), `alpha` (opacità HUD
+   0.30–1.00). Default in Core (`appearance.font/fontOutline/barTexture`,
+   `rf.alpha`). Applicati in `LayoutSlotGeometry` (SetFont su nome e timer
+   CD; SetStatusBarTexture su fill+track) e `ApplyLayout` (`frame:SetAlpha`).
+   Mock test: `SetFont → _fontArgs`, `SetAlpha → _alpha`,
+   `SetStatusBarTexture → _statusbarTex`.
 
 ## Novità della sessione 1.4.4 (questo branch, dopo 1.4.3)
 
@@ -213,13 +243,15 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 316 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 335 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
 C Config single-window · D Lim/Aim/fasi/debug/autoinviter · E HUD Raid Frame ·
-F gruppi 6 + drag & drop pre-boss (17 check: 30 slot + 6 header, fill in ordine,
-move su vuoto, swap su occupato, hiding fuori pre-boss) ·
+F gruppi 6 + drag & drop pre-boss (30 slot + 6 header, fill in ordine, move su
+vuoto, swap su occupato; vuoti/header vuoti nascosti di default, visibili SOLO
+durante il drag; F.2 alert consumabili whisper/RAID_WARNING e no-%% barre;
+F.3 opzioni font/outline/texture/opacita') ·
 **G** novità 1.4.1 (config colonne real-time, MT/OT, reqBox→bottoni, bordi 12,
 debug-off svuota loot, join raid formato, bordino dorato drag, stack finestre
 pickup + layout slim) · **G.8** correzioni 1.4.2 (ordine classi 2 colonne con
