@@ -117,8 +117,8 @@ function methods:SetMinMaxValues(...) return self end
 function methods:SetStatusBarTexture(...) self._statusbarTex = select(1, ...); return self end
 function methods:SetStatusBarColor(...) return self end
 function methods:SetAlpha(a) self._alpha = a; return self end
-function methods:StartMoving() return self end
-function methods:StopMovingOrSizing() return self end
+function methods:StartMoving() self._moving = true; return self end
+function methods:StopMovingOrSizing() self._moving = false; return self end
 function methods:StartSizing(...) return self end
 function methods:SetMinResize(...) return self end
 function methods:SetClampedToScreen(b) return self end
@@ -598,6 +598,7 @@ check(bool(rt.eval("RLSuite.minimapIcon.dragging == nil")), "drag without Shift 
 rt.execute("IsShiftKeyDown = function() return true end")
 rt.execute("local b = RLSuite.minimapIcon; if b._scripts.OnDragStart then b._scripts.OnDragStart(b) end")
 check(bool(rt.eval("RLSuite.minimapIcon.dragging == true")), "Shift + left drag starts moving the minimap icon")
+rt.execute("IsShiftKeyDown = function() return false end")  # runtime condiviso: ripristina Shift per gli scenari successivi
 
 # save raid + load raid round trip through the new profile
 rt.execute("SAVED_ID = RLSuite:SaveRaid('TestRaid')")
@@ -1108,11 +1109,24 @@ check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon._level ~= nil and RLSuit
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == false")), "empty slots hidden by default (even in pre-boss)")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "empty group headers hidden by default")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[1]:IsShown() == true")), "non-empty group headers shown")
-# --- empty blocks appear ONLY while a player is being dragged ---
-rt.execute("local row = RLSuite.raidFrame.slots[6]; row._scripts.OnDragStart(row)")
-check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == true")), "empty slots become visible ONLY while dragging a player")
-check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == true")), "empty group headers appear during the drag (drop targets)")
-rt.execute("local row = RLSuite.raidFrame.slots[6]; row._scripts.OnDragStop(row)")
+# --- empty blocks appear ONLY while a player is being dragged (SHIFT+left, user model) ---
+rt.execute("""
+local row = RLSuite.raidFrame.slots[6]
+SAVED_ISD = IsShiftKeyDown
+IsShiftKeyDown = function() return false end
+row._scripts.OnDragStart(row)
+NOSHIFT_SRC = RLSuite.raidFrame._rfDragSource
+IsShiftKeyDown = function() return true end
+row._scripts.OnDragStart(row)
+""")
+check(bool(rt.eval("NOSHIFT_SRC == nil")), "no Shift: OnDragStart does NOT start a player drag (shift gates drag from plain clicks)")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == true")), "shift+drag: empty slots become visible ONLY while dragging a player")
+check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == true")), "shift+drag: empty group headers appear during the drag (drop targets)")
+rt.execute("""
+local row = RLSuite.raidFrame.slots[6]
+row._scripts.OnDragStop(row)
+IsShiftKeyDown = SAVED_ISD
+""")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == false")), "empty slots hidden again after the drag ends")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "empty group headers hidden again after the drag")
 
@@ -1145,12 +1159,13 @@ local row = RLSuite.raidFrame.rows[1]
 ALERT_NAME = row.member.name
 MISSING_NAME = RLSuite.raidFrame.rows[2].member.name
 row._lastAlert = nil
--- sinistro: OnMouseUp in client e' divorato dal drag degli antenati; il
--- rilascio lo rileva il poll OnUpdate (IsMouseButtonDown mock = false)
+-- sinistro: la finestra non ha piu' RegisterForDrag, l'OnMouseUp arriva;
+-- se qualche client lo mangiasse comunque, il poller di riserva copre
+-- (stesso click, dedup TTL → sempre E SOLO un messaggio)
 local b = row.flaskIcon
 b._scripts.OnMouseDown(b, 'LeftButton')
-b._pressed = nil  -- simula epoca in cui l'up non arrivera' comunque
-b._scripts.OnUpdate(b, 0.016)
+b._scripts.OnMouseUp(b, 'LeftButton')          -- canale primario (up-piece)
+b._scripts.OnUpdate(b, 0.016)                  -- canale riserva (deduppo via TTL)
 FOUND_W = 0
 for _, e in ipairs(CHAT_LOG) do
     if string.sub(e, 1, 8) == 'WHISPER|' and string.find(e, ALERT_NAME) then FOUND_W = FOUND_W + 1 end
@@ -1270,6 +1285,58 @@ IsMouseButtonDown = SAVED_IMBD
 """)
 check(rt.eval("DRAG1") == 0, "holding left and moving the cursor on the icon is a drag, no message")
 check(bool(rt.eval("DRAG2 == 0 and RLSuite.raidFrame.rows[1].flaskIcon._pendingLeft == nil")), "canceled drag: release sends nothing, poller disarmed")
+
+# --- F.2d user interaction model: Shift gates drag, plain clicks send messages ---
+check(bool(rt.eval("RLSuite.raidFrame.frame._dragButtons == nil or RLSuite.raidFrame.frame._dragButtons[1] == nil")),
+    "HUD window has NO RegisterForDrag at all (drag-eats-clicks root cause removed)")
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+local b = row.flaskIcon
+CHAT_LOG = {}
+row._lastAlert = nil
+SAVED_ISD2 = IsShiftKeyDown
+IsShiftKeyDown = function() return true end
+b._scripts.OnMouseDown(b, 'LeftButton'); b._scripts.OnMouseUp(b, 'LeftButton'); if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end
+b._scripts.OnMouseDown(b, 'RightButton'); b._scripts.OnMouseUp(b, 'RightButton')
+SW = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' or string.find(e, '%[RAID_WARNING%]') then SW = SW + 1 end end
+SHIFT_PENDING = b._pendingLeft
+IsShiftKeyDown = SAVED_ISD2
+""")
+check(rt.eval("SW") == 0, "Shift held on the icons sends NO message (left nor right) - drag gestures don't conflict")
+check(bool(rt.eval("SHIFT_PENDING == nil")), "Shift held: reserve poller never armed")
+# Shift+right on a row moves the HUD window; plain right on a row does not
+rt.execute("""
+local f = RLSuite.raidFrame.frame
+local row = RLSuite.raidFrame.rows[1]
+f._rlsMoving = nil; f._moving = false
+row._scripts.OnMouseDown(row, 'RightButton')
+PLAIN_MOVING = f._rlsMoving; PLAIN_WAS_MOVING = f._moving
+row._scripts.OnMouseUp(row, 'RightButton')
+SAVED_ISD3 = IsShiftKeyDown
+IsShiftKeyDown = function() return true end
+row._scripts.OnMouseDown(row, 'RightButton')
+SHIFT_MOVING = f._rlsMoving; SHIFT_WAS_MOVING = f._moving
+row._scripts.OnMouseUp(row, 'RightButton')
+SHIFT_AFTER = f._rlsMoving; SHIFT_AFTER_MOVING = f._moving
+IsShiftKeyDown = SAVED_ISD3
+""")
+check(bool(rt.eval("PLAIN_MOVING == nil and PLAIN_WAS_MOVING == false")), "plain right on a row does NOT move the HUD window")
+check(bool(rt.eval("SHIFT_MOVING == true and SHIFT_WAS_MOVING == true")), "Shift+right on a row starts moving the HUD window (proxy)")
+check(bool(rt.eval("(not SHIFT_AFTER) and SHIFT_AFTER_MOVING == false")), "releasing Shift+right stops the HUD window move")
+# same on the window background itself
+rt.execute("""
+local f = RLSuite.raidFrame.frame
+f._rlsMoving = nil; f._moving = false
+f._scripts.OnMouseDown(f, 'RightButton')
+FPLAIN = f._rlsMoving
+IsShiftKeyDown = function() return true end
+f._scripts.OnMouseDown(f, 'RightButton')
+FSHIFT = f._rlsMoving; FSHIFT_MOVING = f._moving
+f._scripts.OnMouseUp(f, 'RightButton')
+IsShiftKeyDown = SAVED_ISD2
+""")
+check(bool(rt.eval("FPLAIN == nil and FSHIFT == true and FSHIFT_MOVING == true")), "Shift+right on the HUD background also starts/stops the move")
 
 # --- F.3 Raid Frame layout options: font / outline / bar texture / opacity ---
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.font ~= nil")), "Layout -> Font type present")

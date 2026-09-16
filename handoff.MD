@@ -7,7 +7,26 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.9**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.0**.
+
+## Novità della sessione 1.5.0 (questo branch, dopo 1.4.9) — MODELLO INTERAZIONE DECISO DALL'UTENTE
+
+<SPEC UTENTE (verbatim, da fare esattamente)>
+- **Shift + left click sulla riga = sposto il player** (drag&drop già esistente, ora gated su Shift)
+- **Shift + right click = sposto il Raid Frame** (la finestra HUD, da riga O da sfondo)
+- **Click nudo (sinistro o destro, nessuno Shift) sulle icone = messaggio missing buff** (sinistro whisper, destro raid warning "Missing ...: n1, n2, ..." - in come di debug: whisper a se stessi col tag)
+</SPEC>
+
+"così non vanno più in conflitto": **il trucco che chiude la lite con 3.3.5** e' che il drag manager
+si attiva SOLO con Shift, quindi i rilasci-click nudi sono liberi da sempre (finestra `f` NON ha
+piu' nessun RegisterForDrag: la finestra si muove via `OnMouseDown/OnMouseUp` + StartMoving manuale,
+proxyato anche dalle righe che la ricoprono). Dettagli:
+1. `f` (finestra): `RegisterForDrag` RIMOSSO; Shift+destro down = StartMoving, Up = StopMoving + `RF:PersistAnchor` (salva point/relPoint/x/y in db.raidframe come prima del OnDragStop). Rispetta `db.locked`/`anchorMode` esattamente come il vecchio OnDragStart.
+2. Righe: `RegisterForDrag("LeftButton")` resta in pre-boss, ma `OnDragStart` ora esige `IsShiftKeyDown()`; `OnMouseDown/Up` delle righe fungono da proxy Shift+destro per muovere la finestra. Gli stessi handler restano fallback di hit-test per i click nudi sulle icone (dedup TTL 0.3s invariato).
+3. Icone: Shift-down = MAI messaggi (`_shiftedAtDown`); click nudo gestito dalla coppia OnMouseDown/OnMouseUp per ENTRAMBI i tasti (il canale up e' ora libero) + poller OnUpdate/IsMouseButtonDown **come riserva** solo senza shift (disarmato dopo uso, riarmato a ogni down; drag-cancel > 6px, timeout 4s tenuto giu').
+4. Tooltip icone: aggiunte le righe guida "Shift + left drag on a row: move player" / "Shift + right drag: move window".
+5. Mock test: `IsShiftKeyDown` va SEMPRE ripristinato a false dopo un override - gli scenari condividono un UNICO runtime e Scenario A in passato lo lasciava true (bug di suite latente, non dell'addon); mock StartMoving/StopMovingOrSizing ora registrano `_moving`.
+6. Test: 354 check PASS (già inclusi: no-shift drag non parte, shift+click icone = zero messaggi, shift+destro riga/HUD muove e ferma la finestra, canali click primari+riserva deduppati).
 
 ## Novità della sessione 1.4.9 (questo branch, dopo 1.4.8)
 
@@ -338,7 +357,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 346 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 354 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

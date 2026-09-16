@@ -68,6 +68,18 @@ function RF:Toggle()
     end
 end
 
+-- Salvataggio posizione finestra dopo lo spostamento con Shift+destro.
+function RF:PersistAnchor(fr, db)
+    if not (fr and fr.GetPoint and db) then return end
+    local point, _, relPoint, x, y = fr:GetPoint()
+    if point then
+        db.point = point
+        db.relPoint = relPoint
+        db.x = x
+        db.y = y
+    end
+end
+
 function RF:CreateFrame()
     local db = self.db or {}
     local f = CreateFrame("Frame", "RLSuiteRaidFrame", UIParent)
@@ -80,19 +92,26 @@ function RF:CreateFrame()
     f:SetMovable(true)
     f:EnableMouse(true)
     RLSuite.utils:ClampWindow(f)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", function(self2)
-        if not db.locked or (RLSuite.db.profile.anchorMode == true) then
-            self2:StartMoving()
+    -- Move della finestra: SOLO Shift+Tasto DESTRO, via StartMoving MANUALE.
+    -- NESSUN RegisterForDrag qui: in 3.3.5 la registrazione-drag di un
+    -- antenato fa digerire al drag manager i rilasci di quel tasto in TUTTO
+    -- l'albero (per 4 release i click sinistri sulle icone risultavano morti
+    -- proprio per questo). Shift separa i gesti: click nudi = messaggi,
+    -- shift+gesti = drag.
+    f:SetScript("OnMouseDown", function(self2, button)
+        if button == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() then
+            if (not db.locked) or (RLSuite.db.profile.anchorMode == true) then
+                self2._rlsMoving = true
+                self2:StartMoving()
+            end
         end
     end)
-    f:SetScript("OnDragStop", function(self2)
-        self2:StopMovingOrSizing()
-        local point, _, relPoint, x, y = self2:GetPoint()
-        db.point = point
-        db.relPoint = relPoint
-        db.x = x
-        db.y = y
+    f:SetScript("OnMouseUp", function(self2, button)
+        if button == "RightButton" and self2._rlsMoving then
+            self2._rlsMoving = false
+            self2:StopMovingOrSizing()
+            RF:PersistAnchor(self2, db)
+        end
     end)
     f:Hide()
     self.frame = f
@@ -327,8 +346,13 @@ function RF:CreateSlotFrame(slotIndex, group)
     -- Drag & drop (active only in pre-boss, enabled via UpdateDragState).
     -- I blocchi vuoti e gli header dei gruppi vuoti compaiono solo mentre
     -- il drag e' attivo (RefreshDropTargets) e spariscono a fine drag.
+    -- SHIFT+TASTO SINISTRO trascina il player (era: drag nudo). Lo shift
+    -- separa il gesto dai click nudi sulle icone: il drag manager di 3.3.5
+    -- non puo' piu' mangiare i click semplici perche' NON PARTE MAI senza
+    -- shift, pur restando registrato su LeftButton.
     row:SetScript("OnDragStart", function(self2)
         if not RF:IsDragEnabled() then return end
+        if not (IsShiftKeyDown and IsShiftKeyDown()) then return end
         RF._rfDragSource = (self2.member and self2) or nil
         RF:RefreshDropTargets()
     end)
@@ -352,11 +376,25 @@ function RF:CreateSlotFrame(slotIndex, group)
         RF:RefreshDropTargets()
     end)
 
-    -- Fallback SICURO per il click sulle icone a sinistra del nome: le righe
-    -- ricevono input in client (il drag pre-boss funziona), i bottoni-figli
-    -- no. Al down registro la posizione; all'up, se il cursore non si e'
-    -- mosso (click, non drag), hit-test sulle icone col cursore.
+    -- Fallback SICURO per il click sulle icone + proxy dei gesti con SHIFT:
+    --   * Shift+destro sulla riga: le righe coprono il piano della finestra,
+    --     il "sposta HUD" parte da qui.
+    --   * Click nudo (nessuno shift): se il cursore e' su un'icona, hit-test
+    --     e messaggio; se il cursore si e' mosso > 5px era un drag, no messaggio.
     row:SetScript("OnMouseDown", function(self2, button)
+        if button == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() then
+            local f = RF.frame
+            if f and (not RF.db.locked or RLSuite.db.profile.anchorMode == true) then
+                f._rlsMoving = true
+                f:StartMoving()
+            end
+            self2._pressBtn = nil
+            return -- gesto con shift: mai trattato come click-icona
+        end
+        if IsShiftKeyDown and IsShiftKeyDown() then
+            self2._pressBtn = nil
+            return -- Shift+sinistro = drag player (gestito dal drag manager)
+        end
         self2._pressBtn = button
         self2._pressX, self2._pressY = nil, nil
         if GetCursorPosition then
@@ -365,6 +403,15 @@ function RF:CreateSlotFrame(slotIndex, group)
         end
     end)
     row:SetScript("OnMouseUp", function(self2, button)
+        if button == "RightButton" then
+            local f = RF.frame
+            if f and f._rlsMoving then
+                f._rlsMoving = false
+                f:StopMovingOrSizing()
+                RF:PersistAnchor(f, RF.db)
+            end
+        end
+        if IsShiftKeyDown and IsShiftKeyDown() then return end -- gesti con shift: NO messaggi
         local pressed = self2._pressBtn
         self2._pressBtn = nil
         if pressed ~= button then return end
@@ -400,18 +447,16 @@ function RF:MakeConsumableIcon(row, atype)
     icon:SetTexture(self:GetAlertIcon(atype))
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
-    -- SINISTRO: il mouse-DOWN arriva sempre (provato in client dal print
-    -- diagnostico), ma il mouse-UP sinistro viene DIVORATO dal drag
-    -- manager - un antenato (finestra HUD / riga in preboss) ha
-    -- RegisterForDrag("LeftButton") e in 3.3.5 si prende il release di
-    -- ogni click nel suo albero. Quindi il rilascio-sinistro lo rilevo a
-    -- POLLING da OnUpdate con IsMouseButtonDown + GetCursorPosition, lo
-    -- stesso canale dell'hit-test dei drop-target che in client funziona.
-    -- Se il cursore si muove > 6px mentre il tasto e' tenuto giu' era un
-    -- DRAG, e il click si cancella. DESTRO: nessun drag sul tasto destro,
-    -- OnMouseUp arriva sempre, resta la coppia down/up (piu' reattiva).
-    -- NB: il poller si AUTODISARMA (SetScript nil) dopo uso - ogni
-    -- mouse-down sinistro lo RIARMA esplicitamente.
+    -- CANALE DI RISERVA per il click sinistro (sudo storico: con la finestra
+    -- draggabile, l'antenato con RegisterForDrag("LeftButton") divorava il
+    -- release nell'albero - oggi il drag del frame e' manuale Shift+destro e
+    -- quella causa e' sparita, ma il pollo resta come rete di sicurezza).
+    -- Funziona cosi': OnUpdate poll di IsMouseButtonDown - quando il tasto
+    -- risulta rilasciato e il cursore non si e' mosso (> 6px = drag →
+    -- cancello; >= 4s tenuto fermo = non click → cancello) e' un CLICK
+    -- sinistro → whisper. La TTL in OnAlertClick evita doppioni se arriva
+    -- anche OnMouseUp. NB: il poller si AUTODISARMA (SetScript nil) dopo
+    -- uso; ogni mouse-down sinistro (senza shift) lo RIARMA esplicitamente.
     local function Poller(s, elapsed)
         if not s._pendingLeft then
             s:SetScript("OnUpdate", nil)
@@ -444,13 +489,21 @@ function RF:MakeConsumableIcon(row, atype)
             end
         end
     end
+    -- CLICK NUDI (nessuno Shift) sulle icone = messaggi missing buff.
+    -- Shift+click = gesti di drag (player/HUD): qui NON deve partire nulla.
+    -- Il rilascio ora arriva col normale OnMouseUp (nessun antenato ha piu'
+    -- RegisterForDrag, lo shift separa i gesti); il POLLLING di riserva
+    -- (IsMouseButtonDown) resta armato solo senza shift: se qualche client
+    -- mangiasse comunque l'OnMouseUp-sinistro, il pollo salva il click e
+    -- la TTL di OnAlertClick ammazza l'eventuale doppione.
     btn:SetScript("OnMouseDown", function(s, button)
         s._pressed = button
+        s._shiftedAtDown = (IsShiftKeyDown and IsShiftKeyDown()) and true or nil
         -- Diagnostica in-game (solo debug): prova che l'input arriva.
         if RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.debug then
             RLSuite.utils:Print("RF icon down: " .. tostring(button) .. " " .. tostring(atype))
         end
-        if button == "LeftButton" then
+        if button == "LeftButton" and not s._shiftedAtDown then
             if GetCursorPosition then
                 s._px, s._py = GetCursorPosition()
             else
@@ -458,13 +511,14 @@ function RF:MakeConsumableIcon(row, atype)
             end
             s._t0 = (GetTime and GetTime()) or 0
             s._pendingLeft = true
-            s:SetScript("OnUpdate", Poller) -- riarma: il poller si disarma da solo
+            s:SetScript("OnUpdate", Poller) -- riserva: si disarma da solo
         end
     end)
     btn:SetScript("OnMouseUp", function(s, button)
-        local pressed = s._pressed
-        s._pressed = nil
-        if pressed == button and button == "RightButton" then
+        local pressed, shifted = s._pressed, s._shiftedAtDown
+        s._pressed, s._shiftedAtDown = nil, nil
+        if shifted then return end -- gesto con shift: mai un messaggio
+        if pressed == button and (button == "LeftButton" or button == "RightButton") then
             self:OnAlertClick(row, atype, button)
         end
     end)
@@ -477,6 +531,8 @@ function RF:MakeConsumableIcon(row, atype)
         end
         GameTooltip:AddLine(L["Left click: whisper"], 1, 1, 1)
         GameTooltip:AddLine(L["Right click: raid warning (everyone missing)"], 1, 1, 1)
+        GameTooltip:AddLine(L["Shift + left drag on a row: move player"], 0.8, 0.8, 0.8)
+        GameTooltip:AddLine(L["Shift + right drag: move window"], 0.8, 0.8, 0.8)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
