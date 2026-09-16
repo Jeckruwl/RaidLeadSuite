@@ -7,7 +7,23 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.4**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.5**.
+
+## Novità della sessione 1.5.5 (questo branch, dopo 1.5.4) — TARGET ALLA PRESSIONE + PER NOME (esattamente lo spec irrogabile)
+
+ZTL dell'utente (irrogabile): "SE CLICCO IL NOME TARGETTI IL PLAYER CON QUEL NOME".
+1. **TargetRow su `TargetByName(name)` come fallback universale**: "clicco il nome → target il
+   player con quel nome" letteralmente; la via principale resta `TargetUnit(unit)` se l'unit
+   e' valida (UnitExists e non fake; l'unico modo senza bonk d'errore su unit inesistenti).
+2. **Target ALLA PRESSIONE (mouse-down)**: come ogni unit frame Blizzard-aderente (Grid/VuhDo/
+   HealBot/cliqué): press su nome/barra → TargetRow ORA; il release/poller deduppano via TTL.
+   Il mouse-down e' l'unico evento mai fallito in client in questa saga (il click-bonk del
+   widget ne dava conferma). Shift+sinistro resta ESCLUSIVAMENTE drag player.
+3. Il click su nome/barra non ha piu' tra-dipendenze su OnMouseUp: press lo fa tutto; rilascio
+   → scrap. Muovere il cursore senza shift NON puo' piu' "cancellare" un click: e' target a
+   pressione solida come sugli unit frame ufficiali.
+- Test: 362 PASS con la nuova sovranità: fake → nessun bonk/nessun target; unit valida → target
+  a press; nome reale senza unit → TargetByName; shift → niente; press+move → target gia' partito.
 
 ## Novità della sessione 1.5.4 (questo branch, dopo 1.5.3) — RADICE FINALE: RegisterForDrag sulle righe MANGIA GLI SCRIPT CLICK
 
@@ -57,10 +73,9 @@ Fix `RF:TargetRow`:
   - `RF:TargetRow`: `TargetUnit(row.unit or row.member.unit)` con guardia TTL 0.3s
     (dedup con il poller di riserva); in debug fake roster senza unit stampa solo
     `RF target -> ...` (rfDbg) senza errori.
-  - **RowBodyPoller** (locale file-level): le righe hanno RegisterForDrag("LeftButton")
-    in pre-boss → riserva release via IsMouseButtonDown (si arma ad ogni down sinistro,
-    si autodisarma; cursore mosso > 6px = drag → cancello; timeout 4s). OnMouseUp della
-    riga resta canale primario: stesso codice `RF:RowPlainClick`.
+  - **RowBodyPoller** (locale file-level): riserva release via IsMouseButtonDown (si arma
+    ad ogni down sinistro non-shift, si autodisarma; cancello su `_manualDrag`; timeout 4s).
+    Da 1.5.5 e' SOLO riserva: il target scatta ALLA PRESSIONE nel plain down.
   - Shift+click barra = NO target (gesti drag); cursore mosso = NO target; click su
     icona = messaggio (NON target!) — icone hanno la precedenza.
 - Mock: `TargetUnit(u) → LAST_TARGET`. Test F.2f: target barra (coppia+poller a 1),
@@ -439,7 +454,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 360 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 362 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

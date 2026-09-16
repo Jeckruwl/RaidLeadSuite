@@ -226,6 +226,7 @@ function IsLoggedIn() return LOGGED_IN end
 function GetTime() return os.clock() end
 function IsMouseButtonDown(btn) return false end  -- mock: sempre rilasciato
 function TargetUnit(u) LAST_TARGET = u end          -- mock: registra target
+function TargetByName(n) LAST_TARGNAME = n end       -- mock: registra target-by-name
 function UnitExists(u) return false end             -- mock: nessuna unit reale (debug)
 function time() return os.time() end
 function date(fmt, t) return "2026-09-11" end
@@ -1382,63 +1383,79 @@ row.name = SAVED_ROW_NAME
 check(rt.eval("EMPTYCFG_W") == 1, "empty saved alert message now falls back to the default whisper (was a silent dead-end)")
 check(rt.eval("NONAME_W") == 1 and bool(rt.eval("NONAME_DEST")), "left click works even with row.name missing (falls back to member.name)")
 
-# --- F.2f click on the PLAYER BAR targets the player (user feature) ---
+# --- F.2f click on the PLAYER BAR targets the player (user feature: target on PRESS) ---
 rt.execute("""
 local row = RLSuite.raidFrame.rows[1]
-row._targetT = nil
+local function reset_click()
+    row._targetT = nil
+    row._pendingRowClick = nil
+    row._manualDrag = nil
+    row:SetScript('OnUpdate', nil)
+    LAST_TARGET = nil; LAST_TARGNAME = nil
+end
+row._lastAlert = nil
 SAVED_MU = (row.member and row.member.unit) or nil
 SAVED_RU = row.unit
+SAVED_RN = row.name
 SAVED_MF = row.member and row.member.fake
 SAVED_RF = row.fake
-LAST_TARGET = nil
-row._lastAlert = nil
 SAVED_GCP4 = GetCursorPosition
 GetCursorPosition = function() return 200, 110 end  -- su una barra, sotto NESSUNA icona
--- roster finto di debug (caso utente): NESSUN bonk Blizzard, NESSUN target,
--- solo traccia debug - l'unit finta non esiste nel gioco.
+-- 1) roster finto di debug (caso utente): NESSUN bonk, NESSUN target
+reset_click()
 row._scripts.OnMouseDown(row, 'LeftButton')
 row._scripts.OnMouseUp(row, 'LeftButton')
 if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
-TGT_FAKE = LAST_TARGET
--- raid reale: unit valida + membro non-fake → TargetUnit parte.
-LAST_TARGET = nil
-row._targetT = nil
+TGT_FAKE = LAST_TARGET or LAST_TARGNAME
+-- 2) unit valida raid reale → TargetUnit ALLA PRESSIONE
+reset_click()
 if row.member then row.member.unit = 'raid7'; row.member.fake = false end
 row.unit = 'raid7'; row.fake = false
 SAVED_UE = UnitExists
 UnitExists = function(u) return u == 'raid7' end
 row._scripts.OnMouseDown(row, 'LeftButton')
+TGT_PRESS = LAST_TARGET
 row._scripts.OnMouseUp(row, 'LeftButton')
 if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
 TGT1 = LAST_TARGET
--- SHIFT+click: NON targettare (gesto di drag player)
-LAST_TARGET = nil
-IsShiftKeyDown = function() return true end
-row._targetT = nil
+-- 3) NO unit ma NOME reale (barra): TargetByName sul nome esatto
+reset_click()
+if row.member then row.member.unit = nil end
+row.unit = nil
+row.name = 'PippoRosso'
 row._scripts.OnMouseDown(row, 'LeftButton')
 row._scripts.OnMouseUp(row, 'LeftButton')
 if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
-TGT2 = LAST_TARGET
+TGT_NAME = LAST_TARGNAME
+-- 4) SHIFT+click: NON targettare (gesto drag player)
+reset_click()
+if row.member then row.member.unit = 'raid7' end
+row.unit = 'raid7'
+IsShiftKeyDown = function() return true end
+row._scripts.OnMouseDown(row, 'LeftButton')
+row._scripts.OnMouseUp(row, 'LeftButton')
+if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
+TGT2 = LAST_TARGET or LAST_TARGNAME
+-- 5) press+move SENZA shift: target-on-press gia' partito (Grid-style)
+reset_click()
 IsShiftKeyDown = SAVED_ISD2
--- cursore mosso: era un drag, NON targettare
-LAST_TARGET = nil
-row._targetT = nil
 GetCursorPosition = function() return 200, 110 end
 row._scripts.OnMouseDown(row, 'LeftButton')
-GetCursorPosition = function() return 260, 115 end
-row._scripts.OnMouseUp(row, 'LeftButton')
-if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
-TGT3 = LAST_TARGET
+TGT_PRESS_BEFORE_MOVE = LAST_TARGET
+-- cleanup
 if row.member then row.member.unit = SAVED_MU; row.member.fake = SAVED_MF end
+row.name = SAVED_RN
 row.fake = SAVED_RF
 row.unit = SAVED_RU
 GetCursorPosition = SAVED_GCP4
 UnitExists = SAVED_UE
+row:SetScript('OnUpdate', nil)
 """)
 check(bool(rt.eval("TGT_FAKE == nil")), "debug fake roster: bar click does NOT bonk error-invalid-unit (no target for non-existing units)")
-check(rt.eval("TGT1") == 'raid7', "plain left click on a player bar targets that player")
+check(rt.eval("TGT_PRESS") == 'raid7' and rt.eval("TGT1") == 'raid7', "plain left click on a player bar targets on PRESS (name row, real unit)")
+check(rt.eval("TGT_NAME") == 'PippoRosso', "click on the NAME targets the player with THAT name (TargetByName fallback)")
 check(bool(rt.eval("TGT2 == nil")), "Shift+left on a bar does NOT target (drag gesture)")
-check(bool(rt.eval("TGT3 == nil")), "moved cursor on a bar (drag) does NOT target")
+check(rt.eval("TGT_PRESS_BEFORE_MOVE") == 'raid7', "target fires on PRESS even before any movement (Grid-style, cursor-move cannot suppress it)")
 
 # --- F.3 Raid Frame layout options: font / outline / bar texture / opacity ---
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.font ~= nil")), "Layout -> Font type present")

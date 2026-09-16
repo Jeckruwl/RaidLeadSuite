@@ -433,10 +433,14 @@ function RF:CreateSlotFrame(slotIndex, group)
             local x, y = GetCursorPosition()
             self2._pressX, self2._pressY = x, y
         end
-        -- Poller di riserva (stessa forma delle icone): senza drag
-        -- registrati l'OnMouseUp ora arriva, ma se qualche client lo
-        -- mangiasse comunque il release viene rilevato qui comunque.
         if button == "LeftButton" then
+            -- TARGET ALLA PRESSIONE: il mouse-down e' l'evento che in client
+            -- arriva SEMPRE (il bonk/click del widget lo dimostra), come fanno
+            -- Grid/VuhDo/HealBot. Release/poller deduppano via row._targetT.
+            RF:TargetRow(self2)
+            -- Poller di riserva (stessa forma delle icone): senza drag
+            -- registrati l'OnMouseUp ora arriva, ma se qualche client lo
+            -- mangiasse comunque il release viene rilevato qui comunque.
             self2._rowPollT0 = (GetTime and GetTime()) or 0
             self2._pendingRowClick = true
             self2:SetScript("OnUpdate", RowBodyPoller)
@@ -1050,14 +1054,14 @@ function RF:RowPlainClick(row, button)
     end
 end
 
--- Target del player della riga (click sinistro nudo sulla barra).
--- Dedup TTL: coppia down/up e poller di riserva possono entrambi sparare
--- lo stesso click: TargetUnit due volte sullo STESSO target e' innocuo, ma
--- mantengo il 0.3s di guardia per simmetria col sistema degli alert.
--- IMPORTANTE: TargetUnit su unit che NON ESISTE (roster finto di debug,
--- "raidX" senza raid) produce solo il bonk di errore di Blizzard e nessun
--- target: controllo UnitExists prima. Nei fake/debug senza unit valida
--- stampo la traccia (rfDbg) e NON emetto rumori di errore.
+-- Target del player della riga. ALLA PRESSIONE di un click sinistro nudo
+-- sulla barra (comportamento standard degli unit frame: Grid/VuhDo/HealBot
+-- targettano al mouse-down). Dedup TTL 0.3s: press + release + poller
+-- possono convergere nello stesso click.
+-- Condizione IRROGABILE dell'utente: "clicco il nome → target il player
+-- con QUEL nome": prima prova la via unit (TargetUnit su unit valida),
+-- altrimenti TargetByName(nome esatto). Mai su fake/debug: l'entita' non
+-- esiste nel gioco → nessun bonk di errore Blizzard, solo traccia rfDbg.
 function RF:TargetRow(row)
     if not row then return false end
     local now = (GetTime and GetTime()) or 0
@@ -1070,7 +1074,12 @@ function RF:TargetRow(row)
         TargetUnit(unit)
         return true
     end
-    -- roster finto/nessuna unit reale: solo traccia in debug, nessun bonk
+    if name and name ~= "" and TargetByName and not row.fake then
+        rfDbg("target by name -> %s", tostring(name))
+        TargetByName(name)
+        return true
+    end
+    -- roster finto/nessuna unit reale: solo traccia, nessun bonk
     rfDbg("target (unit non valida in questo contesto) -> %s (%s)", tostring(name), tostring(unit))
     return false
 end
