@@ -428,21 +428,23 @@ function MW:RegisterAllWindows()
     -- i loro layout interni non cambiano con la difficolta'.
     RLSuite.windowMins = RLSuite.windowMins or {}
     RLSuite.windowMins.groupmaking = function()
-        -- Larghezza minima: fila di controlli in basso (Start Spam,
-        -- Preview Msg, checkbox "Show specs in message" e bottone
-        -- InviteEngine) e le due colonne comp/class.
+        -- Larghezza minima: larghezza complessiva della fila di controlli
+        -- in basso (Start Spam, Preview Msg, checkbox + "Show specs in
+        -- message", InviteEngine) calcolata da Groupmaking:MinWidth().
         -- Altezza: pila verticale title+dropdowns, gruppo slot (topRow),
         -- box "richieste" e blocco basso anteprima+bottoni.
         local gm = RLSuite.groupmaking
+        local minW = 560
+        if gm and gm.MinWidth then minW = gm:MinWidth() end
         if gm and gm.MinHeight then
-            return 560, gm:MinHeight()
+            return minW, gm:MinHeight()
         end
         local topH = 156
         if gm and gm.topRow then
             local th = gm.topRow:GetHeight()
             if th and th > 60 then topH = th end
         end
-        return 560, topH + 328
+        return minW, topH + 328
     end
     RLSuite.windowMins.ms = function()
         return 350, 280

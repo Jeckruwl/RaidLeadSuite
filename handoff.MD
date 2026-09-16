@@ -11,8 +11,8 @@ target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Version
 
 ## Novità della sessione 1.4.2 (questo branch, dopo 1.4.1)
 
-Correzioni utente al pannello **Group Making** (test: blocco G.8 in Scenario G,
-**296 check totali, tutti verdi**):
+Correzioni utente al pannello **Group Making** (test: blocchi G.8/G.9 in
+Scenario G, **300 check totali, tutti verdi**):
 
 1. **Spazio morto eliminato riducendo l'altezza minima** (NON allargando i box):
    `GM:MinHeight()` ora restituisce `topH + 328` (pila itemizzata nel commento:
@@ -26,6 +26,12 @@ Correzioni utente al pannello **Group Making** (test: blocco G.8 in Scenario G,
    HUNTER, DRUID` (riempimento riga-per-riga a coppie) → col 1: Warrior, Rogue,
    Shaman, DK, Hunter; col 2: Paladin, Priest, Mage, Warlock, Druid
    (Warlock sotto Mage, Druid sotto Warlock, DK+Hunter sotto Shaman).
+3. **Larghezza minima = fila bottoni in basso**: nuovo `GM:MinWidth()` che
+   somma la fila reale (16 margine + 100 Start Spam + 8 + 100 Preview Msg +
+   6 + 24 checkbox + `GetStringWidth()` del testo "Show specs in message",
+   fallback 140 + 10 + 100 InviteEngine + 16 margine = 380+label ≈ 510).
+   `RaidProfile.lua` → `windowMins.groupmaking` lo usa (fallback 560) al posto
+   del 560 cablato; la label è salvata in `self.specsLbl`.
 
 ## Novità della sessione 1.4.1
 
@@ -165,7 +171,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 296 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 300 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
@@ -175,7 +181,8 @@ move su vuoto, swap su occupato, hiding fuori pre-boss) ·
 **G** novità 1.4.1 (config colonne real-time, MT/OT, reqBox→bottoni, bordi 12,
 debug-off svuota loot, join raid formato, bordino dorato drag, stack finestre
 pickup + layout slim) · **G.8** correzioni 1.4.2 (ordine classi 2 colonne con
-posizioni Mage/Warlock/Druid e Shaman/DK/Hunter, MinHeight = topRow + 328).
+posizioni Mage/Warlock/Druid e Shaman/DK/Hunter, MinHeight = topRow + 328) ·
+**G.9** larghezza minima Groupmaking = fila bottoni bassa (MinWidth, windowMins).
 
 ## 5. Punti aperti per la prossima sessione
 

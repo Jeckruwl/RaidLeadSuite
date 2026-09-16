@@ -1310,6 +1310,14 @@ check(rt.eval("CELLPOS[7]") == "0/-144", "DK -> first column, directly under Sha
 check(rt.eval("CELLPOS[9]") == "0/-192", "Hunter -> first column, under DK (Shaman column)")
 check(bool(rt.eval("RLSuite.groupmaking:MinHeight() == RLSuite.groupmaking.topRow:GetHeight() + 328")), "minimum window height reduced to topRow + 328 (dead space removed)")
 
+# --- G.9 Groupmaking: minimum width = bottom button row overall width ---
+check(bool(rt.eval("RLSuite.groupmaking.specsLbl ~= nil")), "'Show specs in message' label reference stored for MinWidth")
+check(bool(rt.eval("RLSuite.groupmaking:MinWidth() == 380 + math.ceil(RLSuite.groupmaking.specsLbl:GetStringWidth())")),
+    "MinWidth = 16+L-margin + Start Spam(100)+8 + Preview(100)+6 + check(24) + label width + 10 + InviteEngine(100) + 16+R-margin")
+check(bool(rt.eval("select(1, RLSuite.windowMins.groupmaking()) == RLSuite.groupmaking:MinWidth()")),
+    "registered windowMins.groupmaking uses the button-row width as minimum width")
+check(bool(rt.eval("RLSuite.groupmaking:MinWidth() >= 500")), "minimum width fits the whole button row (>= 500)")
+
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario G (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 
 print()

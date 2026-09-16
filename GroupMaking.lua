@@ -387,6 +387,7 @@ function GM:CreateMainWindow()
     specsLbl:SetPoint("LEFT", self.showSpecsCheck, "RIGHT", 0, 0)
     specsLbl:SetText("Show specs in message")
     specsLbl:SetTextColor(1, 0.82, 0)
+    self.specsLbl = specsLbl -- usata da MinWidth() per la fila di bottoni
 
     -- InviteEngine (ex-Whisplist): il bottone sta a DESTRA della checkbox
     -- "Show specs in message", come richiesto.
@@ -574,6 +575,28 @@ function GM:MinHeight()
         if th and th > 60 then topH = th end
     end
     return topH + 328
+end
+
+-- Larghezza minima della finestra: la fila di controllo in basso deve
+-- restare interamente visibile. Somma dei pezzi reali della fila:
+--   16   margine sinistro (previewBox/spamBtn partono a x=16)
+--  100   Start Spam
+--    8
+--  100   Preview Msg
+--    6
+--   24   checkbox
+--    w   label "Show specs in message" (misurata via GetStringWidth)
+--   10
+--  100   InviteEngine
+--   16   margine destro (simmetrico al sinistro)
+-- Fisso = 16+100+8+100+6+24+10+100+16 = 380 + larghezza del testo.
+function GM:MinWidth()
+    local labelW = 0
+    if self.specsLbl and self.specsLbl.GetStringWidth then
+        labelW = math.ceil(self.specsLbl:GetStringWidth() or 0)
+    end
+    if labelW <= 0 then labelW = 140 end -- fallback per "Show specs in message"
+    return 380 + labelW
 end
 
 -- L'InviteEngine e' una costola di Groupmaking: la sua altezza segue sempre
