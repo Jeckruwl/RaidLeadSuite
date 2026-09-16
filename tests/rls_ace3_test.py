@@ -1122,6 +1122,169 @@ check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[1]:IsShown() == true")), "gro
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario F (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 
 print()
+print("== Scenario G: main bar MT/OT + realtime config, loot pickup stack, debug-off clear, WL gold drag, real-raid join ==")
+
+# --- G.1 Config -> Window sliders apply to the main bar IN REAL TIME ---
+rt.execute("W0 = RLSuite.mainWindow.frame:GetWidth()")
+rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.window.args.matrixCols.set(nil, 4)")
+rt.execute("W1 = RLSuite.mainWindow.frame:GetWidth()")
+check(bool(rt.eval("W1 > W0")), "matrix Columns slider re-layouts the main bar in real time (w %d -> %d)" % (rt.eval("W0"), rt.eval("W1")))
+rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.window.args.matrixCols.set(nil, 2)")
+rt.execute("H0 = RLSuite.mainWindow.frame:GetHeight()")
+rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.window.args.matrixRows.set(nil, 8)")
+rt.execute("H1 = RLSuite.mainWindow.frame:GetHeight()")
+check(bool(rt.eval("H1 > H0")), "matrix Rows slider re-layouts the main bar in real time (h %d -> %d)" % (rt.eval("H0"), rt.eval("H1")))
+rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.window.args.matrixRows.set(nil, 4)")
+
+# --- G.2 MT / OT: two small buttons sharing ONE matrix cell ---
+check(bool(rt.eval("RLSuite.mainWindow.mtBtn ~= nil and RLSuite.mainWindow.otBtn ~= nil")), "MT / OT buttons exist on the main bar")
+check(bool(rt.eval("RLSuite.mainWindow.mtBtn:GetWidth() == 43 and RLSuite.mainWindow.otBtn:GetWidth() == 43")), "MT and OT are half-width ((90-4)/2 = 43px)")
+check(bool(rt.eval("RLSuite.mainWindow.mtBtn:GetHeight() == 22 and RLSuite.mainWindow.otBtn:GetHeight() == 22")), "MT / OT keep the matrix button height (22px)")
+check(bool(rt.eval("select(1, RLSuite.mainWindow.mtBtn:GetPoint(1)) == 'TOPLEFT' and select(1, RLSuite.mainWindow.otBtn:GetPoint(1)) == 'TOPLEFT'")), "MT / OT positioned inside the matrix")
+rt.execute("""
+_OLD_UnitExists = UnitExists
+_OLD_UnitName = UnitName
+_OLD_IsRaidLeader = IsRaidLeader
+MT_CALLS = {}
+SetPartyAssignment = function(role, unit) table.insert(MT_CALLS, tostring(role) .. '|' .. tostring(unit)) end
+UnitExists = function(u) return u == 'target' end
+UnitName = function(u) if u == 'target' then return 'Bossunit' end return 'Testplayer' end
+IsRaidLeader = function() return true end
+local b = RLSuite.mainWindow.mtBtn
+if b and b._scripts.OnClick then b._scripts.OnClick(b, 'LeftButton') end
+local o = RLSuite.mainWindow.otBtn
+if o and o._scripts.OnClick then o._scripts.OnClick(o, 'LeftButton') end
+""")
+check(rt.eval("MT_CALLS[1]") == "MAINTANK|target", "MT click assigns target as MAINTANK via SetPartyAssignment")
+check(rt.eval("MT_CALLS[2]") == "MAINASSIST|target", "OT click assigns target as MAINASSIST via SetPartyAssignment")
+rt.execute("""
+UnitExists = function(u) return u == 'player' end
+local c = #MT_CALLS
+local b = RLSuite.mainWindow.mtBtn
+if b and b._scripts.OnClick then b._scripts.OnClick(b, 'LeftButton') end
+MT_NOGROW = (#MT_CALLS == c)
+""")
+check(bool(rt.eval("MT_NOGROW == true")), "MT click with no target does NOT call SetPartyAssignment")
+rt.execute("""
+UnitExists = _OLD_UnitExists
+UnitName = _OLD_UnitName
+IsRaidLeader = _OLD_IsRaidLeader
+SetPartyAssignment = nil
+""")
+
+# --- G.3 Groupmaking: reqBox hugs the button row + thicker icon borders ---
+rt.execute("local p, rel, rp, x, y = RLSuite.groupmaking.reqBox:GetPoint(3); REQBOX_OK = (p == 'BOTTOMLEFT' and rel == RLSuite.groupmaking.spamBtn and rp == 'TOPLEFT' and y == 8)")
+check(bool(rt.eval("REQBOX_OK == true")), "requirements box bottom-anchored 8px above the buttons (no dead space)")
+check(bool(rt.eval("RLSuite.groupmaking.compSlots[1]._backdrop.edgeSize == 12")), "comp slot icons use thicker borders (edgeSize 12)")
+check(bool(rt.eval("RLSuite.groupmaking.specCells[1].buttons[1]._backdrop.edgeSize == 12")), "class bar spec icons use thicker borders (edgeSize 12)")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[1]._backdrop.edgeSize == 12")), "Raid Group slots use thicker borders (edgeSize 12)")
+
+# --- G.7 Debug OFF empties the Loot Manager (history + pickup windows) ---
+rt.execute("RLSuite.lootManager:AddToHistory('|cffff8000|Hitem:1|h[Test]|h|r', 'Test Item', 'tex', 4)")
+rt.execute("RLSuite.lootManager:ShowTradeWindow({ itemTexture = 'tex', itemLink = nil })")
+check(bool(rt.eval("#RLSuite.lootManager.history > 0 and #RLSuite.lootManager.tradeWindows > 0")), "loot manager populated before debug-off test")
+rt.execute("RLSuite.db.profile.debug = false; RLSuite:ApplyDebugMode()")
+check(bool(rt.eval("#RLSuite.lootManager.history == 0")), "disabling debug mode empties the loot history")
+check(bool(rt.eval("#RLSuite.lootManager.tradeWindows == 0")), "disabling debug mode closes the pickup windows")
+check(bool(rt.eval("RLSuite.lootManager.currentRoll == nil")), "disabling debug mode drops the active roll")
+
+# --- G.4 Raid Group populates when JOINING an already formed raid ---
+# On a real 3.3.5 client the global IsInRaid() does not exist (4.0+ API).
+rt.execute("""
+_OLD_IsInRaid = IsInRaid
+_OLD_GetNumRaidMembers = GetNumRaidMembers
+_OLD_GetRaidRosterInfo = GetRaidRosterInfo
+IsInRaid = nil
+RLSUITE_RAID = {
+    {name='Tanka', subgroup=1}, {name='Heala', subgroup=1},
+    {name='Dpsa', subgroup=2}, {name='Dpsb', subgroup=3},
+    {name='Dpsc', subgroup=4}, {name='Dpsd', subgroup=5}, {name='Dpse', subgroup=6},
+}
+GetNumRaidMembers = function() return #RLSUITE_RAID end
+GetRaidRosterInfo = function(i)
+    local m = RLSUITE_RAID[i]
+    if m then return m.name, 0, m.subgroup, 80, 'Warrior', 'WARRIOR', 'Icecrown', true, false end
+    return nil
+end
+RLSuite.groupmaking:UpdateWLGroups()
+RAID_NAMES = {}
+for _, s in ipairs(RLSuite.groupmaking.wlGroupSlots) do
+    if s.nameFS and s.nameFS:GetText() ~= '' then table.insert(RAID_NAMES, s.nameFS:GetText()) end
+end
+RAID_NAMES = table.concat(RAID_NAMES, ',')
+""")
+check(bool(rt.eval("RAID_NAMES:find('Tanka', 1, true) ~= nil")), "joining a half-full raid: G1 member shown without global IsInRaid")
+check(bool(rt.eval("RAID_NAMES:find('Dpsa', 1, true) ~= nil")), "joining a half-full raid: G2 member shown")
+check(bool(rt.eval("RAID_NAMES:find('Dpse', 1, true) ~= nil")), "joining a half-full raid: G6 member shown")
+rt.execute("""
+IsInRaid = _OLD_IsInRaid
+GetNumRaidMembers = _OLD_GetNumRaidMembers
+GetRaidRosterInfo = _OLD_GetRaidRosterInfo
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+RLSuite:ResetDebugRaid()
+for i=1,3 do RLSuite:DebugInviteAccept('Hl'..i, 'WARRIOR') end
+""")
+
+# --- G.5 golden border highlight on the drop-target slot while dragging ---
+rt.execute("""
+GetCursorPosition = function() return 101, 104 end
+local slots = RLSuite.groupmaking.wlGroupSlots
+-- Lo Scenario F lascia override di geometria per-istanza sugli slot:
+-- azzerarle, cosi' solo lo slot 8 viene colpito dall'hit-test del cursore.
+for _, b in ipairs(slots) do
+    b.GetLeft, b.GetRight, b.GetBottom, b.GetTop = nil, nil, nil, nil
+end
+slots[8].GetLeft = function() return 100 end
+slots[8].GetRight = function() return 150 end
+slots[8].GetBottom = function() return 100 end
+slots[8].GetTop = function() return 116 end
+local src = slots[1]
+src._scripts.OnDragStart(src, 'LeftButton')
+RLSuite.groupmaking:WlDragTick()
+""")
+check(bool(rt.eval("RLSuite.groupmaking.wlDragTracker ~= nil and RLSuite.groupmaking.wlDragTracker:IsShown() == true")), "drag starts the cursor tracker")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[8]._wlDropHl == true")), "slot under the cursor flagged as drop target")
+rt.execute("local c = RLSuite.groupmaking.wlGroupSlots[8]._backdropBorderColor; GOLD_OK = (c[1] == 1 and c[2] == 0.82 and c[3] == 0)")
+check(bool(rt.eval("GOLD_OK == true")), "drop target slot shows the GOLDEN border while dragging")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[2]._wlDropHl == nil")), "other slots not highlighted")
+rt.execute("""
+GetCursorPosition = function() return 500, 500 end
+RLSuite.groupmaking:WlDragTick()
+""")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[8]._wlDropHl == nil")), "moving the cursor away removes the highlight")
+rt.execute("local c = RLSuite.groupmaking.wlGroupSlots[8]._backdropBorderColor; GREY_OK = (c[1] == 0.3 and c[3] == 0.32)")
+check(bool(rt.eval("GREY_OK == true")), "highlight removed: empty slot border back to grey")
+rt.execute("""
+GetCursorPosition = function() return 101, 104 end
+local src = RLSuite.groupmaking.wlGroupSlots[1]
+src._scripts.OnDragStop(src)
+""")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[8].playerName == 'Testplayer'")), "drop onto the highlighted slot moves the player there")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[8]._wlDropHl == nil")), "highlight cleared after the drop")
+check(bool(rt.eval("RLSuite.groupmaking.wlDragTracker:IsShown() == false")), "cursor tracker stopped after the drop")
+rt.execute("local c = RLSuite.groupmaking.wlGroupSlots[8]._backdropBorderColor; CLASS_OK = math.abs((c[1] or 0) - 0.78) < 0.01")
+check(bool(rt.eval("CLASS_OK == true")), "filled slot border back to class color after the drop")
+
+# --- G.6 pickup windows stack one BELOW the other + slim layout ---
+rt.execute("RLSuite.lootManager:CloseAllTradeWindows()")
+rt.execute("RLSuite.lootManager:ShowTradeWindow({ itemTexture = 'tex', itemLink = '|cffffffff|Hitem:2|h[Loot A]|h|r' })")
+rt.execute("RLSuite.lootManager:ShowTradeWindow({ itemTexture = 'tex', itemLink = '|cffffffff|Hitem:3|h[Loot B]|h|r' })")
+check(bool(rt.eval("#RLSuite.lootManager.tradeWindows == 2")), "two pickup windows can be open at once")
+rt.execute("local p, rel, rp, x, y = RLSuite.lootManager.tradeWindows[2]:GetPoint(1); STACK_OK = (p == 'TOP' and rel == RLSuite.lootManager.tradeWindows[1] and rp == 'BOTTOM' and y == -6)")
+check(bool(rt.eval("STACK_OK == true")), "second pickup window anchors BELOW the first (not overlapping)")
+check(bool(rt.eval("RLSuite.lootManager.tradeWindows[1]:GetHeight() == 44")), "pickup window is as tall as the item icon (32px) + padding")
+rt.execute("local f = RLSuite.lootManager.tradeWindows[1]; local p, rel, rp = f.text:GetPoint(1); TXT_OK = (p == 'LEFT' and rel == f.icon and rp == 'RIGHT')")
+check(bool(rt.eval("TXT_OK == true")), "'Click to pick up item' sits to the RIGHT of the icon")
+check(bool(rt.eval("RLSuite.lootManager.tradeWindows[1].text:GetText() == 'Click to pick up item'")), "pickup text preserved")
+rt.execute("RLSuite.lootManager:CloseTradeWindow(RLSuite.lootManager.tradeWindows[1])")
+rt.execute("local p, rel, rp, x, y = RLSuite.lootManager.tradeWindows[1]:GetPoint(1); RISE_OK = (p == 'CENTER' and rel == UIParent and rp == 'CENTER' and y == 140)")
+check(bool(rt.eval("RISE_OK == true")), "closing the first pickup window makes the next one rise to the base anchor")
+rt.execute("RLSuite.lootManager:CloseAllTradeWindows()")
+
+check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario G (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
+
+print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
     sys.exit(1)

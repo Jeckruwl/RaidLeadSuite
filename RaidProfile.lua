@@ -171,6 +171,36 @@ function MW:CreateFrame()
         table.insert(self.matrixButtons, tab)
     end
 
+    -- MT / OT: due mezzi tasti che occupano UNA sola cella della matrice.
+    -- Assegnano (o rimuovono, se gia' assegnato) il target corrente come
+    -- Main Tank / Main Assist via SetPartyAssignment (solo RL/assist,
+    -- RLSuite:AssignPartyRole fa i controlli e avvisa in chat).
+    self.mtBtn = CreateFrame("Button", "RLSuiteMTBtn", f, "UIPanelButtonTemplate")
+    self.mtBtn:SetText("MT")
+    self.mtBtn:SetScript("OnClick", function()
+        if RLSuite.AssignPartyRole then
+            RLSuite:AssignPartyRole("MAINTANK")
+        end
+    end)
+    self.otBtn = CreateFrame("Button", "RLSuiteOTBtn", f, "UIPanelButtonTemplate")
+    self.otBtn:SetText("OT")
+    self.otBtn:SetScript("OnClick", function()
+        if RLSuite.AssignPartyRole then
+            RLSuite:AssignPartyRole("MAINASSIST")
+        end
+    end)
+    local function mtPairTooltip(btn, titleKey, lineKey)
+        btn:SetScript("OnEnter", function(s)
+            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L[titleKey])
+            GameTooltip:AddLine(L[lineKey], 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    mtPairTooltip(self.mtBtn, "Main Tank (MT)", "Assign/remove your current target as Main Tank.")
+    mtPairTooltip(self.otBtn, "Main Assist (OT)", "Assign/remove your current target as Main Assist.")
+
     -- Icona fase singola: accanto all'icona SaveRaid, cambia in base alla
     -- fase (occhio LFG animato / clessidra / spade da combattimento).
     -- Clic = passa alla fase successiva.
@@ -255,11 +285,13 @@ function MW:ApplyLayout()
     L = L or {}
     local cols = math.max(1, math.min(8, tonumber(L.matrixCols) or 2))
     local rows = math.max(1, math.min(8, tonumber(L.matrixRows) or 4))
-    -- la matrice deve sempre contenere tutti i bottoni (6 tab):
-    -- se le colonne sono poche, le righe minime crescono per non sforare
+    -- la matrice deve sempre contenere tutti i bottoni (6 tab): la coppia
+    -- MT/OT occupa UNA cella extra; se le colonne sono poche, le righe
+    -- minime crescono per non sforare
     local nButtons = #(self.matrixButtons or {})
-    if nButtons > 0 then
-        rows = math.max(rows, math.ceil(nButtons / cols))
+    local extraCells = (self.mtBtn and self.otBtn) and 1 or 0
+    if nButtons + extraCells > 0 then
+        rows = math.max(rows, math.ceil((nButtons + extraCells) / cols))
     end
 
     -- Bottoni matrice: colonne x righe configurabili dalla Config.
@@ -296,6 +328,24 @@ function MW:ApplyLayout()
         btn:ClearAllPoints()
         btn:SetSize(bw, bh)
         btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", x0 + col * (bw + gapX), topY - row * (bh + gapY))
+    end
+
+    -- Coppia MT / OT: la cella subito dopo l'ultimo tasto, divisa in due
+    -- mezzi tasti affiancati (insieme occupano lo spazio di un tasto solo).
+    if self.mtBtn and self.otBtn then
+        local idx = nButtons + 1
+        local col = (idx - 1) % cols
+        local row = math.floor((idx - 1) / cols)
+        local halfGap = 4
+        local halfW = (bw - halfGap) / 2
+        local cellX = x0 + col * (bw + gapX)
+        local cellY = topY - row * (bh + gapY)
+        self.mtBtn:ClearAllPoints()
+        self.mtBtn:SetSize(halfW, bh)
+        self.mtBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX, cellY)
+        self.otBtn:ClearAllPoints()
+        self.otBtn:SetSize(bw - halfW - halfGap, bh)
+        self.otBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX + halfW + halfGap, cellY)
     end
 
     -- riga icone in alto: save -> fase a sinistra, X a destra

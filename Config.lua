@@ -338,15 +338,18 @@ function CFG:BuildOptionsTable()
         height = slider(L["Default window height"], nil, 1, 400, 900, 20,
             function() return main.height end,
             function(_, v) main.height = v end),
+        -- Le tre opzioni della barra principale (scala, colonne, righe)
+        -- applicano il layout SUBITO: ApplyAll rilancia
+        -- RLSuite.mainWindow:ApplyLayout() ad ogni cambio dello slider.
         barScale = slider(L["Bar scale"], nil, 2, 0.70, 1.30, 0.05,
             function() return main.scale or 1 end,
-            function(_, v) main.scale = v end),
+            function(_, v) main.scale = v; self:ApplyAll() end),
         matrixCols = slider(L["Columns"], L["Columns in the bar button matrix."], 3, 1, 8, 1,
             function() return main.matrixCols end,
-            function(_, v) main.matrixCols = v end),
+            function(_, v) main.matrixCols = v; self:ApplyAll() end),
         matrixRows = slider(L["Buttons per column"], nil, 4, 1, 8, 1,
             function() return main.matrixRows end,
-            function(_, v) main.matrixRows = v end),
+            function(_, v) main.matrixRows = v; self:ApplyAll() end),
         anchors = toggle(L["Toggle Anchors"], L["Unlocks the Raid Frame and MacroBar HUDs as movable placeholders."], 5,
             function() return prof().anchorMode == true end,
             function(_, v)

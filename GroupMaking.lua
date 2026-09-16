@@ -19,6 +19,14 @@ local WL_BAR_GAP = 2
 local WL_COL_GAP = 4
 local WL_GROUP_LABEL_H = 14
 
+-- Spessore dei bordi (icone comp, icone spec e caselle Raid Group):
+-- prima 8, reso un po' piu' corposo su richiesta.
+local RLS_BORDER = 12
+
+-- Bordo dorato dello slot-drop durante il drag nel pannello Raid Group
+-- (bordino che evidenzia il riquadro in cui il player sta per essere rilasciato).
+local WL_GOLD_R, WL_GOLD_G, WL_GOLD_B = 1, 0.82, 0
+
 -- Extra vertical room the InviteEngine rib needs for the tabbed panel
 -- below the fixed Raid Group box (AceGUI-3.0 TabGroup: tab strip + border).
 -- The rib keeps following Groupmaking's minimum resize height.
@@ -270,7 +278,10 @@ function GM:CreateMainWindow()
     self.reqBox = CreateFrame("Frame", nil, f)
     self.reqBox:SetPoint("TOPLEFT", self.topRow, "BOTTOMLEFT", 0, -8)
     self.reqBox:SetPoint("TOPRIGHT", self.topRow, "BOTTOMRIGHT", 0, -8)
-    self.reqBox:SetHeight(150)
+    -- L'altezza NON e' fissa: il bordo inferiore viene ancorato sopra la
+    -- fila di bottoni (vedi sotto, dopo spamBtn), cosi' tra la fine del
+    -- riquadro delle caselle di testo e i tasti non resta spazio morto a
+    -- nessuna dimensione della finestra.
     RLSuite.utils:SkinBox(self.reqBox)
 
     -- Campo "Aim": nota libera del raid leader, sopra a Reserved items.
@@ -355,6 +366,12 @@ function GM:CreateMainWindow()
     self.spamBtn:SetText("Start Spam")
     self.spamBtn:SetScript("OnClick", function() self:ToggleSpam() end)
 
+    -- Il riquadro delle richieste (Aim/Reserved/Other) si estende in basso
+    -- fino a 8px sopra la fila di bottoni: spamBtn parte dallo stesso
+    -- margine sinistro del contenuto (16), quindi BOTTOMLEFT non sposta la
+    -- geometria orizzontale; gli edit restano ancorati in alto dentro il box.
+    self.reqBox:SetPoint("BOTTOMLEFT", self.spamBtn, "TOPLEFT", 0, 8)
+
     self.previewBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     self.previewBtn:SetSize(100, 24)
     self.previewBtn:SetPoint("LEFT", self.spamBtn, "RIGHT", 8, 0)
@@ -418,13 +435,13 @@ function GM:BuildCompSlots()
         local row = math.floor((i - 1) / 5)
         local y = -(row * self:GroupRowHeight() + GROUP_LABEL_H)
         slot:SetPoint("TOPLEFT", self.compFrame, "TOPLEFT", col * (SLOT_SIZE + SLOT_SPACING), y)
-        -- Slot background + thin border (the class color is applied to the
+        -- Slot background + bordered frame (the class color is applied to the
         -- border on fill). No oversized overlay texture: it used to cover the
         -- spec icon and poke into the "Group N" labels.
         slot:SetBackdrop({
             bgFile = "Interface\\Buttons\\UI-Quickslot",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = false, tileSize = 32, edgeSize = 8,
+            tile = false, tileSize = 32, edgeSize = RLS_BORDER,
             insets = {left=2, right=2, top=2, bottom=2}
         })
         slot:SetBackdropColor(0.2, 0.2, 0.2, 0.9)
@@ -644,7 +661,7 @@ function GM:BuildClassBar()
                 btn:SetBackdrop({
                     bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
                     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-                    tile = true, tileSize = 16, edgeSize = 8,
+                    tile = true, tileSize = 16, edgeSize = RLS_BORDER,
                     insets = {left = 1, right = 1, top = 1, bottom = 1},
                 })
                 btn:SetBackdropColor(0, 0, 0, 0.8)
@@ -3058,7 +3075,7 @@ function GM:BuildWLGroupColumns()
             bar:SetBackdrop({
                 bgFile = "Interface\\Buttons\\UI-Quickslot",
                 edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-                tile = false, tileSize = 32, edgeSize = 8,
+                tile = false, tileSize = 32, edgeSize = RLS_BORDER,
                 insets = {left=2, right=2, top=2, bottom=2},
             })
             bar:SetBackdropColor(0.15, 0.15, 0.17, 0.95)
@@ -3075,19 +3092,25 @@ function GM:BuildWLGroupColumns()
             -- OnReceiveDrag resta come percorso parallelo: qualunque dei due
             -- scatti per primo consuma GM._wlDragSource, quindi non c'e'
             -- mai un doppio spostamento/scambio.
+            -- Mentre il drag e' attivo, lo slot sotto il cursore viene
+            -- evidenziato con un BORDINO DORATO (StartWLDragTracking).
             bar:RegisterForDrag("LeftButton")
             bar:SetScript("OnDragStart", function(self2)
                 GM._wlDragSource = (self2.playerName and self2) or nil
+                if GM._wlDragSource then
+                    GM:StartWLDragTracking()
+                end
             end)
             bar:SetScript("OnDragStop", function()
                 local src = GM._wlDragSource
-                GM._wlDragSource = nil
                 if src and src.playerName then
                     local target = GM:WlSlotAtCursor()
+                    GM._wlDragSource = nil
                     if target and target ~= src then
                         GM:MoveWLSlot(src, target)
                     end
                 end
+                GM:StopWLDragTracking()
             end)
             bar:SetScript("OnReceiveDrag", function(self2)
                 local src = GM._wlDragSource
@@ -3095,6 +3118,7 @@ function GM:BuildWLGroupColumns()
                 if src and src ~= self2 and src.playerName then
                     GM:MoveWLSlot(src, self2)
                 end
+                GM:StopWLDragTracking()
             end)
 
             -- Nome in colore di classe su slot scuro (come il Raid Frame):
@@ -3145,8 +3169,12 @@ function GM:UpdateWLGroups()
                 end
             end
         end
-    elseif IsInRaid and IsInRaid() and GetNumRaidMembers then
-        num = GetNumRaidMembers()
+    elseif GetNumRaidMembers then
+        -- In un client 3.3.5 reale la globale IsInRaid() NON esiste (arriva
+        -- solo dal 4.0): usare GetNumRaidMembers() come fonte di verita'.
+        -- Prima il gate su IsInRaid bloccava il popolamento quando si
+        -- ENTRAVA in un gruppo raid gia' formato (es. meta' pieno).
+        num = GetNumRaidMembers() or 0
     end
     if not debugMode then
         local groupCount = { 0, 0, 0, 0, 0, 0 }
@@ -3187,7 +3215,7 @@ function GM:UpdateWLGroups()
                     -- Slot pieno: bordo in colore di classe e nome in colore
                     -- di classe su fondo scuro (leggibile su qualsiasi colore).
                     bar:SetBackdropColor(0.16, 0.16, 0.18, 0.95)
-                    bar:SetBackdropBorderColor(r, gg, b, 1)
+                    bar._nbR, bar._nbG, bar._nbB = r, gg, b
                     if bar.nameFS then
                         bar.nameFS:SetText(member.name)
                         bar.nameFS:SetTextColor(r, gg, b)
@@ -3196,8 +3224,15 @@ function GM:UpdateWLGroups()
                 else
                     -- Slot vuoto: fondo scuro + bordo grigio (comunque visibile).
                     bar:SetBackdropColor(0.12, 0.12, 0.14, 0.95)
-                    bar:SetBackdropBorderColor(0.30, 0.30, 0.32, 1)
+                    bar._nbR, bar._nbG, bar._nbB = 0.30, 0.30, 0.32
                     if bar.nameFS then bar.nameFS:SetText("") end
+                end
+                -- Il colore "normale" e' salvato in _nbR/_nbG/_nbB: durante
+                -- un drag lo slot-destinazione resta con il bordino dorato.
+                if bar._wlDropHl then
+                    bar:SetBackdropBorderColor(WL_GOLD_R, WL_GOLD_G, WL_GOLD_B, 1)
+                else
+                    bar:SetBackdropBorderColor(bar._nbR, bar._nbG, bar._nbB, 1)
                 end
             end
         end
@@ -3293,6 +3328,80 @@ function GM:WlSlotAtCursor()
         end
     end
     return nil
+end
+
+-- ============================================================
+-- BORDINO DORATO durante il drag (pannello Raid Group)
+-- Mentre si trascina un player, un tracker nascosto segue il cursore e
+-- accende il bordo oro sullo slot che riceverebbe il drop ("il riquadro
+-- in cui sto drappando"). Alla fine del drag tutti i bordi tornano ai
+-- colori normali (pieno = classe, vuoto = grigio).
+-- ============================================================
+function GM:EnsureWLDragTracker()
+    if self.wlDragTracker or not self.wlGroupBox then return end
+    local t = CreateFrame("Frame", "RLSuiteWLDragTracker", self.wlGroupBox)
+    t:SetSize(1, 1)
+    t:EnableMouse(false)
+    t._throttle = 0
+    t:SetScript("OnUpdate", function(s, elapsed)
+        s._throttle = (s._throttle or 0) + (elapsed or 0)
+        if s._throttle < 0.03 then return end
+        s._throttle = 0
+        GM:WlDragTick()
+    end)
+    t:Hide()
+    self.wlDragTracker = t
+end
+
+-- Avvio tracking (chiamata dall'OnDragStart degli slot occupati).
+function GM:StartWLDragTracking()
+    self:EnsureWLDragTracker()
+    self._wlDragTarget = nil
+    if self.wlDragTracker then self.wlDragTracker:Show() end
+end
+
+-- Fine drag: spegne il tracker e toglie ogni bordino dorato.
+function GM:StopWLDragTracking()
+    if self.wlDragTracker then self.wlDragTracker:Hide() end
+    self._wlDragSource = nil
+    self._wlDragTarget = nil
+    for _, bar in ipairs(self.wlGroupSlots or {}) do
+        if bar and bar._wlDropHl then
+            bar._wlDropHl = nil
+            if bar._nbR then
+                bar:SetBackdropBorderColor(bar._nbR, bar._nbG, bar._nbB, 1)
+            end
+        end
+    end
+end
+
+-- Un singolo passo di highlight: colora d'oro lo slot sotto il cursore e
+-- ripristina gli altri. Chiamata dal tracker (o direttamente dai test).
+function GM:WlDragTick()
+    if not self._wlDragSource then
+        self:StopWLDragTracking()
+        return
+    end
+    local target = self:WlSlotAtCursor()
+    if target == self._wlDragSource then target = nil end
+    if target == self._wlDragTarget then return end
+    self._wlDragTarget = target
+    for _, bar in ipairs(self.wlGroupSlots or {}) do
+        if bar then
+            local want = (bar == target)
+            if (bar._wlDropHl == true) ~= want then
+                if want then
+                    bar._wlDropHl = true
+                    bar:SetBackdropBorderColor(WL_GOLD_R, WL_GOLD_G, WL_GOLD_B, 1)
+                else
+                    bar._wlDropHl = nil
+                    if bar._nbR then
+                        bar:SetBackdropBorderColor(bar._nbR, bar._nbG, bar._nbB, 1)
+                    end
+                end
+            end
+        end
+    end
 end
 
 -- Riorganizza i gruppi trascinando un giocatore tra gli slot del pannello

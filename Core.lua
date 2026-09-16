@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.4.0"
+RLSuite.version = "1.4.1"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -1167,6 +1167,32 @@ function RLSuite:IsOfficer()
     return (IsRaidLeader and IsRaidLeader()) or (IsRaidOfficer and IsRaidOfficer())
 end
 
+-- ============================================================
+-- MAIN TANK / MAIN ASSIST (tasti MT / OT della barra principale)
+-- SetPartyAssignment(role, unit) e' una TOGGLE nel client 3.3.5: se
+-- l'unita' ha gia' l'assegnazione viene tolta, altrimenti impostata.
+-- Richiede RL/organizzatore nel raid (in debug sempre consentito).
+-- ============================================================
+function RLSuite:AssignPartyRole(role)
+    local label = (role == "MAINTANK") and "Main Tank" or "Main Assist"
+    if type(SetPartyAssignment) ~= "function" then
+        self.utils:Print(string.format(L["%s assignment is not available on this client."], label))
+        return false
+    end
+    if not (UnitExists and UnitExists("target")) then
+        self.utils:Print(string.format(L["Target a raid member first to assign %s."], label))
+        return false
+    end
+    if not self:IsOfficer() then
+        self.utils:Print(L["Only the raid leader or an assist can assign Main Tank / Main Assist."])
+        return false
+    end
+    SetPartyAssignment(role, "target")
+    local name = UnitName("target") or "?"
+    self.utils:Print(string.format(L["%s toggled as %s."], name, label))
+    return true
+end
+
 function RLSuite:ApplyDebugMode()
     self:UpdateRaidContext()
     -- The simulated roster always restarts from just the player when debug
@@ -1179,6 +1205,12 @@ function RLSuite:ApplyDebugMode()
         end
     else
         self.utils:Print("Debug mode OFF.")
+        -- Il Loot Manager si SVUOTA uscendo dalla debug mode: storico,
+        -- roll in corso e finestre "click to pick up" contenevano solo
+        -- dati finti e non devono restare aperti nella UI reale.
+        if self.lootManager and self.lootManager.ClearHistory then
+            self.lootManager:ClearHistory()
+        end
     end
     -- Rinfresca TUTTE le UI che leggono il roster (Raid Group + Raid Frame):
     -- in debug si parte dal solo giocatore, fuori dal debug si torna al

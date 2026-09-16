@@ -806,22 +806,47 @@ function LM:ResetButtons()
     if self.rerollBtn then self.rerollBtn:Disable() end
 end
 
+-- Finestre "click to pick up": si IMPILANO una sotto l'altra (mai
+-- sovrapposte) partendo dal centro-alto dello schermo. Ogni finestra e'
+-- alta quanto l'icona del pezzo (+padding) e il testo sta a DESTRA
+-- dell'icona cliccabile. tradeWindows tiene traccia delle finestre aperte
+-- cosi' chiudendone una le altre risalgo a riempire il buco.
+local LM_TRADE_ICON = 32     -- lato dell'icona cliccabile
+local LM_TRADE_PAD = 6       -- padding sopra/sotto l'icona
+local LM_TRADE_GAP = 6       -- spazio verticale tra una finestra e l'altra
+
 function LM:ShowTradeWindow(item)
     if not item then return end
-    local f = CreateFrame("Frame", "RLSuiteTradeWindow", UIParent)
-    f:SetSize(200, 100)
-    f:SetPoint("CENTER")
+    self.tradeWindows = self.tradeWindows or {}
+    -- nome globale univoco (le finestre possono convivere, una per vincita)
+    local n = #self.tradeWindows + 1
+    local name = "RLSuiteTradeWindow" .. n
+    while _G[name] do
+        n = n + 1
+        name = "RLSuiteTradeWindow" .. n
+    end
+
+    local f = CreateFrame("Frame", name, UIParent)
+    f:SetSize(230, LM_TRADE_ICON + 2 * LM_TRADE_PAD)
     f:SetFrameStrata("DIALOG")
     RLSuite.utils:SkinFrame(f)
+    table.insert(self.tradeWindows, f)
 
+    -- icona cliccabile a sinistra, alta quanto la finestra
     local icon = f:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(40, 40)
-    icon:SetPoint("TOP", f, "TOP", 0, -15)
+    icon:SetSize(LM_TRADE_ICON, LM_TRADE_ICON)
+    icon:SetPoint("LEFT", f, "LEFT", LM_TRADE_PAD + 2, 0)
     icon:SetTexture(item.itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
+    f.icon = icon
 
+    -- "Click to pick up item" a DESTRA dell'icona
     local text = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    text:SetPoint("TOP", icon, "BOTTOM", 0, -5)
+    text:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+    text:SetPoint("RIGHT", f, "RIGHT", -34, 0) -- lascia spazio alla X
+    text:SetJustifyH("LEFT")
+    text:SetWordWrap(true)
     text:SetText("Click to pick up item")
+    f.text = text
 
     local btn = CreateFrame("Button", nil, f)
     btn:SetAllPoints(icon)
@@ -834,10 +859,73 @@ function LM:ShowTradeWindow(item)
         if TradeFrame and TradeFrame:IsShown() then
             ClickTradeButton(1)
         end
-        f:Hide()
+        self:CloseTradeWindow(f)
     end)
 
     f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
-    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
+    f.closeBtn:SetPoint("RIGHT", f, "RIGHT", 0, 0)
+    f.closeBtn:SetScript("OnClick", function() self:CloseTradeWindow(f) end)
+
+    self:StackTradeWindows()
+end
+
+-- Chiude una finestra di pickup e risistema la pila (le altre risalgono).
+function LM:CloseTradeWindow(f)
+    if not f then return end
+    if f.Hide then f:Hide() end
+    for i, w in ipairs(self.tradeWindows or {}) do
+        if w == f then
+            table.remove(self.tradeWindows, i)
+            break
+        end
+    end
+    self:StackTradeWindows()
+end
+
+function LM:CloseAllTradeWindows()
+    for _, w in ipairs(self.tradeWindows or {}) do
+        if w and w.Hide then w:Hide() end
+    end
+    self.tradeWindows = {}
+end
+
+-- Impila le finestre aperte UNA SOTTO L'ALTRA dalla prima (ancorata al
+-- centro-alto dello schermo). Ogni nuova vincita finisce in coda.
+function LM:StackTradeWindows()
+    local prev = nil
+    for _, w in ipairs(self.tradeWindows or {}) do
+        if w and w.IsShown and w:IsShown() then
+            w:ClearAllPoints()
+            if prev then
+                w:SetPoint("TOP", prev, "BOTTOM", 0, -LM_TRADE_GAP)
+            else
+                w:SetPoint("CENTER", UIParent, "CENTER", 0, 140)
+            end
+            prev = w
+        end
+    end
+end
+
+-- Svuota il Loot Manager: uscendo dalla debug mode lo storico (loot finto),
+-- il roll in corso e le finestre pickup non devono sopravvivere.
+function LM:ClearHistory()
+    if self.db and self.db.history then
+        for k in pairs(self.db.history) do self.db.history[k] = nil end
+    end
+    self.history = (self.db and self.db.history) or {}
+    self.selectedItem = nil
+    self:CancelRollTimers()
+    if self.UnregisterEvent then
+        self:UnregisterEvent("CHAT_MSG_SYSTEM")
+    end
+    self.currentRoll = nil
+    self:CloseAllTradeWindows()
+    if self.selectedItemIcon then
+        self.selectedItemIcon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    end
+    if self.selectedItemText then
+        self.selectedItemText:SetText(L["No item selected"])
+    end
+    self:ResetButtons()
+    self:UpdateHistory()
 end

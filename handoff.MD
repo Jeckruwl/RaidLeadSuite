@@ -1,11 +1,54 @@
 # Handoff — RaidLeadSuite (agent → agent)
 
 Documento di passaggio per continuare il lavoro su questa repo in una nuova chat.
-Branch di lavoro: `arena/01a0883a-raidleadsuite` — base `main @ 53826a7`.
+Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdbac`
+(che già include il merge della PR #3 della sessione precedente, branch
+`arena/01a0883a-raidleadsuite`).
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.0**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.1**.
+
+## Novità della sessione 1.4.1 (questo branch)
+
+Richieste utente implementate (test: Scenario G, **288 check totali, tutti verdi**):
+
+- **Main bar**: slider Config → General → Window (`matrixCols`, `matrixRows`,
+  `barScale`) applicano il layout **in tempo reale** (`self:ApplyAll()` nei set).
+  Nuovi tasti **MT / OT**: due mezzi tasti in UNA cella della matrice
+  (`RaidProfile.lua`, `self.mtBtn`/`self.otBtn`, cella extra gestita in
+  `MW:ApplyLayout`); chiamano `RLSuite:AssignPartyRole("MAINTANK"/"MAINASSIST")`
+  in `Core.lua` → `SetPartyAssignment(role, "target")` **toggle**, guardie:
+  target presente + `RLSuite:IsOfficer()` (sempre true in debug).
+- **Loot Manager** (`LootManager.lua`): finestre "Click to pick up item"
+  impilate **una sotto l'altra** (`LM:StackTradeWindows`, lista `self.tradeWindows`,
+  noms globali univoci `RLSuiteTradeWindowN`; chiudendone una le altre risalgono
+  via `LM:CloseTradeWindow`); altezza ridotta = icona 32px + padding;
+  testo **a destra** dell'icona cliccabile. `LM:ClearHistory()` svuota storico +
+  roll + finestre pickup: chiamata da `RLSuite:ApplyDebugMode()` quando la
+  **debug mode viene DISATTIVATA**.
+- **Group Making**: `reqBox` (Aim/Reserved/Other) ancorato in basso a 8px sopra
+  la fila bottoni (`reqBox:BOTTOMLEFT → spamBtn:TOPLEFT`) — niente più spazio
+  morto tra caselle di testo e tasti; bordi più spessi (`RLS_BORDER = 12`:
+  comp slots, icone spec class bar).
+- **InviteEngine / Raid Group**: bordino **dorato** sullo slot-drop durante il
+  drag (`GM:StartWLDragTracking`/`GM:WlDragTick`/`GM:StopWLDragTracking`,
+  tracker nascosto `wlDragTracker` con OnUpdate 0.03s, flag `bar._wlDropHl`,
+  colori normali salvati in `bar._nbR/_nbG/_nbB` e rispettati da
+  `GM:UpdateWLGroups`); bordi caselle Raid Group a 12px; **fix popolamento**:
+  `IsInRaid()` non esiste su 3.3.5 reale (API 4.0+) — ora il panel usa
+  `GetNumRaidMembers()` come fonte di verità, quindi si popola anche
+  **entrando in un raid già formato** (metà pieno).
+
+## Lezioni apprese aggiuntive
+
+- `IsInRaid()` **non** esiste nel client 3.3.5a (né su Warmane): controlli raid
+  solo via `GetNumRaidMembers() > 0` (guardia `if GetNumRaidMembers`).
+- Nei test: geometrie degli slot mockate con override per-istanza
+  (`slot.GetLeft = function() ... end`) persistono tra scenari — azzerarle
+  (`b.GetLeft, ... = nil, ...`) prima di un nuovo scenario di hit-test.
+- `rt.eval` accetta SOLO espressioni: gli statement vanno in `rt.execute`
+  (salvare il booleano in una globale e leggerla con `rt.eval`).
 
 ## 1. Struttura della repo
 
@@ -104,19 +147,29 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 251 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 288 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
 C Config single-window · D Lim/Aim/fasi/debug/autoinviter · E HUD Raid Frame ·
 F gruppi 6 + drag & drop pre-boss (17 check: 30 slot + 6 header, fill in ordine,
-move su vuoto, swap su occupato, hiding fuori pre-boss).
+move su vuoto, swap su occupato, hiding fuori pre-boss) ·
+**G** novità 1.4.1 (config colonne real-time, MT/OT, reqBox→bottoni, bordi 12,
+debug-off svuota loot, join raid formato, bordino dorato drag, stack finestre
+pickup + layout slim).
 
 ## 5. Punti aperti per la prossima sessione
 
 1. Slider `Width` totale rimosso dal Layout — confermare con l'utente se voluto.
 2. Drag RaidFrame attivo solo in pre-boss (da richiesta); se serve anche in altre
    fasi per leader/officer è un cambio da una riga in `RF:IsDragEnabled()`.
-3. File chiave per area: HUD/gruppi → `RaidFrame.lua`; pannello riferimento →
+3. Il bordino dorato del drag esiste solo nel pannello Raid Group
+   (InviteEngine); se piace, portarlo anche nel RaidFrame HUD (stesso pattern:
+   tracker OnUpdate + `_wlDropHl` + colori `_nbR/_nbG/_nbB`).
+4. MT/OT fanno `SetPartyAssignment("MAINTANK"/"MAINASSIST", "target")` (toggle):
+   se l'utente vuole icone di stato o anti-toggle esplicito (`GetPartyAssignment`),
+   lavorare su `RLSuite:AssignPartyRole` in `Core.lua`.
+5. File chiave per area: HUD/gruppi → `RaidFrame.lua`; pannello riferimento →
    `GroupMaking.lua` (`WL_*`, `MoveWLSlotDebug`); roster debug → `Core.lua`
-   (`DebugRaidSlots`, `DebugSyncSubgroups`); opzioni → `Config.lua`.
+   (`DebugRaidSlots`, `DebugSyncSubgroups`); opzioni → `Config.lua`;
+   finestre pickup loot → `LootManager.lua` (`ShowTradeWindow`, `StackTradeWindows`).

@@ -185,6 +185,15 @@ do
     L["Show/Hide HUD"] = true
     L["SaveRaid title:"] = true
     L["SaveRaid cancelled: no title entered."] = true
+    -- MT / OT buttons (Main Tank / Main Assist assignment)
+    L["Main Tank (MT)"] = true
+    L["Main Assist (OT)"] = true
+    L["Assign/remove your current target as Main Tank."] = true
+    L["Assign/remove your current target as Main Assist."] = true
+    L["%s assignment is not available on this client."] = true
+    L["Target a raid member first to assign %s."] = true
+    L["Only the raid leader or an assist can assign Main Tank / Main Assist."] = true
+    L["%s toggled as %s."] = true
 
     -- Minimap icon
     L["Left click: open RLS"] = true
