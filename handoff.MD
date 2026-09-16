@@ -7,7 +7,24 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.3**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.4.4**.
+
+## Novità della sessione 1.4.4 (questo branch, dopo 1.4.3)
+
+Fix da test in game sui bordi (test: blocco bordi G.3 ampliato, **316 check
+totali**):
+
+1. **Raid Group (InviteEngine) clipping**: `WL_BORDER` 18→14 — a 18 le barre
+   da 16px alte si tagliavano a vicenda (bordo più alto della barra). 14 è
+   "un po'" più spesso del 12 precedente senza sovrapporsi.
+2. **Comp slots: bordo ora VERAMENTE visibile più spesso** — il bordo dello
+   slot era nel backdrop, quindi *sotto* l'icona spec (ARTWORK) e non sembrava
+   cambiare. Ora `BuildCompSlots` crea `slot.borderFrame` (figlio, solo
+   `edgeFile`, edgeSize `RLS_BORDER=16`) **dopo** l'icona spec (disegnato
+   sopra) e ci ATTACCA `slot.roleIconBg`+`slot.roleIcon` (render sopra il
+   bordo). Ordine layer: icona spec → BORDO → backdrop ruolo → icona ruolo.
+   `FillSlot`/`ClearSlot` colorano il bordo su `slot.borderFrame`. Mock test:
+   `CreateTexture` ora registra `_parent`.
 
 ## Novità della sessione 1.4.3 (questo branch, dopo 1.4.2)
 
@@ -196,7 +213,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 311 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 316 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
@@ -210,7 +227,7 @@ posizioni Mage/Warlock/Druid e Shaman/DK/Hunter, MinHeight = topRow + 328) ·
 **G.9** larghezza minima Groupmaking = fila bottoni bassa (MinWidth, windowMins) ·
 **G.10** novità 1.4.3 (roll→RAID_WARNING, "give to" nella pickup, selezione
 svuotata dopo la vincita, riga rollata ingrigita + desaturata) + G.2/G.3
-aggiornati (MT/OT sotto Raid Frame, bordi 16/16/18).
+aggiornati (MT/OT sotto Raid Frame, bordi 16/16/18) · fix 1.4.4 nel blocco bordi (comp borderFrame overlay, WL 14).
 
 ## 5. Punti aperti per la prossima sessione
 

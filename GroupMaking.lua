@@ -19,11 +19,12 @@ local WL_BAR_GAP = 2
 local WL_COL_GAP = 4
 local WL_GROUP_LABEL_H = 14
 
--- Spessore dei bordi: icone "comp" e "select a spec" (RLS_BORDER) e,
--- ancora piu' spesse, le caselle del pannello Raid Group (WL_BORDER).
--- (Storia: 8 -> 12 -> 16 comp/spec, 12 -> 18 caselle Raid Group.)
+-- Spessore dei bordi: icone "comp" e "select a spec" (RLS_BORDER, overlay
+-- sopra l'icona e sotto l'icona di ruolo) e, un po' piu' spesse ma senza
+-- che le caselle si clippino tra loro, quelle del Raid Group (WL_BORDER:
+-- barre da 16px alte, 18 faceva tagliare le caselle adiacenti).
 local RLS_BORDER = 16
-local WL_BORDER = 18
+local WL_BORDER = 14
 
 -- Bordo dorato dello slot-drop durante il drag nel pannello Raid Group
 -- (bordino che evidenzia il riquadro in cui il player sta per essere rilasciato).
@@ -433,17 +434,15 @@ function GM:BuildCompSlots()
         local row = math.floor((i - 1) / 5)
         local y = -(row * self:GroupRowHeight() + GROUP_LABEL_H)
         slot:SetPoint("TOPLEFT", self.compFrame, "TOPLEFT", col * (SLOT_SIZE + SLOT_SPACING), y)
-        -- Slot background + bordered frame (the class color is applied to the
-        -- border on fill). No oversized overlay texture: it used to cover the
-        -- spec icon and poke into the "Group N" labels.
+        -- Sfondo dello slot (il COLORE DEL BORDO class-color va sull'overlay
+        -- borderFrame, vedi sotto). Nessun bordo qui: sarebbe nascosto
+        -- dall'icona della spec che e' disegnata sopra.
         slot:SetBackdrop({
             bgFile = "Interface\\Buttons\\UI-Quickslot",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = false, tileSize = 32, edgeSize = RLS_BORDER,
+            tile = false, tileSize = 32,
             insets = {left=2, right=2, top=2, bottom=2}
         })
         slot:SetBackdropColor(0.2, 0.2, 0.2, 0.9)
-        slot:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
         slot:Show()
         slot:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         slot:SetScript("OnClick", function(s, button)
@@ -458,16 +457,32 @@ function GM:BuildCompSlots()
         slot.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         slot.icon:Hide()
 
+        -- BORDO come overlay: frame figlio con il solo edge, creato DOPO
+        -- l'icona della spec (il suo backdrop si disegna sopra le texture
+        -- dello slot padre) e PRIMA delle icone di ruolo, che gli nascono
+        -- sopra come sue texture. Risultato: bordo SOPRA l'icona della spec
+        -- ma SOTTO backdrop e icona del ruolo.
+        local border = CreateFrame("Frame", "RLSuiteCompSlotBorder" .. i, slot)
+        border:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, 0)
+        border:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", 0, 0)
+        border:SetFrameLevel((slot.GetFrameLevel and slot:GetFrameLevel() or 1) + 1)
+        border:SetBackdrop({
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = false, tileSize = 16, edgeSize = RLS_BORDER,
+            insets = {left=2, right=2, top=2, bottom=2}
+        })
+        border:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
+        slot.borderFrame = border
+
         -- Semi-transparent backing so the role glyph stays readable on bright
-        -- spec icons. It lives on ARTWORK (above the spec icon, below the
-        -- OVERLAY glyph) so it can never cover the role icon.
-        slot.roleIconBg = slot:CreateTexture(nil, "ARTWORK")
+        -- spec icons: texture di border (sta sopra il bordo) sotto OVERLAY.
+        slot.roleIconBg = border:CreateTexture(nil, "ARTWORK")
         slot.roleIconBg:SetSize(20, 20)
         slot.roleIconBg:SetPoint("TOPRIGHT", slot, "TOPRIGHT", -1, -1)
         slot.roleIconBg:SetTexture(0, 0, 0, 0.6)
         slot.roleIconBg:Hide()
 
-        slot.roleIcon = slot:CreateTexture(nil, "OVERLAY")
+        slot.roleIcon = border:CreateTexture(nil, "OVERLAY")
         slot.roleIcon:SetSize(18, 18)
         slot.roleIcon:SetPoint("TOPRIGHT", slot, "TOPRIGHT", -2, -2)
         slot.roleIcon:SetTexture(ROLE_ICON_TEXTURE)
@@ -618,7 +633,9 @@ function GM:ClearSlot(index)
     slot.filled = false
     slot.playerName = nil
     if slot.icon then slot.icon:Hide() end
-    slot:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
+    if slot.borderFrame then
+        slot.borderFrame:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
+    end
     if slot.roleIconBg then slot.roleIconBg:Hide() end
     if slot.roleIcon then slot.roleIcon:Hide() end
     self:UpdateMessagePreview()
@@ -639,7 +656,9 @@ function GM:FillSlot(index, class, role, playerName, spec)
         slot.icon:Show()
     end
     local r, g, b = RLSuite.utils:GetClassColor(class)
-    slot:SetBackdropBorderColor(r, g, b, 1)
+    if slot.borderFrame then
+        slot.borderFrame:SetBackdropBorderColor(r, g, b, 1)
+    end
     if slot.roleIconBg then slot.roleIconBg:Show() end
     if slot.roleIcon then
         local coords = RoleIconCoords(slot.role)
