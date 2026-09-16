@@ -226,6 +226,7 @@ function IsLoggedIn() return LOGGED_IN end
 function GetTime() return os.clock() end
 function IsMouseButtonDown(btn) return false end  -- mock: sempre rilasciato
 function TargetUnit(u) LAST_TARGET = u end          -- mock: registra target
+function UnitExists(u) return false end             -- mock: nessuna unit reale (debug)
 function time() return os.time() end
 function date(fmt, t) return "2026-09-11" end
 function GetGameTime() return 20, 30 end
@@ -1385,13 +1386,25 @@ local row = RLSuite.raidFrame.rows[1]
 row._targetT = nil
 SAVED_MU = (row.member and row.member.unit) or nil
 SAVED_RU = row.unit
-if row.member then row.member.unit = 'raid7' end
-row.unit = 'raid7'
+SAVED_MF = row.member and row.member.fake
+SAVED_RF = row.fake
 LAST_TARGET = nil
 row._lastAlert = nil
 SAVED_GCP4 = GetCursorPosition
 GetCursorPosition = function() return 200, 110 end  -- su una barra, sotto NESSUNA icona
--- coppia down/up (canale primario) + poller riserva (dedup interno a TargetRow)
+-- roster finto di debug (caso utente): NESSUN bonk Blizzard, NESSUN target,
+-- solo traccia debug - l'unit finta non esiste nel gioco.
+row._scripts.OnMouseDown(row, 'LeftButton')
+row._scripts.OnMouseUp(row, 'LeftButton')
+if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
+TGT_FAKE = LAST_TARGET
+-- raid reale: unit valida + membro non-fake → TargetUnit parte.
+LAST_TARGET = nil
+row._targetT = nil
+if row.member then row.member.unit = 'raid7'; row.member.fake = false end
+row.unit = 'raid7'; row.fake = false
+SAVED_UE = UnitExists
+UnitExists = function(u) return u == 'raid7' end
 row._scripts.OnMouseDown(row, 'LeftButton')
 row._scripts.OnMouseUp(row, 'LeftButton')
 if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
@@ -1414,10 +1427,13 @@ GetCursorPosition = function() return 260, 115 end
 row._scripts.OnMouseUp(row, 'LeftButton')
 if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
 TGT3 = LAST_TARGET
-if row.member then row.member.unit = SAVED_MU end
+if row.member then row.member.unit = SAVED_MU; row.member.fake = SAVED_MF end
+row.fake = SAVED_RF
 row.unit = SAVED_RU
 GetCursorPosition = SAVED_GCP4
+UnitExists = SAVED_UE
 """)
+check(bool(rt.eval("TGT_FAKE == nil")), "debug fake roster: bar click does NOT bonk error-invalid-unit (no target for non-existing units)")
 check(rt.eval("TGT1") == 'raid7', "plain left click on a player bar targets that player")
 check(bool(rt.eval("TGT2 == nil")), "Shift+left on a bar does NOT target (drag gesture)")
 check(bool(rt.eval("TGT3 == nil")), "moved cursor on a bar (drag) does NOT target")

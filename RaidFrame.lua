@@ -1050,6 +1050,10 @@ end
 -- Dedup TTL: coppia down/up e poller di riserva possono entrambi sparare
 -- lo stesso click: TargetUnit due volte sullo STESSO target e' innocuo, ma
 -- mantengo il 0.3s di guardia per simmetria col sistema degli alert.
+-- IMPORTANTE: TargetUnit su unit che NON ESISTE (roster finto di debug,
+-- "raidX" senza raid) produce solo il bonk di errore di Blizzard e nessun
+-- target: controllo UnitExists prima. Nei fake/debug senza unit valida
+-- stampo la traccia (rfDbg) e NON emetto rumori di errore.
 function RF:TargetRow(row)
     if not row then return false end
     local now = (GetTime and GetTime()) or 0
@@ -1057,13 +1061,13 @@ function RF:TargetRow(row)
     row._targetT = now
     local unit = row.unit or (row.member and row.member.unit)
     local name = row.name or (row.member and row.member.name)
-    if unit and TargetUnit then
+    if unit and TargetUnit and (not UnitExists or UnitExists(unit)) and not row.fake then
         rfDbg("target -> %s (%s)", tostring(name), tostring(unit))
         TargetUnit(unit)
         return true
     end
-    -- roster finto/debug senza unit reale: solo traccia, niente errori
-    rfDbg("target (no unit) -> %s", tostring(name))
+    -- roster finto/nessuna unit reale: solo traccia in debug, nessun bonk
+    rfDbg("target (unit non valida in questo contesto) -> %s (%s)", tostring(name), tostring(unit))
     return false
 end
 

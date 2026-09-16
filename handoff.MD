@@ -7,7 +7,22 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.2**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.3**.
+
+## Novità della sessione 1.5.3 (questo branch, dopo 1.5.2) — TARGET BAR: era un bug DEBUG, non di click
+
+Segnalazione utente: click sulla barra = "solo il rumore del dialog Blizzard", nessun target.
+Traduzione: **TargetUnit(unit) veniva chiamata su unit che NON ESISTE nel gioco**
+(il roster finto di debug: "raidX", "partyY" senza raid) → WoW suona il bonk di errore
+invalid-unit e non targetta nessuno. Il canale del click era corretto.
+
+Fix `RF:TargetRow`:
+- `TargetUnit` solo se `unit` esiste (`UnitExists(unit)`) E il membro non e' fake:
+  in un raid VERO → target reale istantaneo; nel roster finto di debug → niente bonk,
+  solo la traccia rfDbg `RF target (unit non valida...) -> ...`.
+- Mock: globale `UnitExists` (default false) + override nel test.
+- Test F.2f aggiornato: fake roster → nessun target/nessun bonk; unit valida +
+  membro non-fake → target; shift / cursore mosso → niente. **360 check PASS**.
 
 ## Novità della sessione 1.5.2 (questo branch, dopo 1.5.1) — CLICK SU BARRA = TARGET PLAYER
 
@@ -400,7 +415,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 359 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 360 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
