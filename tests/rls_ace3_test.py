@@ -1109,7 +1109,7 @@ check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar:GetWidth() == RLSuite.db.profil
 # --- buff/debuff/ability bars: RIMOSSE (redesign in corso), restano SOLO flask+food per riga ---
 check(bool(rt.eval("RLSuite.raidFrame.buffBar == nil and RLSuite.raidFrame.debuffBar == nil and RLSuite.raidFrame.abilityBar == nil")), "no buff/debuff/ability bars exist anymore (eliminated for redesign)")
 check(bool(rt.eval("RLSuite.raidFrame.BuildAbilityBar == nil and RLSuite.raidFrame.RefreshAlertBars == nil and RLSuite.raidFrame.CheckCoverage == nil")), "buff-bar machinery functions are gone (UI code removed, not just hidden)")
-check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().W == RLSuite.raidFrame:LayoutMetrics().rowWidth + 19 * 24 + 10")), "window width = rows + permanent category-header area (matrix zone is always reserved)")
+check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().W == RLSuite.raidFrame:LayoutMetrics().rowWidth + #RLSuite.raidFrame:_MatrixCols() * RLSuite.raidFrame:LayoutMetrics().cellW + 10")), "window width = rows + permanent category-header area (matrix zone is always reserved)")
 # fase: le icone flask/food per riga restano vive in ogni fase (lo stato non dipende piu' dalle barre)
 rt.execute("RLSuite:SetContextPhase('preboss')")
 check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon:IsShown() == true")), "pre-boss: per-row flask icon still live")
@@ -1398,23 +1398,65 @@ check(bool(rt.eval("#RLSuite.raidFrame.rows == 6")), "group rows unaffected by t
 # Raid Buffs matrix panel (Method style)
 check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn ~= nil and RLSuite.raidFrame.buffPanelBtn.label:GetText() == 'Raid Buffs'")), "'Raid Buffs' toggle button on the Tanks header row, right edge")
 check(bool(rt.eval("RLSuite.raidFrame.buffPanel == nil")), "no floating side panel: the buff matrix is PART of the raid frame")
-check(bool(rt.eval("#RLSuite.raidFrame:_MatrixCols() == 19")), "19 visible columns (flask/food excluded: already checked per-row)")
+check(bool(rt.eval("#RLSuite.raidFrame:_MatrixCols() == 25")), "25 visible columns (all Icy-Veins raid-buff categories incl. AP%%, DR%%, Heal+, Repl, SpellHaste; flask/food excluded)")
+rt.execute("""
+local function colHas(key, id)
+    for _, c in ipairs(RLSuite.raidBuffColumns) do
+        if c.key == key and c.spells then
+            for _, s in ipairs(c.spells) do if s == id then return true end end
+        end
+    end
+    return false
+end
+local function colMisses(key, id) return not colHas(key, id) end
+AL_TRUESHOT_AGAINSTYPE = colMisses('atkpower', 19506) and colHas('apIncrease', 19506)
+AL_NOT_LUST = colMisses('haste', 2825) and colHas('haste', 53648)
+AL_DMG = colHas('damage', 34460) and colHas('damage', 31869)
+AL_NEWCOLS = colHas('apIncrease', 53138) and colHas('dmgReduction', 20911)
+    and colHas('healReceived', 34123) and colHas('physReduction', 16240)
+    and colHas('replen', 34914) and colHas('spellHaste', 3738)
+AL_LOTP = colHas('meleeCrit', 17007) and colHas('meleeHaste', 55610)
+AL_SANC = colHas('stats', 20911) and colHas('intellect', 57567) and colHas('spirit', 57567)
+local function debHas(key)
+    for _, c in ipairs(RLSuite.raidDebuffChecks) do if c.key == key then return true end end
+    return false
+end
+AL_DEBUFF_LOADLIST = debHas('apReduction') and debHas('attackSpeedReduction') and debHas('castSpeedReduction') and debHas('healingReduction')
+local checkListNew = 0
+for _, c in ipairs(RLSuite.raidBuffChecks) do
+    if c.key == 'replen' or c.key == 'spellHaste' or c.key == 'apIncrease' or c.key == 'dmgReduction'
+       or c.key == 'healReceived' or c.key == 'physReduction' or c.key == 'meleeCrit' or c.key == 'meleeHaste'
+       or c.key == 'spellPower' or c.key == 'damage' then
+        checkListNew = checkListNew + 1
+    end
+end
+AL_CHECKLIST = (checkListNew == 10)
+""")
+check(bool(rt.eval("AL_TRUESHOT_AGAINSTYPE")), "Icy-Veins alignment: Trueshot Aura moved from raw ATK to the AP% Increase column")
+check(bool(rt.eval("AL_NOT_LUST")), "Icy-Veins alignment: 'haste' column is Moonkin/Swift-Ret 3% haste, NOT Bloodlust")
+check(bool(rt.eval("AL_DMG")), "Icy-Veins alignment: Damage Increase = Ferocious Inspiration + Sanctified Retribution (+Arcane Empowerment)")
+check(bool(rt.eval("AL_NEWCOLS")), "Icy-Veins alignment: new columns AP%%, DR%%, Heal+, Phys-red, Replenishment, Spell Haste exist")
+check(bool(rt.eval("AL_LOTP") and bool(rt.eval("AL_SANC"))), "Icy-Veins alignment: LotP/Improved Icy Talons/Sanctuary/Fel Intellect ids added")
+check(bool(rt.eval("AL_DEBUFF_LOADLIST")), "Icy-Veins alignment: new debuff columns (AP/attack-speed/cast-speed reductions, wound) added")
+check(bool(rt.eval("AL_CHECKLIST")), "raidBuffChecks list now carries the 10 missing categories in sync with the matrix")
+
 check(bool(rt.eval("RLSuite.raidFrame.buffMatrixOn ~= true")), "buff matrix hidden by default (shows only when the button is clicked)")
 rt.execute("""
 RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
 BP_ON = (RLSuite.raidFrame.buffMatrixOn == true)
 local cols = RLSuite.raidFrame:_MatrixCols()
 BP_PRIO1 = (cols[1].key == 'stats')
-BP_PRIO19 = (cols[19].key == 'retAura')
+NC = #cols
+BP_PRIOLAST = (cols[NC].key == 'retAura')
 BP_HDR1 = (RLSuite.raidFrame._buffHdrBtns[1]._label:GetText() == cols[1].label and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true)
-BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[19]._label:GetText() == cols[19].label)
+BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[NC]._label:GetText() == cols[NC].label)
 BP_HDR_ROT = (math.abs((RLSuite.raidFrame._buffHdrBtns[1]._label._rotation or 0) - math.rad(45)) < 0.001 and RLSuite.raidFrame._buffHdrBtns[1]._rotatedLabel == true)
 BP_HDR_H = (RLSuite.raidFrame._buffHdrBtns[1].height == 80 or (RLSuite.raidFrame._buffHdrBtns[1]._h == 80) or true)
 local hb1 = RLSuite.raidFrame._buffHdrBtns[1]
 local hbpt = hb1._points[#hb1._points]
 BP_HDR_TOP = (hbpt[2] == RLSuite.raidFrame.frame and math.abs((hbpt[5] or 0) + 1) < 0.001)
 BP_HDR_OUT = true
-for c = 1, 19 do
+for c = 1, NC do
     local b = RLSuite.raidFrame._buffHdrBtns[c]
     BP_HDR_OUT = BP_HDR_OUT and (b:GetParent() == RLSuite.raidFrame.frame) and (b:IsShown() == true)
 end
@@ -1430,7 +1472,7 @@ for g = 1, 6 do
     if gh:IsShown() and (gh._points == nil or #gh._points == 0) then BP_LAYOUT_DONE = false end
 end
 local m = RLSuite.raidFrame:LayoutMetrics()
-BP_W = (m.W == m.rowWidth + 19 * 24 + 10)
+BP_W = (m.W == m.rowWidth + NC * 24 + 10)
 -- la riga del player (unit 'player') e quella di un fake
 BP_PSLOT, BP_FSLOT = nil, nil
 for _, s in ipairs(RLSuite.raidFrame.slots) do
@@ -1447,14 +1489,14 @@ RB_FAKE = (BP_FSLOT._matrixBg ~= nil and BP_FSLOT._matrixBg:IsShown() == true)
 RB_GEOM = false
 if BP_PSLOT._matrixBg then
     local p = BP_PSLOT._matrixBg._points[1]
-    RB_GEOM = (p ~= nil and p[2] == RLSuite.raidFrame.content and p[4] == m.rowWidth + 2 and BP_PSLOT._matrixBg._w == 19 * 24 + 6 and BP_PSLOT._matrixBg._h == m.rowHeight - 2)
+    RB_GEOM = (p ~= nil and p[2] == RLSuite.raidFrame.content and p[4] == m.rowWidth + 2 and BP_PSLOT._matrixBg._w == NC * 24 + 6 and BP_PSLOT._matrixBg._h == m.rowHeight - 2)
 end
 RB_RGB0 = BP_PSLOT._matrixBg and BP_PSLOT._matrixBg._texRGBA
 """)
 check(bool(rt.eval("BP_ON")), "click on 'Raid Buffs' activates the matrix")
 check(bool(rt.eval("BP_PRIO1")), "most important buffs first: column 1 is the Kings/stats column")
-check(bool(rt.eval("BP_PRIO19")), "least priority last: retribution-aura column closes the row")
-check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "header row carries the short category names (all 19 columns)")
+check(bool(rt.eval("BP_PRIOLAST")), "least priority last: retribution-aura column closes the row")
+check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "header row carries the short category names (ALL 25 columns)")
 check(bool(rt.eval("BP_HDR_ROT")), "category titles are rotated 45 degrees so they stay readable on narrow columns")
 check(bool(rt.eval("BP_HDR_TOP")), "category header row sits at the very TOP of the raid frame")
 check(bool(rt.eval("BP_LAYOUT_DONE")), "matrix header build can never abort ApplyLayout half-way: whole layout completes (groups + backdrop + cells)")
@@ -1499,7 +1541,7 @@ BP_MISS = (BP_PSLOT._buffCells[1]:IsShown() == false)
 BP_FNAME = BP_FSLOT.member and BP_FSLOT.member.name or '?'
 local shown1 = {}
 local count1 = 0
-for c = 1, 19 do
+for c = 1, NC do
     local tc = BP_FSLOT._buffCells[c]
     if tc and tc:IsShown() then
         shown1[c] = tc._texture or '?'
@@ -1508,7 +1550,7 @@ for c = 1, 19 do
 end
 RLSuite.raidFrame:RefreshBuffMatrix()
 local same = true
-for c = 1, 19 do
+for c = 1, NC do
     local tc = BP_FSLOT._buffCells[c]
     if (tc and tc:IsShown() and shown1[c] ~= tc._texture) or ((not tc or not tc:IsShown()) and shown1[c] ~= nil) then
         same = false
@@ -1521,7 +1563,7 @@ GetSpellInfo = SAVED_GSI2
 RLSuite.raidFrame:UpdateAll()
 RLSuite.raidFrame:RefreshBuffMatrix()
 BP_HDR_STILL = true
-for c = 1, 19 do
+for c = 1, NC do
     BP_HDR_STILL = BP_HDR_STILL and (RLSuite.raidFrame._buffHdrBtns[c]:IsShown() == true)
 end
 RB_STILL = (BP_PSLOT._matrixBg ~= nil and BP_PSLOT._matrixBg:IsShown() == true)
@@ -1532,7 +1574,7 @@ check(bool(rt.eval("BP_MISS")), "missing category leaves the player's cell empty
 check(bool(rt.eval("BP_FAKE_SOME")), "invited (fake) players receive random buffs: their matrix row shows some category icons")
 check(bool(rt.eval("BP_FAKE_STABLE")), "debug random buff sets are stable across refreshes (no flicker)")
 check(bool(rt.eval("BP_AFTER")), "buffs gone -> icons gone (matrix tracks live auras)")
-check(bool(rt.eval("BP_HDR_STILL")), "the 19 category titles STAY visible through aura updates/refreshes (never flicker away)")
+check(bool(rt.eval("BP_HDR_STILL")), "all the category titles STAY visible through aura updates/refreshes (never flicker away)")
 check(bool(rt.eval("RB_STILL")), "per-row backdrops stay visible through refreshes")
 rt.execute("""
 -- spacing configurabili + colore backdrop: li cambio, ApplyLayout, misuro
@@ -1543,7 +1585,7 @@ app.matrixBackdrop = { r = 1, g = 0, b = 0, a = 0.6 }
 RLSuite.raidFrame:ApplyLayout()
 local m3 = RLSuite.raidFrame:LayoutMetrics()
 SP_CELLW = (m3.cellW == m3.iconSize + 2)
-SP_W = (m3.W == m3.rowWidth + 19 * (m3.iconSize + 2) + 10)
+SP_W = (m3.W == m3.rowWidth + NC * (m3.iconSize + 2) + 10)
 local s1 = RLSuite.raidFrame.slots[1]._points[1][5]
 local s2 = RLSuite.raidFrame.slots[2]._points[1][5]
 SP_ROWS = (math.abs((s1 - s2) - (m3.rowHeight + 6)) < 0.001)
@@ -1567,9 +1609,9 @@ rt.execute("""
 RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
 BP_CLOSED = (RLSuite.raidFrame.buffMatrixOn ~= true and BP_PSLOT._buffCells[10] ~= nil and BP_PSLOT._buffCells[10]:IsShown() == false)
 local m2 = RLSuite.raidFrame:LayoutMetrics()
-BP_W_KEEP = (m2.W == m2.rowWidth + 19 * 24 + 10)
+BP_W_KEEP = (m2.W == m2.rowWidth + NC * 24 + 10)
 RB_OFF = (BP_PSLOT._matrixBg ~= nil and BP_PSLOT._matrixBg:IsShown() == false)
-BP_HDR_PERM = (RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true and RLSuite.raidFrame._buffHdrBtns[19]:IsShown() == true)
+BP_HDR_PERM = (RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true and RLSuite.raidFrame._buffHdrBtns[NC]:IsShown() == true)
 """)
 check(bool(rt.eval("BP_CLOSED")), "second click on 'Raid Buffs' hides the row icons/cells")
 check(bool(rt.eval("RB_SHOW")), "each PLAYER ROW gets its own gray backdrop strip while the matrix is on (not one window-sized panel)")

@@ -7,7 +7,37 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.8.0**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.0**.
+
+## Novità della sessione 1.9.0 (questo branch, dopo 1.8.0) — CATEGORIE BUFF ALLINEATE A ICY VEINS WOTLK GUIDE
+
+Confronto con https://www.icy-veins.com/wotlk-classic/raid-buffs-and-debuffs:
+19 -> **25 colonne** visibili nella matrice ("fuori" restano flask/wellfed come
+voluto). Correzioni dati (id spell):
+- atkpower: 19506 (Trueshot) spostato nella NUOVA colonna **apIncrease "AP%"**
+  (Trueshot/Unleashed Rage/Abomination's Might: HUNTER, SHAMAN, DEATHKNIGHT).
+- haste: NON piu' Bloodlust (2825/32182) -> categoria giusta **luna/ret 3%**:
+  Moonkin Aura 24907 + Swift Retribution 53648 (DRUID, PALADIN).
+- damage: ids veri: Arcane Empowerment 31583 + Ferocious Inspiration 34460 +
+  Sanctified Retribution 31869 (prima 75447/31579/31580 sbagliati).
+- meleeCrit aggiunti LotP 17007; meleeHaste aggiunto Imp Icy Talons 55610;
+  intellect/spirit aggiunto Fel Intellect 57567 (Affli lock); stats aggiunto
+  Blessing of Sanctuary 20911.
+- NUOVE COLONNE: apIncrease "AP%", dmgReduction "DR%" (Sanctuary 20911 +
+  Renewed Hope 57472/57479), healReceived "Heal+" (Tree of Life aura 34123;
+  Improved Devotion non lascia aura propria), physReduction "Armor+"
+  (Ancestral Healing/Inspiration, tank-side), replen "Repl" (5 fonti),
+  spellHaste "SpH" (Wrath of Air Totem 3738).
+- Tenute le categorie extra che Icy Veins NON elenca ma utili: armor (Devotion),
+  shadow (ShProt), focusMagic, retAura (ora ultima colonna per priorita').
+- Priorita' left->right aggiornata (RF_BP_PRIORITY 1..25): Kings, Stamina, Gift,
+  Int, Spirit, ShProt, Armor, MP5, ATK, AP%, HP, Str+Agi, SPow, SpH, MHaste,
+  MCrit, SpC, FM, Dmg%, Haste, DR%, Heal+, Armor+, Repl, Ret.
+- raidBuffChecks sincronizzata (10 categorie mancanti aggiunte);
+  raidDebuffChecks +4: apReduction, attackSpeedReduction, castSpeedReduction,
+  healingReduction (debuff page Icy Veins).
+- Test: conteggi dinamici su #_MatrixCols() (25) ovunque; 7 nuovi check di
+  allineamento (AL_*). 458 check PASS.
 
 ## Novità della sessione 1.8.0 (questo branch, dopo 1.7.3) — BACKDROP UNO PER RIGA + HEADER PERMANENTE FUORI DAL PANNELLO
 
@@ -772,7 +802,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 451 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 458 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

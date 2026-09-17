@@ -2,7 +2,7 @@
 
 An addon for **raid leaders** on World of Warcraft **Wrath of the Lich King 3.3.5** (Interface `30300`), designed for **Warmane Lordaeron**.
 
-Version: **1.8.0**
+Version: **1.9.0**
 
 ## Installation
 

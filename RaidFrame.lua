@@ -84,9 +84,11 @@ local RF_MATRIX_HDR_H = 80 -- riga intestazione ALTA: testi inclinati 45° leggi
 -- a sinistra): benedizioni/stats e stamina prima, utility e % danno dopo.
 local RF_BP_PRIORITY = {
     stats = 1, stamina = 2, wild = 3, intellect = 4, spirit = 5, shadow = 6,
-    armor = 7, mp5 = 8, atkpower = 9, hp = 10, strAgi = 11, spellPower = 12,
-    haste = 13, damage = 14, meleeHaste = 15, meleeCrit = 16, spellCrit = 17,
-    focusMagic = 18, retAura = 19,
+    armor = 7, mp5 = 8, atkpower = 9, apIncrease = 10, hp = 11, strAgi = 12,
+    spellPower = 13, spellHaste = 14, meleeHaste = 15, meleeCrit = 16,
+    spellCrit = 17, focusMagic = 18, damage = 19, haste = 20,
+    dmgReduction = 21, healReceived = 22, physReduction = 23, replen = 24,
+    retAura = 25,
 }
 local RF_BP_BTN_W = 72
 
