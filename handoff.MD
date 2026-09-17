@@ -7,9 +7,36 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.3**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.4**.
+
+## Novità della sessione 1.9.4 (questo branch, dopo 1.9.3) — CAUSA RADICE trovata: header = icone DI GIOCO
+
+`/rls debugbuff` sul client utente: BCI = NOT LOADED in TRE formati provati:
+TGA (1.9.1), BLP raw (1.9.2), BLP DXT3 byte-identico a media/save.blp (1.9.3,
+file verificati presenti nel push remoto quindi sul disco utente). Verdetto
+definitivo: **quel client 3.3.5 non carica NESSUNA texture loose-file da
+Interface\AddOns** — di nessun formato. Le uniche texture che renderizza sono
+quelle interne del gioco ("Interface\Icons\..."), prova: le icone spell
+nelle celle della matrice, che il giocatore vede da sempre.
+
+FIX (nessun fallback, nessun detection, richiesto esplicitamente dall'utente):
+l'header della matrice fa UNA sola `SetTexture(col.icon)` sull'icona di gioco
+definita nella colonna (`RLSuite.raidBuffColumns[].icon`, gia' corretta e
+collaudata): STESSA fonte delle celle -> caricamento garantito al 100%.
+- Rimossi: `_BuffCatIconPath/_BuffCatIconTexture` (blp->tga fallback),
+  i 25 BCI_*.blp generati, il convertitore tests/tools/tga2blp.py, i 2 check
+  python di formato BLP, le locale "loaded"/"NOT LOADED".
+- `/rls debugbuff` ora stampa per colonna: chiave, path icona di gioco, btn,
+  size — informazione deterministica, niente "load probes".
+- I .tga originali dell'utente RESTANO in media/BUFFCATICONS (asset suoi,
+  inutilizzati dal codice: quel client non li montera' mai).
+- Se in futuro servono icone custom visibili sul client utente: l'unica via e'
+  patchare le texture dentro un MPQ custom (fuori scope addon).
+461 check PASS.
 
 ## Novità della sessione 1.9.3 (questo branch, dopo 1.9.2) — BLP DXT3 (il formato che il client accetta)
+
+> SUPERATA dalla 1.9.4: dimostrato che il client rifiuta ANCHE il DXT3. Mantenuto solo come log della verifica.
 
 `/rls debugbuff` sul client utente: BCI = **NOT LOADED** anche coi .blp RAW
 (v1.9.2). Diagnosa definitiva confrontando gli header: i BLP che il client
@@ -867,7 +894,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 463 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 461 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

@@ -1449,10 +1449,10 @@ BP_PRIO1 = (cols[1].key == 'stats')
 NC = #cols
 BP_PRIOLAST = (cols[NC].key == 'retAura')
 BP_HDR1 = (RLSuite.raidFrame._buffHdrBtns[1]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true
-    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture ~= nil and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BUFFCATICONS', 1, true) ~= nil
-    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BCI_0.blp', 1, true) ~= nil)
+    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture ~= nil and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture == cols[1].icon
+    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('Interface\\\\Icons\\\\', 1, true) ~= nil)
 BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[NC]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture ~= nil
-    and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture:find('BCI_' .. (NC - 1) .. '.blp', 1, true) ~= nil)
+    and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture == cols[NC].icon)
 BP_HDR_ICONSZ = (RLSuite.raidFrame._buffHdrBtns[1]._icon._w == (RLSuite.raidFrame:LayoutMetrics().iconSize + RLSuite.raidFrame:LayoutMetrics().iconSpacing)
     and RLSuite.raidFrame._buffHdrBtns[1]._icon._h == (RLSuite.raidFrame:LayoutMetrics().iconSize + RLSuite.raidFrame:LayoutMetrics().iconSpacing))
 BP_HDR_H = (RLSuite.raidFrame._buffHdrBtns[1].height == 80 or (RLSuite.raidFrame._buffHdrBtns[1]._h == 80) or true)
@@ -1500,7 +1500,7 @@ RB_RGB0 = BP_PSLOT._matrixBg and BP_PSLOT._matrixBg._texRGBA
 check(bool(rt.eval("BP_ON")), "click on 'Raid Buffs' activates the matrix")
 check(bool(rt.eval("BP_PRIO1")), "most important buffs first: column 1 is the Kings/stats column")
 check(bool(rt.eval("BP_PRIOLAST")), "least priority last: retribution-aura column closes the row")
-check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "column headers are ICONS: BCI_0 for the leftmost column ... BCI_<NC-1> for the last (blp preferred, tga fallback), in order")
+check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "column headers show each category's GAME icon (raidBuffColumns[].icon, Interface\\Icons\\...): no custom files, no fallbacks, one SetTexture")
 check(bool(rt.eval("BP_HDR_ICONSZ")), "header icons are square with fixed size = iconSize + iconSpacing (the column pitch)")
 check(bool(rt.eval("BP_HDR_TOP")), "category header row sits at the very TOP of the raid frame")
 check(bool(rt.eval("BP_LAYOUT_DONE")), "matrix header build can never abort ApplyLayout half-way: whole layout completes (groups + backdrop + cells)")
@@ -1534,13 +1534,13 @@ _DBG_N, _DBG_BLP1, _DBG_NOTLOADED = 0, false, {"0 rows"}
 local lines = {}
 for i = n0 + 1, #CHAT_LOG do
     lines[#lines + 1] = CHAT_LOG[i]
-    if CHAT_LOG[i]:find('BCI_', 1, true) then _DBG_N = _DBG_N + 1 end
-    if CHAT_LOG[i]:find('BCI_0.blp', 1, true) then _DBG_BLP1 = true end
+    if CHAT_LOG[i]:find('Interface\\\\Icons\\\\', 1, true) then _DBG_N = _DBG_N + 1 end
+    if CHAT_LOG[i]:find('stats', 1, true) then _DBG_BLP1 = true end
 end
 _DBG_OK = (_DBG_N >= 25)
 """)
 check(bool(rt.eval("_DBG_OK")), f"/rls debugbuff reports one diagnostic line per header column (25)")
-check(bool(rt.eval("_DBG_BLP1")), "/rls debugbuff prints the actual icon path (BCI_0.blp) for each column")
+check(bool(rt.eval("_DBG_BLP1")), "/rls debugbuff prints the category key and its game icon for each column")
 
 rt.execute("""
 SAVED_UB2 = UnitBuff
@@ -2318,36 +2318,6 @@ check(bool(rt.eval("W10_DESAT")), "rolled item icon is desaturated in the loot l
 rt.execute("RLSuite.lootManager:CloseAllTradeWindows()")
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario G (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
-
-# ---------------------------------------------------------------------------
-# BCI .blp regression guard (v1.9.3): the user's 3.3.5 client loads ONLY the
-# DXT3 flavour of BLP2 (proven by the pre-existing media/save.blp working
-# icons). RAW BLP (v1.9.2 attempt) and .tga are both rejected with
-# GetTexture()==nil. These checks pin the on-disk files to that exact layout.
-# ---------------------------------------------------------------------------
-print("== BCI .blp format guard (DXT3, layout of media/save.blp) ==")
-def _blp_ok(_d):
-    import struct as _s
-    if _d[:4] != b"BLP2": return False
-    if _s.unpack("<I", _d[4:8])[0] != 1: return False          # type 1
-    if tuple(_d[8:12]) != (2, 4, 1, 1): return False            # DXT, alphaBits 4, DXT3, hasMips
-    if _s.unpack("<II", _d[12:20]) != (32, 32): return False    # 32x32
-    _offs = _s.unpack("<16I", _d[20:84])
-    _sizes = _s.unpack("<16I", _d[84:148])
-    _exp = (1024, 256, 64, 16, 16, 16)
-    if _sizes[:6] != _exp or any(_sizes[6:]): return False      # full DXT3 mip chain
-    _o = 1172                                                    # header size
-    for _i in range(6):
-        if _offs[_i] != _o: return False
-        _o += _exp[_i]
-    return len(_d) == _o and not any(_offs[6:])
-
-import glob as _glob
-_blps = sorted(_glob.glob("media/BUFFCATICONS/BCI_*.blp"))
-check(len(_blps) == 25 and all(_blp_ok(open(_f, "rb").read()) for _f in _blps),
-      "all 25 BCI_*.blp are DXT3 BLP2 with the exact byte layout of media/save.blp (the flavour the user's 3.3.5 client loads)")
-check(len(_blps) == len(_glob.glob("media/BUFFCATICONS/BCI_*.tga")),
-      "every BCI_*.tga has a .blp twin for clients that cannot load tga")
 
 print()
 if fails:
