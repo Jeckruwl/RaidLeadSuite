@@ -175,20 +175,44 @@ function MW:CreateFrame()
     -- Assegnano (o rimuovono, se gia' assegnato) il target corrente come
     -- Main Tank / Main Assist via SetPartyAssignment (solo RL/assist,
     -- RLSuite:AssignPartyRole fa i controlli e avvisa in chat).
-    self.mtBtn = CreateFrame("Button", "RLSuiteMTBtn", f, "UIPanelButtonTemplate")
-    self.mtBtn:SetText("MT")
-    self.mtBtn:SetScript("OnClick", function()
-        if RLSuite.AssignPartyRole then
-            RLSuite:AssignPartyRole("MAINTANK")
-        end
-    end)
-    self.otBtn = CreateFrame("Button", "RLSuiteOTBtn", f, "UIPanelButtonTemplate")
-    self.otBtn:SetText("OT")
-    self.otBtn:SetScript("OnClick", function()
-        if RLSuite.AssignPartyRole then
-            RLSuite:AssignPartyRole("MAINASSIST")
-        end
-    end)
+    -- SetPartyAssignment e' PROTETTA su 3.3.5 (forbidden da codice addon):
+    -- l'assegnazione passa da un bottone SECURE che esegue lo slash macro
+    -- ("/maintank Nome" / "/mainassist Nome"), identico a una macro fatta a mano.
+    -- Il macrotext viene compilato in PreClick (SOLO fuori combattimento: gli
+    -- attributi protetti non si toccano in combat) e svuotato in PostClick.
+    local function MakeRoleSecBtn(name, text, roleCmd)
+        local b = CreateFrame("Button", name, f, "SecureActionButtonTemplate, UIPanelButtonTemplate")
+        b:SetText(text)
+        b:RegisterForClicks("LeftButtonDown")
+        b:SetAttribute("type", "macro")
+        b:SetAttribute("macrotext", "")
+        b:SetScript("PreClick", function(s)
+            s:SetAttribute("macrotext", "")
+            if InCombatLockdown and InCombatLockdown() then
+                RLSuite.utils:Print(L["Cannot assign Main Tank / Main Assist while in combat."])
+                return
+            end
+            if not (UnitExists and UnitExists("target")) then
+                RLSuite.utils:Print(L["Target a raid member first to assign %s."]:format(
+                    roleCmd == "maintank" and "Main Tank" or "Main Assist"))
+                return
+            end
+            if RLSuite.IsOfficer and not RLSuite:IsOfficer() then
+                RLSuite.utils:Print(L["Only the raid leader or an assist can assign Main Tank / Main Assist."])
+                return
+            end
+            local name = UnitName and UnitName("target")
+            if name and name ~= "" then
+                s:SetAttribute("macrotext", "/" .. roleCmd .. " " .. name)
+            end
+        end)
+        b:SetScript("PostClick", function(s)
+            s:SetAttribute("macrotext", "")
+        end)
+        return b
+    end
+    self.mtBtn = MakeRoleSecBtn("RLSuiteMTBtn", "MT", "maintank")
+    self.otBtn = MakeRoleSecBtn("RLSuiteOTBtn", "OT", "mainassist")
     local function mtPairTooltip(btn, titleKey, lineKey)
         btn:SetScript("OnEnter", function(s)
             GameTooltip:SetOwner(s, "ANCHOR_RIGHT")

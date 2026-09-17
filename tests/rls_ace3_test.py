@@ -230,7 +230,7 @@ function IsMouseButtonDown(btn) return false end  -- mock: sempre rilasciato
 function GetPartyAssignment(role, key) return nil end  -- default: nessun MT/OT assegnato
 function GetSpellTexture(id) return 'Tex:' .. tostring(id) end
 function InCombatLockdown() return false end      -- mock: mai in combat
-function TargetUnit(u) LAST_TARGET = u end          -- mock: registra target
+function TargetUnit(u) error("TargetUnit is PROTECTED: addons must NEVER call it (Warmane client forbids it)") end
 function TargetByName(n) LAST_TARGNAME = n end       -- mock: registra target-by-name
 function UnitExists(u) return false end             -- mock: nessuna unit reale (debug)
 function time() return os.time() end
@@ -1362,58 +1362,106 @@ check(bool(rt.eval("#RLSuite.raidFrame.rows == 6")), "group rows unaffected by t
 
 # Raid Buffs matrix panel (Method style)
 check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn ~= nil and RLSuite.raidFrame.buffPanelBtn.label:GetText() == 'Raid Buffs'")), "'Raid Buffs' toggle button on the Tanks header row, right edge")
-check(bool(rt.eval("RLSuite.raidFrame.buffPanel == nil or RLSuite.raidFrame.buffPanel:IsShown() == false")), "buff matrix panel hidden by default")
-check(bool(rt.eval("#RLSuite.raidBuffColumns == 21")), "matrix defines exactly 21 buff-category columns")
+check(bool(rt.eval("RLSuite.raidFrame.buffPanel == nil")), "no floating side panel: the buff matrix is PART of the raid frame")
+check(bool(rt.eval("#RLSuite.raidFrame:_MatrixCols() == 19")), "19 visible columns (flask/food excluded: already checked per-row)")
+check(bool(rt.eval("RLSuite.raidFrame.buffMatrixOn ~= true")), "buff matrix hidden by default (shows only when the button is clicked)")
 rt.execute("""
 RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
-BP_SHOWN = (RLSuite.raidFrame.buffPanel:IsShown() == true)
-BP_ANCHOR_OK = (RLSuite.raidFrame.buffPanel._points[1][1] == 'TOPLEFT' and RLSuite.raidFrame.buffPanel._points[1][2] == RLSuite.raidFrame.frame)
-BP_HDR1 = (RLSuite.raidFrame.buffPanel.header[1]:GetText() == RLSuite.raidBuffColumns[1].label)
-BP_HDR21 = (RLSuite.raidFrame.buffPanel.header[21]:GetText() == RLSuite.raidBuffColumns[21].label)
+BP_ON = (RLSuite.raidFrame.buffMatrixOn == true)
+local cols = RLSuite.raidFrame:_MatrixCols()
+BP_HDR1 = (RLSuite.raidFrame._buffHeader[1]:GetText() == cols[1].label and RLSuite.raidFrame._buffHeader[1]:IsShown() == true)
+BP_HDR19 = (RLSuite.raidFrame._buffHeader[19]:GetText() == cols[19].label)
+BP_HDR_TOP = (math.abs((RLSuite.raidFrame._buffHeader[1]._points[#RLSuite.raidFrame._buffHeader[1]._points][5] or 0) + 2) < 0.001)
+BP_TANK_UNDER = (math.abs((RLSuite.raidFrame.tankHeader._points[#RLSuite.raidFrame.tankHeader._points][5] or 0) + 16) < 0.001)
 local m = RLSuite.raidFrame:LayoutMetrics()
-BP_RH = (math.abs((RLSuite.raidFrame.buffPanel.cells[1][1]._points[1][5] - RLSuite.raidFrame.buffPanel.cells[2][1]._points[1][5]) - m.rowHeight) < 0.001)
+BP_W = (m.W == m.rowWidth + 19 * 24 + 10)
+-- la riga del player (unit 'player') e quella di un fake
+BP_PSLOT, BP_FSLOT = nil, nil
+for _, s in ipairs(RLSuite.raidFrame.slots) do
+    if s.member and s.member.unit == 'player' then BP_PSLOT = s end
+    if (not BP_FSLOT) and s.member and s.member.fake then BP_FSLOT = s end
+end
+BP_CELL_ON_ROW = (BP_PSLOT and BP_PSLOT._buffCells[1] ~= nil)
+if BP_PSLOT then
+    local pt = BP_PSLOT._buffCells[1]._points[1]
+    BP_CELL_SIDE = (pt[2] == RLSuite.raidFrame.content and pt[4] > m.rowWidth)
+end
 """)
-check(bool(rt.eval("BP_SHOWN")), "toggle button opens the buff matrix panel")
-check(bool(rt.eval("BP_ANCHOR_OK")), "panel opens to the RIGHT of all the bars")
-check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR21"))), "header row carries the short category names (all 21 columns)")
-check(bool(rt.eval("BP_RH")), "matrix rows step exactly like the group rows (same height)")
+check(bool(rt.eval("BP_ON")), "click on 'Raid Buffs' activates the matrix")
+check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "header row carries the short category names (all 19 columns)")
+check(bool(rt.eval("BP_HDR_TOP")), "category header row sits at the very TOP of the raid frame")
+check(bool(rt.eval("BP_TANK_UNDER")), "the Tanks header moves down under the category header")
+check(bool(rt.eval("BP_W")), "window width grows exactly by the matrix area when active")
+check(bool(rt.eval("BP_CELL_ON_ROW") and bool(rt.eval("BP_CELL_SIDE"))), "category icons live ALONG the player's row, past the row right edge")
 rt.execute("""
 SAVED_UB2 = UnitBuff
 SAVED_GSI2 = GetSpellInfo
 GetSpellInfo = function(id) if id == 57399 then return 'Well Fed' end return 'Spell' end
 UnitBuff = function(u, i)
     if u ~= 'player' or type(i) ~= 'number' then return nil end
-    if i == 1 then return 'Flask of the Frost Wyrm', nil, nil, nil, nil, nil, nil, nil, nil, nil, 53755 end
+    if i == 1 then return 'Horn of Winter', nil, nil, nil, nil, nil, nil, nil, nil, nil, 57330 end
     if i == 2 then return 'Well Fed' end
     return nil
 end
-RLSuite.raidFrame:RefreshBuffPanel()
-local prow, frow = 0, 0
-for i, r in ipairs(RLSuite.raidFrame.rows) do
-    if r.member and r.member.unit == 'player' then prow = i end
-    if frow == 0 and r.member and r.member.fake then frow = i end
-end
-BP_PR = prow
-BP_FLASK = (RLSuite.raidFrame.buffPanel.cells[prow][20]._texture == 'Tex:53755')
-BP_FOOD = (RLSuite.raidFrame.buffPanel.cells[prow][21]._texture == RLSuite.raidBuffColumns[21].icon)
-BP_MISS = (RLSuite.raidFrame.buffPanel.cells[prow][1]:IsShown() == false)
-BP_FAKE_EMPTY = (RLSuite.raidFrame.buffPanel.cells[frow][20]:IsShown() == false)
-BP_NAME = (RLSuite.raidFrame.buffPanel.rowNames[prow]:GetText() == 'Testplayer')
+RLSuite.raidFrame:RefreshBuffMatrix()
+BP_MATCH = (BP_PSLOT._buffCells[10]._texture == 'Tex:57330' and BP_PSLOT._buffCells[10]:IsShown() == true)
+BP_MISS = (BP_PSLOT._buffCells[1]:IsShown() == false)
+BP_FAKE_EMPTY = (BP_FSLOT._buffCells[10] == nil or BP_FSLOT._buffCells[10]:IsShown() == false)
 UnitBuff = SAVED_UB2
 GetSpellInfo = SAVED_GSI2
-RLSuite.raidFrame:RefreshBuffPanel()
+RLSuite.raidFrame:RefreshBuffMatrix()
+BP_AFTER = (BP_PSLOT._buffCells[10]:IsShown() == false)
 """)
-check(bool(rt.eval("BP_PR > 0")), "matrix locates the row of the local player (unit 'player')")
-check(bool(rt.eval("BP_FLASK")), "cell shows the ACTUAL flask spell icon (matched by spellId)")
-check(bool(rt.eval("BP_FOOD")), "Well Fed cell shows the food icon (matched by localized aura name)")
-check(bool(rt.eval("BP_MISS")), "missing category leaves the cell empty")
-check(bool(rt.eval("BP_FAKE_EMPTY")), "unit-less debug rows render with empty cells, no errors")
-check(bool(rt.eval("BP_NAME")), "matrix rows carry the player name")
+check(bool(rt.eval("BP_MATCH")), "cell on the player's row shows the icon of the ACTIVE buff covering that category")
+check(bool(rt.eval("BP_MISS")), "missing category leaves the player's cell empty")
+check(bool(rt.eval("BP_FAKE_EMPTY")), "unit-less debug rows render empty cells, no errors")
+check(bool(rt.eval("BP_AFTER")), "buffs gone -> icons gone (matrix tracks live auras)")
 rt.execute("""
 RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
-BP_CLOSED = (RLSuite.raidFrame.buffPanel:IsShown() == false)
+BP_CLOSED = (RLSuite.raidFrame.buffMatrixOn ~= true and RLSuite.raidFrame._buffHeader[1]:IsShown() == false)
+local m2 = RLSuite.raidFrame:LayoutMetrics()
+BP_W_BACK = (m2.W == m2.rowWidth)
 """)
-check(bool(rt.eval("BP_CLOSED")), "second click on 'Raid Buffs' collapses the panel")
+check(bool(rt.eval("BP_CLOSED")), "second click on 'Raid Buffs' collapses the matrix")
+check(bool(rt.eval("BP_W_BACK")), "window width returns to rows-only when collapsed")
+
+# --- F.4 MT/OT assignment: SECURE macro buttons (SetPartyAssignment is PROTECTED) ---
+check(rt.eval("RLSuite.mainWindow.mtBtn:GetAttribute('type')") == 'macro', "MT button is a SECURE macro button (protected SetPartyAssignment never called)")
+check(bool(rt.eval("RLSuite.mainWindow.mtBtn._clickButtons ~= nil and RLSuite.mainWindow.mtBtn._clickButtons[1] == 'LeftButtonDown'")), "MT/OT secure buttons act on press")
+rt.execute("""
+local mt, ot = RLSuite.mainWindow.mtBtn, RLSuite.mainWindow.otBtn
+SAVED_UE_P = UnitExists
+SAVED_UN_P = UnitName
+SAVED_ISO_P = RLSuite.IsOfficer
+SAVED_ICL_P = InCombatLockdown
+UnitExists = function(u) return u == 'target' end
+UnitName = function(u) if u == 'target' then return 'TankyBoss' end return 'Testplayer' end
+RLSuite.IsOfficer = function() return true end
+RP_MT = mt:GetAttribute('macrotext')
+mt._scripts.PreClick(mt)
+RP_MT_TXT = mt:GetAttribute('macrotext')
+mt._scripts.PostClick(mt)
+RP_MT_CLEAN = mt:GetAttribute('macrotext')
+ot._scripts.PreClick(ot)
+RP_OT_TXT = ot:GetAttribute('macrotext')
+ot._scripts.PostClick(ot)
+RLSuite.IsOfficer = function() return false end
+ot._scripts.PreClick(ot)
+RP_NOOFFICER = ot:GetAttribute('macrotext')
+RLSuite.IsOfficer = function() return true end
+InCombatLockdown = function() return true end
+mt._scripts.PreClick(mt)
+RP_COMBAT = mt:GetAttribute('macrotext')
+InCombatLockdown = SAVED_ICL_P
+RLSuite.IsOfficer = SAVED_ISO_P
+UnitExists = SAVED_UE_P
+UnitName = SAVED_UN_P
+""")
+check(bool(rt.eval("RP_MT == '' and RP_MT_CLEAN == ''")), "macrotext empty before click and cleared after (no stale secure actions)")
+check(rt.eval("RP_MT_TXT") == '/maintank TankyBoss', "MT click assembles /maintank <target-name> securely")
+check(rt.eval("RP_OT_TXT") == '/mainassist TankyBoss', "OT click assembles /mainassist <target-name> securely")
+check(bool(rt.eval("RP_NOOFFICER == ''")), "non-leader/assist: no secure macro assembled")
+check(bool(rt.eval("RP_COMBAT == ''")), "in combat: no protected attribute edits, no macro assembled")
 
 # --- non pre-boss: empty slots hidden, drag disabled ---
 rt.execute("RLSuite:SetContextPhase('infight')")
@@ -1677,21 +1725,22 @@ row._scripts.OnMouseDown(row, 'LeftButton')
 row._scripts.OnMouseUp(row, 'LeftButton')
 if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
 TGT_FAKE = LAST_TARGET or LAST_TARGNAME
--- 2) unit valida raid reale → TargetUnit ALLA PRESSIONE
+-- 2) unit valida OOC: l'ENGINE overlay targetta, NESSUNA chiamata Lua protetta
 reset_click()
-if row.member then row.member.unit = 'raid7'; row.member.fake = false end
-row.unit = 'raid7'; row.fake = false
 SAVED_UE = UnitExists
 UnitExists = function(u) return u == 'raid7' end
+RLSuite.raidFrame:FillSlot(row, { name = 'Raid7Guy', class = 'WARRIOR', unit = 'raid7', fake = false, raidIndex = 7 })
 row._scripts.OnMouseDown(row, 'LeftButton')
-TGT_PRESS = LAST_TARGET
+TGT_PRESS = LAST_TARGET or LAST_TARGNAME   -- deve restare NIL: solo engine
+TGT_ENG_UNIT = row.secTarget:GetAttribute('unit')
+TGT_ENG_SHOWN = row.secTarget:IsShown()
 row._scripts.OnMouseUp(row, 'LeftButton')
 if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
-TGT1 = LAST_TARGET
--- 3) NO unit ma NOME reale (barra): TargetByName sul nome esatto
+TGT1 = LAST_TARGET or LAST_TARGNAME
+-- 3) overlay non aggiornabile (attributi congelati in combat): fallback PER NOME
 reset_click()
-if row.member then row.member.unit = nil end
-row.unit = nil
+row.secTarget:Hide()                       -- simula FillSlot congelato in combat
+if row.member then row.member.name = 'PippoRosso' end
 row.name = 'PippoRosso'
 row._scripts.OnMouseDown(row, 'LeftButton')
 row._scripts.OnMouseUp(row, 'LeftButton')
@@ -1699,33 +1748,38 @@ if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
 TGT_NAME = LAST_TARGNAME
 -- 4) SHIFT+click: NON targettare (gesto drag player)
 reset_click()
-if row.member then row.member.unit = 'raid7' end
+if row.member then row.member.unit = 'raid7'; row.member.fake = false end
 row.unit = 'raid7'
 IsShiftKeyDown = function() return true end
 row._scripts.OnMouseDown(row, 'LeftButton')
 row._scripts.OnMouseUp(row, 'LeftButton')
 if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
 TGT2 = LAST_TARGET or LAST_TARGNAME
--- 5) press+move SENZA shift: target-on-press gia' partito (Grid-style)
+-- 5) press senza shift: l'engine overlay targetta alla pressione (prima del movimento)
 reset_click()
 IsShiftKeyDown = SAVED_ISD2
 GetCursorPosition = function() return 200, 110 end
+RLSuite.raidFrame:FillSlot(row, { name = 'Raid7Guy', class = 'WARRIOR', unit = 'raid7', fake = false, raidIndex = 7 })
 row._scripts.OnMouseDown(row, 'LeftButton')
-TGT_PRESS_BEFORE_MOVE = LAST_TARGET
--- cleanup
-if row.member then row.member.unit = SAVED_MU; row.member.fake = SAVED_MF end
+TGT_PRESS_BEFORE_MOVE = { LAST_TARGET, LAST_TARGNAME }
+TGT_PB_ENG = row.secTarget:GetAttribute('unit')
+-- cleanup compreso di una FillSlot di ripristino del member originale
+if row.member then row.member.unit = SAVED_MU; row.member.fake = SAVED_MF; row.member.name = SAVED_RN or row.member.name end
 row.name = SAVED_RN
 row.fake = SAVED_RF
 row.unit = SAVED_RU
 GetCursorPosition = SAVED_GCP4
 UnitExists = SAVED_UE
 row:SetScript('OnUpdate', nil)
+if row.secTarget then row.secTarget:Hide() end
 """)
+
 check(bool(rt.eval("TGT_FAKE == nil")), "debug fake roster: bar click does NOT bonk error-invalid-unit (no target for non-existing units)")
-check(rt.eval("TGT_PRESS") == 'raid7' and rt.eval("TGT1") == 'raid7', "plain left click on a player bar targets on PRESS (name row, real unit)")
-check(rt.eval("TGT_NAME") == 'PippoRosso', "click on the NAME targets the player with THAT name (TargetByName fallback)")
+check(bool(rt.eval("TGT_PRESS == nil and TGT1 == nil")), "real unit: NO protected Lua TargetUnit ever fires (engine-only path, client-proof)")
+check(bool(rt.eval("TGT_ENG_SHOWN")) and rt.eval("TGT_ENG_UNIT") == 'raid7', "secure overlay armed on the real unit: engine targets ON PRESS")
+check(rt.eval("TGT_NAME") == 'PippoRosso', "combat-frozen overlay corner: Lua fallback targets by exact NAME only")
 check(bool(rt.eval("TGT2 == nil")), "Shift+left on a bar does NOT target (drag gesture)")
-check(rt.eval("TGT_PRESS_BEFORE_MOVE") == 'raid7', "target fires on PRESS even before any movement (Grid-style, cursor-move cannot suppress it)")
+check(bool(rt.eval("TGT_PRESS_BEFORE_MOVE[1] == nil and TGT_PRESS_BEFORE_MOVE[2] == nil")) and rt.eval("TGT_PB_ENG") == 'raid7', "no Lua targeting on press (engine), even before any movement")
 
 # --- F.2g SECURE anti-failure layer: engine-hardware click-to-target (Grid/Clique style) ---
 check(bool(rt.eval("RLSuite.raidFrame.rows[1].secTarget ~= nil")), "every row has the SecureActionButtonTemplate target overlay")
@@ -1804,35 +1858,38 @@ LOOTXOF, LOOTYOF = select(4, mw.tabs['loot']:GetPoint(1)), select(5, mw.tabs['lo
 check(bool(rt.eval("MTXOF == RFXOF")), "MT / OT pair shares the Raid Frame column (cell under it)")
 check(bool(rt.eval("MTYOF == RFYOF - (22 + 4)")), "MT / OT sits directly UNDER the Raid Frame button")
 check(bool(rt.eval("LOOTXOF == RFXOF + 90 + 8 and LOOTYOF == MTYOF")), "Loot shifts one cell aside to free the spot under Raid Frame")
+# --- I tasti MT/OT sono ora SECURE macro buttons: SetPartyAssignment e' PROTETTA ---
+# --- (forbidden dal client) -> il click assembla "/maintank <nome>" via PreClick. ---
 rt.execute("""
 _OLD_UnitExists = UnitExists
 _OLD_UnitName = UnitName
 _OLD_IsRaidLeader = IsRaidLeader
 MT_CALLS = {}
-SetPartyAssignment = function(role, unit) table.insert(MT_CALLS, tostring(role) .. '|' .. tostring(unit)) end
 UnitExists = function(u) return u == 'target' end
 UnitName = function(u) if u == 'target' then return 'Bossunit' end return 'Testplayer' end
 IsRaidLeader = function() return true end
 local b = RLSuite.mainWindow.mtBtn
-if b and b._scripts.OnClick then b._scripts.OnClick(b, 'LeftButton') end
+if b and b._scripts.PreClick then b._scripts.PreClick(b) end
+MT_CALLS[1] = b:GetAttribute('macrotext')
+if b and b._scripts.PostClick then b._scripts.PostClick(b) end
 local o = RLSuite.mainWindow.otBtn
-if o and o._scripts.OnClick then o._scripts.OnClick(o, 'LeftButton') end
+if o and o._scripts.PreClick then o._scripts.PreClick(o) end
+MT_CALLS[2] = o:GetAttribute('macrotext')
+if o and o._scripts.PostClick then o._scripts.PostClick(o) end
 """)
-check(rt.eval("MT_CALLS[1]") == "MAINTANK|target", "MT click assigns target as MAINTANK via SetPartyAssignment")
-check(rt.eval("MT_CALLS[2]") == "MAINASSIST|target", "OT click assigns target as MAINASSIST via SetPartyAssignment")
+check(rt.eval("MT_CALLS[1]") == "/maintank Bossunit", "MT click assembles /maintank on the target (secure macro, no forbidden SetPartyAssignment)")
+check(rt.eval("MT_CALLS[2]") == "/mainassist Bossunit", "OT click assembles /mainassist on the target (secure macro, no forbidden SetPartyAssignment)")
 rt.execute("""
 UnitExists = function(u) return u == 'player' end
-local c = #MT_CALLS
 local b = RLSuite.mainWindow.mtBtn
-if b and b._scripts.OnClick then b._scripts.OnClick(b, 'LeftButton') end
-MT_NOGROW = (#MT_CALLS == c)
+if b and b._scripts.PreClick then b._scripts.PreClick(b) end
+MT_NOGROW = (b:GetAttribute('macrotext') == '')
 """)
-check(bool(rt.eval("MT_NOGROW == true")), "MT click with no target does NOT call SetPartyAssignment")
+check(bool(rt.eval("MT_NOGROW == true")), "MT click with no target assembles no macro")
 rt.execute("""
 UnitExists = _OLD_UnitExists
 UnitName = _OLD_UnitName
 IsRaidLeader = _OLD_IsRaidLeader
-SetPartyAssignment = nil
 """)
 
 # --- G.3 Groupmaking: reqBox hugs the button row + thicker icon borders ---

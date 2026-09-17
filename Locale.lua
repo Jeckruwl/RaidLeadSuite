@@ -178,6 +178,8 @@ do
     L["Open the raid buffs matrix panel."] = true
     L["Main tank"] = true
     L["Main assist"] = true
+    L["Cannot assign Main Tank / Main Assist while in combat."] = true
+    L["Main assist"] = true
     L["Hey $name, you're missing food buff!"] = true
     L["Hey $name, you're missing some raid buffs!"] = true
     L["Left click: whisper"] = true

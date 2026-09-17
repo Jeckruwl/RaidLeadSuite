@@ -7,7 +7,41 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.6.0**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.6.1**.
+
+## Novità della sessione 1.6.1 (questo branch, dopo 1.6.0) — FIX FUNZIONI PROTETTE + MATRICE RAID BUFFS INTEGRATA
+
+### 1) Errore "forbidden function TargetUnit()" dal Raid Frame — RIMOSSA LA FUNZIONE RESIDUA
+TargetUnit() e' PROTETTA: il client la rifiutava da qualunque percorso tainted (l'errore
+dell'utente, target comunque funzionante perche' lo fa l'overlay engine 1.5.6).
+`RF:TargetRow` ora: overlay sicuro visibile → SOLO trace rfDbg (il target e' engine);
+overlay nascosto (attributi congelati in combat) → fallback `TargetByName(nome esatto)`
+(non protetta); fake/debug → solo trace. La chiamata TargetUnit e' stata ELIMINATA
+dal codice. Il mock nei test ora lancia error() se TargetUnit venisse mai chiamata.
+
+### 2) Errore "forbidden function SetPartyAssignment()" assegnando MT/OT — TASTI SECURE
+SetPartyAssignment e' PROTETTA su 3.3.5: i tasti MT/OT del Raid Profile (MainWindow)
+non possono chiamarla. Sostituiti con **SecureActionButtonTemplate type="macro"**:
+in `PreClick` (solo fuori combat, target valido, leader/assist) assembla
+`/maintank <nome>` o `/mainassist <nome>`, `PostClick` svuota (mai azioni secure stale).
+Le macro slash sono l'unico canale lecito, identico a una macro fatta a mano.
+`RLSuite:AssignPartyRole` resta in Core (deprecated, non piu' usata dalla UI).
+
+### 3) Matrice "Raid Buffs": il pannello 1.6.0 SOSTITUITO dal design richiesto
+- **Fa parte del Raid Frame**: niente finestra separata a destra; le icone delle
+  categorie stanno **lungo la riga di OGNI player** nei gruppi (oltre il bordo
+  destro di barra+cd), centrate in altezza con la riga.
+- **Solo al click** del tasto "Raid Buffs" (on/off; off anche senza roster).
+- **Niente colonne Flask e Food** (gia' controllate dalle icone per-riga): 19 colonne
+  via `RF:_MatrixCols()` che filtra `raidBuffColumns`.
+- **Riga d'intestazione in CIMA** del frame coi nomi sintetici delle categorie
+  (Tanks sotto). La finestra si allarga dell'area matrice solo quando attiva.
+- Tooltip/celle: scan UnitBuff 1..40 per giocatore per categoria, icona della spell
+  reale (GetSpellTexture) o icona fissa categoria per byName; vuota se mancante.
+- Rimossi EnsureBuffPanel/ToggleBuffPanel/_LayoutBuffPanel/RefreshBuffPanel;
+  nuove ToggleBuffMatrix/_MatrixHeaderFS/_MatrixCell/_LayoutMatrixRow/RefreshBuffMatrix.
+- **415 check PASS** (F.2f riscritto su semantica engine-only, F.3 matrice integrata,
+  F.4 tasti MT/OT secure, mock TargetUnit→error / GetPartyAssignment / GetSpellTexture).
 
 ## Novità della sessione 1.6.0 (questo branch, dopo 1.5.9) — FONT COLOR + GRUPPO TANKS + PANNELLO "RAID BUFFS"
 
@@ -601,7 +635,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 405 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 415 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
