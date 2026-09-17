@@ -513,9 +513,6 @@ function CFG:BuildOptionsTable()
         nameFontSize = slider(L["Name font size"], nil, 4, 8, 16, 1,
             function() return rf.appearance.nameFontSize or 11 end,
             function(_, v) rf.appearance.nameFontSize = v; self:ApplyAll() end),
-        abilityBarWidth = slider(L["Ability bar width"], nil, 5, 80, 160, 5,
-            function() return rf.appearance.abilityBarWidth or 110 end,
-            function(_, v) rf.appearance.abilityBarWidth = v; self:ApplyAll() end),
         scale = slider(L["Scale"], nil, 6, 0.70, 1.50, 0.05,
             function() return rf.scale end,
             function(_, v) rf.scale = v; self:ApplyAll() end),
@@ -552,15 +549,6 @@ function CFG:BuildOptionsTable()
         showFood = toggle(L["Check food"], L["Alert players missing Well Fed (left icons)."], 3,
             function() return rf.showFood ~= false end,
             function(_, v) rf.showFood = v; self:ApplyAll() end),
-        showBuffBar = toggle(L["Pre-boss buff bar"], L["Show the pre-boss alert buff bar."], 4,
-            function() return rf.showBuffBar ~= false end,
-            function(_, v) rf.showBuffBar = v; self:ApplyAll() end),
-        showDebuffBar = toggle(L["In-fight debuff bar"], L["Show the in-fight alert debuff bar."], 5,
-            function() return rf.showDebuffBar ~= false end,
-            function(_, v) rf.showDebuffBar = v; self:ApplyAll() end),
-        showAbilityBar = toggle(L["Ability bar"], L["Show the vertical ability-check bar."], 6,
-            function() return rf.showAbilityBar ~= false end,
-            function(_, v) rf.showAbilityBar = v; self:ApplyAll() end),
     }
 
     local function alertField(key, label, order)

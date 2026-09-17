@@ -7,7 +7,36 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.8**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.9**.
+
+## Novità della sessione 1.5.9 (questo branch, dopo 1.5.8) — BUFF BAR ELIMINATE + FOOD CHECK = AURA "Well Fed"
+
+Richiesta utente: (a) eliminare TUTTE le buff/debuff bar del Raid Frame (redesign da
+ripensare), tenere SOLO le icone per-riga flask/food; (b) il controllo food deve
+trovare il buff "Well Fed".
+
+Rimosso COMPLETAMENTE (codice, non solo hidden):
+1. `RF.buffBar` + `RF.debuffBar` (alert bar orizzontali sotto i gruppi) e
+   `RF.abilityBar` (striscia verticale a destra) con tutto il macchinario:
+   `CreateAlertBar/RefreshAlertBars/PopulateAlertBar/GetAlertItem/FillAlertItem/
+   UpdateAlertItems`, `BuildAbilityBar/GetAbilityButton/FillAbilityButton/
+   UpdateAbilityButtons/SetAbilityButtonState`, e la famiglia coverage
+   `AllChecks/GetCompClasses/CheckCoverage/CheckBuffCoverage/CheckDebuffCoverage/
+   UnitHasSpellDebuff` (usata solo da quelle barre).
+2. Layout: niente colonna ability (W = rowWidth), altezza finestra = SOLO righe.
+3. Config: via le opzioni showBuffBar/showDebuffBar/showAbilityBar + slider
+   abilityBarWidth; defaults Core ripuliti. Le tabelle dati
+   `RLSuite.raidBuffChecks/raidDebuffChecks` in Core.lua RESTANO (rielaborazione).
+4. Resta TUTTO il sistema consumabili per-riga: icone flask/food a sinistra,
+   whisper/warning al click, toggle showFlask/showFood.
+
+FOOD = "Well Fed" (era: whitelist spellId → dava "missing" sulle varianti non elencate):
+- Nuovo `RF:UnitHasBuffName(unit, name)`: scan `UnitBuff(unit, i)` per indice 1..40,
+  match sul NOME → copre OGNI variante di Well Fed (feast, spezie...).
+- Il nome e' derivato a runtime da `GetSpellInfo(57399)` (Fish Feast) → locale-safe
+  ("Ben Nutrito" su client IT), fallback letterale "Well Fed".
+- Test F.2j: presente→off, assente→missing, flask path intatto, nome localizzato ok.
+- **380 check PASS**.
 
 ## Novità della sessione 1.5.8 (questo branch, dopo 1.5.7) — HIT-TEST CON FINESTRA SCALATA (bug storico SlotAtCursor)
 
@@ -534,7 +563,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 379 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 380 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

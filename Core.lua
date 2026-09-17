@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.5.8"
+RLSuite.version = "1.5.9"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -82,9 +82,6 @@ local defaults = {
             showBuffs = true,
             showFlask = true,
             showFood = true,
-            showBuffBar = true,     -- pre-boss alert buff bar
-            showDebuffBar = true,   -- in-fight alert debuff bar
-            showAbilityBar = true,  -- vertical ability-check bar
             locked = true,
             scale = 1.0,
             width = 380,
@@ -99,7 +96,6 @@ local defaults = {
                 barWidth = 180,
                 iconSize = 16,
                 nameFontSize = 11,
-                abilityBarWidth = 110,
                 border = true,
                 font = "Fonts\\FRIZQT__.TTF",
                 fontOutline = true,

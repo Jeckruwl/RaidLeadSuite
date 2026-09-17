@@ -106,7 +106,6 @@ function RF:Init()
     self.slots = {}         -- 30 slot frames (6 groups x 5 players)
     self.groupHeaders = {}  -- 6 group labels (G1..G6)
     self.cdTracker = {}
-    self.abilityButtons = {}
     self:CreateFrame()
     self:RegisterEvents()
     self:ApplyLayout()
@@ -182,21 +181,6 @@ function RF:CreateFrame()
     self.content = CreateFrame("Frame", nil, f)
     self.content:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
 
-    -- Vertical ability-check bar (right side of the whole frame).
-    self.abilityBar = CreateFrame("Frame", nil, f)
-    self.abilityBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-    self.abilityBar:Hide()
-
-    -- Alert bars (pre-boss buffs / in-fight debuffs), below the rows.
-    self.buffBar = self:CreateAlertBar()
-    self.debuffBar = self:CreateAlertBar()
-end
-
-function RF:CreateAlertBar()
-    local bar = CreateFrame("Frame", nil, self.frame)
-    bar.items = {}
-    bar:Hide()
-    return bar
 end
 
 function RF:RegisterEvents()
@@ -311,11 +295,8 @@ function RF:LayoutMetrics()
     local barHeight = (db.appearance and db.appearance.barHeight) or 20
     local barWidth = (db.appearance and db.appearance.barWidth) or 180
     local nameFontSize = (db.appearance and db.appearance.nameFontSize) or 11
-    local abw = 0
-    if db.showAbilityBar ~= false and (self.abilityCount or 0) > 0 then
-        abw = (db.appearance and db.appearance.abilityBarWidth) or 110
-    end
-    local gap = (abw > 0) and 8 or 0
+    local abw = 0 -- buff bar / ability bar rimosse (redesign in corso)
+    local gap = 0
     -- Layout per row: [flask][food] ... [HP bar = barWidth] ... [up to 4 CDs]
     local leftArea = 4 + 2 * iconSize + 4
     local cdReserve = 4 * iconSize + 3 * 2 + 4
@@ -869,8 +850,6 @@ function RF:Rebuild()
         end
     end
 
-    self:BuildAbilityBar()
-    self:RefreshAlertBars()
     self:UpdateDragState()
     -- Header e blocchi vuoti: gestiti insieme (blocchi solo durante il drag).
     self:RefreshDropTargets()
@@ -892,8 +871,6 @@ function RF:UpdateAll()
     for _, row in ipairs(self.rows) do
         self:UpdateRow(row)
     end
-    self:UpdateAbilityButtons()
-    self:UpdateAlertItems()
 end
 
 function RF:UpdateRow(row)
@@ -961,7 +938,12 @@ function RF:UpdateConsumables(row)
     end
 
     if showFood then
-        local has = self:HasAnySpellBuff(unit, RLSuite.buffData and RLSuite.buffData.food)
+        -- Well Fed per NOME DELL'AURA (scan per indice): la vecchia whitelist
+        -- di spellId copriva solo alcuni cibi -> "missing" su tutte le altre
+        -- varianti (feast, spezie, ...). Nome derivato da GetSpellInfo di un
+        -- ID Well Fed noto -> resta locale-safe su client non-EN.
+        local wfName = (GetSpellInfo and GetSpellInfo(57399)) or "Well Fed"
+        local has = self:UnitHasBuffName(unit, wfName)
         self:SetConsumable(row.foodIcon, has and "off" or "missing")
     else
         self:SetConsumable(row.foodIcon, "off")
@@ -1028,14 +1010,17 @@ function RF:UnitHasSpellBuff(unit, spellId)
     return true
 end
 
-function RF:UnitHasSpellDebuff(unit, spellId)
-    if not unit or not spellId then return false end
-    local name = GetSpellInfo(spellId)
-    if not name then return false end
-    local debuffName, _, _, _, _, _, _, _, _, _, debuffSpellId = UnitDebuff(unit, name)
-    if not debuffName then return false end
-    if debuffSpellId and debuffSpellId ~= spellId then return false end
-    return true
+-- Scansione aure per NOME (qualsiasi spellId): serve per i buff generici
+-- con decine di varianti (Well Fed di ogni cibo). UnitBuff per indice
+-- (1..40) e' immune ai mismatch di spellId delle whitelist.
+function RF:UnitHasBuffName(unit, wantName)
+    if not (unit and wantName and UnitBuff) then return false end
+    for i = 1, 40 do
+        local bname = UnitBuff(unit, i)
+        if not bname then return false end
+        if bname == wantName then return true end
+    end
+    return false
 end
 
 function RF:HasAnySpellBuff(unit, spellIds)
@@ -1192,196 +1177,6 @@ function RF:GetDefaultAlertMessage(alertType)
 end
 
 -- ------------------------------------------------------------------
--- Coverage checks (pre-boss buffs / in-fight debuffs)
--- ------------------------------------------------------------------
-function RF:AllChecks()
-    local list = {}
-    for _, c in ipairs(RLSuite.raidBuffChecks or {}) do
-        c.kind = "buff"
-        table.insert(list, c)
-    end
-    for _, c in ipairs(RLSuite.raidDebuffChecks or {}) do
-        c.kind = "debuff"
-        table.insert(list, c)
-    end
-    return list
-end
-
-function RF:GetCompClasses()
-    local set = {}
-    for _, info in ipairs(self:GetRoster()) do
-        set[(info.class or "WARRIOR"):upper()] = true
-    end
-    return set
-end
-
-function RF:CheckCoverage(check)
-    if not check then return false end
-    if RLSuite.DebugMode and RLSuite:DebugMode() then
-        -- No real auras in the simulated environment: everything reads as
-        -- "missing" so the alert UI still renders (and never errors).
-        return false
-    end
-    if check.kind == "debuff" then
-        return self:CheckDebuffCoverage(check)
-    end
-    return self:CheckBuffCoverage(check)
-end
-
-function RF:CheckBuffCoverage(check)
-    local spells = check.spells or {}
-    for _, info in ipairs(self:GetRoster()) do
-        local unit = info.unit
-        if unit and UnitExists(unit) then
-            for _, spellId in ipairs(spells) do
-                if self:UnitHasSpellBuff(unit, spellId) then return true end
-            end
-        end
-    end
-    return false
-end
-
-function RF:CheckDebuffCoverage(check)
-    local spells = check.spells or {}
-    local units = { "target", "focus", "boss1", "boss2", "boss3", "boss4" }
-    for _, unit in ipairs(units) do
-        if UnitExists(unit) then
-            for _, spellId in ipairs(spells) do
-                if self:UnitHasSpellDebuff(unit, spellId) then return true end
-            end
-        end
-    end
-    return false
-end
-
--- ------------------------------------------------------------------
--- Vertical ability-check bar
--- ------------------------------------------------------------------
-function RF:BuildAbilityBar()
-    if not self.abilityBar then return end
-    for _, btn in ipairs(self.abilityButtons) do
-        btn:Hide()
-    end
-    self.abilityButtons = {}
-
-    local show = self.db.showAbilityBar ~= false
-    if not show then
-        self.abilityBar:Hide()
-        self.abilityCount = 0
-        self:ApplyLayout()
-        return
-    end
-
-    local comp = self:GetCompClasses()
-    local checks = self:AllChecks()
-    local m = self:LayoutMetrics()
-    local idx = 0
-    for _, check in ipairs(checks) do
-        local relevant = false
-        for _, cls in ipairs(check.classes or {}) do
-            if comp[cls] then
-                relevant = true
-                break
-            end
-        end
-        if relevant then
-            idx = idx + 1
-            local btn = self:GetAbilityButton(idx)
-            self:FillAbilityButton(btn, check)
-            btn:ClearAllPoints()
-            btn:SetPoint("TOPLEFT", self.abilityBar, "TOPLEFT", 2, -(idx - 1) * 20)
-            btn:SetSize(math.max(10, m.abw - 4), 18)
-        end
-    end
-
-    self.abilityCount = idx
-    if idx == 0 then
-        self.abilityBar:Hide()
-    else
-        self.abilityBar:Show()
-    end
-    self:ApplyLayout()
-    self:UpdateAbilityButtons()
-end
-
-function RF:GetAbilityButton(idx)
-    if self.abilityButtons[idx] then return self.abilityButtons[idx] end
-    local btn = CreateFrame("Button", "RLSuiteRaidAbility" .. idx, self.abilityBar)
-    btn:SetHeight(18)
-    btn:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 8,
-        insets = { left = 1, right = 1, top = 1, bottom = 1 },
-    })
-    btn:SetBackdropColor(0, 0, 0, 0.35)
-
-    local icon = btn:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(16, 16)
-    icon:SetPoint("LEFT", btn, "LEFT", 1, 0)
-    btn.icon = icon
-
-    local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("LEFT", icon, "RIGHT", 3, 0)
-    label:SetPoint("RIGHT", btn, "RIGHT", -1, 0)
-    label:SetJustifyH("LEFT")
-    btn.label = label
-
-    self.abilityButtons[idx] = btn
-    return btn
-end
-
-function RF:FillAbilityButton(btn, check)
-    btn.check = check
-    btn.icon:SetTexture(check.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-    btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    btn.label:SetText(check.label or check.key)
-    btn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(self.check and (self.check.label or self.check.key) or "")
-        local prov = table.concat(self.check and self.check.classes or {}, ", ")
-        GameTooltip:AddLine(L["Provided by: "] .. prov, 0.8, 0.8, 0.8)
-        GameTooltip:Show()
-    end)
-    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    btn:Show()
-end
-
-function RF:UpdateAbilityButtons()
-    for _, btn in ipairs(self.abilityButtons) do
-        local check = btn.check
-        if check then
-            self:SetAbilityButtonState(btn, self:CheckCoverage(check))
-        end
-    end
-end
-
-function RF:SetAbilityButtonState(btn, present)
-    if present then
-        -- Covered: greyed out, no glow.
-        btn:SetScript("OnUpdate", nil)
-        btn.icon:SetVertexColor(0.35, 0.35, 0.35)
-        btn.label:SetTextColor(0.5, 0.5, 0.5)
-        btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
-    else
-        -- Missing: full color + flashing bright border.
-        btn.icon:SetVertexColor(1, 1, 1)
-        btn.label:SetTextColor(1, 1, 1)
-        btn:SetBackdropBorderColor(1, 0.55, 0, 1)
-        btn._flash = 0
-        btn._flashOn = false
-        btn:SetScript("OnUpdate", function(self, elapsed)
-            self._flash = (self._flash or 0) + elapsed
-            if self._flash >= 0.5 then
-                self._flash = 0
-                self._flashOn = not self._flashOn
-                self:SetBackdropBorderColor(1, 0.55, 0, self._flashOn and 0.2 or 1)
-            end
-        end)
-    end
-end
-
--- ------------------------------------------------------------------
 -- Phase + drag & drop
 -- ------------------------------------------------------------------
 function RF:UpdatePhase()
@@ -1523,116 +1318,6 @@ function RF:MoveSlotDebug(src, dst)
 end
 
 -- ------------------------------------------------------------------
--- Pre-boss / in-fight alert bars
--- ------------------------------------------------------------------
-function RF:RefreshAlertBars()
-    local phase = RLSuite.context or "preraid"
-
-    local showBuff = phase == "preboss" and self.db.showBuffBar ~= false
-    local showDebuff = phase == "infight" and self.db.showDebuffBar ~= false
-
-    if self.buffBar then
-        if showBuff then self.buffBar:Show() else self.buffBar:Hide() end
-    end
-    if self.debuffBar then
-        if showDebuff then self.debuffBar:Show() else self.debuffBar:Hide() end
-    end
-
-    self:PopulateAlertBar(self.buffBar, RLSuite.raidBuffChecks, showBuff)
-    self:PopulateAlertBar(self.debuffBar, RLSuite.raidDebuffChecks, showDebuff)
-    self:ApplyLayout()
-    self:UpdateAlertItems()
-end
-
-function RF:PopulateAlertBar(bar, checks, active)
-    if not bar then return end
-    for _, it in ipairs(bar.items) do
-        it:Hide()
-    end
-    bar.items = {}
-    bar.count = 0
-    if not active then return end
-
-    local comp = self:GetCompClasses()
-    local idx = 0
-    for _, check in ipairs(checks or {}) do
-        local relevant = true
-        if check.onlyWithClass then
-            relevant = false
-            for _, cls in ipairs(check.classes or {}) do
-                if comp[cls] then
-                    relevant = true
-                    break
-                end
-            end
-        end
-        if relevant then
-            idx = idx + 1
-            local it = self:GetAlertItem(bar, idx)
-            self:FillAlertItem(it, check)
-            it:ClearAllPoints()
-            it:SetPoint("TOPLEFT", bar, "TOPLEFT", 2, -(idx - 1) * 14)
-            it:SetWidth(math.max(60, self.frame:GetWidth() - 4))
-        end
-    end
-    bar.count = idx
-end
-
-function RF:GetAlertItem(bar, idx)
-    if bar.items[idx] then return bar.items[idx] end
-    local it = CreateFrame("Button", nil, bar)
-    it:SetHeight(14)
-
-    local icon = it:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(12, 12)
-    icon:SetPoint("LEFT", it, "LEFT", 0, 0)
-    it.icon = icon
-
-    local label = it:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("LEFT", icon, "RIGHT", 3, 0)
-    label:SetPoint("RIGHT", it, "RIGHT", 0, 0)
-    label:SetJustifyH("LEFT")
-    it.label = label
-
-    it:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(self.check and (self.check.label or self.check.key) or "")
-        GameTooltip:Show()
-    end)
-    it:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    bar.items[idx] = it
-    return it
-end
-
-function RF:FillAlertItem(it, check)
-    it.check = check
-    it.icon:SetTexture(check.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-    it.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    it.label:SetText(check.label or check.key)
-    it:Show()
-end
-
-function RF:UpdateAlertItems()
-    for _, bar in ipairs({ self.buffBar, self.debuffBar }) do
-        if bar and bar:IsShown() then
-            for _, it in ipairs(bar.items) do
-                if it.check then
-                    local present = self:CheckCoverage(it.check)
-                    if present then
-                        it.icon:SetVertexColor(0.4, 0.75, 0.4)
-                        it.label:SetTextColor(0.4, 0.8, 0.4)
-                    else
-                        it.icon:SetVertexColor(1, 0.5, 0.15)
-                        it.label:SetTextColor(1, 0.55, 0.15)
-                    end
-                end
-            end
-        end
-    end
-end
-
--- ------------------------------------------------------------------
 -- Layout / update entry points
 -- ------------------------------------------------------------------
 function RF:ApplyLayout()
@@ -1679,33 +1364,7 @@ function RF:ApplyLayout()
     self.content:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, 0)
     self.content:SetSize(m.rowWidth, rowsH)
 
-    if self.abilityBar then
-        self.abilityBar:ClearAllPoints()
-        if db.showAbilityBar ~= false and (self.abilityCount or 0) > 0 then
-            self.abilityBar:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", 0, 0)
-            self.abilityBar:SetSize(m.abw, rowsH)
-        else
-            self.abilityBar:SetSize(0, 0)
-        end
-    end
-
-    local alertTop = -(rowsH + 4)
-    for _, bar in ipairs({ self.buffBar, self.debuffBar }) do
-        if bar then
-            bar:ClearAllPoints()
-            bar:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, alertTop)
-            bar:SetSize(m.W, (bar.count or 0) * 14)
-        end
-    end
-
-    local alertH = 0
-    if self.buffBar and self.buffBar:IsShown() then
-        alertH = alertH + (self.buffBar.count or 0) * 14 + 4
-    end
-    if self.debuffBar and self.debuffBar:IsShown() then
-        alertH = alertH + (self.debuffBar.count or 0) * 14 + 4
-    end
-    self.frame:SetHeight(math.max(20, rowsH + alertH))
+    self.frame:SetHeight(math.max(20, rowsH))
 
     if (RLSuite.InRaid and RLSuite:InRaid()) or (GetNumRaidMembers and GetNumRaidMembers() > 0) then
         self:UpdateAll()

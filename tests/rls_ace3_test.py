@@ -1074,21 +1074,16 @@ check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.flaskIcon ~= nil and E5_ROW.foodIco
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.cdIcons ~= nil and #E5_ROW.cdIcons > 0")), "row has class key CDs on the right")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar:GetWidth() == RLSuite.db.profile.raidframe.appearance.barWidth")), "player HP bar uses the configured bar width")
 
-# --- vertical ability bar (driven by the composition) ---
-check(bool(rt.eval("RLSuite.raidFrame.abilityButtons ~= nil and #RLSuite.raidFrame.abilityButtons >= 4")), "ability bar shows abilities for the WARRIOR-heavy comp")
-
-# --- pre-boss buff bar / in-fight debuff bar switch by phase ---
-check(bool(rt.eval("#RLSuite.raidBuffChecks >= 11")), "pre-boss buff checks defined (>= 11)")
-check(bool(rt.eval("#RLSuite.raidDebuffChecks >= 5")), "in-fight debuff checks defined (>= 5)")
+# --- buff/debuff/ability bars: RIMOSSE (redesign in corso), restano SOLO flask+food per riga ---
+check(bool(rt.eval("RLSuite.raidFrame.buffBar == nil and RLSuite.raidFrame.debuffBar == nil and RLSuite.raidFrame.abilityBar == nil")), "no buff/debuff/ability bars exist anymore (eliminated for redesign)")
+check(bool(rt.eval("RLSuite.raidFrame.BuildAbilityBar == nil and RLSuite.raidFrame.RefreshAlertBars == nil and RLSuite.raidFrame.CheckCoverage == nil")), "buff-bar machinery functions are gone (UI code removed, not just hidden)")
+check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().W == RLSuite.raidFrame:LayoutMetrics().rowWidth")), "window width = rows only (no ability bar column)")
+# fase: le icone flask/food per riga restano vive in ogni fase (lo stato non dipende piu' dalle barre)
 rt.execute("RLSuite:SetContextPhase('preboss')")
-check(bool(rt.eval("RLSuite.raidFrame.buffBar:IsShown() == true")), "pre-boss: buff bar shown")
-check(bool(rt.eval("#RLSuite.raidFrame.buffBar.items >= 11")), "pre-boss: buff bar lists the buff categories")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon:IsShown() == true")), "pre-boss: per-row flask icon still live")
 rt.execute("RLSuite:SetContextPhase('infight')")
-check(bool(rt.eval("RLSuite.raidFrame.debuffBar:IsShown() == true")), "in-fight: debuff bar shown")
-check(bool(rt.eval("RLSuite.raidFrame.buffBar:IsShown() == false")), "in-fight: buff bar hidden")
-check(bool(rt.eval("#RLSuite.raidFrame.debuffBar.items >= 5")), "in-fight: debuff bar lists the debuff categories")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].foodIcon:IsShown() == true")), "in-fight: per-row Well Fed icon still live")
 rt.execute("RLSuite:SetContextPhase('preraid')")
-check(bool(rt.eval("RLSuite.raidFrame.buffBar:IsShown() == false and RLSuite.raidFrame.debuffBar:IsShown() == false")), "preraid: both alert bars hidden")
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario E (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 
@@ -1285,6 +1280,45 @@ GetCursorPosition = SAVED_GCP_G
 """)
 check(bool(rt.eval("GM_HIT")), "Group Making panel (50% scale): WlSlotAtCursor returns the bar under the visual cursor")
 check(bool(rt.eval("GM_NOHIT")), "Group Making panel (50% scale): old raw point matches nothing (rescale applied)")
+
+# --- F.2j food icon = aura "Well Fed" (per NOME, qualsiasi spellId, locale-safe) ---
+rt.execute("""
+local RFmod = RLSuite.raidFrame
+local row = RFmod.rows[1]
+SAVED_MEMBER_WF = row.member
+SAVED_UE_WF = UnitExists
+SAVED_GSI_WF = GetSpellInfo
+SAVED_UB_WF = UnitBuff
+RLSuite.raidFrame:FillSlot(row, { name = 'Eatz', class = 'WARRIOR', unit = 'raid8', fake = false, raidIndex = 8 })
+UnitExists = function(u) return u == 'raid8' end
+GetSpellInfo = function(id) if id == 57399 then return 'Well Fed' end return 'Spell' end
+local FOOD_BUFFS = { [1] = 'Horn of Winter', [2] = 'Well Fed', [3] = nil }
+UnitBuff = function(u, filter)
+    if type(filter) == 'number' then return FOOD_BUFFS[filter] end
+    return nil  -- query per nome (path flask): nessuna corrispondenza unita'
+end
+WF_BUFFS = FOOD_BUFFS
+RFmod:UpdateConsumables(row)
+WF_FED = (row.foodIcon._missing == false and row.foodIcon:IsShown() == false)
+WF_FLASK_STILL = (row.flaskIcon._missing == true and row.flaskIcon:IsShown() == true)
+FOOD_BUFFS[2] = nil                                    -- niente Well Fed -> icona mancante
+RFmod:UpdateConsumables(row)
+WF_NOTFED = (row.foodIcon._missing == true and row.foodIcon:IsShown() == true)
+-- locale-safety: client non-EN, nome localizzato ricavato da GetSpellInfo(id noto)
+GetSpellInfo = function(id) if id == 57399 then return 'Ben Nutrito' end return 'Spell' end
+FOOD_BUFFS[1] = 'Ben Nutrito'
+RFmod:UpdateConsumables(row)
+WF_LOCALE = (row.foodIcon._missing == false)
+-- restore di TUTTO (mock globali + member originale)
+UnitBuff = SAVED_UB_WF; GetSpellInfo = SAVED_GSI_WF; UnitExists = SAVED_UE_WF
+WF_BUFFS = nil
+RLSuite.raidFrame:FillSlot(row, SAVED_MEMBER_WF)
+""")
+check(bool(rt.eval("WF_FED")), "Well Fed present (any spellId): food icon turns off")
+check(bool(rt.eval("WF_FLASK_STILL")), "flask check untouched by the Well Fed rework")
+check(bool(rt.eval("WF_NOTFED")), "no Well Fed on the unit: food icon shows missing")
+check(bool(rt.eval("WF_LOCALE")), "localized client: Well Fed matched via localized name (locale-safe)")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].member.name == 'F5'")), "roster restored after Well Fed test")
 
 # --- non pre-boss: empty slots hidden, drag disabled ---
 rt.execute("RLSuite:SetContextPhase('infight')")
