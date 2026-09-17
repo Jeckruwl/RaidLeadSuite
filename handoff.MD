@@ -7,7 +7,23 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.7.2**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.7.3**.
+
+## Novità della sessione 1.7.3 (questo branch, dopo 1.7.2) — BACKDROP VISIBILE + HEADER FUORI DAL PANNELLO SEMPRE
+
+1. **Backdrop invisibile**: `content` e' largo solo `rowWidth` (le barre!); il
+   backdrop grigio era ancorato TOPLEFT(rowWidth+2)/BOTTOMRIGHT(-2) ENTRAMBI su
+   content -> larghezza NEGATIVA -> texture invisibile. Ora BOTTOMRIGHT sul
+   `frame` (largo W = righe + matrice). Il test MBG_RIGHT_OK asserta il relativo.
+2. **Riga d'intestazione "tirata fuori dal pannello"**: i 19 bottoni categoria
+   erano figli di `content` (il pannello che viene riposizionato/nascosto dai
+   layout/recreate) -> potevano sparire. Ora sono figli della WINDOW
+   (`CreateFrame(..., self.frame)`), coordinati solo in ApplyLayout, e
+   RE-SHOWnati da ApplyLayout/RefreshBuffMatrix/UpdateAll ad OGNI giro:
+   con la matrice aperta non spariscono mai.
+   TEST: BP_HDR_OUT (parent==frame + shown per tutte le 19), BP_HDR_STILL
+   (UpdateAll+Refresh non tolgono visibilita'), MBG_STILL (backdrop fermo).
+450 check PASS.
 
 ## Novità della sessione 1.7.2 (questo branch, dopo 1.7.1) — FIX REGRESSIONE 1.7.0: FontString:SetRotation assente su 3.3.5
 
@@ -733,7 +749,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 446 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 450 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

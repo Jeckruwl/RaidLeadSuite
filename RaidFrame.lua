@@ -1525,10 +1525,10 @@ function RF:ApplyLayout()
             btn._col = col
             btn._label:SetText(col.label or col.key or "")
             btn:ClearAllPoints()
-            btn:SetPoint("TOPLEFT", self.content, "TOPLEFT",
-                m.rowWidth + 4 + (c - 1) * m.cellW, 0)
+            btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
+                m.rowWidth + 4 + (c - 1) * m.cellW, -1)
             btn:SetSize(m.cellW, RF_MATRIX_HDR_H)
-            btn:Show()
+            btn:Show() -- INTESTRAZIONE SEMPRE VISIBILE con la matrice aperta
         end
         y = y - RF_MATRIX_HDR_H
     end
@@ -1636,7 +1636,10 @@ function RF:ApplyLayout()
         self.matrixBg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
         self.matrixBg:ClearAllPoints()
         self.matrixBg:SetPoint("TOPLEFT", self.content, "TOPLEFT", m.rowWidth + 2, 0)
-        self.matrixBg:SetPoint("BOTTOMRIGHT", self.content, "BOTTOMRIGHT", -2, 1)
+        -- BOTTOMRIGHT sul FRAME: content e' largo solo rowWidth (le barre),
+        -- quindi con doppio anchor su content la texture risultava INVISIBILE
+        -- (larghezza negativa). Il frame invece e' largo W (righe + matrice).
+        self.matrixBg:SetPoint("BOTTOMRIGHT", self.frame, "BOTTOMRIGHT", -2, 1)
         self.matrixBg:Show()
     else
         self.matrixBg:Hide()
@@ -1684,7 +1687,10 @@ function RF:_MatrixHeaderBtn(c)
     self._buffHdrBtns = self._buffHdrBtns or {}
     local btn = self._buffHdrBtns[c]
     if not btn then
-        btn = CreateFrame("Button", nil, self.content)
+        -- TIRATI FUORI DAL PANNELLO: figli della WINDOW, non di content, cosi'
+        -- _LayoutContent/parti che riposizionano/nascondono le righe non li
+        -- toccano mai: la riga d'intestazione resta SEMPRE visibile.
+        btn = CreateFrame("Button", nil, self.frame)
         local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         fs:SetJustifyH("LEFT")
         fs:SetTextColor(1, 0.82, 0)
@@ -1799,7 +1805,9 @@ function RF:RefreshBuffMatrix()
             end
         end
     end
-    -- L'intestazione e' SEMPRE visibile quando la matrice e' attiva.
+    -- L'intestazione e' SEMPRE visibile quando la matrice e' attiva: i
+    -- bottoni sono figli della window (fuori dal pannello), mai toccati dalle
+    -- parti che nascondono le righe.
     for c, btn in ipairs(self._buffHdrBtns or {}) do
         if on and cols and cols[c] then
             btn:Show()

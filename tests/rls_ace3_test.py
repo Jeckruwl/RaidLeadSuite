@@ -1410,7 +1410,14 @@ BP_HDR1 = (RLSuite.raidFrame._buffHdrBtns[1]._label:GetText() == cols[1].label a
 BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[19]._label:GetText() == cols[19].label)
 BP_HDR_ROT = (math.abs((RLSuite.raidFrame._buffHdrBtns[1]._label._rotation or 0) - math.rad(45)) < 0.001 and RLSuite.raidFrame._buffHdrBtns[1]._rotatedLabel == true)
 BP_HDR_H = (RLSuite.raidFrame._buffHdrBtns[1].height == 80 or (RLSuite.raidFrame._buffHdrBtns[1]._h == 80) or true)
-BP_HDR_TOP = (math.abs((RLSuite.raidFrame._buffHdrBtns[1]._points[#RLSuite.raidFrame._buffHdrBtns[1]._points][5] or 0)) < 0.001)
+local hb1 = RLSuite.raidFrame._buffHdrBtns[1]
+local hbpt = hb1._points[#hb1._points]
+BP_HDR_TOP = (hbpt[2] == RLSuite.raidFrame.frame and math.abs((hbpt[5] or 0) + 1) < 0.001)
+BP_HDR_OUT = true
+for c = 1, 19 do
+    local b = RLSuite.raidFrame._buffHdrBtns[c]
+    BP_HDR_OUT = BP_HDR_OUT and (b:GetParent() == RLSuite.raidFrame.frame) and (b:IsShown() == true)
+end
 BP_TANK_UNDER = (math.abs((RLSuite.raidFrame.tankHeader._points[#RLSuite.raidFrame.tankHeader._points][5] or 0) + 80) < 0.001)
 -- REGRESSIONE 1.7.2: un errore nella costruzione dell'intestazione 45°
 -- interrompeva ApplyLayout a meta': i gruppi vuoti non venivano piu' packati,
@@ -1443,6 +1450,7 @@ check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "header row carrie
 check(bool(rt.eval("BP_HDR_ROT")), "category titles are rotated 45 degrees so they stay readable on narrow columns")
 check(bool(rt.eval("BP_HDR_TOP")), "category header row sits at the very TOP of the raid frame")
 check(bool(rt.eval("BP_LAYOUT_DONE")), "matrix header build can never abort ApplyLayout half-way: whole layout completes (groups + backdrop + cells)")
+check(bool(rt.eval("BP_HDR_OUT")), "category header buttons live OUTSIDE the panel (children of the window) and STAY visible with the matrix open")
 check(bool(rt.eval("BP_TANK_UNDER")), "the Tanks header moves down under the category header")
 check(bool(rt.eval("BP_W")), "window width grows exactly by the matrix area when active")
 check(bool(rt.eval("BP_CELL_ON_ROW") and bool(rt.eval("BP_CELL_SIDE"))), "category icons live ALONG the player's row, past the row right edge")
@@ -1496,7 +1504,7 @@ MBG_RGB0 = RLSuite.raidFrame.matrixBg._texRGBA
 local mpt = RLSuite.raidFrame.matrixBg._points[1]
 MBG_LEFT_OK = (mpt ~= nil and mpt[2] == RLSuite.raidFrame.content and mpt[4] == RLSuite.raidFrame:LayoutMetrics().rowWidth + 2)
 local mpt2 = RLSuite.raidFrame.matrixBg._points[2]
-MBG_RIGHT_OK = (mpt2 ~= nil and mpt2[2] == RLSuite.raidFrame.content and mpt2[4] == -2)
+MBG_RIGHT_OK = (mpt2 ~= nil and mpt2[2] == RLSuite.raidFrame.frame and mpt2[4] == -2)
 local same = true
 for c = 1, 19 do
     local tc = BP_FSLOT._buffCells[c]
@@ -1508,7 +1516,13 @@ BP_FAKE_SOME = (count1 >= 1)
 BP_FAKE_STABLE = same
 UnitBuff = SAVED_UB2
 GetSpellInfo = SAVED_GSI2
+RLSuite.raidFrame:UpdateAll()
 RLSuite.raidFrame:RefreshBuffMatrix()
+BP_HDR_STILL = true
+for c = 1, 19 do
+    BP_HDR_STILL = BP_HDR_STILL and (RLSuite.raidFrame._buffHdrBtns[c]:IsShown() == true)
+end
+MBG_STILL = (RLSuite.raidFrame.matrixBg:IsShown() == true)
 BP_AFTER = (BP_PSLOT._buffCells[STRAGI_C]:IsShown() == false)
 """)
 check(bool(rt.eval("BP_MATCH")), "cell on the player's row shows the icon of the ACTIVE buff covering that category")
@@ -1516,6 +1530,8 @@ check(bool(rt.eval("BP_MISS")), "missing category leaves the player's cell empty
 check(bool(rt.eval("BP_FAKE_SOME")), "invited (fake) players receive random buffs: their matrix row shows some category icons")
 check(bool(rt.eval("BP_FAKE_STABLE")), "debug random buff sets are stable across refreshes (no flicker)")
 check(bool(rt.eval("BP_AFTER")), "buffs gone -> icons gone (matrix tracks live auras)")
+check(bool(rt.eval("BP_HDR_STILL")), "the 19 category titles STAY visible through aura updates/refreshes (never flicker away)")
+check(bool(rt.eval("MBG_STILL")), "the gray matrix backdrop stays visible through refreshes")
 rt.execute("""
 -- spacing configurabili + colore backdrop: li cambio, ApplyLayout, misuro
 local app = RLSuite.db.profile.raidframe.appearance
@@ -1557,6 +1573,7 @@ check(bool(rt.eval("MBG_SHOW0")), "transparent gray backdrop sits under all rows
 rgba = rt.eval("MBG_RGB0")
 check(abs(float(rt.eval("MBG_RGB0[1]")) - 0.5) < 0.01 and abs(float(rt.eval("MBG_RGB0[2]")) - 0.5) < 0.01 and abs(float(rt.eval("MBG_RGB0[3]")) - 0.5) < 0.01 and abs(float(rt.eval("MBG_RGB0[4]")) - 0.35) < 0.01, "backdrop is a semi-transparent GRAY solid texture (0.5,0.5,0.5,0.35)")
 check(bool(rt.eval("MBG_LEFT_OK")), "backdrop starts at the rows' right edge, on the content frame")
+check(bool(rt.eval("MBG_RIGHT_OK")), "backdrop stretches to the WINDOW's right edge (content is only as wide as the rows: anchoring there made it invisible)")
 check(bool(rt.eval("BP_W_BACK")), "window width returns to rows-only when collapsed")
 check(bool(rt.eval("MBG_HIDE0")), "backdrop hidden again when the matrix collapses")
 
