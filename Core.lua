@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.6.3"
+RLSuite.version = "1.7.0"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -96,6 +96,11 @@ local defaults = {
                 barWidth = 180,
                 iconSize = 16,
                 nameFontSize = 11,
+                iconSpacing = 8,        -- gap tra le icone della matrice Raid Buffs
+                rowSpacing = 0,         -- gap tra le barre dentro i gruppi
+                groupSpacing = 8,       -- gap tra i gruppi
+                groupHeaderFontSize = 10,
+                matrixBackdrop = { r = 0.5, g = 0.5, b = 0.5, a = 0.35 },
                 fontColor = { r = 1, g = 1, b = 1, a = 1 },
                 border = true,
                 font = "Fonts\\FRIZQT__.TTF",

@@ -537,6 +537,33 @@ function CFG:BuildOptionsTable()
         alpha = slider(L["Opacity"], L["Overall transparency of the Raid Frame HUD."], 10, 0.30, 1.00, 0.05,
             function() return rf.alpha or 1 end,
             function(_, v) rf.alpha = v; self:ApplyAll() end),
+        iconSpacing = slider(L["Icon spacing"], L["Gap between the Raid Buffs matrix icons."], 12, 0, 16, 1,
+            function() return rf.appearance.iconSpacing or 8 end,
+            function(_, v) rf.appearance.iconSpacing = v; self:ApplyAll() end),
+        rowSpacing = slider(L["Row spacing"], L["Gap between the player bars inside each group."], 13, 0, 12, 1,
+            function() return rf.appearance.rowSpacing or 0 end,
+            function(_, v) rf.appearance.rowSpacing = v; self:ApplyAll() end),
+        groupSpacing = slider(L["Group spacing"], L["Gap between the groups (Tanks, G1..G6)."], 14, 0, 24, 1,
+            function() return rf.appearance.groupSpacing or 8 end,
+            function(_, v) rf.appearance.groupSpacing = v; self:ApplyAll() end),
+        groupHeaderFontSize = slider(L["Group header font size"], L["Font size of the group labels (Tanks, G1..G6)."], 15, 8, 16, 1,
+            function() return rf.appearance.groupHeaderFontSize or 10 end,
+            function(_, v) rf.appearance.groupHeaderFontSize = v; self:ApplyAll() end),
+        matrixBackdrop = {
+            name = L["Buff check backdrop"],
+            desc = L["Backdrop color and transparency of the Raid Buffs matrix rows."],
+            type = "color",
+            hasAlpha = true,
+            order = 16,
+            get = function()
+                local c = rf.appearance.matrixBackdrop or { r = 0.5, g = 0.5, b = 0.5, a = 0.35 }
+                return c.r or 0.5, c.g or 0.5, c.b or 0.5, c.a or 0.35
+            end,
+            set = function(_, r, g, b, a)
+                rf.appearance.matrixBackdrop = { r = r, g = g, b = b, a = a }
+                self:ApplyAll()
+            end,
+        },
         fontColor = {
             name = L["Font color"],
             desc = L["Color of the player name on the bars."],

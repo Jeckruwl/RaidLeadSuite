@@ -77,8 +77,17 @@ local RF_GROUP_GAP = 8
 local RF_TANK_COUNT = 2     -- Tanks group sopra G1: barra MT + barra OT
 -- Geometria del pannello "Raid Buffs" (matrice categorie x giocatori):
 local RF_BP_NAME_W = 84     -- colonna nome (class color)
-local RF_BP_CELL_W = 24     -- passo colonne (icona centrata)
-local RF_BP_HEADER_H = 16   -- riga intestazione con i nomi sintetici
+local RF_BP_CELL_W = 24      -- passo colonne DEFAULT (iconSize + iconSpacing)
+local RF_BP_HEADER_H = 16  -- non piu' usato: l'header 45° usa RF_MATRIX_HDR_H
+local RF_MATRIX_HDR_H = 80 -- riga intestazione ALTA: testi inclinati 45° leggibili
+-- Ordine di IMPORTANZA delle colonne della matrice (i buff piu' importanti
+-- a sinistra): benedizioni/stats e stamina prima, utility e % danno dopo.
+local RF_BP_PRIORITY = {
+    stats = 1, stamina = 2, wild = 3, intellect = 4, spirit = 5, shadow = 6,
+    armor = 7, mp5 = 8, atkpower = 9, hp = 10, strAgi = 11, spellPower = 12,
+    haste = 13, damage = 14, meleeHaste = 15, meleeCrit = 16, spellCrit = 17,
+    focusMagic = 18, retAura = 19,
+}
 local RF_BP_BTN_W = 72
 
 -- Drop-target outline for empty slots (pre-boss only). Transparent fill,
@@ -305,16 +314,23 @@ end
 -- ------------------------------------------------------------------
 function RF:LayoutMetrics()
     local db = self.db or {}
-    local iconSize = (db.appearance and db.appearance.iconSize) or 16
-    local barHeight = (db.appearance and db.appearance.barHeight) or 20
-    local barWidth = (db.appearance and db.appearance.barWidth) or 180
-    local nameFontSize = (db.appearance and db.appearance.nameFontSize) or 11
+    local app = db.appearance or {}
+    local iconSize = app.iconSize or 16
+    local barHeight = app.barHeight or 20
+    local barWidth = app.barWidth or 180
+    local nameFontSize = app.nameFontSize or 11
+    -- Spacing configurabili (Config -> Raid Frame -> Layout)
+    local iconSpacing = app.iconSpacing or 8            -- gap tra le icone della matrice
+    local rowSpacing = app.rowSpacing or 0              -- gap tra le barre nei gruppi
+    local groupSpacing = app.groupSpacing or 8          -- gap tra i gruppi
+    local groupHeaderH = (app.groupHeaderFontSize or 10) + 4
+    local cellW = math.max(12, iconSize + iconSpacing)  -- passo colonne matrice
     local abw = 0 -- buff bar / ability bar rimosse (redesign in corso)
     local gap = 0
     -- Matrice "Raid Buffs" integrata: larghezza extra SOLO quando attiva.
     local mwx = 0
     if self.buffMatrixOn and self.rows and self.rows[1] then
-        mwx = #self:_MatrixCols() * RF_BP_CELL_W + 10
+        mwx = #self:_MatrixCols() * cellW + 10
     end
     -- Layout per row: [flask][food] ... [HP bar = barWidth] ... [up to 4 CDs]
     local leftArea = 4 + 2 * iconSize + 4
@@ -327,6 +343,9 @@ function RF:LayoutMetrics()
         barWidth = barWidth, barHeight = barHeight,
         iconSize = iconSize, nameFontSize = nameFontSize,
         rowHeight = rowHeight,
+        iconSpacing = iconSpacing, rowSpacing = rowSpacing,
+        groupSpacing = groupSpacing, groupHeaderH = groupHeaderH,
+        cellW = cellW,
     }
 end
 
@@ -1499,15 +1518,32 @@ function RF:ApplyLayout()
     local matrixOn = self.buffMatrixOn and self.rows and self.rows[1] ~= nil
     local mCols = matrixOn and self:_MatrixCols() or nil
     if matrixOn then
+        -- Riga d'intestazione SEMPRE visibile a matrice attiva: bottoni con
+        -- i nomi a 45° (leggibili); hover li illumina, click = raid warning.
         for c, col in ipairs(mCols) do
-            local fs = self:_MatrixHeaderFS(c)
-            fs:SetText(col.label or col.key or "")
-            fs:ClearAllPoints()
-            fs:SetPoint("TOPLEFT", self.content, "TOPLEFT",
-                m.rowWidth + 4 + (c - 1) * RF_BP_CELL_W + 4, -2)
-            fs:Show()
+            local btn = self:_MatrixHeaderBtn(c)
+            btn._col = col
+            btn._label:SetText(col.label or col.key or "")
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPLEFT", self.content, "TOPLEFT",
+                m.rowWidth + 4 + (c - 1) * m.cellW, 0)
+            btn:SetSize(m.cellW, RF_MATRIX_HDR_H)
+            btn:Show()
         end
-        y = y - RF_BP_HEADER_H
+        y = y - RF_MATRIX_HDR_H
+    end
+
+    -- Font size configurabile delle intestazioni di gruppo (G1..G6, Tanks).
+    local ghApp = (self.db and self.db.appearance) or {}
+    local ghFont = ghApp.font or "Fonts\\FRIZQT__.TTF"
+    local ghSize = ghApp.groupHeaderFontSize or 10
+    local ghFlags = (ghApp.fontOutline ~= false) and "OUTLINE" or ""
+    if self.tankHeader and self.tankHeader.SetFont then
+        self.tankHeader:SetFont(ghFont, ghSize, ghFlags)
+    end
+    for g = 1, RF_GROUPS do
+        local gh = self.groupHeaders and self.groupHeaders[g]
+        if gh and gh.SetFont then gh:SetFont(ghFont, ghSize, ghFlags) end
     end
     -- GRUPPO TANKS sopra G1: header + barre MT/OT (sempre 2, piene o vuote).
     if self.tankHeader and self.tankHeader:IsShown() then
@@ -1515,17 +1551,17 @@ function RF:ApplyLayout()
         self.tankHeader:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
         self.tankHeader:SetWidth(m.rowWidth)
         local tankHdrY = y
-        y = y - RF_HEADER_H
+        y = y - m.groupHeaderH
         for ti = 1, RF_TANK_COUNT do
             local t = self.tankSlots and self.tankSlots[ti]
             if t then
                 t:ClearAllPoints()
                 t:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
                 self:LayoutSlotGeometry(t, m)
-                y = y - m.rowHeight
+                y = y - m.rowHeight - m.rowSpacing
             end
         end
-        y = y - RF_GROUP_GAP
+        y = y - m.groupSpacing
         shown = true
         -- Bottone "Raid Buffs": stessa riga dell'header Tanks, a DESTRA di
         -- tutta l'elemento (fine barra + cd = bordo destro della riga).
@@ -1544,7 +1580,7 @@ function RF:ApplyLayout()
             hdr:ClearAllPoints()
             hdr:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
             hdr:SetWidth(m.rowWidth)
-            y = y - RF_HEADER_H
+            y = y - m.groupHeaderH
             shown = true
         end
         local anySlot = false
@@ -1557,13 +1593,13 @@ function RF:ApplyLayout()
                 if matrixOn and slot.member then
                     self:_LayoutMatrixRow(slot, m, y, mCols)
                 end
-                y = y - m.rowHeight
+                y = y - m.rowHeight - m.rowSpacing
                 anySlot = true
                 shown = true
             end
         end
         if g < RF_GROUPS and (hdrShown or anySlot) then
-            y = y - RF_GROUP_GAP
+            y = y - m.groupSpacing
         end
     end
     local rowsH = shown and -y or 0
@@ -1596,6 +1632,8 @@ function RF:ApplyLayout()
     -- Backdrop matrice: copre TUTTE le righe (dalla fine della colonna
     -- barre al bordo destro) solo a matrice attiva; l'altezza segue content.
     if self.buffMatrixOn then
+        local bc = (self.db and self.db.appearance and self.db.appearance.matrixBackdrop) or {}
+        self.matrixBg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
         self.matrixBg:ClearAllPoints()
         self.matrixBg:SetPoint("TOPLEFT", self.content, "TOPLEFT", m.rowWidth + 2, 0)
         self.matrixBg:SetPoint("BOTTOMRIGHT", self.content, "BOTTOMRIGHT", -2, 1)
@@ -1628,21 +1666,71 @@ function RF:_MatrixCols()
             out[#out + 1] = col
         end
     end
+    -- I buff PIU' IMPORTANTI sono i primi a sinistra (RF_BP_PRIORITY).
+    table.sort(out, function(a, b)
+        local pa = RF_BP_PRIORITY[a.key] or 99
+        local pb = RF_BP_PRIORITY[b.key] or 99
+        if pa ~= pb then return pa < pb end
+        return (a.label or a.key or "") < (b.label or b.key or "")
+    end)
     self._matrixColsCache = out
     return out
 end
 
--- FontString d'intestazione (nomi sintetici delle categorie), pool pigro.
-function RF:_MatrixHeaderFS(c)
-    self._buffHeader = self._buffHeader or {}
-    local fs = self._buffHeader[c]
-    if not fs then
-        fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+-- Intestazione matrice: UN BOTTONE per colonna (cliccabile) con il nome
+-- sintetico inclinato di 45° (leggibile anche con colonne strette); hover
+-- accende il testo, click = raid warning per quella categoria.
+function RF:_MatrixHeaderBtn(c)
+    self._buffHdrBtns = self._buffHdrBtns or {}
+    local btn = self._buffHdrBtns[c]
+    if not btn then
+        btn = CreateFrame("Button", nil, self.content)
+        local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         fs:SetJustifyH("LEFT")
         fs:SetTextColor(1, 0.82, 0)
-        self._buffHeader[c] = fs
+        -- Il testo sale verso destra di 45°: ruota attorno al proprio centro.
+        fs:SetRotation(math.rad(45))
+        fs:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 5, 2)
+        btn._label = fs
+        btn:SetScript("OnEnter", function(s)
+            s._label:SetTextColor(1, 1, 1) -- testo "illuminato" in hover
+        end)
+        btn:SetScript("OnLeave", function(s)
+            s._label:SetTextColor(1, 0.82, 0)
+        end)
+        btn:RegisterForClicks("LeftButtonUp")
+        btn:SetScript("OnClick", function(s)
+            if s._col then RF:WarnBuffCategory(s._col) end
+        end)
+        btn:Hide()
+        self._buffHdrBtns[c] = btn
     end
-    return fs
+    return btn
+end
+
+-- Left-click su un titolo di categoria: raid warning per quella colonna,
+-- con l'elenco dei player che mancano del buff (fake inclusi in debug).
+function RF:WarnBuffCategory(col)
+    if not col then return end
+    local label = col.label or col.key or "?"
+    local missing = {}
+    for _, member in ipairs(self:GetRoster()) do
+        if member.unit or member.fake then
+            if not self:_BuffCellIconFor(member, col) then
+                missing[#missing + 1] = member.name or "?"
+            end
+        end
+    end
+    local msg
+    if #missing == 0 then
+        msg = string.format(L["Buff check: %s - OK on everyone"], label)
+    else
+        msg = string.format(L["Buff check: %s - missing: %s"], label, table.concat(missing, ", "))
+    end
+    if #msg > 240 then msg = msg:sub(1, 237) .. "..." end
+    if RLSuite.utils and RLSuite.utils.SendChat then
+        RLSuite.utils:SendChat(msg, "RAID_WARNING")
+    end
 end
 
 -- Toggle dal tasto "Raid Buffs": la matrice appare solo se cliccata.
@@ -1672,7 +1760,7 @@ function RF:_LayoutMatrixRow(slot, m, y, mCols)
             tex:ClearAllPoints()
             tex:SetSize(m.iconSize, m.iconSize)
             tex:SetPoint("TOPLEFT", self.content, "TOPLEFT",
-                m.rowWidth + 4 + (c - 1) * RF_BP_CELL_W + (RF_BP_CELL_W - m.iconSize) / 2,
+                m.rowWidth + 4 + (c - 1) * m.cellW + (m.cellW - m.iconSize) / 2,
                 y - (m.rowHeight - m.iconSize) / 2)
         end
     end
@@ -1698,11 +1786,12 @@ function RF:RefreshBuffMatrix()
             end
         end
     end
-    for c, fs in ipairs(self._buffHeader or {}) do
+    -- L'intestazione e' SEMPRE visibile quando la matrice e' attiva.
+    for c, btn in ipairs(self._buffHdrBtns or {}) do
         if on and cols and cols[c] then
-            fs:Show()
+            btn:Show()
         else
-            fs:Hide()
+            btn:Hide()
         end
     end
 end

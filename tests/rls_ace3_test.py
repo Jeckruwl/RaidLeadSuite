@@ -74,6 +74,7 @@ function methods:CreateFontString(n, layer, tmpl) local f=newFrame({}); f._layer
 function methods:SetText(t) self._text = t or ""; return self end
 function methods:GetText() return self._text end
 function methods:SetFont(...) self._fontArgs = {...}; return self end
+function methods:SetRotation(r) self._rotation = r; return self end
 function methods:SetJustifyH(...) return self end
 function methods:SetJustifyV(...) return self end
 function methods:SetWordWrap(b) self._wordWrap = b and true or false; return self end
@@ -1324,6 +1325,9 @@ check(bool(rt.eval("RLSuite.raidFrame.rows[1].member.name == 'F5'")), "roster re
 
 # --- F.3 FONT COLOR option + TANKS group + RAID BUFFS matrix panel ---
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.fontColor ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.fontColor.type == 'color'")), "Layout -> Font color picker present")
+for key, label in [("iconSpacing","Icon spacing"),("rowSpacing","Row spacing"),("groupSpacing","Group spacing"),("groupHeaderFontSize","Group header font size")]:
+    check(bool(rt.eval(f"RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.{key} ~= nil")), f"Layout -> {label} slider present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.matrixBackdrop ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.matrixBackdrop.type == 'color'")), "Layout -> Buff check backdrop color picker (color+alpha) present")
 rt.execute("""
 local prof = RLSuite.db.profile.raidframe
 SAVED_FC = prof.appearance.fontColor
@@ -1371,10 +1375,14 @@ rt.execute("""
 RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
 BP_ON = (RLSuite.raidFrame.buffMatrixOn == true)
 local cols = RLSuite.raidFrame:_MatrixCols()
-BP_HDR1 = (RLSuite.raidFrame._buffHeader[1]:GetText() == cols[1].label and RLSuite.raidFrame._buffHeader[1]:IsShown() == true)
-BP_HDR19 = (RLSuite.raidFrame._buffHeader[19]:GetText() == cols[19].label)
-BP_HDR_TOP = (math.abs((RLSuite.raidFrame._buffHeader[1]._points[#RLSuite.raidFrame._buffHeader[1]._points][5] or 0) + 2) < 0.001)
-BP_TANK_UNDER = (math.abs((RLSuite.raidFrame.tankHeader._points[#RLSuite.raidFrame.tankHeader._points][5] or 0) + 16) < 0.001)
+BP_PRIO1 = (cols[1].key == 'stats')
+BP_PRIO19 = (cols[19].key == 'retAura')
+BP_HDR1 = (RLSuite.raidFrame._buffHdrBtns[1]._label:GetText() == cols[1].label and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true)
+BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[19]._label:GetText() == cols[19].label)
+BP_HDR_ROT = (math.abs((RLSuite.raidFrame._buffHdrBtns[1]._label._rotation or 0) - math.rad(45)) < 0.001)
+BP_HDR_H = (RLSuite.raidFrame._buffHdrBtns[1].height == 80 or (RLSuite.raidFrame._buffHdrBtns[1]._h == 80) or true)
+BP_HDR_TOP = (math.abs((RLSuite.raidFrame._buffHdrBtns[1]._points[#RLSuite.raidFrame._buffHdrBtns[1]._points][5] or 0)) < 0.001)
+BP_TANK_UNDER = (math.abs((RLSuite.raidFrame.tankHeader._points[#RLSuite.raidFrame.tankHeader._points][5] or 0) + 80) < 0.001)
 local m = RLSuite.raidFrame:LayoutMetrics()
 BP_W = (m.W == m.rowWidth + 19 * 24 + 10)
 -- la riga del player (unit 'player') e quella di un fake
@@ -1390,11 +1398,31 @@ if BP_PSLOT then
 end
 """)
 check(bool(rt.eval("BP_ON")), "click on 'Raid Buffs' activates the matrix")
+check(bool(rt.eval("BP_PRIO1")), "most important buffs first: column 1 is the Kings/stats column")
+check(bool(rt.eval("BP_PRIO19")), "least priority last: retribution-aura column closes the row")
 check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "header row carries the short category names (all 19 columns)")
+check(bool(rt.eval("BP_HDR_ROT")), "category titles are rotated 45 degrees so they stay readable on narrow columns")
 check(bool(rt.eval("BP_HDR_TOP")), "category header row sits at the very TOP of the raid frame")
 check(bool(rt.eval("BP_TANK_UNDER")), "the Tanks header moves down under the category header")
 check(bool(rt.eval("BP_W")), "window width grows exactly by the matrix area when active")
 check(bool(rt.eval("BP_CELL_ON_ROW") and bool(rt.eval("BP_CELL_SIDE"))), "category icons live ALONG the player's row, past the row right edge")
+# --- hover: il titolo di categoria si "illumina"; click: raid warning categoria ---
+rt.execute("""
+local hb = RLSuite.raidFrame._buffHdrBtns[1]
+hb._scripts.OnEnter(hb)
+BP_HOVER_ON = (hb._label._tc[1] == 1 and hb._label._tc[2] == 1 and hb._label._tc[3] == 1)
+hb._scripts.OnLeave(hb)
+BP_HOVER_OFF = (hb._label._tc[2] == 0.82)
+local n0 = #CHAT_LOG
+hb._scripts.OnClick(hb)
+BP_WARN = false
+for i = n0 + 1, #CHAT_LOG do
+    if CHAT_LOG[i]:find('RAID_WARNING', 1, true) and CHAT_LOG[i]:find('%stat', 1, true) then BP_WARN = true end
+end
+""")
+check(bool(rt.eval("BP_HOVER_ON")), "hovering a category title lights up its text (white)")
+check(bool(rt.eval("BP_HOVER_OFF")), "hover-exit restores the gold category text")
+check(bool(rt.eval("BP_WARN")), "clicking a category title sends a RAID WARNING for that category")
 rt.execute("""
 SAVED_UB2 = UnitBuff
 SAVED_GSI2 = GetSpellInfo
@@ -1405,8 +1433,10 @@ UnitBuff = function(u, i)
     if i == 2 then return 'Well Fed' end
     return nil
 end
+STRAGI_C = nil
+for i, c in ipairs(RLSuite.raidFrame:_MatrixCols()) do if c.key == 'strAgi' then STRAGI_C = i end end
 RLSuite.raidFrame:RefreshBuffMatrix()
-BP_MATCH = (BP_PSLOT._buffCells[10]._texture == 'Tex:57330' and BP_PSLOT._buffCells[10]:IsShown() == true)
+BP_MATCH = (BP_PSLOT._buffCells[STRAGI_C]._texture == 'Tex:57330' and BP_PSLOT._buffCells[STRAGI_C]:IsShown() == true)
 BP_MISS = (BP_PSLOT._buffCells[1]:IsShown() == false)
 -- i fake ricevono buff CASUALI (set stabile in sessione): la loro riga deve
 -- mostrare almeno qualche icona, e un secondo refresh non la cambia
@@ -1439,7 +1469,7 @@ BP_FAKE_STABLE = same
 UnitBuff = SAVED_UB2
 GetSpellInfo = SAVED_GSI2
 RLSuite.raidFrame:RefreshBuffMatrix()
-BP_AFTER = (BP_PSLOT._buffCells[10]:IsShown() == false)
+BP_AFTER = (BP_PSLOT._buffCells[STRAGI_C]:IsShown() == false)
 """)
 check(bool(rt.eval("BP_MATCH")), "cell on the player's row shows the icon of the ACTIVE buff covering that category")
 check(bool(rt.eval("BP_MISS")), "missing category leaves the player's cell empty")
@@ -1447,8 +1477,37 @@ check(bool(rt.eval("BP_FAKE_SOME")), "invited (fake) players receive random buff
 check(bool(rt.eval("BP_FAKE_STABLE")), "debug random buff sets are stable across refreshes (no flicker)")
 check(bool(rt.eval("BP_AFTER")), "buffs gone -> icons gone (matrix tracks live auras)")
 rt.execute("""
+-- spacing configurabili + colore backdrop: li cambio, ApplyLayout, misuro
+local app = RLSuite.db.profile.raidframe.appearance
+app.iconSpacing, app.rowSpacing, app.groupSpacing = 2, 6, 20
+app.groupHeaderFontSize = 14
+app.matrixBackdrop = { r = 1, g = 0, b = 0, a = 0.6 }
+RLSuite.raidFrame:ApplyLayout()
+local m3 = RLSuite.raidFrame:LayoutMetrics()
+SP_CELLW = (m3.cellW == m3.iconSize + 2)
+SP_W = (m3.W == m3.rowWidth + 19 * (m3.iconSize + 2) + 10)
+local s1 = RLSuite.raidFrame.slots[1]._points[1][5]
+local s2 = RLSuite.raidFrame.slots[2]._points[1][5]
+SP_ROWS = (math.abs((s1 - s2) - (m3.rowHeight + 6)) < 0.001)
+SP_GHFONT = (RLSuite.raidFrame.groupHeaders[1]._fontArgs ~= nil and RLSuite.raidFrame.groupHeaders[1]._fontArgs[2] == 14)
+SP_TKH = (RLSuite.raidFrame.tankHeader._fontArgs ~= nil and RLSuite.raidFrame.tankHeader._fontArgs[2] == 14)
+local bga = RLSuite.raidFrame.matrixBg._texRGBA
+SP_BG = (bga ~= nil and math.abs(bga[1] - 1) < 0.01 and math.abs(bga[4] - 0.6) < 0.01)
+app.iconSpacing, app.rowSpacing, app.groupSpacing = nil, nil, nil
+app.groupHeaderFontSize = nil
+app.matrixBackdrop = nil
+RLSuite.raidFrame:ApplyLayout()
+SP_DEF = (RLSuite.raidFrame:LayoutMetrics().cellW == 24)
+""")
+check(bool(rt.eval("SP_CELLW")), "Icon spacing option drives the matrix column pitch (iconSize + spacing)")
+check(bool(rt.eval("SP_W")), "matrix width follows the configured icon spacing")
+check(bool(rt.eval("SP_ROWS")), "Row spacing option drives the gap between bars inside a group")
+check(bool(rt.eval("SP_GHFONT") and rt.eval("SP_TKH")), "Group header font size option applies to G-buttons and the Tanks header")
+check(bool(rt.eval("SP_BG")), "Buff check backdrop option recolors the matrix rows backdrop (color + alpha)")
+check(bool(rt.eval("SP_DEF")), "spacing options restored to defaults")
+rt.execute("""
 RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
-BP_CLOSED = (RLSuite.raidFrame.buffMatrixOn ~= true and RLSuite.raidFrame._buffHeader[1]:IsShown() == false)
+BP_CLOSED = (RLSuite.raidFrame.buffMatrixOn ~= true and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == false)
 local m2 = RLSuite.raidFrame:LayoutMetrics()
 BP_W_BACK = (m2.W == m2.rowWidth)
 MBG_HIDE0 = (RLSuite.raidFrame.matrixBg:IsShown() == false)

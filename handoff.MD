@@ -7,7 +7,36 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.6.3**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.7.0**.
+
+## Novità della sessione 1.7.0 (questo branch, dopo 1.6.3) — 5 OPZIONI LAYOUT + HEADER MATRICE 45°/HOVER/CLICK
+
+### Nuove opzioni in Config -> Raid Frame -> Layout (profile.raidframe.appearance)
+- **Icon spacing** (0..16, def 8): gap tra le icone della matrice; passo colonna =
+  iconSize + iconSpacing (default 24 invariato).
+- **Row spacing** (0..12, def 0): gap tra le barre dentro ogni gruppo.
+- **Group spacing** (0..24, def 8): gap tra i gruppi (era RF_GROUP_GAP fisso).
+- **Group header font size** (8..16, def 10): SetFont(font, size, outline) applicato a
+  G1..G6 e Tanks; l'altezza header = size + 4 (sostituisce RF_HEADER_H).
+- **Buff check backdrop** (type=color, hasAlpha): colore + trasparenza del rettangolo
+  dietro le righe della matrice (default 0.5/0.5/0.5/0.35). Defaults anche in Core.lua.
+- LayoutMetrics ora espone iconSpacing/rowSpacing/groupSpacing/groupHeaderH/cellW;
+  ApplyLayout usa m.rowSpacing/m.groupSpacing/m.groupHeaderH/m.cellW ovunque.
+
+### Matrice Raid Buffs — header ridisegnato
+- **Testi inclinati di 45°** (FontString:SetRotation(math.rad(45)), risalgono verso
+  destra) su bottoni alti RF_MATRIX_HDR_H=80 px → leggibili con colonne da 24px.
+- **Header SEMPRE visibile** con la matrice attiva (refresh loop su _buffHdrBtns).
+- **Ordine per importanza** (RF_BP_PRIORITY): Stats(Kings), Stamina, Wild/Gift,
+  Intellect, Spirit, ShadowProt, Armor, MP5, AtkPower, HP, Str+Agi, SpellPower,
+  Haste, Dmg%, MeleeHaste, MeleeCrit, SpellCrit, FocusMagic, RetAura.
+- **Hover sul titolo** → testo bianco acceso (1,1,1); OnLeave → oro (1,0.82,0).
+- **Click sul titolo** → `Utils:SendChat(msg, "RAID_WARNING")` con elenco di chi
+  manca quella categoria (`RF:WarnBuffCategory`, scan via _BuffCellIconFor: funziona
+  anche sui fake coi buff casuali; troncato a 240 char; in debug diventa whisper a
+  se stessi col prefisso [RAID_WARNING] come da convenzione).
+- Attenzione test: la colonna strAgi ORA e' la 11a non la 10a (usa ricerca per key).
+- 439 check PASS.
 
 ## Novità della sessione 1.6.3 (questo branch, dopo 1.6.2) — BACKDROP GRIGIO TRASPARENTE SOTTO LE RIGHE DELLA MATRICE
 
@@ -671,7 +700,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 422 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 439 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
