@@ -7,7 +7,19 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.6.2**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.6.3**.
+
+## Novità della sessione 1.6.3 (questo branch, dopo 1.6.2) — BACKDROP GRIGIO TRASPARENTE SOTTO LE RIGHE DELLA MATRICE
+
+Con la matrice "Raid Buffs" aperta, le 19 colonne di icone estendono la finestra del
+raid frame a destra della colonna barre ma senza sfondo: sul mondo dietro le celle
+risultavano poco leggibili. Ora `self.matrixBg` (texture del content, strato BACKGROUND
+=> sotto TUTTE le righe e le icone) mostra un rettangolo grigio semi-trasparente
+ SetTexture(0.5,0.5,0.5,0.35) che copre dall'angolo in cima a destra della colonna barre
+(m.rowWidth+2, 0) al bordo destro/in fondo del content (-2, 1): header + righe incluse.
+Solo a `buffMatrixOn`; si nasconde al collapse. In 3.3.5 il colore pieno si fa con
+SetTexture(r,g,b,a) (SetColorTexture NON esiste prima della 6.0!).
+422 check PASS (backdrop visibile/nascosto, RGBA grigio, ancoraggio al bordo righe).
 
 ## Novità della sessione 1.6.2 (questo branch, dopo 1.6.1) — DEBUG: MT/OT FITTIZI + BUFF CASUALI AGLI INVITATI
 
@@ -659,7 +671,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 418 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 422 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

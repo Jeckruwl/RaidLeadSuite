@@ -187,6 +187,14 @@ function RF:CreateFrame()
     self.content = CreateFrame("Frame", nil, f)
     self.content:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
 
+    -- Backdrop GRIGIO SEMI-TRASPARENTE dell'area matrice "Raid Buffs": sta
+    -- SOTTO tutte le righe e le icone (strato BACKGROUND), cosi' le celle
+    -- risultano sempre leggibili anche sul mondo dietro.
+    local matrixBg = self.content:CreateTexture(nil, "BACKGROUND")
+    matrixBg:SetTexture(0.5, 0.5, 0.5, 0.35)
+    matrixBg:Hide()
+    self.matrixBg = matrixBg
+
 end
 
 function RF:RegisterEvents()
@@ -1583,6 +1591,17 @@ function RF:ApplyLayout()
 
     if (RLSuite.InRaid and RLSuite:InRaid()) or (GetNumRaidMembers and GetNumRaidMembers() > 0) then
         self:UpdateAll()
+    end
+
+    -- Backdrop matrice: copre TUTTE le righe (dalla fine della colonna
+    -- barre al bordo destro) solo a matrice attiva; l'altezza segue content.
+    if self.buffMatrixOn then
+        self.matrixBg:ClearAllPoints()
+        self.matrixBg:SetPoint("TOPLEFT", self.content, "TOPLEFT", m.rowWidth + 2, 0)
+        self.matrixBg:SetPoint("BOTTOMRIGHT", self.content, "BOTTOMRIGHT", -2, 1)
+        self.matrixBg:Show()
+    else
+        self.matrixBg:Hide()
     end
 end
 

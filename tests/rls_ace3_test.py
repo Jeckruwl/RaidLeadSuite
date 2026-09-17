@@ -126,7 +126,7 @@ function methods:SetMinResize(...) return self end
 function methods:SetClampedToScreen(b) return self end
 function methods:SetAllPoints(...) return self end
 function methods:SetTexCoord(...) return self end
-function methods:SetTexture(t) self._texture = t; return self end
+function methods:SetTexture(a, b, c, d) self._texture = a; if b ~= nil then self._texRGBA = {a, b, c, d} else self._texRGBA = nil end; return self end
 function methods:SetBlendMode(...) return self end
 function methods:SetVertexColor(...) return self end
 function methods:SetColorTexture(...) return self end
@@ -1421,6 +1421,12 @@ for c = 1, 19 do
     end
 end
 RLSuite.raidFrame:RefreshBuffMatrix()
+MBG_SHOW0 = RLSuite.raidFrame.matrixBg:IsShown()
+MBG_RGB0 = RLSuite.raidFrame.matrixBg._texRGBA
+local mpt = RLSuite.raidFrame.matrixBg._points[1]
+MBG_LEFT_OK = (mpt ~= nil and mpt[2] == RLSuite.raidFrame.content and mpt[4] == RLSuite.raidFrame:LayoutMetrics().rowWidth + 2)
+local mpt2 = RLSuite.raidFrame.matrixBg._points[2]
+MBG_RIGHT_OK = (mpt2 ~= nil and mpt2[2] == RLSuite.raidFrame.content and mpt2[4] == -2)
 local same = true
 for c = 1, 19 do
     local tc = BP_FSLOT._buffCells[c]
@@ -1445,9 +1451,15 @@ RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
 BP_CLOSED = (RLSuite.raidFrame.buffMatrixOn ~= true and RLSuite.raidFrame._buffHeader[1]:IsShown() == false)
 local m2 = RLSuite.raidFrame:LayoutMetrics()
 BP_W_BACK = (m2.W == m2.rowWidth)
+MBG_HIDE0 = (RLSuite.raidFrame.matrixBg:IsShown() == false)
 """)
 check(bool(rt.eval("BP_CLOSED")), "second click on 'Raid Buffs' collapses the matrix")
+check(bool(rt.eval("MBG_SHOW0")), "transparent gray backdrop sits under all rows while the matrix is on")
+rgba = rt.eval("MBG_RGB0")
+check(abs(float(rt.eval("MBG_RGB0[1]")) - 0.5) < 0.01 and abs(float(rt.eval("MBG_RGB0[2]")) - 0.5) < 0.01 and abs(float(rt.eval("MBG_RGB0[3]")) - 0.5) < 0.01 and abs(float(rt.eval("MBG_RGB0[4]")) - 0.35) < 0.01, "backdrop is a semi-transparent GRAY solid texture (0.5,0.5,0.5,0.35)")
+check(bool(rt.eval("MBG_LEFT_OK")), "backdrop starts at the rows' right edge, on the content frame")
 check(bool(rt.eval("BP_W_BACK")), "window width returns to rows-only when collapsed")
+check(bool(rt.eval("MBG_HIDE0")), "backdrop hidden again when the matrix collapses")
 
 # --- F.4 MT/OT assignment: SECURE macro buttons (SetPartyAssignment is PROTECTED) ---
 check(rt.eval("RLSuite.mainWindow.mtBtn:GetAttribute('type')") == 'macro', "MT button is a SECURE macro button (protected SetPartyAssignment never called)")
