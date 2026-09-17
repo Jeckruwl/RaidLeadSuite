@@ -164,6 +164,7 @@ function MW:CreateFrame()
     self.matrixButtons = {}
     for i, def in ipairs(self.tabDefs) do
         local tab = CreateFrame("Button", "RLSuiteTab" .. def.key, f, "UIPanelButtonTemplate")
+        RLSuite.utils:SkinButton(tab)
         tab:SetSize(90, 22)
         tab:SetText(def.label)
         tab.tabKey = def.key
@@ -183,6 +184,7 @@ function MW:CreateFrame()
     -- attributi protetti non si toccano in combat) e svuotato in PostClick.
     local function MakeRoleSecBtn(name, text, roleCmd)
         local b = CreateFrame("Button", name, f, "SecureActionButtonTemplate, UIPanelButtonTemplate")
+        RLSuite.utils:SkinButton(b)
         b:SetText(text)
         b:RegisterForClicks("LeftButtonDown")
         b:SetAttribute("type", "macro")
@@ -742,6 +744,7 @@ function MW:AskRaidTitle(callback)
     f.edit = edit
 
     local ok = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(ok)
     ok:SetSize(90, 22)
     ok:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
     ok:SetText(L["Save"])
@@ -752,6 +755,7 @@ function MW:AskRaidTitle(callback)
     end)
 
     local cancel = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(cancel)
     cancel:SetSize(90, 22)
     cancel:SetPoint("RIGHT", ok, "LEFT", -8, 0)
     cancel:SetText(L["Cancel"])

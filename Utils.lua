@@ -424,6 +424,42 @@ function Utils:SkinBox(box)
     box:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
 end
 
+-- Skin ACE per TUTTI i bottoni di dialogo dell'addon: NIENTE piu' grafica
+-- di default Blizzard (grigio UIPanelButtonTemplate); al suo posto il look
+-- piatto scuro coerente con le finestre skinnate/AceGUI: sfondo scuro,
+-- bordo tooltip fine, bordo DORATO in hover (come le righe selezionate).
+function Utils:SkinButton(btn)
+    if not btn then return end
+    if btn.SetNormalTexture then
+        btn:SetNormalTexture(nil)
+        if btn.SetPushedTexture then btn:SetPushedTexture(nil) end
+        if btn.SetDisabledTexture then btn:SetDisabledTexture(nil) end
+    end
+    if btn.SetHighlightTexture then
+        btn:SetHighlightTexture("Interface\\Buttons\\WHITE8x8")
+        local ht = btn.GetHighlightTexture and btn:GetHighlightTexture()
+        if ht and ht.SetVertexColor then ht:SetVertexColor(1, 1, 1, 0.08) end
+    end
+    if btn.SetBackdrop then
+        btn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeSize = 8,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        btn:SetBackdropColor(0.16, 0.18, 0.22, 0.95)
+        btn:SetBackdropBorderColor(0.45, 0.45, 0.48, 1)
+    end
+    if btn.HookScript then
+        btn:HookScript("OnEnter", function(s)
+            if s.SetBackdropBorderColor then s:SetBackdropBorderColor(0.85, 0.70, 0.20, 1) end
+        end)
+        btn:HookScript("OnLeave", function(s)
+            if s.SetBackdropBorderColor then s:SetBackdropBorderColor(0.45, 0.45, 0.48, 1) end
+        end)
+    end
+end
+
 function Utils:SkinRow(row, selected)
     if not row or not row.SetBackdrop then return end
     row:SetBackdrop({

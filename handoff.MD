@@ -7,7 +7,22 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.9**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.10.0**.
+
+## Novità della sessione 1.10.0 (questo branch, dopo 1.9.9) — TUTTI i bottoni con skin ACE
+
+Richiesta utente: a tutti i tasti togliere la grafica di default Blizzard e
+usare "quella ACE".
+- Nuovo `Utils:SkinButton(btn)`: rimuove le texture UIPanelButtonTemplate di
+  default (normal/pushed/disabled nil), highlight WHITE8x8 8%, backdrop piatto
+  SCURO (WHITE8x8 0.16/0.18/0.22 a 0.95) con bordo tooltip fine, bordo DORATO
+  in hover via HookScript (stesso oro delle righe selezionate SkinRow).
+- Applicata a TUTTI i bottoni di dialogo: Config (3), Groupmaking (16),
+  Loot manager (4), MS Manager (3), Macro bar (3), Raid profile (4) e il tasto
+  "Raid Buffs" del Raid Frame (34 siti totali). Icon-button con grafica propria
+  (macro slot, minimap, righe/liste, overlay invisibili, catchall) INVARIATI:
+  non sono tasti di dialogo.
+473 check PASS (+5 nuovi check skin + hover su bottoni RF/GM/LM/MS).
 
 ## Novità della sessione 1.9.9 (questo branch, dopo 1.9.8) — zona buff CLICK-THROUGH
 
@@ -969,7 +984,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 468 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 473 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

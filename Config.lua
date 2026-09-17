@@ -719,6 +719,7 @@ function CFG:CreateMacroEditor(parent)
     }
     for i, pdata in ipairs(phases) do
         local btn = CreateFrame("Button", nil, ed, "UIPanelButtonTemplate")
+        RLSuite.utils:SkinButton(btn)
         btn:SetSize(70, 20)
         btn:SetPoint("LEFT", phaseLabel, "RIGHT", 6 + (i - 1) * 76, 0)
         btn:SetText(pdata.label)
@@ -730,6 +731,7 @@ function CFG:CreateMacroEditor(parent)
     end
 
     local hudBtn = CreateFrame("Button", nil, ed, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(hudBtn)
     hudBtn:SetSize(120, 20)
     hudBtn:SetPoint("TOPRIGHT", ed, "TOPRIGHT", -8, -6)
     hudBtn:SetText("HUD on/off")
@@ -911,6 +913,7 @@ function CFG:CreateMacroEditor(parent)
     end
 
     local capsBtn = CreateFrame("Button", nil, util, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(capsBtn)
     capsBtn:SetSize(56, 18)
     capsBtn:SetPoint("LEFT", util, "LEFT", 8 * 22 + 6, 0)
     capsBtn:SetText("CAPS")

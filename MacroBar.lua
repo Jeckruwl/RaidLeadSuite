@@ -549,6 +549,7 @@ function MB:CreateKeypad()
     self.keypadButtons = {}
     for i, def in ipairs(MB.KeypadDefs) do
         local btn = CreateFrame("Button", nil, self.keypadFrame, "UIPanelButtonTemplate")
+        RLSuite.utils:SkinButton(btn)
         btn:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
         local r = def.row or 1
         btn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", KEYPAD_PAD, -(KEYPAD_PAD + (r - 1) * (KEYPAD_BTN_H + KEYPAD_VGAP)))
@@ -768,6 +769,7 @@ function MB:OpenMacroEdit(index)
     edit:SetText(current.text or "")
 
     local saveBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(saveBtn)
     saveBtn:SetSize(80, 22)
     saveBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 20, 15)
     saveBtn:SetText(L["Save"])
@@ -786,6 +788,7 @@ function MB:OpenMacroEdit(index)
     end)
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(closeBtn)
     closeBtn:SetSize(80, 22)
     closeBtn:SetPoint("LEFT", saveBtn, "RIGHT", 10, 0)
     closeBtn:SetText(L["Cancel"])

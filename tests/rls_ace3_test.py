@@ -2146,6 +2146,33 @@ check(bool(rt.eval("RLSuite.groupmaking.compSlots[1].roleIconBg:GetParent() == R
 check(bool(rt.eval("RLSuite.groupmaking.specCells[1].buttons[1]._backdrop.edgeSize == 16")), "class bar spec icons use even thicker borders (edgeSize 16)")
 check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[1]._backdrop.edgeSize == 14")), "Raid Group slots a bit thicker than before without self-clipping (edgeSize 14)")
 
+# --- G.6b ACE button skin: no Blizzard default graphics on dialog buttons ---
+rt.execute("""
+local function aceSkin(b)
+    if not (b and b._backdrop) then return false end
+    return b._backdrop.bgFile == "Interface\\\\Buttons\\\\WHITE8x8"
+        and b._backdrop.edgeFile == "Interface\\\\Tooltips\\\\UI-Tooltip-Border"
+        and b._backdropColor and math.abs(b._backdropColor[1] - 0.16) < 0.001
+        and b._backdropBorderColor and math.abs(b._backdropBorderColor[1] - 0.45) < 0.001
+end
+ACE_RF = aceSkin(RLSuite.raidFrame.buffPanelBtn)
+ACE_GM = aceSkin(RLSuite.groupmaking.diffBtn10) and aceSkin(RLSuite.groupmaking.spamBtn)
+ACE_LM = aceSkin(RLSuite.lootManager.rollMSBtn) and aceSkin(RLSuite.lootManager.rerollBtn)
+ACE_MS = aceSkin(RLSuite.msManager.requestBtn) and aceSkin(RLSuite.msManager.genMsgBtn)
+-- hover = bordo oro (hook OnEnter)
+local b0 = RLSuite.raidFrame.buffPanelBtn
+if b0._scripts and b0._scripts.OnEnter then b0._scripts.OnEnter(b0) end
+ACE_HOVER = (b0._backdropBorderColor and math.abs(b0._backdropBorderColor[1] - 0.85) < 0.001
+    and math.abs(b0._backdropBorderColor[2] - 0.70) < 0.001)
+if b0._scripts and b0._scripts.OnLeave then b0._scripts.OnLeave(b0) end
+ACE_LEAVE = (b0._backdropBorderColor and math.abs(b0._backdropBorderColor[1] - 0.45) < 0.001)
+""")
+check(bool(rt.eval("ACE_RF")), "ACE skin on the 'Raid Buffs' button (dark flat + tooltip border)")
+check(bool(rt.eval("ACE_GM")), "ACE skin on Groupmaking dialog buttons (no Blizzard default graphics)")
+check(bool(rt.eval("ACE_LM")), "ACE skin on Loot manager dialog buttons")
+check(bool(rt.eval("ACE_MS")), "ACE skin on MS Manager dialog buttons")
+check(bool(rt.eval("ACE_HOVER") and bool(rt.eval("ACE_LEAVE"))), "ACE buttons: hover lights the border gold, leaving restores it")
+
 # --- G.7 Debug OFF empties the Loot Manager (history + pickup windows) ---
 rt.execute("RLSuite.lootManager:AddToHistory('|cffff8000|Hitem:1|h[Test]|h|r', 'Test Item', 'tex', 4)")
 rt.execute("RLSuite.lootManager:ShowTradeWindow({ itemTexture = 'tex', itemLink = nil })")
