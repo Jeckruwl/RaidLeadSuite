@@ -387,8 +387,8 @@ function RF:EnsureTanks()
     for _, t in ipairs(self.tankSlots) do
         t.slot = nil   -- fuori dalla geometria di drop dei gruppi
     end
-    -- Bottone "Raid Buffs": stessa riga dell'header Tanks, bordo DESTRO di
-    -- tutta l'elemento (barra + cd). Apre/chiude il pannello matrice.
+    -- Bottone "Raid Buffs": A DESTRA DELLA BARRA OT (secondo slot tank).
+    -- Apre/chiude la matrice E la riga d'intestazione delle icone.
     local btn = CreateFrame("Button", "RLSuiteRaidBuffsBtn", self.content)
     btn:SetSize(RF_BP_BTN_W, RF_HEADER_H)
     btn:EnableMouse(true)
@@ -1530,11 +1530,12 @@ function RF:ApplyLayout()
             btn._icon:ClearAllPoints()
             btn._icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
             btn._icon:SetSize(m.cellW, m.cellW) -- size = iconSize + iconSpacing, FISSO
-            btn:Show() -- SEMPRE VISIBILE: mai nascosta finche' c'e' un roster
+            -- NIENTE Show qui: la riga d'intestazione nasceva permanente, ora
+            -- si mostra/nasconde col tasto "Raid Buffs" (RefreshBuffMatrix).
         end
     end
-    -- Se la matrice non c'e' piu' (o niente G1), lo sfondo strip si nasconde.
-    if self._buffHdrBg and not headersOn then self._buffHdrBg:Hide() end
+    -- Se la matrice e' spenta, anche lo sfondo della strip si nasconde.
+    if self._buffHdrBg and not matrixOn then self._buffHdrBg:Hide() end
 
     -- Font size configurabile delle intestazioni di gruppo (G1..G6, Tanks).
     local ghApp = (self.db and self.db.appearance) or {}
@@ -1553,8 +1554,8 @@ function RF:ApplyLayout()
         self.tankHeader:ClearAllPoints()
         self.tankHeader:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
         self.tankHeader:SetWidth(m.rowWidth)
-        local tankHdrY = y
         y = y - m.groupHeaderH
+        local otSlot = nil
         for ti = 1, RF_TANK_COUNT do
             local t = self.tankSlots and self.tankSlots[ti]
             if t then
@@ -1562,15 +1563,16 @@ function RF:ApplyLayout()
                 t:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
                 self:LayoutSlotGeometry(t, m)
                 y = y - m.rowHeight - m.rowSpacing
+                if ti == 2 then otSlot = t end -- OT = seconda barra tank
             end
         end
         y = y - m.groupSpacing
         shown = true
-        -- Bottone "Raid Buffs": stessa riga dell'header Tanks, a DESTRA di
-        -- tutta l'elemento (fine barra + cd = bordo destro della riga).
-        if self.buffPanelBtn then
+        -- Bottone "Raid Buffs": A DESTRA DELLA BARRA DELL'OT (bordo destro
+        -- della sua riga, centrato in verticale sulla barra).
+        if self.buffPanelBtn and otSlot then
             self.buffPanelBtn:ClearAllPoints()
-            self.buffPanelBtn:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", 0, tankHdrY)
+            self.buffPanelBtn:SetPoint("LEFT", otSlot, "RIGHT", 0, 0)
             self.buffPanelBtn:Show()
         end
     elseif self.buffPanelBtn then
@@ -1584,7 +1586,7 @@ function RF:ApplyLayout()
             hdr:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
             hdr:SetWidth(m.rowWidth)
             shown = true
-            if g == 1 and headersOn and mCols then
+            if g == 1 and matrixOn and mCols then
                 -- STRIP ICONE ALL'ALTEZZA DELL'HEADER G1: nell'area colonne (x
                 -- oltre il bordo destro delle barre), stessa y del testo
                 -- "Gruppo 1". La riga consuma max(header, strip) di verticale.
@@ -1613,6 +1615,7 @@ function RF:ApplyLayout()
                 bg:Show()
                 y = y - math.max(m.groupHeaderH, stripH)
             else
+                if g == 1 and self._buffHdrBg then self._buffHdrBg:Hide() end
                 y = y - m.groupHeaderH
             end
         end
@@ -1864,10 +1867,12 @@ function RF:RefreshBuffMatrix()
             end
         end
     end
-    -- L'INTESTAZIONE e' PERMANENTE: fuori dal pannello, visibile
-    -- INDIPENDENTEMENTE dal tasto "Raid Buffs" finche' c'e' un roster.
+    -- LA RIGA D'INTESTAZIONE si accende/spegne COL TASTO "Raid Buffs":
+    -- stessa visibility della matrice (e solo se c'e' l'header G1 a cui
+    -- ancorarla).
+    local g1Shown = self.groupHeaders and self.groupHeaders[1] and self.groupHeaders[1]:IsShown()
     for c, btn in ipairs(self._buffHdrBtns or {}) do
-        if headersOn and RLSuite.raidBuffColumns and self:_MatrixCols()[c] then
+        if on and g1Shown and RLSuite.raidBuffColumns and self:_MatrixCols()[c] then
             btn:Show()
         else
             btn:Hide()

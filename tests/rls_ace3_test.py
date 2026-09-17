@@ -1398,7 +1398,8 @@ check(bool(rt.eval("TANK_BACK")), "debug tank assignments restored")
 check(bool(rt.eval("#RLSuite.raidFrame.rows == 6")), "group rows unaffected by the Tanks group (a tank appears in BOTH places)")
 
 # Raid Buffs matrix panel (Method style)
-check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn ~= nil and RLSuite.raidFrame.buffPanelBtn.label:GetText() == 'Raid Buffs'")), "'Raid Buffs' toggle button on the Tanks header row, right edge")
+check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn ~= nil and RLSuite.raidFrame.buffPanelBtn.label:GetText() == 'Raid Buffs'")), "'Raid Buffs' toggle button exists with its label")
+check(bool(rt.eval("(function() local b = RLSuite.raidFrame.buffPanelBtn; local p = b and b._points[#b._points]; return p ~= nil and p[1] == 'LEFT' and p[2] == RLSuite.raidFrame.tankSlots[2] and p[3] == 'RIGHT' end)()")), "'Raid Buffs' button sits to the RIGHT of the OT bar (anchored to the second tank slot)")
 check(bool(rt.eval("RLSuite.raidFrame.buffPanel == nil")), "no floating side panel: the buff matrix is PART of the raid frame")
 check(bool(rt.eval("#RLSuite.raidFrame:_MatrixCols() == 25")), "25 visible columns (all Icy-Veins raid-buff categories incl. AP%%, DR%%, Heal+, Repl, SpellHaste; flask/food excluded)")
 rt.execute("""
@@ -1642,7 +1643,8 @@ BP_CLOSED = (RLSuite.raidFrame.buffMatrixOn ~= true and BP_PSLOT._buffCells[10] 
 local m2 = RLSuite.raidFrame:LayoutMetrics()
 BP_W_KEEP = (m2.W == m2.rowWidth + NC * 24 + 10)
 RB_OFF = (BP_PSLOT._matrixBg ~= nil and BP_PSLOT._matrixBg:IsShown() == false)
-BP_HDR_PERM = (RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true and RLSuite.raidFrame._buffHdrBtns[NC]:IsShown() == true)
+BP_HDR_PERM = (RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == false and RLSuite.raidFrame._buffHdrBtns[NC]:IsShown() == false)
+BP_HBG_OFF = (RLSuite.raidFrame._buffHdrBg == nil or RLSuite.raidFrame._buffHdrBg:IsShown() == false)
 """)
 check(bool(rt.eval("BP_CLOSED")), "second click on 'Raid Buffs' hides the row icons/cells")
 check(bool(rt.eval("RB_SHOW")), "each PLAYER ROW gets its own gray backdrop strip while the matrix is on (not one window-sized panel)")
@@ -1650,9 +1652,10 @@ check(bool(rt.eval("RB_FAKE")), "fake players' rows also get their per-row backd
 rgba = rt.eval("RB_RGB0")
 check(abs(float(rt.eval("RB_RGB0[1]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[2]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[3]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[4]")) - 0.35) < 0.01, "row backdrop is a semi-transparent GRAY solid texture (0.5,0.5,0.5,0.35)")
 check(bool(rt.eval("RB_GEOM")), "row backdrop spans exactly the matrix columns of its own bar, height = row height")
-check(bool(rt.eval("BP_W_KEEP")), "the matrix column area stays reserved (header is permanent up there)")
+check(bool(rt.eval("BP_W_KEEP")), "the matrix column area stays reserved (only the header ROW toggles with the button)")
 check(bool(rt.eval("RB_OFF")), "per-row backdrops are hidden when the matrix icons are off")
-check(bool(rt.eval("BP_HDR_PERM")), "HEADER IS PERMANENT: category titles stay visible INDEPENDENTLY of the 'Raid Buffs' button")
+check(bool(rt.eval("BP_HDR_PERM")), "header icon row HIDDEN again when the 'Raid Buffs' pipe is off (button toggles the header row)")
+check(bool(rt.eval("BP_HBG_OFF")), "header strip backdrop hidden when the matrix is off")
 
 # --- F.4 MT/OT assignment: SECURE macro buttons (SetPartyAssignment is PROTECTED) ---
 check(rt.eval("RLSuite.mainWindow.mtBtn:GetAttribute('type')") == 'macro', "MT button is a SECURE macro button (protected SetPartyAssignment never called)")

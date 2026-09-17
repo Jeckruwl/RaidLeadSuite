@@ -7,7 +7,18 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.7**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.8**.
+
+## Novità della sessione 1.9.8 (questo branch, dopo 1.9.7) — tasto a destra dell'OT + header toggle
+
+- **Tasto "Raid Buffs"**: non piu' sulla riga header Tanks; ora ancorato
+  A DESTRA DELLA BARRA OT (LEFT->RIGHT di tankSlots[2], centrato in verticale
+  sulla riga OT).
+- **Riga d'intestazione icone NON piu' permanente**: si mostra/nasconde col
+  tasto "Raid Buffs" insieme alla matrice (e al suo backdrop strip). Quando
+  off, la riga G1 consuma solo groupHeaderH in verticale. La LARGHEZZA finestra
+  continua a riservare l'area matrice quando c'e' roster (invariato).
+466 check PASS (+2 nuovi: anchor OT + header strip OFF a matrice spenta).
 
 ## Novità della sessione 1.9.7 (questo branch, dopo 1.9.6) — spacing negativo + barre automatiche
 
@@ -943,7 +954,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 464 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 466 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
