@@ -1524,13 +1524,9 @@ function RF:ApplyLayout()
         for c, col in ipairs(mCols) do
             local btn = self:_MatrixHeaderBtn(c)
             btn._col = col
-            -- Icona = l'icona DI GIOCO della categoria (raidBuffColumns[].icon,
-            -- "Interface\Icons\..."): questo client 3.3.5 rifiuta QUALUNQUE
-            -- file texture sciolto in Interface\AddOns (tga, blp raw, blp
-            -- dxt3: tutti "not loaded"), mentre le icone interne degli spell
-            -- nelle celle della matrice si vedono. Quindi ZERO file custom,
-            -- ZERO fallback: una sola SetTexture sulla stessa fonte delle celle.
-            btn._icon:SetTexture(col.icon)
+            -- Icona = la custom dell'utente: media\BUFFCATICONS\BCI_<c-1>.tga.
+            -- UNA SetTexture diretta: niente blp, niente fallback, niente detection.
+            btn._icon:SetTexture(self:_BuffCatIconPath(c))
             btn._icon:ClearAllPoints()
             btn._icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
             btn._icon:SetSize(m.cellW, m.cellW) -- size = iconSize + iconSpacing, FISSO
@@ -1675,11 +1671,14 @@ function RF:_MatrixCols()
     return out
 end
 
--- Intestazione matrice: UN BOTTONE per colonna con l'ICONA DI GIOCO della
--- categoria (RLSuite.raidBuffColumns[].icon, "Interface\Icons\..."): la
--- STESSA fonte delle icone spell nelle celle, che il client si carica.
+-- Intestazione matrice: UN BOTTONE per colonna con l'ICONA CUSTOM della
+-- categoria (media/BUFFCATICONS/BCI_<c-1>.tga, i file caricati dall'utente).
 -- Ordine = colonne da sinistra a destra; size = iconSize + iconSpacing.
 -- Hover: l'icona si accende; click: raid warning per quella categoria.
+function RF:_BuffCatIconPath(c)
+    return RLSuite:AddonTexture("media\\BUFFCATICONS\\BCI_" .. (c - 1) .. ".tga")
+end
+
 function RF:_MatrixHeaderBtn(c)
     self._buffHdrBtns = self._buffHdrBtns or {}
     local btn = self._buffHdrBtns[c]
@@ -1729,7 +1728,7 @@ function RF:DiagnoseBuffCatIcons()
         local tex = btn and btn._icon
         local sz = tex and (tostring(tex:GetWidth()) .. "x" .. tostring(tex:GetHeight())) or "?"
         p(string.format("  %d %s: %s btn=%s size=%s", c,
-            tostring(col and col.key or "?"), tostring(col and col.icon or "?"),
+            tostring(col and col.key or "?"), tostring(self:_BuffCatIconPath(c)),
             btn and "Y" or "N", sz))
     end
 end

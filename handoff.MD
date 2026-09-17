@@ -7,9 +7,32 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.4**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.5**.
 
-## Novità della sessione 1.9.4 (questo branch, dopo 1.9.3) — CAUSA RADICE trovata: header = icone DI GIOCO
+## Novità della sessione 1.9.5 (questo branch, dopo 1.9.4) — ICONE CUSTOM DELL'UTENTE, punto finale
+
+L'utente ha chiarito lo stato reale del suo client: nella cartella addon ci
+sono SOLO i suoi .tga in media/BUFFCATICONS (mai avuti i .blp: i .lua li
+aggiorna lui, i media no) e le icone Blizzard caricano senza problemi. Le
+icone custom invisibili delle 1.9.1-1.9.3 erano quindi semplicemente FILE
+ASSENTI nella cartella al momento del tentativo — non "client che rifiuta i
+formati". Ripristinato il design originale, nella forma piu' semplice
+possibile:
+- Header matrice: UNA `SetTexture(self:_BuffCatIconPath(c))` -> 
+  `media\BUFFCATICONS\BCI_<c-1>.tga`. Niente blp, niente fallback,
+  niente GetTexture-detection. `_BuffCatIconPath` ripristinato (tga only).
+- `/rls debugbuff` stampa per colonna: chiave, path BCI usato, btn, size.
+- Locale aggiornata ("Buff headers: media/BUFFCATICONS/BCI_<0..24>.tga").
+NIENTE .blp nel repo (eliminati in 1.9.4, restano eliminati per volonta'
+dell'utente); i .tga sono i suoi file e sono l'unica fonte delle icone.
+NOTA DEPLOY: su 3.3.5a le immagini nuove entrano nell'indice del client solo
+con chiusura completa + rilancio (mai solo /reload) dopo aver copiato file
+nella cartella addon.
+461 check PASS.
+
+## Novità della sessione 1.9.4 (questo branch, dopo 1.9.3) — header = icone DI GIOCO
+
+> SUPERATA dalla 1.9.5 per richiesta esplicita dell'utente (spiegazione della causa errata: non era il client a rifiutare i file, i file non c'erano nella cartella). Mantenuto come log.
 
 `/rls debugbuff` sul client utente: BCI = NOT LOADED in TRE formati provati:
 TGA (1.9.1), BLP raw (1.9.2), BLP DXT3 byte-identico a media/save.blp (1.9.3,

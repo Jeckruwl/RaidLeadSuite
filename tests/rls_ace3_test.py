@@ -1449,10 +1449,11 @@ BP_PRIO1 = (cols[1].key == 'stats')
 NC = #cols
 BP_PRIOLAST = (cols[NC].key == 'retAura')
 BP_HDR1 = (RLSuite.raidFrame._buffHdrBtns[1]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true
-    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture ~= nil and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture == cols[1].icon
-    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('Interface\\\\Icons\\\\', 1, true) ~= nil)
+    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture ~= nil
+    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BUFFCATICONS', 1, true) ~= nil
+    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BCI_0.tga', 1, true) ~= nil)
 BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[NC]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture ~= nil
-    and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture == cols[NC].icon)
+    and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture:find('BCI_' .. (NC - 1) .. '.tga', 1, true) ~= nil)
 BP_HDR_ICONSZ = (RLSuite.raidFrame._buffHdrBtns[1]._icon._w == (RLSuite.raidFrame:LayoutMetrics().iconSize + RLSuite.raidFrame:LayoutMetrics().iconSpacing)
     and RLSuite.raidFrame._buffHdrBtns[1]._icon._h == (RLSuite.raidFrame:LayoutMetrics().iconSize + RLSuite.raidFrame:LayoutMetrics().iconSpacing))
 BP_HDR_H = (RLSuite.raidFrame._buffHdrBtns[1].height == 80 or (RLSuite.raidFrame._buffHdrBtns[1]._h == 80) or true)
@@ -1500,7 +1501,7 @@ RB_RGB0 = BP_PSLOT._matrixBg and BP_PSLOT._matrixBg._texRGBA
 check(bool(rt.eval("BP_ON")), "click on 'Raid Buffs' activates the matrix")
 check(bool(rt.eval("BP_PRIO1")), "most important buffs first: column 1 is the Kings/stats column")
 check(bool(rt.eval("BP_PRIOLAST")), "least priority last: retribution-aura column closes the row")
-check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "column headers show each category's GAME icon (raidBuffColumns[].icon, Interface\\Icons\\...): no custom files, no fallbacks, one SetTexture")
+check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "column headers show the user's BCI icons (media/BUFFCATICONS/BCI_<c-1>.tga, current column order): one direct SetTexture, no fallbacks")
 check(bool(rt.eval("BP_HDR_ICONSZ")), "header icons are square with fixed size = iconSize + iconSpacing (the column pitch)")
 check(bool(rt.eval("BP_HDR_TOP")), "category header row sits at the very TOP of the raid frame")
 check(bool(rt.eval("BP_LAYOUT_DONE")), "matrix header build can never abort ApplyLayout half-way: whole layout completes (groups + backdrop + cells)")
@@ -1534,13 +1535,13 @@ _DBG_N, _DBG_BLP1, _DBG_NOTLOADED = 0, false, {"0 rows"}
 local lines = {}
 for i = n0 + 1, #CHAT_LOG do
     lines[#lines + 1] = CHAT_LOG[i]
-    if CHAT_LOG[i]:find('Interface\\\\Icons\\\\', 1, true) then _DBG_N = _DBG_N + 1 end
-    if CHAT_LOG[i]:find('stats', 1, true) then _DBG_BLP1 = true end
+    if CHAT_LOG[i]:find('BUFFCATICONS', 1, true) then _DBG_N = _DBG_N + 1 end
+    if CHAT_LOG[i]:find('BCI_0.tga', 1, true) then _DBG_BLP1 = true end
 end
 _DBG_OK = (_DBG_N >= 25)
 """)
 check(bool(rt.eval("_DBG_OK")), f"/rls debugbuff reports one diagnostic line per header column (25)")
-check(bool(rt.eval("_DBG_BLP1")), "/rls debugbuff prints the category key and its game icon for each column")
+check(bool(rt.eval("_DBG_BLP1")), "/rls debugbuff prints the actual icon path (BCI_0.tga) for each column")
 
 rt.execute("""
 SAVED_UB2 = UnitBuff
