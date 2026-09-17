@@ -7,7 +7,24 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.5**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.6**.
+
+## Novità della sessione 1.9.6 (questo branch, dopo 1.9.5) — icone a altezza G1 + backdrop strip
+
+Richiesta utente: icone BCI spostate all'altezza dell'header G1 e backdrop
+che prende il valore da quello delle barre.
+- ApplyLayout: la strip icone NON consuma piu' verticale in cima (l'header
+  Tanks torna a y=0); in cima resta solo la CREAZIONE/refresh dei bottoni.
+  Nel loop gruppi, per g==1 con header mostrato: bottoni posizionati
+  nell'area colonne (x = rowWidth + 4 + (c-1)*cellW) alla STESSA y
+  dell'header G1; la riga consuma max(groupHeaderH, cellW+4) cosi' niente
+  sovrapposizioni con le righe player.
+- Nuovo `self._buffHdrBg`: texture BACKGROUND figlia di self.frame, UNICA
+  striscia dietro la strip (m.rowWidth+2, #cols*cellW+6 x cellW+4), colore =
+  `db.appearance.matrixBackdrop` {r,g,b,a} (default 0.5/0.5/0.5/0.35) = lo
+  STESSO valore letto dai backdrop per-riga delle barre: cambiandolo in
+  Config cambiano entrambi. Nascosta quando non c'e' intestazione.
+462 check PASS (+1 nuovo check BP_HDR_BG).
 
 ## Novità della sessione 1.9.5 (questo branch, dopo 1.9.4) — ICONE CUSTOM DELL'UTENTE, punto finale
 
@@ -917,7 +934,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 461 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 462 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

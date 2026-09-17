@@ -1519,25 +1519,22 @@ function RF:ApplyLayout()
     local headersOn = self.rows and self.rows[1] ~= nil
     local mCols = headersOn and self:_MatrixCols() or nil
     if headersOn then
-        -- Testata a ICONE (BCI_<c-1>.tga): strip sottile alta cellW+4 px sopra
-        -- le colonne, allineata 1:1 col passo delle colonne.
+        -- Testata a ICONE CUSTOM (BCI_<c-1>.tga): creazione/refresh qui; la
+        -- POSIZIONE vera viene fatta nel loop dei gruppi, ALL'ALTEZZA DELL'
+        -- HEADER G1 (vedi sotto). UNA SetTexture diretta sui tga dell'utente:
+        -- niente blp, niente fallback, niente detection.
         for c, col in ipairs(mCols) do
             local btn = self:_MatrixHeaderBtn(c)
             btn._col = col
-            -- Icona = la custom dell'utente: media\BUFFCATICONS\BCI_<c-1>.tga.
-            -- UNA SetTexture diretta: niente blp, niente fallback, niente detection.
             btn._icon:SetTexture(self:_BuffCatIconPath(c))
             btn._icon:ClearAllPoints()
             btn._icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
             btn._icon:SetSize(m.cellW, m.cellW) -- size = iconSize + iconSpacing, FISSO
-            btn:ClearAllPoints()
-            btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
-                m.rowWidth + 4 + (c - 1) * m.cellW, -1)
-            btn:SetSize(m.cellW, m.cellW + 4)
             btn:Show() -- SEMPRE VISIBILE: mai nascosta finche' c'e' un roster
         end
-        y = y - (m.cellW + 4)
     end
+    -- Se la matrice non c'e' piu' (o niente G1), lo sfondo strip si nasconde.
+    if self._buffHdrBg and not headersOn then self._buffHdrBg:Hide() end
 
     -- Font size configurabile delle intestazioni di gruppo (G1..G6, Tanks).
     local ghApp = (self.db and self.db.appearance) or {}
@@ -1586,8 +1583,38 @@ function RF:ApplyLayout()
             hdr:ClearAllPoints()
             hdr:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
             hdr:SetWidth(m.rowWidth)
-            y = y - m.groupHeaderH
             shown = true
+            if g == 1 and headersOn and mCols then
+                -- STRIP ICONE ALL'ALTEZZA DELL'HEADER G1: nell'area colonne (x
+                -- oltre il bordo destro delle barre), stessa y del testo
+                -- "Gruppo 1". La riga consuma max(header, strip) di verticale.
+                local stripH = m.cellW + 4
+                for c = 1, #mCols do
+                    local btn = self._buffHdrBtns and self._buffHdrBtns[c]
+                    if btn then
+                        btn:ClearAllPoints()
+                        btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
+                            m.rowWidth + 4 + (c - 1) * m.cellW, y)
+                        btn:SetSize(m.cellW, stripH)
+                    end
+                end
+                -- Backdrop UNICO dietro la strip: PRENDE IL VALORE dal backdrop
+                -- delle barre (appearance.matrixBackdrop, Config -> Raid Frame).
+                local bg = self._buffHdrBg
+                if not bg then
+                    bg = self.frame:CreateTexture(nil, "BACKGROUND")
+                    self._buffHdrBg = bg
+                end
+                local bc = (self.db and self.db.appearance and self.db.appearance.matrixBackdrop) or {}
+                bg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
+                bg:ClearAllPoints()
+                bg:SetPoint("TOPLEFT", self.frame, "TOPLEFT", m.rowWidth + 2, y)
+                bg:SetSize(#mCols * m.cellW + 6, stripH)
+                bg:Show()
+                y = y - math.max(m.groupHeaderH, stripH)
+            else
+                y = y - m.groupHeaderH
+            end
         end
         local anySlot = false
         for s = 1, RF_PER_GROUP do

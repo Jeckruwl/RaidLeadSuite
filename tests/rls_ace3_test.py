@@ -1459,13 +1459,19 @@ BP_HDR_ICONSZ = (RLSuite.raidFrame._buffHdrBtns[1]._icon._w == (RLSuite.raidFram
 BP_HDR_H = (RLSuite.raidFrame._buffHdrBtns[1].height == 80 or (RLSuite.raidFrame._buffHdrBtns[1]._h == 80) or true)
 local hb1 = RLSuite.raidFrame._buffHdrBtns[1]
 local hbpt = hb1._points[#hb1._points]
-BP_HDR_TOP = (hbpt[2] == RLSuite.raidFrame.frame and math.abs((hbpt[5] or 0) + 1) < 0.001)
+local gh1pt = RLSuite.raidFrame.groupHeaders[1]._points[#RLSuite.raidFrame.groupHeaders[1]._points]
+BP_HDR_TOP = (hbpt[2] == RLSuite.raidFrame.frame and gh1pt ~= nil and math.abs((hbpt[5] or 0) - (gh1pt[5] or 0)) < 0.001)
+local hbg = RLSuite.raidFrame._buffHdrBg
+BP_HDR_BG = (hbg ~= nil and hbg:IsShown() == true and hbg._texRGBA ~= nil
+    and math.abs(hbg._texRGBA[1] - 0.5) < 0.001 and math.abs(hbg._texRGBA[2] - 0.5) < 0.001
+    and math.abs(hbg._texRGBA[3] - 0.5) < 0.001 and math.abs(hbg._texRGBA[4] - 0.35) < 0.001
+    and hbg._w == (NC * RLSuite.raidFrame:LayoutMetrics().cellW + 6))
 BP_HDR_OUT = true
 for c = 1, NC do
     local b = RLSuite.raidFrame._buffHdrBtns[c]
     BP_HDR_OUT = BP_HDR_OUT and (b:GetParent() == RLSuite.raidFrame.frame) and (b:IsShown() == true)
 end
-BP_TANK_UNDER = (math.abs((RLSuite.raidFrame.tankHeader._points[#RLSuite.raidFrame.tankHeader._points][5] or 0) + (24 + 4)) < 0.001)
+BP_TANK_UNDER = (math.abs((RLSuite.raidFrame.tankHeader._points[#RLSuite.raidFrame.tankHeader._points][5] or 0) - 0) < 0.001)
 -- REGRESSIONE 1.7.2: un errore nella costruzione dell'intestazione 45°
 -- interrompeva ApplyLayout a meta': i gruppi vuoti non venivano piu' packati,
 -- l'overlay dorato/UpdateAll non partiva, le celle matrice restavano vuote e
@@ -1503,10 +1509,11 @@ check(bool(rt.eval("BP_PRIO1")), "most important buffs first: column 1 is the Ki
 check(bool(rt.eval("BP_PRIOLAST")), "least priority last: retribution-aura column closes the row")
 check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "column headers show the user's BCI icons (media/BUFFCATICONS/BCI_<c-1>.tga, current column order): one direct SetTexture, no fallbacks")
 check(bool(rt.eval("BP_HDR_ICONSZ")), "header icons are square with fixed size = iconSize + iconSpacing (the column pitch)")
-check(bool(rt.eval("BP_HDR_TOP")), "category header row sits at the very TOP of the raid frame")
+check(bool(rt.eval("BP_HDR_TOP")), "category header icons are aligned with the G1 group header row (not a strip above the frame)")
 check(bool(rt.eval("BP_LAYOUT_DONE")), "matrix header build can never abort ApplyLayout half-way: whole layout completes (groups + backdrop + cells)")
 check(bool(rt.eval("BP_HDR_OUT")), "category header buttons live OUTSIDE the panel (children of the window) and STAY visible with the matrix open")
-check(bool(rt.eval("BP_TANK_UNDER")), "the Tanks header moves down under the category header")
+check(bool(rt.eval("BP_TANK_UNDER")), "the Tanks header sits at the very top of the frame (icon strip moved down to G1)")
+check(bool(rt.eval("BP_HDR_BG")), "icon strip backdrop uses the SAME value as the bars backdrop (appearance.matrixBackdrop) and spans all columns")
 check(bool(rt.eval("BP_W")), "window width grows exactly by the matrix area when active")
 check(bool(rt.eval("BP_CELL_ON_ROW") and bool(rt.eval("BP_CELL_SIDE"))), "category icons live ALONG the player's row, past the row right edge")
 # --- hover: il titolo di categoria si "illumina"; click: raid warning categoria ---
