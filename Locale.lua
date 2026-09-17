@@ -186,6 +186,11 @@ do
     L["Backdrop color and transparency of the Raid Buffs matrix rows."] = true
     L["Buff check: %s - OK on everyone"] = true
     L["Buff check: %s - missing: %s"] = true
+    L["  /rls debugbuff    Diagnose Raid Buffs header icons"] = true
+    L["BuffCatIcons: expected folder media/BUFFCATICONS/BCI_<0..24>.{tga,blp}"] = true
+    L["loaded"] = true
+    L["NOT LOADED"] = true
+    L["Raid frame not initialized yet."] = true
     L["Color of the player name on the bars."] = true
     L["Open the raid buffs matrix panel."] = true
     L["Main tank"] = true

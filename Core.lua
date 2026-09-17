@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.9.1"
+RLSuite.version = "1.9.2"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -701,6 +701,7 @@ function RLSuite:PrintHelp()
     p(L["  /rls raidframe    Raid Frame HUD"])
     p(L["  /rls rfhud        Raid Frame HUD (alias)"])
     p(L["  /rls ms           MS Manager tab"])
+    p(L["  /rls debugbuff    Diagnose Raid Buffs header icons"])
     p(L["  /rls loot         Loot Manager tab"])
     p(L["  /rls config       Config window"])
 end
@@ -733,6 +734,12 @@ function RLSuite:ChatCommand(input)
         if self.mainWindow then self.mainWindow:ShowTab("loot") end
     elseif msg == "minimap" then
         self:DiagnoseMinimapIcon()
+    elseif msg == "debugbuff" then
+        if self.raidFrame and self.raidFrame.DiagnoseBuffCatIcons then
+            self.raidFrame:DiagnoseBuffCatIcons()
+        else
+            self.utils:Print(L["Raid frame not initialized yet."])
+        end
     elseif msg == "config" then
         if self.config then self.config:Toggle() end
     elseif msg == "" then

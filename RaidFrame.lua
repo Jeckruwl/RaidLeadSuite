@@ -1524,7 +1524,7 @@ function RF:ApplyLayout()
         for c, col in ipairs(mCols) do
             local btn = self:_MatrixHeaderBtn(c)
             btn._col = col
-            btn._icon:SetTexture(self:_BuffCatIconPath(c))
+            self:_BuffCatIconTexture(btn._icon, c)
             btn._icon:ClearAllPoints()
             btn._icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
             btn._icon:SetSize(m.cellW, m.cellW) -- size = iconSize + iconSpacing, FISSO
@@ -1673,8 +1673,20 @@ end
 -- (Media/BUFFCATICONS/BCI_<col-1>.tga, ordine = colonne da sinistra a
 -- destra, size = iconSize raid frame + icon spacing = passo colonna).
 -- Hover: l'icona si accende; click: raid warning per quella categoria.
-function RF:_BuffCatIconPath(c)
-    return RLSuite:AddonTexture("media\\BUFFCATICONS\\BCI_" .. (c - 1) .. ".tga")
+function RF:_BuffCatIconPath(c, ext)
+    ext = ext or "tga"
+    return RLSuite:AddonTexture("media\\BUFFCATICONS\\BCI_" .. (c - 1) .. "." .. ext)
+end
+
+-- Alcuni client 3.3.5 non caricano i .tga via SetTexture (per questo le icone
+-- della minimappa hanno da sempre i .blp di riserva): BLP PRIMA, TGA poi,
+-- esattamente come il bottone minimappa. GetTexture() == nil => non caricato.
+function RF:_BuffCatIconTexture(tex, c)
+    if not tex then return end
+    tex:SetTexture(self:_BuffCatIconPath(c, "blp"))
+    if not tex:GetTexture() then
+        tex:SetTexture(self:_BuffCatIconPath(c, "tga"))
+    end
 end
 function RF:_MatrixHeaderBtn(c)
     self._buffHdrBtns = self._buffHdrBtns or {}
@@ -1712,6 +1724,24 @@ end
 
 -- Left-click su un titolo di categoria: raid warning per quella colonna,
 -- con l'elenco dei player che mancano del buff (fake inclusi in debug).
+-- Diagnosi icone testata (`/rls debugbuff`): per OGNI colonna stamps path,
+-- stato caricamento (GetTexture() ~= nil) e dimensione della region.
+function RF:DiagnoseBuffCatIcons()
+    local p = function(t) RLSuite.utils:Print(t) end
+    p(L["BuffCatIcons: expected folder media/BUFFCATICONS/BCI_<0..24>.{tga,blp}"])
+    local count = self._matrixColsCache and #self._matrixColsCache or #(self:_MatrixCols())
+    for c = 1, count do
+        local btn = self._buffHdrBtns and self._buffHdrBtns[c]
+        local tex = btn and btn._icon
+        local got = tex and tex:GetTexture() or nil
+        local state = type(got) == "string" and L["loaded"] or "|cffff0000" .. L["NOT LOADED"] .. "|r"
+        local sz = tex and (tostring(tex:GetWidth()) .. "x" .. tostring(tex:GetHeight())) or "?"
+        p(string.format("  BCI_%d: %s (%s) btn=%s size=%s", c - 1,
+            state, tostring(got or self:_BuffCatIconPath(c, "blp")),
+            btn and "Y" or "N", sz))
+    end
+end
+
 function RF:WarnBuffCategory(col)
     if not col then return end
     local label = col.label or col.key or "?"

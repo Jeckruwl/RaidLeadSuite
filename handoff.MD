@@ -7,7 +7,27 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.1**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.2**.
+
+## Novità della sessione 1.9.2 (questo branch, dopo 1.9.1) — ICONE .blp + /rls debugbuff
+
+Report utente: nessuna icona dell'header BCI visibile (bottoni/clic/alert ok).
+I TGA utente sono validissimi (32x32 32bpp non compressi) MA il loro client 3.3.5
+aveva GIA' diventato necessario il .blp per il minimap icon (blp fallback
+presente in Core: "se il .blp non viene caricato, riprova col .tga" —
+il dettaglio funziona col 3.3.5 `Texture:GetTexture()` che torna nil se il
+file non si carica). Applicata la STESSA strategia agli BCI:
+- `_BuffCatIconTexture(tex,c)`: prova BCI_<c-1>.blp; se GetTexture() == nil ripiega
+  su BCI_<c-1>.tga.
+- **Convertitore puro Python `tests/tools/tga2blp.py`** (BLP2 non compresso,
+  catena mip completa 32..1, header 1172B): `BCI_*.tga` -> **25 `BCI_*.blp`**
+  nel repo (BCI_16 incluso, SPCRIT caricato dall'utente in 7b21930).
+- Nuovo slash **`/rls debugbuff`**: stampa per OGNI colonna: caricato Y/N,
+  path reale tentato, presenza bottone, dimensione region — collaudo nel
+  client reale per distinguere "path sbagliato" vs "file non reso".
+- Rimedio bug mock: `methods:GetTexture()` ritornava il FRAME invece del path
+  (ritardava il debug di middleware) — ora ritorna `self._texture` come nel client.
+461 check PASS.
 
 ## Novità della sessione 1.9.1 (questo branch, dopo 1.9.0) — HEADER COLONNE A ICONE (Media/BUFFCATICONS)
 
@@ -824,7 +844,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 459 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 461 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
