@@ -1689,8 +1689,21 @@ function RF:_MatrixHeaderBtn(c)
         fs:SetJustifyH("LEFT")
         fs:SetTextColor(1, 0.82, 0)
         -- Il testo sale verso destra di 45°: ruota attorno al proprio centro.
-        fs:SetRotation(math.rad(45))
-        fs:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 5, 2)
+        -- ATTENZIONE: FontString:SetRotation NON esiste sul client 3.3.5
+        -- base (solo esteso/Ascension): se manca NON chiamarla, altrimenti
+        -- l'errore Lua rompe TUTTO ApplyLayout (gruppi, overlay, matrice).
+        if fs.SetRotation then
+            fs:SetRotation(math.rad(45))
+            fs:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 5, 2)
+            btn._rotatedLabel = true
+        else
+            -- Fallback client stock: orizzontale, clip alla larghezza utile
+            -- della testata bassa cosi' non si accavalla alle colonne vicine.
+            fs:SetWidth(RF_MATRIX_HDR_H - 10)
+            fs:SetWordWrap(false)
+            fs:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 2, 2)
+            btn._rotatedLabel = false
+        end
         btn._label = fs
         btn:SetScript("OnEnter", function(s)
             s._label:SetTextColor(1, 1, 1) -- testo "illuminato" in hover

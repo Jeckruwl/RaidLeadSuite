@@ -1408,10 +1408,20 @@ BP_PRIO1 = (cols[1].key == 'stats')
 BP_PRIO19 = (cols[19].key == 'retAura')
 BP_HDR1 = (RLSuite.raidFrame._buffHdrBtns[1]._label:GetText() == cols[1].label and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true)
 BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[19]._label:GetText() == cols[19].label)
-BP_HDR_ROT = (math.abs((RLSuite.raidFrame._buffHdrBtns[1]._label._rotation or 0) - math.rad(45)) < 0.001)
+BP_HDR_ROT = (math.abs((RLSuite.raidFrame._buffHdrBtns[1]._label._rotation or 0) - math.rad(45)) < 0.001 and RLSuite.raidFrame._buffHdrBtns[1]._rotatedLabel == true)
 BP_HDR_H = (RLSuite.raidFrame._buffHdrBtns[1].height == 80 or (RLSuite.raidFrame._buffHdrBtns[1]._h == 80) or true)
 BP_HDR_TOP = (math.abs((RLSuite.raidFrame._buffHdrBtns[1]._points[#RLSuite.raidFrame._buffHdrBtns[1]._points][5] or 0)) < 0.001)
 BP_TANK_UNDER = (math.abs((RLSuite.raidFrame.tankHeader._points[#RLSuite.raidFrame.tankHeader._points][5] or 0) + 80) < 0.001)
+-- REGRESSIONE 1.7.2: un errore nella costruzione dell'intestazione 45°
+-- interrompeva ApplyLayout a meta': i gruppi vuoti non venivano piu' packati,
+-- l'overlay dorato/UpdateAll non partiva, le celle matrice restavano vuote e
+-- le impostazioni non si applicavano. Qui verifichiamo che il layout arrivi
+-- SEMPRE in fondo (height content positiva + ultimo gruppo packato).
+BP_LAYOUT_DONE = (RLSuite.raidFrame.content:GetHeight() ~= nil and RLSuite.raidFrame.content:GetHeight() > 0)
+for g = 1, 6 do
+    local gh = RLSuite.raidFrame.groupHeaders[g]
+    if gh:IsShown() and (gh._points == nil or #gh._points == 0) then BP_LAYOUT_DONE = false end
+end
 local m = RLSuite.raidFrame:LayoutMetrics()
 BP_W = (m.W == m.rowWidth + 19 * 24 + 10)
 -- la riga del player (unit 'player') e quella di un fake
@@ -1432,6 +1442,7 @@ check(bool(rt.eval("BP_PRIO19")), "least priority last: retribution-aura column 
 check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "header row carries the short category names (all 19 columns)")
 check(bool(rt.eval("BP_HDR_ROT")), "category titles are rotated 45 degrees so they stay readable on narrow columns")
 check(bool(rt.eval("BP_HDR_TOP")), "category header row sits at the very TOP of the raid frame")
+check(bool(rt.eval("BP_LAYOUT_DONE")), "matrix header build can never abort ApplyLayout half-way: whole layout completes (groups + backdrop + cells)")
 check(bool(rt.eval("BP_TANK_UNDER")), "the Tanks header moves down under the category header")
 check(bool(rt.eval("BP_W")), "window width grows exactly by the matrix area when active")
 check(bool(rt.eval("BP_CELL_ON_ROW") and bool(rt.eval("BP_CELL_SIDE"))), "category icons live ALONG the player's row, past the row right edge")

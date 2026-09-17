@@ -7,7 +7,27 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.7.1**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.7.2**.
+
+## Novità della sessione 1.7.2 (questo branch, dopo 1.7.1) — FIX REGRESSIONE 1.7.0: FontString:SetRotation assente su 3.3.5
+
+SINTOMI UTENTE (tutti dalla stessa causa): niente overlay dorato/gruppi vuoti
+cliccando un player, niente buff casuali della matrice dopo fill, impostazioni
+non realtime, intestazione matrice sparita.
+CAUSA: `FontString:SetRotation` NON ESISTE sul client 3.3.5 base (e' prerogativa
+delle Texture; su FontString e' arrivata solo in client estesi). Chiamandola
+dentro `_MatrixHeaderBtn` (prima colonna della matrice) il Lua error usciva da
+ApplyLayout a meta': niente packing dei gruppi, niente _LayoutMatrixRow/celle,
+niente matrixBg, niente UpdateAll -> TUTTI i sintomi. Ed era SILENZIOSO.
+FIX: guard `if fs.SetRotation then SetRotation(math.rad(45))` (Anthropic
+Ascension/clients estesi => rotazione 45° identica a 1.7.0) ELSE fallback
+orizzontale clippato (SetWidth(RF_MATRIX_HDR_H-10), no word-wrap): le testate
+non si accavallano, bottoni/hover/click uguali. TEST: `_rotatedLabel` flag +
+BP_LAYOUT_DONE: content height>0 e OGNI header di gruppo packato dopo
+ApplyLayout con matrice attiva (rilevamento abort a meta' layout).
+446 check PASS. Lezione: MAI chiamare API del client "assicurative" dentro
+codice di layout critico senza guard: un errore li ferma l'intero HUD e
+silenziosamente.
 
 ## Novità della sessione 1.7.1 (questo branch, dopo 1.7.0) — NIENTE BORDO ESTERNO SUI DIALOG PRINCIPALI
 
@@ -713,7 +733,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 445 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 446 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
