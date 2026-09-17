@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.5.9"
+RLSuite.version = "1.6.0"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -96,6 +96,7 @@ local defaults = {
                 barWidth = 180,
                 iconSize = 16,
                 nameFontSize = 11,
+                fontColor = { r = 1, g = 1, b = 1, a = 1 },
                 border = true,
                 font = "Fonts\\FRIZQT__.TTF",
                 fontOutline = true,
@@ -520,6 +521,65 @@ RLSuite.buffData = {
 -- Checks are locale-safe: spellIds resolve to names via GetSpellInfo and
 -- the aura's returned spellId is compared (see RaidFrame.lua).
 -- ============================================================
+
+-- ============================================================
+-- RAID BUFF MATRIX COLUMNS (pannello "Raid Buffs" a scomparsa del Raid Frame)
+-- 21 categorie di buff: colonne della tabella; le righe sono i giocatori.
+-- Per ogni cella si scansionano le aure del player (UnitBuff per indice) e
+-- si mostra l'icona della spell che copre la categoria. Campi:
+--   label          nome sintetico (header colonna)
+--   icon           icona di fallback (anche icona fissa per byNameSpell)
+--   spells         lista spellId che coprono la categoria (match per id)
+--   classes        classi che possono fornirla (solo informativa)
+--   byNameSpell    se presente: match per NOME aura (nome risolto via
+--                  GetSpellInfo(byNameSpell) => locale-safe, copre tutte le
+--                  varianti della stessa aura, es. "Well Fed" di ogni cibo)
+-- ============================================================
+RLSuite.raidBuffColumns = {
+    { key = "stats",       label = "%stat",   icon = "Interface\\Icons\\Spell_Magic_GreaterBlessingofKings",
+      classes = { "PALADIN" }, spells = { 20217, 25898 } },
+    { key = "mp5",         label = "MP5",     icon = "Interface\\Icons\\Spell_Holy_GreaterBlessingofWisdom",
+      classes = { "PALADIN", "SHAMAN" }, spells = { 48936, 48938, 58774 } },
+    { key = "atkpower",    label = "ATK",     icon = "Interface\\Icons\\Ability_Warrior_BattleShout",
+      classes = { "PALADIN", "WARRIOR", "HUNTER" }, spells = { 48932, 48934, 47436, 19506 } },
+    { key = "hp",          label = "HP",      icon = "Interface\\Icons\\Ability_Warrior_RallyingCry",
+      classes = { "WARRIOR", "WARLOCK" }, spells = { 47440, 27267, 47982 } },
+    { key = "spirit",      label = "Spirit",  icon = "Interface\\Icons\\Spell_Holy_DivineSpirit",
+      classes = { "PRIEST" }, spells = { 14752, 14753, 14754, 25566, 27681, 48073, 48075 } },
+    { key = "stamina",     label = "Stamina", icon = "Interface\\Icons\\Spell_Holy_WordFortitude",
+      classes = { "PRIEST" }, spells = { 48161, 48162 } },
+    { key = "intellect",   label = "Int",     icon = "Interface\\Icons\\Spell_Holy_MagicalSentry",
+      classes = { "MAGE" }, spells = { 42995, 43002, 61316 } },
+    { key = "armor",       label = "Armor",   icon = "Interface\\Icons\\Spell_Holy_DevotionAura",
+      classes = { "PALADIN", "DRUID" }, spells = { 48942, 48941, 48470 } },
+    { key = "wild",        label = "Gift",    icon = "Interface\\Icons\\Spell_Nature_Regeneration",
+      classes = { "DRUID" }, spells = { 21849, 21850, 48470 } },
+    { key = "strAgi",      label = "S+Agi",   icon = "Interface\\Icons\\Spell_Nature_Strength",
+      classes = { "DEATHKNIGHT", "SHAMAN" }, spells = { 57330, 58643 } },
+    { key = "focusMagic",  label = "FM",      icon = "Interface\\Icons\\Spell_Arcane_FocusedPower",
+      classes = { "MAGE" }, spells = { 54646 } },
+    { key = "haste",       label = "Haste",   icon = "Interface\\Icons\\Ability_Shaman_Heroism",
+      classes = { "SHAMAN" }, spells = { 2825, 32182 } },
+    { key = "spellCrit",   label = "SpC",     icon = "Interface\\Icons\\Spell_Nature_MoonGlow",
+      classes = { "DRUID", "SHAMAN" }, spells = { 24907, 51470 } },
+    { key = "shadow",      label = "ShProt",  icon = "Interface\\Icons\\Spell_Shadow_AntiShadow",
+      classes = { "PRIEST" }, spells = { 48169, 48170 } },
+    { key = "retAura",     label = "Ret",     icon = "Interface\\Icons\\Spell_Holy_AuraMastery",
+      classes = { "PALADIN" }, spells = { 54043, 54044 } },
+    { key = "meleeCrit",   label = "MCrit",   icon = "Interface\\Icons\\Ability_CriticalStrike",
+      classes = { "DRUID", "WARRIOR" }, spells = { 24932, 29801, 30029, 30030 } },
+    { key = "meleeHaste",  label = "MHaste",  icon = "Interface\\Icons\\Spell_Nature_Windfury",
+      classes = { "SHAMAN" }, spells = { 8515, 8516, 10613, 10614 } },
+    { key = "spellPower",  label = "SPow",    icon = "Interface\\Icons\\Spell_Fire_FlameBolt",
+      classes = { "WARLOCK", "SHAMAN", "MAGE" }, spells = { 47240, 30706, 52109, 58656, 31582, 31583 } },
+    { key = "damage",      label = "Dmg%",    icon = "Interface\\Icons\\Ability_Hunter_FerociousInspiration",
+      classes = { "HUNTER", "PALADIN", "MAGE" }, spells = { 75447, 31869, 31579, 31580 } },
+    { key = "flask",       label = "Flask",   icon = "Interface\\Icons\\INV_Alchemy_EndlessFlask_05",
+      classes = {}, spells = { 53755, 53760, 54212, 53758, 67016, 67017, 67018 } },
+    { key = "wellfed",     label = "Food",    icon = "Interface\\Icons\\Spell_Misc_Food",
+      classes = {}, byNameSpell = 57399 },
+}
+
 RLSuite.raidBuffChecks = {
     { key = "stats",       label = "%stat",    icon = "Interface\\Icons\\Spell_Magic_GreaterBlessingofKings",
       classes = { "PALADIN" }, spells = { 20217, 25898 } },

@@ -169,6 +169,15 @@ do
 
     -- RaidFrame
     L["Hey $name, you're missing a flask!"] = true
+    L["Missing flask"] = true
+    L["Missing food buff"] = true
+    L["Tanks"] = true
+    L["Raid Buffs"] = true
+    L["Font color"] = true
+    L["Color of the player name on the bars."] = true
+    L["Open the raid buffs matrix panel."] = true
+    L["Main tank"] = true
+    L["Main assist"] = true
     L["Hey $name, you're missing food buff!"] = true
     L["Hey $name, you're missing some raid buffs!"] = true
     L["Left click: whisper"] = true

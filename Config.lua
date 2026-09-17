@@ -537,6 +537,21 @@ function CFG:BuildOptionsTable()
         alpha = slider(L["Opacity"], L["Overall transparency of the Raid Frame HUD."], 10, 0.30, 1.00, 0.05,
             function() return rf.alpha or 1 end,
             function(_, v) rf.alpha = v; self:ApplyAll() end),
+        fontColor = {
+            name = L["Font color"],
+            desc = L["Color of the player name on the bars."],
+            type = "color",
+            hasAlpha = false,
+            order = 11,
+            get = function()
+                local c = rf.appearance.fontColor or { r = 1, g = 1, b = 1 }
+                return c.r or 1, c.g or 1, c.b or 1
+            end,
+            set = function(_, r, g, b)
+                rf.appearance.fontColor = { r = r, g = g, b = b, a = 1 }
+                self:ApplyAll()
+            end,
+        },
     }
 
     local raidBehavior = {

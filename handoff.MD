@@ -7,7 +7,45 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.5.9**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.6.0**.
+
+## Novità della sessione 1.6.0 (questo branch, dopo 1.5.9) — FONT COLOR + GRUPPO TANKS + PANNELLO "RAID BUFFS"
+
+### 1) Colore font giocatori (Config → Raid Frame → Layout → "Font color")
+Color picker AceConfig (`type="color"`) che scrive `rf.appearance.fontColor = {r,g,b,a}`;
+applicato da `RF:ApplyLayout()` a TUTTI i nameText (righe gruppi + barre Tanks).
+
+### 2) Gruppo "Tanks" sopra G1 (barre Main Tank / Main Assist)
+- `RF.tankHeader` (FontString dorato "Tanks", esatto) + `RF.tankSlots[1..2]` create da
+  `EnsureTanks()` (chiamata in coda a `EnsureSlots`). Sono slot normali del Raid Frame
+  ma `_SetupTankSlot` li tiene SEMPRE visibili quando c'e' roster (placeholder vuoti altrimenti).
+- **Niente icone flask/food**: `CreateSlotFrame(i, g, tankTag)` salta `MakeConsumableIcon`
+  e crea `row.tankTag` (FontString oro "MT"/"OT" dove stavano le icone);
+  `UpdateConsumables` early-return su `row.isTank`.
+- Popolamento da `GetPartyAssignment("MAINTANK"|"MAINASSIST", unit or name)` in
+  `RF:RebuildTanks()` (Rebuild → ogni roster change). Chiave = unit o nome (fake debug).
+- Fuori dalla geometria di drop dei gruppi: `t.slot = nil` + guard `not self2.isTank`
+  nel drag manuale shift+sinistro. Le altre meccaniche (barra HP, nome, CD classe,
+  secTarget engine-click, bordino dorato NO perché non draggabili) restano.
+- Layout: header+2 barre+gap PRIMA del loop G1..G6 nel conteggio righe della finestra.
+
+### 3) Pannello "Raid Buffs" (matrice stile Method Raid Tools)
+- Bottone `buffPanelBtn` ("Raid Buffs", testo oro) sulla RIGA dell'header Tanks,
+  ancorato TOPRIGHT di content (= bordo destro di barra + cd). Visibile solo col gruppo Tanks.
+- Pannello `RF.buffPanel` a scomparsa (toggle OnClick), figlio della finestra RF,
+  ancorato TOPLEFT → frame:TOPRIGHT (si apre a DESTRA di tutte le barre); eredita la
+  scala della finestra. Backdrop scuro UI-Tooltip. Nascosto di default e in assenza di roster.
+- Matrice: righe = giocatori (ordine = self.rows, ALTEZZA riga = m.rowHeight dei gruppi,
+  nome class-color a sinistra), colonne = **21 categorie** `RLSuite.raidBuffColumns`
+  (in Core.lua: label sintetica header + icona + spells/spellId o byNameSpell).
+- Cella = icona del buff ATTIVO del player che copre quella categoria: scan
+  `UnitBuff(unit, i)` 1..40; match per spellId (icona = GetSpellTexture della spell reale!)
+  o per NOME aura (`byNameSpell` → GetSpellInfo(id) locale-safe: colonna Food = "Well Fed"
+  di OGNI variante). Categoria mancante → cella vuota. Row dei fake → celle vuote (unita' nil).
+- Refresh: UpdateAll (0.5s) + al toggle. Header con nomi sintetici in oro.
+- 405 check PASS (F.3: font color applicato/ripristinato, header "Tanks", MT/OT da
+  GetPartyAssignment, icone assenti, placeholders, righe gruppi invariate, bottone,
+  21 colonne, header labels, passo righe == rowHeight, celle flask/Well Fed/empty, collapse).
 
 ## Novità della sessione 1.5.9 (questo branch, dopo 1.5.8) — BUFF BAR ELIMINATE + FOOD CHECK = AURA "Well Fed"
 
@@ -563,7 +601,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 380 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 405 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

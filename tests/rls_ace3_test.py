@@ -227,6 +227,8 @@ function geterrorhandler() return function(err) LAST_ERROR = err; return err end
 function IsLoggedIn() return LOGGED_IN end
 function GetTime() return os.clock() end
 function IsMouseButtonDown(btn) return false end  -- mock: sempre rilasciato
+function GetPartyAssignment(role, key) return nil end  -- default: nessun MT/OT assegnato
+function GetSpellTexture(id) return 'Tex:' .. tostring(id) end
 function InCombatLockdown() return false end      -- mock: mai in combat
 function TargetUnit(u) LAST_TARGET = u end          -- mock: registra target
 function TargetByName(n) LAST_TARGNAME = n end       -- mock: registra target-by-name
@@ -1319,6 +1321,99 @@ check(bool(rt.eval("WF_FLASK_STILL")), "flask check untouched by the Well Fed re
 check(bool(rt.eval("WF_NOTFED")), "no Well Fed on the unit: food icon shows missing")
 check(bool(rt.eval("WF_LOCALE")), "localized client: Well Fed matched via localized name (locale-safe)")
 check(bool(rt.eval("RLSuite.raidFrame.rows[1].member.name == 'F5'")), "roster restored after Well Fed test")
+
+# --- F.3 FONT COLOR option + TANKS group + RAID BUFFS matrix panel ---
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.fontColor ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.fontColor.type == 'color'")), "Layout -> Font color picker present")
+rt.execute("""
+local prof = RLSuite.db.profile.raidframe
+SAVED_FC = prof.appearance.fontColor
+prof.appearance.fontColor = { r = 1, g = 0, b = 0, a = 1 }
+RLSuite.raidFrame:ApplyLayout()
+FC_RED = (RLSuite.raidFrame.rows[1].bar.nameText._tc[1] == 1 and RLSuite.raidFrame.rows[1].bar.nameText._tc[2] == 0)
+prof.appearance.fontColor = SAVED_FC or { r = 1, g = 1, b = 1, a = 1 }
+RLSuite.raidFrame:ApplyLayout()
+FC_BACK = (RLSuite.raidFrame.rows[1].bar.nameText._tc[1] == 1 and RLSuite.raidFrame.rows[1].bar.nameText._tc[2] == 1)
+""")
+check(bool(rt.eval("FC_RED")), "font color option applies to the player name on the bars")
+check(bool(rt.eval("FC_BACK")), "font color restores to the default white")
+
+# Tanks group above G1 (MT + OT bars)
+check(rt.eval("RLSuite.raidFrame.tankHeader:GetText()") == "Tanks", "Tanks group header named exactly 'Tanks' above G1")
+check(bool(rt.eval("RLSuite.raidFrame.tankHeader:IsShown() == true")), "Tanks group visible when there is a raid roster")
+check(bool(rt.eval("RLSuite.raidFrame.tankSlots[1].flaskIcon == nil and RLSuite.raidFrame.tankSlots[1].foodIcon == nil")), "tank bars have NO flask/food icons")
+check(rt.eval("RLSuite.raidFrame.tankSlots[1].tankTag:GetText()") == "MT" and rt.eval("RLSuite.raidFrame.tankSlots[2].tankTag:GetText()") == "OT", "MT and OT labels replace the consumable icons beside the bars")
+check(bool(rt.eval("RLSuite.raidFrame.tankSlots[1]:IsShown() == true and RLSuite.raidFrame.tankSlots[1].member == nil")), "unassigned: both tank bars visible as empty placeholders")
+rt.execute("""
+SAVED_GPA = GetPartyAssignment
+GetPartyAssignment = function(role, key)
+    if role == 'MAINTANK' and key == 'player' then return true end
+    if role == 'MAINASSIST' and key == 'F3' then return true end
+    return nil
+end
+RLSuite.raidFrame:Rebuild()
+TANK_MT = (RLSuite.raidFrame.tankSlots[1].member ~= nil and RLSuite.raidFrame.tankSlots[1].member.name == 'Testplayer')
+TANK_OT = (RLSuite.raidFrame.tankSlots[2].member ~= nil and RLSuite.raidFrame.tankSlots[2].member.name == 'F3')
+GetPartyAssignment = SAVED_GPA
+RLSuite.raidFrame:Rebuild()
+""")
+check(bool(rt.eval("TANK_MT")), "main tank bar filled from GetPartyAssignment MAINTANK")
+check(bool(rt.eval("TANK_OT")), "second bar filled from GetPartyAssignment MAINASSIST (the OT)")
+check(bool(rt.eval("#RLSuite.raidFrame.rows == 6")), "group rows unaffected by the Tanks group (a tank appears in BOTH places)")
+
+# Raid Buffs matrix panel (Method style)
+check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn ~= nil and RLSuite.raidFrame.buffPanelBtn.label:GetText() == 'Raid Buffs'")), "'Raid Buffs' toggle button on the Tanks header row, right edge")
+check(bool(rt.eval("RLSuite.raidFrame.buffPanel == nil or RLSuite.raidFrame.buffPanel:IsShown() == false")), "buff matrix panel hidden by default")
+check(bool(rt.eval("#RLSuite.raidBuffColumns == 21")), "matrix defines exactly 21 buff-category columns")
+rt.execute("""
+RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
+BP_SHOWN = (RLSuite.raidFrame.buffPanel:IsShown() == true)
+BP_ANCHOR_OK = (RLSuite.raidFrame.buffPanel._points[1][1] == 'TOPLEFT' and RLSuite.raidFrame.buffPanel._points[1][2] == RLSuite.raidFrame.frame)
+BP_HDR1 = (RLSuite.raidFrame.buffPanel.header[1]:GetText() == RLSuite.raidBuffColumns[1].label)
+BP_HDR21 = (RLSuite.raidFrame.buffPanel.header[21]:GetText() == RLSuite.raidBuffColumns[21].label)
+local m = RLSuite.raidFrame:LayoutMetrics()
+BP_RH = (math.abs((RLSuite.raidFrame.buffPanel.cells[1][1]._points[1][5] - RLSuite.raidFrame.buffPanel.cells[2][1]._points[1][5]) - m.rowHeight) < 0.001)
+""")
+check(bool(rt.eval("BP_SHOWN")), "toggle button opens the buff matrix panel")
+check(bool(rt.eval("BP_ANCHOR_OK")), "panel opens to the RIGHT of all the bars")
+check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR21"))), "header row carries the short category names (all 21 columns)")
+check(bool(rt.eval("BP_RH")), "matrix rows step exactly like the group rows (same height)")
+rt.execute("""
+SAVED_UB2 = UnitBuff
+SAVED_GSI2 = GetSpellInfo
+GetSpellInfo = function(id) if id == 57399 then return 'Well Fed' end return 'Spell' end
+UnitBuff = function(u, i)
+    if u ~= 'player' or type(i) ~= 'number' then return nil end
+    if i == 1 then return 'Flask of the Frost Wyrm', nil, nil, nil, nil, nil, nil, nil, nil, nil, 53755 end
+    if i == 2 then return 'Well Fed' end
+    return nil
+end
+RLSuite.raidFrame:RefreshBuffPanel()
+local prow, frow = 0, 0
+for i, r in ipairs(RLSuite.raidFrame.rows) do
+    if r.member and r.member.unit == 'player' then prow = i end
+    if frow == 0 and r.member and r.member.fake then frow = i end
+end
+BP_PR = prow
+BP_FLASK = (RLSuite.raidFrame.buffPanel.cells[prow][20]._texture == 'Tex:53755')
+BP_FOOD = (RLSuite.raidFrame.buffPanel.cells[prow][21]._texture == RLSuite.raidBuffColumns[21].icon)
+BP_MISS = (RLSuite.raidFrame.buffPanel.cells[prow][1]:IsShown() == false)
+BP_FAKE_EMPTY = (RLSuite.raidFrame.buffPanel.cells[frow][20]:IsShown() == false)
+BP_NAME = (RLSuite.raidFrame.buffPanel.rowNames[prow]:GetText() == 'Testplayer')
+UnitBuff = SAVED_UB2
+GetSpellInfo = SAVED_GSI2
+RLSuite.raidFrame:RefreshBuffPanel()
+""")
+check(bool(rt.eval("BP_PR > 0")), "matrix locates the row of the local player (unit 'player')")
+check(bool(rt.eval("BP_FLASK")), "cell shows the ACTUAL flask spell icon (matched by spellId)")
+check(bool(rt.eval("BP_FOOD")), "Well Fed cell shows the food icon (matched by localized aura name)")
+check(bool(rt.eval("BP_MISS")), "missing category leaves the cell empty")
+check(bool(rt.eval("BP_FAKE_EMPTY")), "unit-less debug rows render with empty cells, no errors")
+check(bool(rt.eval("BP_NAME")), "matrix rows carry the player name")
+rt.execute("""
+RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
+BP_CLOSED = (RLSuite.raidFrame.buffPanel:IsShown() == false)
+""")
+check(bool(rt.eval("BP_CLOSED")), "second click on 'Raid Buffs' collapses the panel")
 
 # --- non pre-boss: empty slots hidden, drag disabled ---
 rt.execute("RLSuite:SetContextPhase('infight')")

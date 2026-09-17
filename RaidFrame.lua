@@ -74,6 +74,12 @@ local RF_PER_GROUP = 5
 local RF_MAX_CDS = 4
 local RF_HEADER_H = 14
 local RF_GROUP_GAP = 8
+local RF_TANK_COUNT = 2     -- Tanks group sopra G1: barra MT + barra OT
+-- Geometria del pannello "Raid Buffs" (matrice categorie x giocatori):
+local RF_BP_NAME_W = 84     -- colonna nome (class color)
+local RF_BP_CELL_W = 24     -- passo colonne (icona centrata)
+local RF_BP_HEADER_H = 16   -- riga intestazione con i nomi sintetici
+local RF_BP_BTN_W = 72
 
 -- Drop-target outline for empty slots (pre-boss only). Transparent fill,
 -- subtle border: it is a placeholder, not a HUD backdrop.
@@ -332,6 +338,39 @@ function RF:EnsureSlots()
             end
         end
     end
+    self:EnsureTanks()
+end
+
+-- Gruppo "Tanks" (sopra G1): header dorato + 2 barre MT/OT. Le barre sono
+-- slot normali SENZA icone consumabili (al loro posto il tag MT/OT) e non
+-- fanno parte di self.slots: niente drag player su di esse.
+function RF:EnsureTanks()
+    if self.tankHeader then return end
+    local hdr = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hdr:SetText(L["Tanks"])
+    hdr:SetTextColor(1, 0.82, 0)
+    hdr:SetJustifyH("LEFT")
+    hdr:Hide()
+    self.tankHeader = hdr
+    self.tankSlots = {}
+    self.tankSlots[1] = self:CreateSlotFrame("MT", 0, "MT")
+    self.tankSlots[2] = self:CreateSlotFrame("OT", 0, "OT")
+    for _, t in ipairs(self.tankSlots) do
+        t.slot = nil   -- fuori dalla geometria di drop dei gruppi
+    end
+    -- Bottone "Raid Buffs": stessa riga dell'header Tanks, bordo DESTRO di
+    -- tutta l'elemento (barra + cd). Apre/chiude il pannello matrice.
+    local btn = CreateFrame("Button", "RLSuiteRaidBuffsBtn", self.content)
+    btn:SetSize(RF_BP_BTN_W, RF_HEADER_H)
+    btn:EnableMouse(true)
+    local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    lbl:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    lbl:SetText(L["Raid Buffs"])
+    lbl:SetTextColor(1, 0.82, 0)
+    btn.label = lbl
+    btn:SetScript("OnClick", function() RF:ToggleBuffPanel() end)
+    btn:Hide()
+    self.buffPanelBtn = btn
 end
 
 -- HANDLER CONDIVISI fra la riga-Button e l'overlay SECURE (la zona
@@ -349,7 +388,7 @@ local function RowBodyOnMouseDown(self2, button)
         end
         if IsShiftKeyDown and IsShiftKeyDown() then
             self2._pressBtn = nil
-            if button == "LeftButton" and RF:IsDragEnabled() and self2.member then
+            if button == "LeftButton" and RF:IsDragEnabled() and self2.member and not self2.isTank then
                 -- SHIFT+sinistro = drag player MANUALE: source + mostra vuoti.
                 RF._rfDragSource = self2
                 self2._manualDrag = true
@@ -419,20 +458,32 @@ local function RowBodyOnMouseUp(self2, button)
         RF:RowPlainClick(self2, button)
 end
 
-function RF:CreateSlotFrame(slotIndex, group)
+function RF:CreateSlotFrame(slotIndex, group, tankTag)
     local row = CreateFrame("Button", "RLSuiteRaidRow" .. slotIndex, self.content)
     row.slot = slotIndex
     row.group = group
     row.member = nil
-    row.fakeHP = 70 + ((slotIndex * 13) % 31)
+    if tankTag then row.isTank = true end
+    -- slotIndex puo' essere "MT"/"OT" (barre Tanks): fakeHP comunque numerico.
+    local hpSeed = tonumber(slotIndex) or (tankTag == "MT" and 61 or 62)
+    row.fakeHP = 70 + ((hpSeed * 13) % 31)
     -- MAI disabilitare il mouse sullo slot (vedi UpdateDragState): in 3.3.5
     -- EnableMouse(false) sul genitore blocca la hit-region ANCHE dei figli,
     -- quindi le icone consumabili diventavano non cliccabili fuori pre-boss.
     row:EnableMouse(true)
 
     -- Left: flask / Well Fed missing-consumable icons.
-    row.flaskIcon = self:MakeConsumableIcon(row, "flask")
-    row.foodIcon = self:MakeConsumableIcon(row, "food")
+    -- Le barre TANK non li hanno: al loro posto il tag MT/OT dorato.
+    if row.isTank then
+        local tag = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        tag:SetPoint("LEFT", row, "LEFT", 8, 0)
+        tag:SetText(tankTag)
+        tag:SetTextColor(1, 0.82, 0)
+        row.tankTag = tag
+    else
+        row.flaskIcon = self:MakeConsumableIcon(row, "flask")
+        row.foodIcon = self:MakeConsumableIcon(row, "food")
+    end
 
     -- HP bar (name + % inside), fill = HP%, color = class color.
     local bar = CreateFrame("StatusBar", nil, row)
@@ -828,6 +879,57 @@ function RF:RefreshDropTargets()
     self:UpdateDropGlow()
 end
 
+-- Riempie le barre Tanks dalle assegnazioni Blizzard del raid
+-- (GetPartyAssignment: MT = primo Main Tank, OT = primo Main Assist).
+-- Chiave = unit o nome (i fake del debug hanno solo nome). Il gruppo e'
+-- visibile solo quando c'e' almeno una riga di gruppo renderizzata.
+function RF:RebuildTanks()
+    if not self.tankHeader then return end
+    local active = self.rows and self.rows[1] ~= nil
+    local mtInfo, otInfo
+    if active and GetPartyAssignment then
+        for _, info in ipairs(self:GetRoster()) do
+            local key = info.unit or info.name
+            if key then
+                if not mtInfo and GetPartyAssignment("MAINTANK", key) then mtInfo = info end
+                if not otInfo and GetPartyAssignment("MAINASSIST", key) then otInfo = info end
+            end
+        end
+    end
+    self:_SetupTankSlot(self.tankSlots[1], mtInfo, active)
+    self:_SetupTankSlot(self.tankSlots[2], otInfo, active)
+    if active then
+        self.tankHeader:Show()
+        if self.buffPanelBtn then self.buffPanelBtn:Show() end
+    else
+        self.tankHeader:Hide()
+        if self.buffPanelBtn then self.buffPanelBtn:Hide() end
+        if self.buffPanel then self.buffPanel:Hide() end
+    end
+end
+
+-- Barra Tanks: riempita se c'e' un assegnato, altrimenti placeholder
+-- visibile (il gruppo Tanks mostra SEMPRE le 2 barre MT/OT).
+function RF:_SetupTankSlot(slot, member, active)
+    if not slot then return end
+    if not active then
+        self:ClearSlot(slot)
+        slot._tankFilled = false
+        return
+    end
+    if member then
+        self:FillSlot(slot, member)
+        slot._tankFilled = true
+    else
+        self:ClearSlot(slot)
+        slot:SetBackdrop(RF_EMPTY_BACKDROP)
+        slot:SetBackdropColor(0, 0, 0, 0)
+        slot:SetBackdropBorderColor(0.32, 0.32, 0.36, 0.9)
+        slot:Show()
+        slot._tankFilled = false
+    end
+end
+
 -- ------------------------------------------------------------------
 -- Rebuild
 -- ------------------------------------------------------------------
@@ -850,6 +952,7 @@ function RF:Rebuild()
         end
     end
 
+    self:RebuildTanks()
     self:UpdateDragState()
     -- Header e blocchi vuoti: gestiti insieme (blocchi solo durante il drag).
     self:RefreshDropTargets()
@@ -865,12 +968,22 @@ function RF:UpdateUnit(unit)
             return
         end
     end
+    for _, t in ipairs(self.tankSlots or {}) do
+        if t.unit == unit then
+            self:UpdateRow(t)
+            return
+        end
+    end
 end
 
 function RF:UpdateAll()
     for _, row in ipairs(self.rows) do
         self:UpdateRow(row)
     end
+    for _, t in ipairs(self.tankSlots or {}) do
+        self:UpdateRow(t)
+    end
+    self:RefreshBuffPanel()
 end
 
 function RF:UpdateRow(row)
@@ -914,6 +1027,7 @@ end
 
 function RF:UpdateConsumables(row)
     if not row then return end
+    if row.isTank then return end -- niente icone consumabili sulle barre Tanks
     local showFlask = self.db.showFlask ~= false
     local showFood = self.db.showFood ~= false
 
@@ -1329,9 +1443,36 @@ function RF:ApplyLayout()
     -- Trasparenza complessiva dell'HUD (Config -> Raid Frame -> Layout).
     self.frame:SetAlpha(db.alpha or 1)
 
-    -- Pack group headers + visible slots vertically (G1..G6).
+    -- Pack group headers + visible slots vertically (Tanks, G1..G6).
     local y = 0
     local shown = false
+    -- GRUPPO TANKS sopra G1: header + barre MT/OT (sempre 2, piene o vuote).
+    if self.tankHeader and self.tankHeader:IsShown() then
+        self.tankHeader:ClearAllPoints()
+        self.tankHeader:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
+        self.tankHeader:SetWidth(m.rowWidth)
+        y = y - RF_HEADER_H
+        for ti = 1, RF_TANK_COUNT do
+            local t = self.tankSlots and self.tankSlots[ti]
+            if t then
+                t:ClearAllPoints()
+                t:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
+                self:LayoutSlotGeometry(t, m)
+                y = y - m.rowHeight
+            end
+        end
+        y = y - RF_GROUP_GAP
+        shown = true
+        -- Bottone "Raid Buffs": stessa riga dell'header Tanks, a DESTRA di
+        -- tutta l'elemento (fine barra + cd = bordo destro di content).
+        if self.buffPanelBtn then
+            self.buffPanelBtn:ClearAllPoints()
+            self.buffPanelBtn:SetPoint("TOPRIGHT", self.content, "TOPRIGHT", 0, 0)
+            self.buffPanelBtn:Show()
+        end
+    elseif self.buffPanelBtn then
+        self.buffPanelBtn:Hide()
+    end
     for g = 1, RF_GROUPS do
         local hdr = self.groupHeaders and self.groupHeaders[g]
         local hdrShown = hdr ~= nil and hdr:IsShown()
@@ -1366,6 +1507,21 @@ function RF:ApplyLayout()
 
     self.frame:SetHeight(math.max(20, rowsH))
 
+    -- Colore del font dei nomi (Config -> Raid Frame -> Layout -> Font color).
+    local fc = db.appearance and db.appearance.fontColor
+    local fr, fg, fb = (fc and fc.r) or 1, (fc and fc.g) or 1, (fc and fc.b) or 1
+    for _, slot in ipairs(self.slots or {}) do
+        if slot.bar and slot.bar.nameText then
+            slot.bar.nameText:SetTextColor(fr, fg, fb, 1)
+        end
+    end
+    for _, t in ipairs(self.tankSlots or {}) do
+        if t.bar and t.bar.nameText then
+            t.bar.nameText:SetTextColor(fr, fg, fb, 1)
+        end
+    end
+    self:_LayoutBuffPanel(m)
+
     if (RLSuite.InRaid and RLSuite:InRaid()) or (GetNumRaidMembers and GetNumRaidMembers() > 0) then
         self:UpdateAll()
     end
@@ -1374,4 +1530,177 @@ end
 function RF:Update()
     self:Rebuild()
     self:UpdateAll()
+end
+
+-- ------------------------------------------------------------------
+-- Pannello "Raid Buffs" (stile Method Raid Tools): matrice a scomparsa
+-- a DESTRA di tutte le barre. Colonne = le 21 categorie di buff
+-- (RLSuite.raidBuffColumns), righe = i giocatori (stessa altezza delle
+-- righe dei gruppi); ogni cella mostra l'icona del buff ATTIVO che
+-- copre la categoria, vuota se manca. Header = nomi sintetici.
+-- ------------------------------------------------------------------
+function RF:EnsureBuffPanel()
+    if self.buffPanel then return self.buffPanel end
+    local p = CreateFrame("Frame", "RLSuiteRaidBuffPanel", self.frame)
+    p:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 8,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    p:SetBackdropColor(0, 0, 0, 0.88)
+    p:SetBackdropBorderColor(0.5, 0.5, 0.55, 1)
+    p.header = {}     -- FontString intestazione colonne
+    p.rowNames = {}   -- FontString nome giocatore per riga
+    p.cells = {}      -- Texture [r][c]
+    p:Hide()
+    self.buffPanel = p
+    return p
+end
+
+function RF:ToggleBuffPanel()
+    local p = self:EnsureBuffPanel()
+    if p:IsShown() then
+        p:Hide()
+    else
+        if not (self.tankHeader and self.tankHeader:IsShown()) then
+            return -- niente raid => niente matrice
+        end
+        p:Show()
+        self:_LayoutBuffPanel(self:LayoutMetrics())
+        self:RefreshBuffPanel()
+    end
+end
+
+-- Posizioni: header (nomi sintetici) + griglia righe/colonne. La riga i
+-- della matrice sta alla STESSA altezza della riga i dei gruppi.
+function RF:_LayoutBuffPanel(m)
+    local p = self.buffPanel
+    if not (p and p:IsShown()) then return end
+    local cols = RLSuite.raidBuffColumns or {}
+    local nCols = #cols
+    local nRows = #self.rows
+    for c = 1, nCols do
+        local fs = p.header[c]
+        if not fs then
+            fs = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            fs:SetJustifyH("LEFT")
+            fs:SetTextColor(1, 0.82, 0)
+            p.header[c] = fs
+        end
+        fs:SetText(cols[c].label or cols[c].key or "")
+        fs:ClearAllPoints()
+        fs:SetPoint("TOPLEFT", p, "TOPLEFT", RF_BP_NAME_W + (c - 1) * RF_BP_CELL_W + 4, -4)
+        fs:Show()
+    end
+    for c = nCols + 1, #p.header do
+        p.header[c]:Hide()
+    end
+    for r = 1, nRows do
+        local nf = p.rowNames[r]
+        if not nf then
+            nf = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            nf:SetJustifyH("LEFT")
+            nf:SetWidth(RF_BP_NAME_W - 8)
+            p.rowNames[r] = nf
+        end
+        local yy = -(RF_BP_HEADER_H + (r - 1) * m.rowHeight)
+        nf:ClearAllPoints()
+        nf:SetPoint("TOPLEFT", p, "TOPLEFT", 6, yy - (m.rowHeight - 12) / 2)
+        nf:Show()
+        for c = 1, nCols do
+            local tex = self:_BuffPanelCell(r, c)
+            tex:ClearAllPoints()
+            tex:SetSize(m.iconSize, m.iconSize)
+            tex:SetPoint("TOPLEFT", p, "TOPLEFT",
+                RF_BP_NAME_W + (c - 1) * RF_BP_CELL_W + (RF_BP_CELL_W - m.iconSize) / 2,
+                yy - (m.rowHeight - m.iconSize) / 2)
+        end
+    end
+    for r = nRows + 1, #p.rowNames do
+        p.rowNames[r]:Hide()
+        for c = 1, #(p.cells and p.cells[r] or {}) do
+            p.cells[r][c]:Hide()
+        end
+    end
+    p:ClearAllPoints()
+    p:SetPoint("TOPLEFT", self.frame, "TOPRIGHT", 4, 0)
+    p:SetSize(RF_BP_NAME_W + nCols * RF_BP_CELL_W + 8,
+              RF_BP_HEADER_H + math.max(1, nRows) * m.rowHeight + 8)
+end
+
+function RF:_BuffPanelCell(r, c)
+    local p = self.buffPanel
+    p.cells[r] = p.cells[r] or {}
+    local tex = p.cells[r][c]
+    if not tex then
+        tex = p:CreateTexture(nil, "ARTWORK")
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        p.cells[r][c] = tex
+    end
+    return tex
+end
+
+-- Set di spellId per categoria (cache pigra).
+function RF:_BuffColSet(col)
+    if not col._set then
+        col._set = {}
+        for _, id in ipairs(col.spells or {}) do
+            col._set[id] = true
+        end
+    end
+    return col._set
+end
+
+-- Icona del buff ATTIVO del player che copre la categoria (nil se nessuno).
+-- Match per spellId (set) oppure per nome aura (byNameSpell -> locale-safe,
+-- copre tutte le varianti, es. Well Fed). Icona = texture della spell reale
+-- trovata; per byName si usa l'icona fissa della categoria.
+function RF:_BuffCellIcon(unit, col)
+    if not (unit and col and UnitBuff) then return nil end
+    local set = self:_BuffColSet(col)
+    local wantName
+    if col.byNameSpell and GetSpellInfo then
+        wantName = GetSpellInfo(col.byNameSpell)
+    end
+    for i = 1, 40 do
+        local bname, _, _, _, _, _, _, _, _, _, bid = UnitBuff(unit, i)
+        if not bname then return nil end
+        if bid and set[bid] then
+            local tex = GetSpellTexture and GetSpellTexture(bid)
+            return tex or col.icon, bid
+        end
+        if wantName and bname == wantName then
+            return col.icon, bid
+        end
+    end
+    return nil
+end
+
+-- Riempie la matrice: nomi (class color) + icone delle celle.
+function RF:RefreshBuffPanel()
+    local p = self.buffPanel
+    if not (p and p:IsShown()) then return end
+    local cols = RLSuite.raidBuffColumns or {}
+    local nCols = #cols
+    local nRows = #self.rows
+    for r = 1, nRows do
+        local member = self.rows[r].member
+        local nf = p.rowNames[r]
+        if nf then
+            nf:SetText(member and member.name or "")
+            local cc = (RAID_CLASS_COLORS or {})[member and member.class or ""] or {}
+            nf:SetTextColor(cc.r or 1, cc.g or 1, cc.b or 1)
+        end
+        for c = 1, nCols do
+            local tex = self:_BuffPanelCell(r, c)
+            local icon = member and member.unit and self:_BuffCellIcon(member.unit, cols[c]) or nil
+            if icon then
+                tex:SetTexture(icon)
+                tex:Show()
+            else
+                tex:Hide()
+            end
+        end
+    end
 end
