@@ -322,18 +322,15 @@ function RF:LayoutMetrics()
     local cellW = math.max(12, iconSize + iconSpacing)  -- passo colonne matrice
     local abw = 0 -- buff bar / ability bar rimosse (redesign in corso)
     local gap = 0
-    -- Area della colonna matrice SEMPRE riservata (quando c'e' un roster):
-    -- la riga d'intestazione delle categorie e' PERMANENTE (fuori dal
-    -- pannello toggle): il tasto "Raid Buffs" accende/spegne solo le icone.
-    local mwx = 0
-    if self.rows and self.rows[1] then
-        mwx = #self:_MatrixCols() * cellW + 10
-    end
+    -- L'AREA DELLE COLONNE MATRICE NON E' COPERTA DALLA FINESTRA: la window
+    -- finisce al bordo destro delle barre e TUTTA la grafica matrice (icone,
+    -- strip, backdrop) viene disegnata OLTRE il bordo destro. Cosi' la zona
+    -- buff e' COMPLETAMENTE CLICK-THROUGH, a matrice aperta o chiusa.
     -- Layout per row: [flask][food] ... [HP bar = barWidth] ... [up to 4 CDs]
     local leftArea = 4 + 2 * iconSize + 4
     local cdReserve = 4 * iconSize + 3 * 2 + 4
     local rowWidth = leftArea + barWidth + cdReserve + 4
-    local W = rowWidth + abw + gap + mwx
+    local W = rowWidth + abw + gap
     local rowHeight = math.max(barHeight, iconSize) + 4
     return {
         W = W, abw = abw, rowWidth = rowWidth,

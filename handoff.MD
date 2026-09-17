@@ -7,7 +7,22 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.8**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.9**.
+
+## Novità della sessione 1.9.9 (questo branch, dopo 1.9.8) — zona buff CLICK-THROUGH
+
+Report utente: l'area dove compaiono i buff non fa cliccare (aperta o chiusa).
+Causa: la WINDOW riservava la zona colonne nella sua larghezza
+(W = rowWidth + colonne + 10): il frame, anche invisibile, inghiottiva i click.
+Fix: **W = rowWidth** — la finestra finisce al bordo destro delle barre e TUTTA
+la grafica matrice (celle, strip icone header, backdrop, tasto Raid Buffs)
+viene disegnata OLTRE il bordo destro della window (i figli renderizzano e
+ricevono input fuori dal rect del parent, ma solo se mouse-enabled: texture =
+niente input, bottoni header/tasto = interattivi come da spec R27). La zona
+colonne e' ora click-through garantito perché NON c'e' nessun frame hit-test
+sopra: /rls debugbuff e i test confermano frame._w == rowWidth.
+La larghezza non "salta" piu' neanche teoricamente (costante = barre).
+468 check PASS (aggiornati BP_W/SP_W/BP_W_KEEP + 3 nuovi check click-through).
 
 ## Novità della sessione 1.9.8 (questo branch, dopo 1.9.7) — tasto a destra dell'OT + header toggle
 
@@ -954,7 +969,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 466 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 468 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

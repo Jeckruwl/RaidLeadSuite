@@ -1111,7 +1111,8 @@ check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar:GetWidth() == RLSuite.db.profil
 # --- buff/debuff/ability bars: RIMOSSE (redesign in corso), restano SOLO flask+food per riga ---
 check(bool(rt.eval("RLSuite.raidFrame.buffBar == nil and RLSuite.raidFrame.debuffBar == nil and RLSuite.raidFrame.abilityBar == nil")), "no buff/debuff/ability bars exist anymore (eliminated for redesign)")
 check(bool(rt.eval("RLSuite.raidFrame.BuildAbilityBar == nil and RLSuite.raidFrame.RefreshAlertBars == nil and RLSuite.raidFrame.CheckCoverage == nil")), "buff-bar machinery functions are gone (UI code removed, not just hidden)")
-check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().W == RLSuite.raidFrame:LayoutMetrics().rowWidth + #RLSuite.raidFrame:_MatrixCols() * RLSuite.raidFrame:LayoutMetrics().cellW + 10")), "window width = rows + permanent category-header area (matrix zone is always reserved)")
+check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().W == RLSuite.raidFrame:LayoutMetrics().rowWidth")), "window width = bars area only: the matrix zone is NOT covered by the window (fully click-through)")
+check(bool(rt.eval("RLSuite.raidFrame.frame._w == RLSuite.raidFrame:LayoutMetrics().rowWidth")), "window hitbox ends at the bars' right edge: buff columns area never swallows clicks (open or closed)")
 # fase: le icone flask/food per riga restano vive in ogni fase (lo stato non dipende piu' dalle barre)
 rt.execute("RLSuite:SetContextPhase('preboss')")
 check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon:IsShown() == true")), "pre-boss: per-row flask icon still live")
@@ -1486,7 +1487,9 @@ for g = 1, 6 do
     if gh:IsShown() and (gh._points == nil or #gh._points == 0) then BP_LAYOUT_DONE = false end
 end
 local m = RLSuite.raidFrame:LayoutMetrics()
-BP_W = (m.W == m.rowWidth + NC * 24 + 10)
+BP_W = (m.W == m.rowWidth)
+local lbp = RLSuite.raidFrame._buffHdrBtns[NC]._points[#RLSuite.raidFrame._buffHdrBtns[NC]._points]
+BP_SPILL = ((lbp[4] + 24) > m.W)
 -- la riga del player (unit 'player') e quella di un fake
 BP_PSLOT, BP_FSLOT = nil, nil
 for _, s in ipairs(RLSuite.raidFrame.slots) do
@@ -1517,7 +1520,8 @@ check(bool(rt.eval("BP_LAYOUT_DONE")), "matrix header build can never abort Appl
 check(bool(rt.eval("BP_HDR_OUT")), "category header buttons live OUTSIDE the panel (children of the window) and STAY visible with the matrix open")
 check(bool(rt.eval("BP_TANK_UNDER")), "the Tanks header sits at the very top of the frame (icon strip moved down to G1)")
 check(bool(rt.eval("BP_HDR_BG")), "icon strip backdrop uses the SAME value as the bars backdrop (appearance.matrixBackdrop) and spans all columns")
-check(bool(rt.eval("BP_W")), "window width grows exactly by the matrix area when active")
+check(bool(rt.eval("BP_W")), "window width does NOT include the matrix columns area")
+check(bool(rt.eval("BP_SPILL")), "header/column icons are drawn BEYOND the window's right edge (rendered outside = click-through)")
 check(bool(rt.eval("BP_CELL_ON_ROW") and bool(rt.eval("BP_CELL_SIDE"))), "category icons live ALONG the player's row, past the row right edge")
 # --- hover: il titolo di categoria si "illumina"; click: raid warning categoria ---
 rt.execute("""
@@ -1617,7 +1621,7 @@ app.matrixBackdrop = { r = 1, g = 0, b = 0, a = 0.6 }
 RLSuite.raidFrame:ApplyLayout()
 local m3 = RLSuite.raidFrame:LayoutMetrics()
 SP_CELLW = (m3.cellW == m3.iconSize + 2)
-SP_W = (m3.W == m3.rowWidth + NC * (m3.iconSize + 2) + 10)
+SP_W = (m3.W == m3.rowWidth)
 local s1 = RLSuite.raidFrame.slots[1]._points[1][5]
 local s2 = RLSuite.raidFrame.slots[2]._points[1][5]
 SP_ROWS = (math.abs((s1 - s2) - (m3.rowHeight + 6)) < 0.001)
@@ -1632,7 +1636,7 @@ RLSuite.raidFrame:ApplyLayout()
 SP_DEF = (RLSuite.raidFrame:LayoutMetrics().cellW == 24)
 """)
 check(bool(rt.eval("SP_CELLW")), "Icon spacing option drives the matrix column pitch (iconSize + spacing)")
-check(bool(rt.eval("SP_W")), "matrix width follows the configured icon spacing")
+check(bool(rt.eval("SP_W")), "window width stays rowWidth regardless of icon spacing (columns spill past the window)")
 check(bool(rt.eval("SP_ROWS")), "Row spacing option drives the gap between bars inside a group")
 check(bool(rt.eval("SP_GHFONT") and rt.eval("SP_TKH")), "Group header font size option applies to G-buttons and the Tanks header")
 check(bool(rt.eval("SP_BG")), "Buff check backdrop option recolors the matrix rows backdrop (color + alpha)")
@@ -1641,7 +1645,7 @@ rt.execute("""
 RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
 BP_CLOSED = (RLSuite.raidFrame.buffMatrixOn ~= true and BP_PSLOT._buffCells[10] ~= nil and BP_PSLOT._buffCells[10]:IsShown() == false)
 local m2 = RLSuite.raidFrame:LayoutMetrics()
-BP_W_KEEP = (m2.W == m2.rowWidth + NC * 24 + 10)
+BP_W_KEEP = (m2.W == m2.rowWidth)
 RB_OFF = (BP_PSLOT._matrixBg ~= nil and BP_PSLOT._matrixBg:IsShown() == false)
 BP_HDR_PERM = (RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == false and RLSuite.raidFrame._buffHdrBtns[NC]:IsShown() == false)
 BP_HBG_OFF = (RLSuite.raidFrame._buffHdrBg == nil or RLSuite.raidFrame._buffHdrBg:IsShown() == false)
@@ -1652,7 +1656,7 @@ check(bool(rt.eval("RB_FAKE")), "fake players' rows also get their per-row backd
 rgba = rt.eval("RB_RGB0")
 check(abs(float(rt.eval("RB_RGB0[1]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[2]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[3]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[4]")) - 0.35) < 0.01, "row backdrop is a semi-transparent GRAY solid texture (0.5,0.5,0.5,0.35)")
 check(bool(rt.eval("RB_GEOM")), "row backdrop spans exactly the matrix columns of its own bar, height = row height")
-check(bool(rt.eval("BP_W_KEEP")), "the matrix column area stays reserved (only the header ROW toggles with the button)")
+check(bool(rt.eval("BP_W_KEEP")), "matrix columns zone stays OUTSIDE the window hitbox when toggled (click-through preserved)")
 check(bool(rt.eval("RB_OFF")), "per-row backdrops are hidden when the matrix icons are off")
 check(bool(rt.eval("BP_HDR_PERM")), "header icon row HIDDEN again when the 'Raid Buffs' pipe is off (button toggles the header row)")
 check(bool(rt.eval("BP_HBG_OFF")), "header strip backdrop hidden when the matrix is off")
