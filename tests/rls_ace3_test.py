@@ -2319,6 +2319,36 @@ rt.execute("RLSuite.lootManager:CloseAllTradeWindows()")
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario G (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 
+# ---------------------------------------------------------------------------
+# BCI .blp regression guard (v1.9.3): the user's 3.3.5 client loads ONLY the
+# DXT3 flavour of BLP2 (proven by the pre-existing media/save.blp working
+# icons). RAW BLP (v1.9.2 attempt) and .tga are both rejected with
+# GetTexture()==nil. These checks pin the on-disk files to that exact layout.
+# ---------------------------------------------------------------------------
+print("== BCI .blp format guard (DXT3, layout of media/save.blp) ==")
+def _blp_ok(_d):
+    import struct as _s
+    if _d[:4] != b"BLP2": return False
+    if _s.unpack("<I", _d[4:8])[0] != 1: return False          # type 1
+    if tuple(_d[8:12]) != (2, 4, 1, 1): return False            # DXT, alphaBits 4, DXT3, hasMips
+    if _s.unpack("<II", _d[12:20]) != (32, 32): return False    # 32x32
+    _offs = _s.unpack("<16I", _d[20:84])
+    _sizes = _s.unpack("<16I", _d[84:148])
+    _exp = (1024, 256, 64, 16, 16, 16)
+    if _sizes[:6] != _exp or any(_sizes[6:]): return False      # full DXT3 mip chain
+    _o = 1172                                                    # header size
+    for _i in range(6):
+        if _offs[_i] != _o: return False
+        _o += _exp[_i]
+    return len(_d) == _o and not any(_offs[6:])
+
+import glob as _glob
+_blps = sorted(_glob.glob("media/BUFFCATICONS/BCI_*.blp"))
+check(len(_blps) == 25 and all(_blp_ok(open(_f, "rb").read()) for _f in _blps),
+      "all 25 BCI_*.blp are DXT3 BLP2 with the exact byte layout of media/save.blp (the flavour the user's 3.3.5 client loads)")
+check(len(_blps) == len(_glob.glob("media/BUFFCATICONS/BCI_*.tga")),
+      "every BCI_*.tga has a .blp twin for clients that cannot load tga")
+
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

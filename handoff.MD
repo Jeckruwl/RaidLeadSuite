@@ -7,7 +7,30 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.2**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.3**.
+
+## Novità della sessione 1.9.3 (questo branch, dopo 1.9.2) — BLP DXT3 (il formato che il client accetta)
+
+`/rls debugbuff` sul client utente: BCI = **NOT LOADED** anche coi .blp RAW
+(v1.9.2). Diagnosa definitiva confrontando gli header: i BLP che il client
+utente CARICA da sempre (media/save.blp, alliance/hordeicon.blp) sono
+**type=1, compression=2 (DXT), alphaBits=4, alphaType=1 (DXT3), hasMips=1**;
+la build 3.3.5 in uso accetta SOLO BLP compressi DXT per le texture addon,
+non RAW (compression=3) né TGA.
+
+- `tests/tools/tga2blp.py` riscritto: **encoder DXT3/BC2 puro Python**
+  (8B alpha LSB-first 4bpp + color0/1 RGB565 + palette 2bpp; endpoint ai
+  vertici del bounding box, c0>=c1; 16B/blocco anche per mip 4x4/2x2/1x1).
+  Output byte-layout IDENTICO a media/save.blp: 32x32 -> 2564 byte, offsets
+  (1172,2196,2452,2516,2532,2548), sizes (1024,256,64,16,16,16).
+- Rigenerati i **25 BCI_*.blp** in DXT3 (loader Lua invariato: blp prima,
+  tga fallback).
+- Suite: +2 controlli python di regressione formato BLP (magic/type/comp/
+  alphaBits/alphaType/mip offsets+sizes/len per ogni file + twin tga<->blp).
+Il fix NON tocca Lua: solo i file media. Se dopo pull+reload `/rls debugbuff`
+dice ancora NOT LOADED, il colpevole restante sarebbe il PATH, non il formato
+(ma il path è lo stesso schema del minimap icon che funziona).
+463 check PASS.
 
 ## Novità della sessione 1.9.2 (questo branch, dopo 1.9.1) — ICONE .blp + /rls debugbuff
 
@@ -844,7 +867,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 461 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 463 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
