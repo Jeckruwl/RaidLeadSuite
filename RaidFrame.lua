@@ -196,13 +196,6 @@ function RF:CreateFrame()
     self.content = CreateFrame("Frame", nil, f)
     self.content:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
 
-    -- Backdrop GRIGIO SEMI-TRASPARENTE dell'area matrice "Raid Buffs": sta
-    -- SOTTO tutte le righe e le icone (strato BACKGROUND), cosi' le celle
-    -- risultano sempre leggibili anche sul mondo dietro.
-    local matrixBg = self.content:CreateTexture(nil, "BACKGROUND")
-    matrixBg:SetTexture(0.5, 0.5, 0.5, 0.35)
-    matrixBg:Hide()
-    self.matrixBg = matrixBg
 
 end
 
@@ -327,9 +320,11 @@ function RF:LayoutMetrics()
     local cellW = math.max(12, iconSize + iconSpacing)  -- passo colonne matrice
     local abw = 0 -- buff bar / ability bar rimosse (redesign in corso)
     local gap = 0
-    -- Matrice "Raid Buffs" integrata: larghezza extra SOLO quando attiva.
+    -- Area della colonna matrice SEMPRE riservata (quando c'e' un roster):
+    -- la riga d'intestazione delle categorie e' PERMANENTE (fuori dal
+    -- pannello toggle): il tasto "Raid Buffs" accende/spegne solo le icone.
     local mwx = 0
-    if self.buffMatrixOn and self.rows and self.rows[1] then
+    if self.rows and self.rows[1] then
         mwx = #self:_MatrixCols() * cellW + 10
     end
     -- Layout per row: [flask][food] ... [HP bar = barWidth] ... [up to 4 CDs]
@@ -1516,10 +1511,12 @@ function RF:ApplyLayout()
     -- MATRICE "Raid Buffs" attiva? Riga d'intestazione IN CIMA con i nomi
     -- sintetici delle categorie, poi il resto (Tanks compreso) scende.
     local matrixOn = self.buffMatrixOn and self.rows and self.rows[1] ~= nil
-    local mCols = matrixOn and self:_MatrixCols() or nil
-    if matrixOn then
-        -- Riga d'intestazione SEMPRE visibile a matrice attiva: bottoni con
-        -- i nomi a 45° (leggibili); hover li illumina, click = raid warning.
+    -- La RIGA D'INTESTAZIONE e' PERMANENTE: fuori dal pannello toggle,
+    -- visibile INDIPENDENTEMENTE dal tasto "Raid Buffs" finche' c'e' un
+    -- roster. Il tasto accende/spegne SOLO le icone dei player.
+    local headersOn = self.rows and self.rows[1] ~= nil
+    local mCols = headersOn and self:_MatrixCols() or nil
+    if headersOn then
         for c, col in ipairs(mCols) do
             local btn = self:_MatrixHeaderBtn(c)
             btn._col = col
@@ -1528,7 +1525,7 @@ function RF:ApplyLayout()
             btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
                 m.rowWidth + 4 + (c - 1) * m.cellW, -1)
             btn:SetSize(m.cellW, RF_MATRIX_HDR_H)
-            btn:Show() -- INTESTRAZIONE SEMPRE VISIBILE con la matrice aperta
+            btn:Show() -- SEMPRE VISIBILE: mai nascosta finche' c'e' un roster
         end
         y = y - RF_MATRIX_HDR_H
     end
@@ -1629,21 +1626,6 @@ function RF:ApplyLayout()
         self:UpdateAll()
     end
 
-    -- Backdrop matrice: copre TUTTE le righe (dalla fine della colonna
-    -- barre al bordo destro) solo a matrice attiva; l'altezza segue content.
-    if self.buffMatrixOn then
-        local bc = (self.db and self.db.appearance and self.db.appearance.matrixBackdrop) or {}
-        self.matrixBg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
-        self.matrixBg:ClearAllPoints()
-        self.matrixBg:SetPoint("TOPLEFT", self.content, "TOPLEFT", m.rowWidth + 2, 0)
-        -- BOTTOMRIGHT sul FRAME: content e' largo solo rowWidth (le barre),
-        -- quindi con doppio anchor su content la texture risultava INVISIBILE
-        -- (larghezza negativa). Il frame invece e' largo W (righe + matrice).
-        self.matrixBg:SetPoint("BOTTOMRIGHT", self.frame, "BOTTOMRIGHT", -2, 1)
-        self.matrixBg:Show()
-    else
-        self.matrixBg:Hide()
-    end
 end
 
 function RF:Update()
@@ -1773,6 +1755,20 @@ function RF:_MatrixCell(slot, c)
 end
 
 function RF:_LayoutMatrixRow(slot, m, y, mCols)
+    -- Backdrop UNO PER RIGA (non tutta la finestra): striscia grigia
+    -- semi-trasparente dietro le icone di QUESTO player, tra il bordo destro
+    -- della barra+cd e la fine dell'area colonne.
+    local bg = slot._matrixBg
+    if not bg then
+        bg = self.content:CreateTexture(nil, "BACKGROUND")
+        slot._matrixBg = bg
+    end
+    local bc = (self.db and self.db.appearance and self.db.appearance.matrixBackdrop) or {}
+    bg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
+    bg:ClearAllPoints()
+    bg:SetPoint("TOPLEFT", self.content, "TOPLEFT", m.rowWidth + 2, y - 1)
+    bg:SetSize(#mCols * m.cellW + 6, m.rowHeight - 2)
+    bg:Show()
     for c = 1, #mCols do
         local tex = self:_MatrixCell(slot, c)
         if tex then
@@ -1790,6 +1786,7 @@ end
 function RF:RefreshBuffMatrix()
     local on = self.buffMatrixOn and self.rows and self.rows[1] ~= nil
     local cols = on and self:_MatrixCols() or nil
+    local headersOn = self.rows and self.rows[1] ~= nil
     for _, slot in ipairs(self.slots or {}) do
         for c = 1, #(slot._buffCells or {}) do
             local tex = slot._buffCells[c]
@@ -1805,11 +1802,23 @@ function RF:RefreshBuffMatrix()
             end
         end
     end
-    -- L'intestazione e' SEMPRE visibile quando la matrice e' attiva: i
-    -- bottoni sono figli della window (fuori dal pannello), mai toccati dalle
-    -- parti che nascondono le righe.
+    -- Backdrop PER RIGA: visibile solo a matrice accesa, quando la riga
+    -- e' visibile e occupata. Nascosto altrimenti (toglie il tasto "Raid
+    -- Buffs" solo le icone e queste strisce, MAI l'intestazione).
+    for _, slot in ipairs(self.slots or {}) do
+        local bg = slot._matrixBg
+        if bg then
+            if on and slot:IsShown() and slot.member then
+                bg:Show()
+            else
+                bg:Hide()
+            end
+        end
+    end
+    -- L'INTESTAZIONE e' PERMANENTE: fuori dal pannello, visibile
+    -- INDIPENDENTEMENTE dal tasto "Raid Buffs" finche' c'e' un roster.
     for c, btn in ipairs(self._buffHdrBtns or {}) do
-        if on and cols and cols[c] then
+        if headersOn and RLSuite.raidBuffColumns and self:_MatrixCols()[c] then
             btn:Show()
         else
             btn:Hide()

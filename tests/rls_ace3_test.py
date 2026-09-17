@@ -1109,7 +1109,7 @@ check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar:GetWidth() == RLSuite.db.profil
 # --- buff/debuff/ability bars: RIMOSSE (redesign in corso), restano SOLO flask+food per riga ---
 check(bool(rt.eval("RLSuite.raidFrame.buffBar == nil and RLSuite.raidFrame.debuffBar == nil and RLSuite.raidFrame.abilityBar == nil")), "no buff/debuff/ability bars exist anymore (eliminated for redesign)")
 check(bool(rt.eval("RLSuite.raidFrame.BuildAbilityBar == nil and RLSuite.raidFrame.RefreshAlertBars == nil and RLSuite.raidFrame.CheckCoverage == nil")), "buff-bar machinery functions are gone (UI code removed, not just hidden)")
-check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().W == RLSuite.raidFrame:LayoutMetrics().rowWidth")), "window width = rows only (no ability bar column)")
+check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().W == RLSuite.raidFrame:LayoutMetrics().rowWidth + 19 * 24 + 10")), "window width = rows + permanent category-header area (matrix zone is always reserved)")
 # fase: le icone flask/food per riga restano vive in ogni fase (lo stato non dipende piu' dalle barre)
 rt.execute("RLSuite:SetContextPhase('preboss')")
 check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon:IsShown() == true")), "pre-boss: per-row flask icon still live")
@@ -1442,6 +1442,14 @@ if BP_PSLOT then
     local pt = BP_PSLOT._buffCells[1]._points[1]
     BP_CELL_SIDE = (pt[2] == RLSuite.raidFrame.content and pt[4] > m.rowWidth)
 end
+RB_SHOW = (BP_PSLOT._matrixBg ~= nil and BP_PSLOT._matrixBg:IsShown() == true)
+RB_FAKE = (BP_FSLOT._matrixBg ~= nil and BP_FSLOT._matrixBg:IsShown() == true)
+RB_GEOM = false
+if BP_PSLOT._matrixBg then
+    local p = BP_PSLOT._matrixBg._points[1]
+    RB_GEOM = (p ~= nil and p[2] == RLSuite.raidFrame.content and p[4] == m.rowWidth + 2 and BP_PSLOT._matrixBg._w == 19 * 24 + 6 and BP_PSLOT._matrixBg._h == m.rowHeight - 2)
+end
+RB_RGB0 = BP_PSLOT._matrixBg and BP_PSLOT._matrixBg._texRGBA
 """)
 check(bool(rt.eval("BP_ON")), "click on 'Raid Buffs' activates the matrix")
 check(bool(rt.eval("BP_PRIO1")), "most important buffs first: column 1 is the Kings/stats column")
@@ -1499,12 +1507,6 @@ for c = 1, 19 do
     end
 end
 RLSuite.raidFrame:RefreshBuffMatrix()
-MBG_SHOW0 = RLSuite.raidFrame.matrixBg:IsShown()
-MBG_RGB0 = RLSuite.raidFrame.matrixBg._texRGBA
-local mpt = RLSuite.raidFrame.matrixBg._points[1]
-MBG_LEFT_OK = (mpt ~= nil and mpt[2] == RLSuite.raidFrame.content and mpt[4] == RLSuite.raidFrame:LayoutMetrics().rowWidth + 2)
-local mpt2 = RLSuite.raidFrame.matrixBg._points[2]
-MBG_RIGHT_OK = (mpt2 ~= nil and mpt2[2] == RLSuite.raidFrame.frame and mpt2[4] == -2)
 local same = true
 for c = 1, 19 do
     local tc = BP_FSLOT._buffCells[c]
@@ -1522,7 +1524,7 @@ BP_HDR_STILL = true
 for c = 1, 19 do
     BP_HDR_STILL = BP_HDR_STILL and (RLSuite.raidFrame._buffHdrBtns[c]:IsShown() == true)
 end
-MBG_STILL = (RLSuite.raidFrame.matrixBg:IsShown() == true)
+RB_STILL = (BP_PSLOT._matrixBg ~= nil and BP_PSLOT._matrixBg:IsShown() == true)
 BP_AFTER = (BP_PSLOT._buffCells[STRAGI_C]:IsShown() == false)
 """)
 check(bool(rt.eval("BP_MATCH")), "cell on the player's row shows the icon of the ACTIVE buff covering that category")
@@ -1531,7 +1533,7 @@ check(bool(rt.eval("BP_FAKE_SOME")), "invited (fake) players receive random buff
 check(bool(rt.eval("BP_FAKE_STABLE")), "debug random buff sets are stable across refreshes (no flicker)")
 check(bool(rt.eval("BP_AFTER")), "buffs gone -> icons gone (matrix tracks live auras)")
 check(bool(rt.eval("BP_HDR_STILL")), "the 19 category titles STAY visible through aura updates/refreshes (never flicker away)")
-check(bool(rt.eval("MBG_STILL")), "the gray matrix backdrop stays visible through refreshes")
+check(bool(rt.eval("RB_STILL")), "per-row backdrops stay visible through refreshes")
 rt.execute("""
 -- spacing configurabili + colore backdrop: li cambio, ApplyLayout, misuro
 local app = RLSuite.db.profile.raidframe.appearance
@@ -1547,7 +1549,7 @@ local s2 = RLSuite.raidFrame.slots[2]._points[1][5]
 SP_ROWS = (math.abs((s1 - s2) - (m3.rowHeight + 6)) < 0.001)
 SP_GHFONT = (RLSuite.raidFrame.groupHeaders[1]._fontArgs ~= nil and RLSuite.raidFrame.groupHeaders[1]._fontArgs[2] == 14)
 SP_TKH = (RLSuite.raidFrame.tankHeader._fontArgs ~= nil and RLSuite.raidFrame.tankHeader._fontArgs[2] == 14)
-local bga = RLSuite.raidFrame.matrixBg._texRGBA
+local bga = BP_PSLOT._matrixBg._texRGBA
 SP_BG = (bga ~= nil and math.abs(bga[1] - 1) < 0.01 and math.abs(bga[4] - 0.6) < 0.01)
 app.iconSpacing, app.rowSpacing, app.groupSpacing = nil, nil, nil
 app.groupHeaderFontSize = nil
@@ -1563,19 +1565,21 @@ check(bool(rt.eval("SP_BG")), "Buff check backdrop option recolors the matrix ro
 check(bool(rt.eval("SP_DEF")), "spacing options restored to defaults")
 rt.execute("""
 RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
-BP_CLOSED = (RLSuite.raidFrame.buffMatrixOn ~= true and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == false)
+BP_CLOSED = (RLSuite.raidFrame.buffMatrixOn ~= true and BP_PSLOT._buffCells[10] ~= nil and BP_PSLOT._buffCells[10]:IsShown() == false)
 local m2 = RLSuite.raidFrame:LayoutMetrics()
-BP_W_BACK = (m2.W == m2.rowWidth)
-MBG_HIDE0 = (RLSuite.raidFrame.matrixBg:IsShown() == false)
+BP_W_KEEP = (m2.W == m2.rowWidth + 19 * 24 + 10)
+RB_OFF = (BP_PSLOT._matrixBg ~= nil and BP_PSLOT._matrixBg:IsShown() == false)
+BP_HDR_PERM = (RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true and RLSuite.raidFrame._buffHdrBtns[19]:IsShown() == true)
 """)
-check(bool(rt.eval("BP_CLOSED")), "second click on 'Raid Buffs' collapses the matrix")
-check(bool(rt.eval("MBG_SHOW0")), "transparent gray backdrop sits under all rows while the matrix is on")
-rgba = rt.eval("MBG_RGB0")
-check(abs(float(rt.eval("MBG_RGB0[1]")) - 0.5) < 0.01 and abs(float(rt.eval("MBG_RGB0[2]")) - 0.5) < 0.01 and abs(float(rt.eval("MBG_RGB0[3]")) - 0.5) < 0.01 and abs(float(rt.eval("MBG_RGB0[4]")) - 0.35) < 0.01, "backdrop is a semi-transparent GRAY solid texture (0.5,0.5,0.5,0.35)")
-check(bool(rt.eval("MBG_LEFT_OK")), "backdrop starts at the rows' right edge, on the content frame")
-check(bool(rt.eval("MBG_RIGHT_OK")), "backdrop stretches to the WINDOW's right edge (content is only as wide as the rows: anchoring there made it invisible)")
-check(bool(rt.eval("BP_W_BACK")), "window width returns to rows-only when collapsed")
-check(bool(rt.eval("MBG_HIDE0")), "backdrop hidden again when the matrix collapses")
+check(bool(rt.eval("BP_CLOSED")), "second click on 'Raid Buffs' hides the row icons/cells")
+check(bool(rt.eval("RB_SHOW")), "each PLAYER ROW gets its own gray backdrop strip while the matrix is on (not one window-sized panel)")
+check(bool(rt.eval("RB_FAKE")), "fake players' rows also get their per-row backdrop strip")
+rgba = rt.eval("RB_RGB0")
+check(abs(float(rt.eval("RB_RGB0[1]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[2]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[3]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[4]")) - 0.35) < 0.01, "row backdrop is a semi-transparent GRAY solid texture (0.5,0.5,0.5,0.35)")
+check(bool(rt.eval("RB_GEOM")), "row backdrop spans exactly the matrix columns of its own bar, height = row height")
+check(bool(rt.eval("BP_W_KEEP")), "the matrix column area stays reserved (header is permanent up there)")
+check(bool(rt.eval("RB_OFF")), "per-row backdrops are hidden when the matrix icons are off")
+check(bool(rt.eval("BP_HDR_PERM")), "HEADER IS PERMANENT: category titles stay visible INDEPENDENTLY of the 'Raid Buffs' button")
 
 # --- F.4 MT/OT assignment: SECURE macro buttons (SetPartyAssignment is PROTECTED) ---
 check(rt.eval("RLSuite.mainWindow.mtBtn:GetAttribute('type')") == 'macro', "MT button is a SECURE macro button (protected SetPartyAssignment never called)")

@@ -7,7 +7,30 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.7.3**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.8.0**.
+
+## Novità della sessione 1.8.0 (questo branch, dopo 1.7.3) — BACKDROP UNO PER RIGA + HEADER PERMANENTE FUORI DAL PANNELLO
+
+Richieste utente (esplicite e ripetute):
+1. **"backdrop UNO PER BARRA, non tutta la finestra"**: eliminato il rettangolo unico
+   matrixBg; ora OGNI riga occupata ha la propria striscia grigia semi-trasparente
+   dietro le icone (slot._matrixBg): x = bordo destro barre+2, altezza = rowHeight-2,
+   larghezza = colonne*cellW+6. Colore/alpha = opzione "Buff check backdrop".
+   La striscia esegue SetSize esplicito (mai doppi anchor su content: content e'
+   largo solo rowWidth — trappola che rendeva tutto invisibile al primo tentativo).
+2. **"TIRALA FUORI una volta per tutte: SEMPRE VISIBILE INDIPENDENTEMENTE dal tasto
+   Raid Buffs"**: la striscia coi 19 titoli di categoria e' ora PERMANENTE finche'
+   esiste un roster: LayoutMetrics riserva SEMPRE l'area matrice (W = righe+matrice),
+   ApplyLayout mostra SEMPRE le testate (rinominata headersOn = NON legata a
+   buffMatrixOn), RefreshBuffMatrix show condizione rows[1]. I bottoni restano figli
+   della window (fuori dal "pannello" content). IL TASTO "Raid Buffs" ORA ACCENDE/
+   SPENGE SOLO LE ICONE dei player (+ strisce di riga) — e' diventato un toggle
+   delle sole cellule.
+3. Test riscritti per la nuova semantica: RB_SHOW/FAKE/GEOM/RGB0/OFF/STILL,
+   BP_HDR_PERM (header visibili anche a matrice spenta), BP_W_KEEP (W sempre
+   riservata); aggiornato anche il check storico "width = rows only" (contraddiceva
+   il design permanente) -> "rows + permanent category-header area".
+451 check PASS.
 
 ## Novità della sessione 1.7.3 (questo branch, dopo 1.7.2) — BACKDROP VISIBILE + HEADER FUORI DAL PANNELLO SEMPRE
 
@@ -749,7 +772,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 450 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 451 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
