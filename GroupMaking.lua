@@ -178,6 +178,7 @@ function GM:CreateMainWindow()
         insets = {left=4, right=4, top=4, bottom=4}
     })
     f:Hide()
+    f._noOuterBorder = true
     self.mainFrame = f
     RLSuite.utils:SkinFrame(f)
     RLSuite.utils:ClampWindow(f)
@@ -1276,6 +1277,7 @@ function GM:CreateWhisplistWindow()
     -- Aperto a destra della finestra Groupmaking e ancorato ad essa: si
     -- sposta con lei e non e' trascinabile da solo.
     local f = CreateFrame("Frame", "RLSuiteInviteEngine", self.mainFrame)
+    f._noOuterBorder = true
     f:SetPoint("TOPLEFT", self.mainFrame, "TOPRIGHT", 6, 0)
     -- 6 colonne di gruppi (G1..G6) richiedono piu' larghezza della vecchia
     -- costola a 5 colonne.

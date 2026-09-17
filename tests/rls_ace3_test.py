@@ -576,6 +576,35 @@ check(RLS.macrobar is not None and RLS.macrobar.frame is not None, "MacroBar ini
 check(RLS.raidFrame is not None and RLS.raidFrame.frame is not None, "RaidFrame initialized")
 check(RLS.msManager is not None and RLS.msManager.frame is not None, "MSManager initialized")
 check(RLS.lootManager is not None and RLS.lootManager.frame is not None, "LootManager initialized")
+
+# --- 1.7.1: nessun bordo esterno su main bar / groupmaking / invite / ms / loot ---
+rt.execute("""
+if not RLSuite.groupmaking.whisplistFrame then
+    RLSuite.groupmaking:CreateWhisplistWindow()
+end
+-- ri-skin da boot/theme: il bordo deve restare ASSENTE sulle 5 finestre
+RLSuite.utils:SkinFrame(RLSuite.mainWindow.frame)
+RLSuite.utils:SkinFrame(RLSuite.groupmaking.mainFrame)
+RLSuite.utils:SkinFrame(RLSuite.groupmaking.whisplistFrame)
+RLSuite.utils:SkinFrame(RLSuite.msManager.frame)
+RLSuite.utils:SkinFrame(RLSuite.lootManager.frame)
+local function noBord(f) return f and f._noOuterBorder == true and f._backdropBorderColor ~= nil and (f._backdropBorderColor[4] or 1) == 0 end
+BORD_MAIN = noBord(RLSuite.mainWindow.frame)
+BORD_GM = noBord(RLSuite.groupmaking.mainFrame)
+BORD_IE = noBord(RLSuite.groupmaking.whisplistFrame)
+BORD_MS = noBord(RLSuite.msManager.frame)
+BORD_LM = noBord(RLSuite.lootManager.frame)
+-- controllo: una finestra NON marcata mantiene il bordo temico pieno
+BORD_CTRL_F = CreateFrame("Frame", nil, UIParent)
+RLSuite.utils:SkinFrame(BORD_CTRL_F)
+BORD_KEEP = (BORD_CTRL_F._backdropBorderColor ~= nil and (BORD_CTRL_F._backdropBorderColor[4] or 0) == 1)
+""")
+check(bool(rt.eval("BORD_MAIN")), "Main bar: no outer dialog border")
+check(bool(rt.eval("BORD_GM")), "Groupmaking: no outer dialog border")
+check(bool(rt.eval("BORD_IE")), "Invite engine: no outer dialog border")
+check(bool(rt.eval("BORD_MS")), "MS Manager: no outer dialog border")
+check(bool(rt.eval("BORD_LM")), "Loot Manager: no outer dialog border")
+check(bool(rt.eval("BORD_KEEP")), "unmarked windows still keep the themed border (SkinFrame unchanged for them)")
 check(RLS.config is not None and RLS.config.window is not None, "Config initialized (Ace3 window)")
 check(RLS.mainWindow is not None and RLS.mainWindow.frame is not None, "MainWindow initialized")
 

@@ -7,7 +7,20 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.7.0**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.7.1**.
+
+## Novità della sessione 1.7.1 (questo branch, dopo 1.7.0) — NIENTE BORDO ESTERNO SUI DIALOG PRINCIPALI
+
+Richiesta utente: togliere il bordo del dialog (Tooltip-Border) dalle finestre
+Main bar, Groupmaking, Invite engine, MS Manager, Loot Manager.
+Implementazione: le finestre portano il flag `f._noOuterBorder = true` (setto
+SUL FRAME, cosi' ogni re-skin da theme/ApplyAll resta consistente);
+`Utils:SkinFrame` chiama `SetBackdropBorderColor(0,0,0,0)` se il flag e' attivo,
+altrimenti mantiene il bordo temico. Fill invariato.
+Punti: RaidProfile frame (main bar), GroupMaking mainFrame, whisplistFrame
+(= RLSuiteInviteEngine, ancorata a Groupmaking), MSManager.frame,
+LootManager.frame. LE TRADE WINDOW del Loot Manager restano CON bordo (non richieste).
+445 check PASS (5 finestre senza bordo + controllo: finestre non marcate invariato).
 
 ## Novità della sessione 1.7.0 (questo branch, dopo 1.6.3) — 5 OPZIONI LAYOUT + HEADER MATRICE 45°/HOVER/CLICK
 
@@ -700,7 +713,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 439 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 445 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

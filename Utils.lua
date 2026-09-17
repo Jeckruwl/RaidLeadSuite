@@ -372,7 +372,14 @@ function Utils:SkinFrame(f)
     end
     f:SetBackdrop(self:WindowBackdrop(f))
     f:SetBackdropColor(c.fill[1], c.fill[2], c.fill[3], 1)
-    f:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
+    -- Le finestre marcate _noOuterBorder (main bar, Groupmaking, Invite
+    -- engine, MS Manager, Loot Manager) non hanno il bordo esterno del
+    -- dialog: il riempimento resta, il Tooltip-Border diventa invisibile.
+    if f._noOuterBorder then
+        f:SetBackdropBorderColor(0, 0, 0, 0)
+    else
+        f:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
+    end
 end
 
 function Utils:AllWindows()

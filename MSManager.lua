@@ -41,6 +41,7 @@ function MSM:CreateFrame()
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     f:Hide()
+    f._noOuterBorder = true
     self.frame = f
     RLSuite.utils:SkinFrame(f)
     RLSuite.utils:ClampWindow(f)
