@@ -79,7 +79,7 @@ local RF_TANK_COUNT = 2     -- Tanks group sopra G1: barra MT + barra OT
 local RF_BP_NAME_W = 84     -- colonna nome (class color)
 local RF_BP_CELL_W = 24      -- passo colonne DEFAULT (iconSize + iconSpacing)
 local RF_BP_HEADER_H = 16  -- non piu' usato: l'header 45° usa RF_MATRIX_HDR_H
-local RF_MATRIX_HDR_H = 80 -- riga intestazione ALTA: testi inclinati 45° leggibili
+local RF_MATRIX_HDR_H = 80 -- DEPRECATA (era la strip dei testi a 45°): ora l'altezza della testata-icone = cellW + 4
 -- Ordine di IMPORTANZA delle colonne della matrice (i buff piu' importanti
 -- a sinistra): benedizioni/stats e stamina prima, utility e % danno dopo.
 local RF_BP_PRIORITY = {
@@ -1519,17 +1519,22 @@ function RF:ApplyLayout()
     local headersOn = self.rows and self.rows[1] ~= nil
     local mCols = headersOn and self:_MatrixCols() or nil
     if headersOn then
+        -- Testata a ICONE (BCI_<c-1>.tga): strip sottile alta cellW+4 px sopra
+        -- le colonne, allineata 1:1 col passo delle colonne.
         for c, col in ipairs(mCols) do
             local btn = self:_MatrixHeaderBtn(c)
             btn._col = col
-            btn._label:SetText(col.label or col.key or "")
+            btn._icon:SetTexture(self:_BuffCatIconPath(c))
+            btn._icon:ClearAllPoints()
+            btn._icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+            btn._icon:SetSize(m.cellW, m.cellW) -- size = iconSize + iconSpacing, FISSO
             btn:ClearAllPoints()
             btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
                 m.rowWidth + 4 + (c - 1) * m.cellW, -1)
-            btn:SetSize(m.cellW, RF_MATRIX_HDR_H)
+            btn:SetSize(m.cellW, m.cellW + 4)
             btn:Show() -- SEMPRE VISIBILE: mai nascosta finche' c'e' un roster
         end
-        y = y - RF_MATRIX_HDR_H
+        y = y - (m.cellW + 4)
     end
 
     -- Font size configurabile delle intestazioni di gruppo (G1..G6, Tanks).
@@ -1664,42 +1669,36 @@ function RF:_MatrixCols()
     return out
 end
 
--- Intestazione matrice: UN BOTTONE per colonna (cliccabile) con il nome
--- sintetico inclinato di 45° (leggibile anche con colonne strette); hover
--- accende il testo, click = raid warning per quella categoria.
+-- Intestazione matrice: UN BOTTONE per colonna con l'ICONA della categoria
+-- (Media/BUFFCATICONS/BCI_<col-1>.tga, ordine = colonne da sinistra a
+-- destra, size = iconSize raid frame + icon spacing = passo colonna).
+-- Hover: l'icona si accende; click: raid warning per quella categoria.
+function RF:_BuffCatIconPath(c)
+    return RLSuite:AddonTexture("media\\BUFFCATICONS\\BCI_" .. (c - 1) .. ".tga")
+end
 function RF:_MatrixHeaderBtn(c)
     self._buffHdrBtns = self._buffHdrBtns or {}
     local btn = self._buffHdrBtns[c]
     if not btn then
-        -- TIRATI FUORI DAL PANNELLO: figli della WINDOW, non di content, cosi'
-        -- _LayoutContent/parti che riposizionano/nascondono le righe non li
-        -- toccano mai: la riga d'intestazione resta SEMPRE visibile.
+        -- TIRATI FUORI DAL PANNELLO: figli della WINDOW, non di content: la
+        -- riga d'intestazione resta SEMPRE visibile, per sempre.
         btn = CreateFrame("Button", nil, self.frame)
-        local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetJustifyH("LEFT")
-        fs:SetTextColor(1, 0.82, 0)
-        -- Il testo sale verso destra di 45°: ruota attorno al proprio centro.
-        -- ATTENZIONE: FontString:SetRotation NON esiste sul client 3.3.5
-        -- base (solo esteso/Ascension): se manca NON chiamarla, altrimenti
-        -- l'errore Lua rompe TUTTO ApplyLayout (gruppi, overlay, matrice).
-        if fs.SetRotation then
-            fs:SetRotation(math.rad(45))
-            fs:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 5, 2)
-            btn._rotatedLabel = true
-        else
-            -- Fallback client stock: orizzontale, clip alla larghezza utile
-            -- della testata bassa cosi' non si accavalla alle colonne vicine.
-            fs:SetWidth(RF_MATRIX_HDR_H - 10)
-            fs:SetWordWrap(false)
-            fs:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 2, 2)
-            btn._rotatedLabel = false
-        end
-        btn._label = fs
+        local tex = btn:CreateTexture(nil, "OVERLAY")
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        tex:SetPoint("CENTER", btn, "CENTER", 0, 0)
+        tex:SetVertexColor(0.8, 0.8, 0.8) -- "spento"; hover accende a piena luce
+        btn._icon = tex
         btn:SetScript("OnEnter", function(s)
-            s._label:SetTextColor(1, 1, 1) -- testo "illuminato" in hover
+            if s._icon then s._icon:SetVertexColor(1, 1, 1) end
+            if GameTooltip and GameTooltip.SetOwner and s._col then
+                GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+                GameTooltip:SetText(s._col.label or s._col.key or "")
+                GameTooltip:Show()
+            end
         end)
         btn:SetScript("OnLeave", function(s)
-            s._label:SetTextColor(1, 0.82, 0)
+            if s._icon then s._icon:SetVertexColor(0.8, 0.8, 0.8) end
+            if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
         end)
         btn:RegisterForClicks("LeftButtonUp")
         btn:SetScript("OnClick", function(s)

@@ -129,7 +129,7 @@ function methods:SetAllPoints(...) return self end
 function methods:SetTexCoord(...) return self end
 function methods:SetTexture(a, b, c, d) self._texture = a; if b ~= nil then self._texRGBA = {a, b, c, d} else self._texRGBA = nil end; return self end
 function methods:SetBlendMode(...) return self end
-function methods:SetVertexColor(...) return self end
+function methods:SetVertexColor(...) self._vertex = {...} return self end
 function methods:SetColorTexture(...) return self end
 function methods:SetHitRectInsets(...) return self end
 function methods:SetID(...) return self end
@@ -1448,9 +1448,13 @@ local cols = RLSuite.raidFrame:_MatrixCols()
 BP_PRIO1 = (cols[1].key == 'stats')
 NC = #cols
 BP_PRIOLAST = (cols[NC].key == 'retAura')
-BP_HDR1 = (RLSuite.raidFrame._buffHdrBtns[1]._label:GetText() == cols[1].label and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true)
-BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[NC]._label:GetText() == cols[NC].label)
-BP_HDR_ROT = (math.abs((RLSuite.raidFrame._buffHdrBtns[1]._label._rotation or 0) - math.rad(45)) < 0.001 and RLSuite.raidFrame._buffHdrBtns[1]._rotatedLabel == true)
+BP_HDR1 = (RLSuite.raidFrame._buffHdrBtns[1]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true
+    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture ~= nil and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BUFFCATICONS', 1, true) ~= nil
+    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BCI_0.tga', 1, true) ~= nil)
+BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[NC]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture ~= nil
+    and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture:find('BCI_' .. (NC - 1) .. '.tga', 1, true) ~= nil)
+BP_HDR_ICONSZ = (RLSuite.raidFrame._buffHdrBtns[1]._icon._w == (RLSuite.raidFrame:LayoutMetrics().iconSize + RLSuite.raidFrame:LayoutMetrics().iconSpacing)
+    and RLSuite.raidFrame._buffHdrBtns[1]._icon._h == (RLSuite.raidFrame:LayoutMetrics().iconSize + RLSuite.raidFrame:LayoutMetrics().iconSpacing))
 BP_HDR_H = (RLSuite.raidFrame._buffHdrBtns[1].height == 80 or (RLSuite.raidFrame._buffHdrBtns[1]._h == 80) or true)
 local hb1 = RLSuite.raidFrame._buffHdrBtns[1]
 local hbpt = hb1._points[#hb1._points]
@@ -1460,7 +1464,7 @@ for c = 1, NC do
     local b = RLSuite.raidFrame._buffHdrBtns[c]
     BP_HDR_OUT = BP_HDR_OUT and (b:GetParent() == RLSuite.raidFrame.frame) and (b:IsShown() == true)
 end
-BP_TANK_UNDER = (math.abs((RLSuite.raidFrame.tankHeader._points[#RLSuite.raidFrame.tankHeader._points][5] or 0) + 80) < 0.001)
+BP_TANK_UNDER = (math.abs((RLSuite.raidFrame.tankHeader._points[#RLSuite.raidFrame.tankHeader._points][5] or 0) + (24 + 4)) < 0.001)
 -- REGRESSIONE 1.7.2: un errore nella costruzione dell'intestazione 45°
 -- interrompeva ApplyLayout a meta': i gruppi vuoti non venivano piu' packati,
 -- l'overlay dorato/UpdateAll non partiva, le celle matrice restavano vuote e
@@ -1496,8 +1500,8 @@ RB_RGB0 = BP_PSLOT._matrixBg and BP_PSLOT._matrixBg._texRGBA
 check(bool(rt.eval("BP_ON")), "click on 'Raid Buffs' activates the matrix")
 check(bool(rt.eval("BP_PRIO1")), "most important buffs first: column 1 is the Kings/stats column")
 check(bool(rt.eval("BP_PRIOLAST")), "least priority last: retribution-aura column closes the row")
-check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "header row carries the short category names (ALL 25 columns)")
-check(bool(rt.eval("BP_HDR_ROT")), "category titles are rotated 45 degrees so they stay readable on narrow columns")
+check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "column headers are ICONS: BCI_0.tga for the leftmost column ... BCI_<NC-1>.tga for the last, in order")
+check(bool(rt.eval("BP_HDR_ICONSZ")), "header icons are square with fixed size = iconSize + iconSpacing (the column pitch)")
 check(bool(rt.eval("BP_HDR_TOP")), "category header row sits at the very TOP of the raid frame")
 check(bool(rt.eval("BP_LAYOUT_DONE")), "matrix header build can never abort ApplyLayout half-way: whole layout completes (groups + backdrop + cells)")
 check(bool(rt.eval("BP_HDR_OUT")), "category header buttons live OUTSIDE the panel (children of the window) and STAY visible with the matrix open")
@@ -1508,9 +1512,10 @@ check(bool(rt.eval("BP_CELL_ON_ROW") and bool(rt.eval("BP_CELL_SIDE"))), "catego
 rt.execute("""
 local hb = RLSuite.raidFrame._buffHdrBtns[1]
 hb._scripts.OnEnter(hb)
-BP_HOVER_ON = (hb._label._tc[1] == 1 and hb._label._tc[2] == 1 and hb._label._tc[3] == 1)
+BP_HOVER_ON = (hb._icon._vertex ~= nil and hb._icon._vertex[1] == 1 and hb._icon._vertex[2] == 1 and hb._icon._vertex[3] == 1)
+BP_HOVER_TIP = (GameTooltip._text == RLSuite.raidFrame._buffHdrBtns[1]._col.label)
 hb._scripts.OnLeave(hb)
-BP_HOVER_OFF = (hb._label._tc[2] == 0.82)
+BP_HOVER_OFF = (hb._icon._vertex[1] == 0.8 and hb._icon._vertex[2] == 0.8)
 local n0 = #CHAT_LOG
 hb._scripts.OnClick(hb)
 BP_WARN = false
@@ -1518,8 +1523,9 @@ for i = n0 + 1, #CHAT_LOG do
     if CHAT_LOG[i]:find('RAID_WARNING', 1, true) and CHAT_LOG[i]:find('%stat', 1, true) then BP_WARN = true end
 end
 """)
-check(bool(rt.eval("BP_HOVER_ON")), "hovering a category title lights up its text (white)")
-check(bool(rt.eval("BP_HOVER_OFF")), "hover-exit restores the gold category text")
+check(bool(rt.eval("BP_HOVER_ON")), "hovering a category icon lights it up (full brightness)")
+check(bool(rt.eval("BP_HOVER_OFF")), "hover-exit dims the icon again")
+check(bool(rt.eval("BP_HOVER_TIP")), "hovering a category icon shows its name in the tooltip")
 check(bool(rt.eval("BP_WARN")), "clicking a category title sends a RAID WARNING for that category")
 rt.execute("""
 SAVED_UB2 = UnitBuff

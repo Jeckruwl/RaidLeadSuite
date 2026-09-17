@@ -7,7 +7,29 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.0**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.1**.
+
+## Novità della sessione 1.9.1 (questo branch, dopo 1.9.0) — HEADER COLONNE A ICONE (Media/BUFFCATICONS)
+
+Richiesta utente: le intestazioni delle colonne della matrice non sono piu'
+TESTI ma ICONE from `media/BUFFCATICONS/BCI_<i>.tga`.
+- Indice: colonna c (sinistra->destra, stesso ordine attuale) usa BCI_(c-1).tga
+  (BCI_0 = Kings/stats, ..., BCI_24 = retAura). Path via RLSuite:AddonTexture.
+- **Size fissa = iconSize raid frame + icon spacing** (= passo colonna cellW):
+  _icon:SetSize(m.cellW, m.cellW), quadrata, centrata nel bottone.
+- Strip header snellita: altezza = cellW + 4 px (da 80 dei testi 45° — Título
+  ruotati RIMOSSI DEFINITIVAMENTE; tankHeader y passa da -80 a -(cellW+4)).
+- Bottone identico di logica: permanente (headersOn indipendente dal toggle),
+  figlio della WINDOW, hover = l'icona si accende (vertex 0.8 -> 1.0) + TOOLTIP
+  col nome categoria, click = raid warning categoria (inessato).
+- `SetVertexColor` ora registrata nei mock (_vertex); GameTooltip:SetText testato.
+- ATTENZIONE: cartella utente contiene 24 icone (BCI_0..BCI_24) ma **manca
+  BCI_16.tga** (colonna 17 = focusMagic): a runtime quella testata risultera'
+  vuota -> aggiungere il file mancante lato utente.
+- NOTE DI SESSIONE: branch locale riavvolto a 36cdbac dall'ambiente, remoto
+  al commit utente 277893d "Add files via upload" (icone). Recuperato con
+  checkout FETCH_HEAD media + reset --soft + add -A (albero identico, pulito).
+  459 check PASS.
 
 ## Novità della sessione 1.9.0 (questo branch, dopo 1.8.0) — CATEGORIE BUFF ALLINEATE A ICY VEINS WOTLK GUIDE
 
@@ -802,7 +824,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 458 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 459 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
