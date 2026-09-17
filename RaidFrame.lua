@@ -311,7 +311,7 @@ function RF:LayoutMetrics()
     local db = self.db or {}
     local app = db.appearance or {}
     local iconSize = app.iconSize or 16
-    local barHeight = app.barHeight or 20
+    local barHeight = iconSize -- barre: altezza AUTOMATICA = icon size (non piu' configurabile)
     local barWidth = app.barWidth or 180
     local nameFontSize = app.nameFontSize or 11
     -- Spacing configurabili (Config -> Raid Frame -> Layout)

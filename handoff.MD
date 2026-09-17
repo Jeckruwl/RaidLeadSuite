@@ -7,7 +7,16 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.6**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.9.7**.
+
+## Novità della sessione 1.9.7 (questo branch, dopo 1.9.6) — spacing negativo + barre automatiche
+
+- **Row spacing**: slider Config -> Raid Frame -> Layout ora scende a **-10**
+  (prima min 0): le barre dei player possono sovrapporsi dentro il gruppo.
+- **Player bar height**: opzione RIMOSSA; l'altezza delle barre e' AUTOMATICA
+  = `iconSize` (`LayoutMetrics.barHeight = iconSize`). Default `barHeight=20`
+  tolto anche dai defaults DB (valore legacy nei profili esistenti ignorato).
+464 check PASS (+2 nuovi check: opzione rimossa + barHeight==iconSize + min -10).
 
 ## Novità della sessione 1.9.6 (questo branch, dopo 1.9.5) — icone a altezza G1 + backdrop strip
 
@@ -934,7 +943,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 462 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 464 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

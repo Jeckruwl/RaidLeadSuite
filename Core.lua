@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.9.6"
+RLSuite.version = "1.9.7"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -92,7 +92,6 @@ local defaults = {
             y = 0,
             alpha = 1.0,            -- overall HUD transparency
             appearance = {
-                barHeight = 20,
                 barWidth = 180,
                 iconSize = 16,
                 nameFontSize = 11,
