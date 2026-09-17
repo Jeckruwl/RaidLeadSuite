@@ -197,11 +197,31 @@ function MW:CreateFrame()
                     roleCmd == "maintank" and "Main Tank" or "Main Assist"))
                 return
             end
+            local name = UnitName and UnitName("target")
+            -- DEBUG: invece della macro (fallirebbe su player fittizi), i
+            -- tasti MT/OT toccano lo store simulato debugTanks -> le barre
+            -- Tanks del Raid Frame si riempiono anche coi fake.
+            if RLSuite.DebugMode and RLSuite:DebugMode() then
+                if name and name ~= "" then
+                    RLSuite.debugTanks = RLSuite.debugTanks or {}
+                    local key = (roleCmd == "maintank") and "mt" or "ot"
+                    local cur = RLSuite.debugTanks[key]
+                    if cur == name then
+                        RLSuite.debugTanks[key] = false -- svuotato intenzionalmente: niente auto-refill
+                    else
+                        RLSuite.debugTanks[key] = name
+                    end
+                    RLSuite.utils:Print(string.format(L["%s toggled as %s."], name,
+                        roleCmd == "maintank" and L["Main tank"] or L["Main assist"]))
+                    local rf = RLSuite.raidFrame
+                    if rf and rf.Rebuild then rf:Rebuild() end
+                end
+                return
+            end
             if RLSuite.IsOfficer and not RLSuite:IsOfficer() then
                 RLSuite.utils:Print(L["Only the raid leader or an assist can assign Main Tank / Main Assist."])
                 return
             end
-            local name = UnitName and UnitName("target")
             if name and name ~= "" then
                 s:SetAttribute("macrotext", "/" .. roleCmd .. " " .. name)
             end

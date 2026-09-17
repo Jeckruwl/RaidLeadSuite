@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.6.1"
+RLSuite.version = "1.6.2"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -1258,6 +1258,8 @@ function RLSuite:ApplyDebugMode()
     -- The simulated roster always restarts from just the player when debug
     -- mode is toggled, so stale fake members never leak between sessions.
     self.debugRaid = nil
+    self.debugTanks = nil   -- assegnazioni MT/OT simulate (debug)
+    self.debugBuffs = nil   -- aure simulati dei fake (debug)
     if self:DebugMode() then
         self.utils:Print("|cffff9900" .. L["DEBUG MODE ON"] .. "|r - " .. L["Simulated raid, messages are whispered to you."])
         if self.lootManager and self.lootManager.SpawnDebugLoot then

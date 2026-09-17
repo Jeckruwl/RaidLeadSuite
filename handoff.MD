@@ -7,7 +7,31 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.6.1**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.6.2**.
+
+## Novità della sessione 1.6.2 (questo branch, dopo 1.6.1) — DEBUG: MT/OT FITTIZI + BUFF CASUALI AGLI INVITATI
+
+Perché in debug non si vedeva nulla: le barre Tanks restavano vuote (GetPartyAssignment
+non risponde per i fake) e la matrice buff era tutta vuota (i fake non hanno aure).
+
+1. **MT/OT fittizi in debug** (`RF:RebuildTanks` → branch `RLSuite:DebugMode()`):
+   store `RLSuite.debugTanks = { mt, ot }`. Semantica: `nil` = mai toccato → AUTO-FILL
+   (MT = primo del roster, OT = primo diverso → barre SEMPRE piene in debug);
+   `string` = assegnato; `false` = svuotato INTENZIONALMENTE dall'utente (no auto-refill).
+   Nome sparito dal roster → torna nil (auto). Real raid invariato (GetPartyAssignment).
+2. **Tasti MT/OT in debug** (PreClick dei secure button): in DebugMode scrivono
+   debugTanks invece di comporre la macro (fallirebbe sui fake) + `raidFrame:Rebuild()`
+   + print di conferma. In raid reale: secure macro invariata. In F.4/G-MT lo stage
+   secure gira con `RLSuite.DebugMode` temporaneamente off (mock).
+3. **Gli invitati ricevono buff casuali** (`RF:_DebugMemberBuffSet(nome)`): set di
+   spellId STABILE in sessione (seme LCG dal nome), ~55% per categoria, spell scelta a
+   caso tra quelle della colonna → la matrice si popola in debug senza flicker.
+   `_BuffCellIconFor(member, col)` instrada: fake+debug → set simulato; altrimenti →
+   scan aure reale UnitBuff (player incluso). Le ICONE consumabili per-riga sui fake
+   restano "missing" come sempre (clickabili per testare whisper/warning).
+4. `ApplyDebugMode` azzera `debugRaid` + `debugTanks` + `debugBuffs` (niente leak tra sessioni).
+5. **418 check PASS** (tank auto-fill/override/clear-persistent, buff casuali stabili
+   sulla riga dei fake, secure-button MT/OT invariati fuori debug).
 
 ## Novità della sessione 1.6.1 (questo branch, dopo 1.6.0) — FIX FUNZIONI PROTETTE + MATRICE RAID BUFFS INTEGRATA
 
@@ -635,7 +659,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 415 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 418 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

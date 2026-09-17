@@ -892,7 +892,38 @@ function RF:RebuildTanks()
     if not self.tankHeader then return end
     local active = self.rows and self.rows[1] ~= nil
     local mtInfo, otInfo
-    if active and GetPartyAssignment then
+    if active and RLSuite.DebugMode and RLSuite:DebugMode() then
+        -- DEBUG: MT/OT devono funzionare anche coi player FITTIZI (le
+        -- assegnazioni Blizzard non esistono per i fake). Store RLSuite.debugTanks:
+        --   nil   => mai toccato: auto-fill (MT = primo del roster, OT = primo diverso)
+        --   nome  => assegnato manualmente (tasti MT/OT) o auto-fill mantenuto
+        --   false => svuotato intenzionalmente dall'utente (NESSUN auto-refill)
+        local roster = self:GetRoster()
+        local exists = {}
+        for _, info in ipairs(roster) do
+            exists[info.name or "?"] = info
+        end
+        local dt = RLSuite.debugTanks
+        if not dt then
+            dt = {}
+            RLSuite.debugTanks = dt
+        end
+        for _, k in ipairs({ "mt", "ot" }) do
+            -- un assegnato sparito dal roster torna ad auto-fill (nil)
+            if type(dt[k]) == "string" and not exists[dt[k]] then dt[k] = nil end
+        end
+        if dt.mt == nil and roster[1] then dt.mt = roster[1].name end
+        if dt.ot == nil then
+            for _, info in ipairs(roster) do
+                if info.name ~= dt.mt then
+                    dt.ot = info.name
+                    break
+                end
+            end
+        end
+        mtInfo = (type(dt.mt) == "string") and exists[dt.mt] or nil
+        otInfo = (type(dt.ot) == "string") and exists[dt.ot] or nil
+    elseif active and GetPartyAssignment then
         for _, info in ipairs(self:GetRoster()) do
             local key = info.unit or info.name
             if key then
@@ -1637,8 +1668,8 @@ function RF:RefreshBuffMatrix()
         for c = 1, #(slot._buffCells or {}) do
             local tex = slot._buffCells[c]
             local icon
-            if on and slot:IsShown() and slot.member and slot.member.unit and cols and cols[c] then
-                icon = self:_BuffCellIcon(slot.member.unit, cols[c])
+            if on and slot:IsShown() and slot.member and cols and cols[c] then
+                icon = self:_BuffCellIconFor(slot.member, cols[c])
             end
             if icon then
                 tex:SetTexture(icon)
@@ -1666,6 +1697,50 @@ function RF:_BuffColSet(col)
         end
     end
     return col._set
+end
+
+-- DEBUG: aure simulati dei player FITTIZI (le persone invitate "ricevono
+-- buff casuali"). Set stabile in sessione: seme dal nome (LCG), per OGNI
+-- categoria ~55% di possibilita' di averne uno, spell scelta a caso.
+function RF:_DebugMemberBuffSet(name)
+    if not (RLSuite.DebugMode and RLSuite:DebugMode()) or not name then return {} end
+    RLSuite.debugBuffs = RLSuite.debugBuffs or {}
+    local set = RLSuite.debugBuffs[name]
+    if set then return set end
+    set = {}
+    local seed = 0
+    for i = 1, #name do
+        seed = (seed * 31 + name:byte(i)) % 2147483647
+    end
+    local function rnd()
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        return seed / 2147483648
+    end
+    for _, col in ipairs(RLSuite.raidBuffColumns or {}) do
+        local sp = col.spells
+        if sp and #sp > 0 and rnd() < 0.55 then
+            set[sp[math.floor(rnd() * #sp) + 1]] = true
+        end
+    end
+    RLSuite.debugBuffs[name] = set
+    return set
+end
+
+-- Icona della cella per un MEMBER: fake in debug -> set simulato (per
+-- spellId, tessera della spell reale); altrimenti -> scan aure reale.
+function RF:_BuffCellIconFor(member, col)
+    if not (member and col) then return nil end
+    if member.fake and RLSuite.DebugMode and RLSuite:DebugMode() then
+        local set = self:_DebugMemberBuffSet(member.name)
+        for _, id in ipairs(col.spells or {}) do
+            if set[id] then
+                local tex = GetSpellTexture and GetSpellTexture(id)
+                return tex or col.icon, id
+            end
+        end
+        return nil
+    end
+    return self:_BuffCellIcon(member.unit, col)
 end
 
 -- Icona del buff ATTIVO del player che copre la categoria (nil se nessuno).

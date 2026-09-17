@@ -1342,22 +1342,24 @@ check(rt.eval("RLSuite.raidFrame.tankHeader:GetText()") == "Tanks", "Tanks group
 check(bool(rt.eval("RLSuite.raidFrame.tankHeader:IsShown() == true")), "Tanks group visible when there is a raid roster")
 check(bool(rt.eval("RLSuite.raidFrame.tankSlots[1].flaskIcon == nil and RLSuite.raidFrame.tankSlots[1].foodIcon == nil")), "tank bars have NO flask/food icons")
 check(rt.eval("RLSuite.raidFrame.tankSlots[1].tankTag:GetText()") == "MT" and rt.eval("RLSuite.raidFrame.tankSlots[2].tankTag:GetText()") == "OT", "MT and OT labels replace the consumable icons beside the bars")
-check(bool(rt.eval("RLSuite.raidFrame.tankSlots[1]:IsShown() == true and RLSuite.raidFrame.tankSlots[1].member == nil")), "unassigned: both tank bars visible as empty placeholders")
+check(rt.eval("RLSuite.raidFrame.tankSlots[1].member.name") == "Testplayer", "debug: MT bar auto-fills with the first fake-roster player (fake members work as tanks)")
+check(rt.eval("RLSuite.raidFrame.tankSlots[2].member.name") == "F1", "debug: OT bar auto-fills with the next fake-roster player")
 rt.execute("""
-SAVED_GPA = GetPartyAssignment
-GetPartyAssignment = function(role, key)
-    if role == 'MAINTANK' and key == 'player' then return true end
-    if role == 'MAINASSIST' and key == 'F3' then return true end
-    return nil
-end
+SAVED_DT = RLSuite.debugTanks
+RLSuite.debugTanks = { mt = 'F2', ot = 'F4' }
 RLSuite.raidFrame:Rebuild()
-TANK_MT = (RLSuite.raidFrame.tankSlots[1].member ~= nil and RLSuite.raidFrame.tankSlots[1].member.name == 'Testplayer')
-TANK_OT = (RLSuite.raidFrame.tankSlots[2].member ~= nil and RLSuite.raidFrame.tankSlots[2].member.name == 'F3')
-GetPartyAssignment = SAVED_GPA
+TANK_MAN_MT = (RLSuite.raidFrame.tankSlots[1].member.name == 'F2')
+TANK_MAN_OT = (RLSuite.raidFrame.tankSlots[2].member.name == 'F4')
+RLSuite.debugTanks = { mt = false, ot = false }   -- svuotato INTENZIONALMENTE
 RLSuite.raidFrame:Rebuild()
+TANK_CLEAR_STAYS = (RLSuite.raidFrame.tankSlots[1].member == nil and RLSuite.raidFrame.tankSlots[1]:IsShown() == true)
+RLSuite.debugTanks = SAVED_DT
+RLSuite.raidFrame:Rebuild()
+TANK_BACK = (RLSuite.raidFrame.tankSlots[1].member.name == 'Testplayer' or (SAVED_DT and RLSuite.raidFrame.tankSlots[1].member.name == SAVED_DT.mt))
 """)
-check(bool(rt.eval("TANK_MT")), "main tank bar filled from GetPartyAssignment MAINTANK")
-check(bool(rt.eval("TANK_OT")), "second bar filled from GetPartyAssignment MAINASSIST (the OT)")
+check(bool(rt.eval("TANK_MAN_MT") and bool(rt.eval("TANK_MAN_OT"))), "debug: manual MT/OT assignment (via the MT/OT buttons' debug store) overrides the auto-fill")
+check(bool(rt.eval("TANK_CLEAR_STAYS")), "debug: an intentionally cleared tank bar stays empty and visible (no auto-refill)")
+check(bool(rt.eval("TANK_BACK")), "debug tank assignments restored")
 check(bool(rt.eval("#RLSuite.raidFrame.rows == 6")), "group rows unaffected by the Tanks group (a tank appears in BOTH places)")
 
 # Raid Buffs matrix panel (Method style)
@@ -1406,7 +1408,28 @@ end
 RLSuite.raidFrame:RefreshBuffMatrix()
 BP_MATCH = (BP_PSLOT._buffCells[10]._texture == 'Tex:57330' and BP_PSLOT._buffCells[10]:IsShown() == true)
 BP_MISS = (BP_PSLOT._buffCells[1]:IsShown() == false)
-BP_FAKE_EMPTY = (BP_FSLOT._buffCells[10] == nil or BP_FSLOT._buffCells[10]:IsShown() == false)
+-- i fake ricevono buff CASUALI (set stabile in sessione): la loro riga deve
+-- mostrare almeno qualche icona, e un secondo refresh non la cambia
+BP_FNAME = BP_FSLOT.member and BP_FSLOT.member.name or '?'
+local shown1 = {}
+local count1 = 0
+for c = 1, 19 do
+    local tc = BP_FSLOT._buffCells[c]
+    if tc and tc:IsShown() then
+        shown1[c] = tc._texture or '?'
+        count1 = count1 + 1
+    end
+end
+RLSuite.raidFrame:RefreshBuffMatrix()
+local same = true
+for c = 1, 19 do
+    local tc = BP_FSLOT._buffCells[c]
+    if (tc and tc:IsShown() and shown1[c] ~= tc._texture) or ((not tc or not tc:IsShown()) and shown1[c] ~= nil) then
+        same = false
+    end
+end
+BP_FAKE_SOME = (count1 >= 1)
+BP_FAKE_STABLE = same
 UnitBuff = SAVED_UB2
 GetSpellInfo = SAVED_GSI2
 RLSuite.raidFrame:RefreshBuffMatrix()
@@ -1414,7 +1437,8 @@ BP_AFTER = (BP_PSLOT._buffCells[10]:IsShown() == false)
 """)
 check(bool(rt.eval("BP_MATCH")), "cell on the player's row shows the icon of the ACTIVE buff covering that category")
 check(bool(rt.eval("BP_MISS")), "missing category leaves the player's cell empty")
-check(bool(rt.eval("BP_FAKE_EMPTY")), "unit-less debug rows render empty cells, no errors")
+check(bool(rt.eval("BP_FAKE_SOME")), "invited (fake) players receive random buffs: their matrix row shows some category icons")
+check(bool(rt.eval("BP_FAKE_STABLE")), "debug random buff sets are stable across refreshes (no flicker)")
 check(bool(rt.eval("BP_AFTER")), "buffs gone -> icons gone (matrix tracks live auras)")
 rt.execute("""
 RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
@@ -1429,6 +1453,8 @@ check(bool(rt.eval("BP_W_BACK")), "window width returns to rows-only when collap
 check(rt.eval("RLSuite.mainWindow.mtBtn:GetAttribute('type')") == 'macro', "MT button is a SECURE macro button (protected SetPartyAssignment never called)")
 check(bool(rt.eval("RLSuite.mainWindow.mtBtn._clickButtons ~= nil and RLSuite.mainWindow.mtBtn._clickButtons[1] == 'LeftButtonDown'")), "MT/OT secure buttons act on press")
 rt.execute("""
+SAVED_DM_P = RLSuite.DebugMode
+RLSuite.DebugMode = function() return false end  -- secure path = raid reale per questo stage
 local mt, ot = RLSuite.mainWindow.mtBtn, RLSuite.mainWindow.otBtn
 SAVED_UE_P = UnitExists
 SAVED_UN_P = UnitName
@@ -1456,6 +1482,7 @@ InCombatLockdown = SAVED_ICL_P
 RLSuite.IsOfficer = SAVED_ISO_P
 UnitExists = SAVED_UE_P
 UnitName = SAVED_UN_P
+RLSuite.DebugMode = SAVED_DM_P
 """)
 check(bool(rt.eval("RP_MT == '' and RP_MT_CLEAN == ''")), "macrotext empty before click and cleared after (no stale secure actions)")
 check(rt.eval("RP_MT_TXT") == '/maintank TankyBoss', "MT click assembles /maintank <target-name> securely")
@@ -1861,6 +1888,8 @@ check(bool(rt.eval("LOOTXOF == RFXOF + 90 + 8 and LOOTYOF == MTYOF")), "Loot shi
 # --- I tasti MT/OT sono ora SECURE macro buttons: SetPartyAssignment e' PROTETTA ---
 # --- (forbidden dal client) -> il click assembla "/maintank <nome>" via PreClick. ---
 rt.execute("""
+SAVED_DM_G = RLSuite.DebugMode
+RLSuite.DebugMode = function() return false end
 _OLD_UnitExists = UnitExists
 _OLD_UnitName = UnitName
 _OLD_IsRaidLeader = IsRaidLeader
@@ -1890,6 +1919,7 @@ rt.execute("""
 UnitExists = _OLD_UnitExists
 UnitName = _OLD_UnitName
 IsRaidLeader = _OLD_IsRaidLeader
+RLSuite.DebugMode = SAVED_DM_G
 """)
 
 # --- G.3 Groupmaking: reqBox hugs the button row + thicker icon borders ---
