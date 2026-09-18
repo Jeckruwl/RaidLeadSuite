@@ -45,7 +45,7 @@ mock di test le possiede, il client no):
   HideAllWindows (CloseTab ora nasconde anche il combat log).
 537 check PASS (regressione: layout key + graph creato a init).
 
-PLACEHOLDER_A
+## Novità della sessione 1.11.1 (questo branch, dopo 1.11.0) — fix: il tab Log non apriva piu' Groupmaking
 
 `MW:SelectTab` aveva una whitelist hardcoded (group/raidframe/ms/loot):
 la chiave "log" veniva riscritta in "group" e il tab apriva Groupmaking.
