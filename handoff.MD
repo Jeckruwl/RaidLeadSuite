@@ -7,7 +7,14 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.0**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.1**.
+
+## Novità della sessione 1.11.1 (questo branch, dopo 1.11.0) — fix: il tab Log non apriva piu' Groupmaking
+
+`MW:SelectTab` aveva una whitelist hardcoded (group/raidframe/ms/loot):
+la chiave "log" veniva riscritta in "group" e il tab apriva Groupmaking.
+Aggiunta "log" alla whitelist + test di regressione (SelectTab mantiene
+'log' e mostra la finestra combat log). 535 check PASS.
 
 ## Novità della sessione 1.11.0 (questo branch, dopo 1.10.6) — COMBAT LOG stile MRT (Fight log in-game)
 
@@ -1106,7 +1113,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 533 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 535 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

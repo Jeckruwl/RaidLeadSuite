@@ -587,7 +587,7 @@ function MW:SelectTab(key)
         key = def and def.key or "group"
     end
     if key ~= "group" and key ~= "raidframe"
-        and key ~= "ms" and key ~= "loot" then
+        and key ~= "ms" and key ~= "loot" and key ~= "log" then
         key = "group"
     end
     self.currentTab = key

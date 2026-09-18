@@ -2604,6 +2604,10 @@ print("== Scenario I: Combat Log (parser 3.3.5, segmentazione pull, store, aggre
 check(bool(rt.eval("RLSuite.combatLog ~= nil and RLSuite.combatLog.frame ~= nil")), "combat log module and window exist")
 check(bool(rt.eval("RLSuite.mainWindow:PaneForTab('log') == RLSuite.combatLog.frame")), "main window 'log' tab pane is the combat log window")
 check(bool(rt.eval("RLSuite.mainWindow.tabs.log ~= nil")), "'Log' tab button exists on the main bar")
+rt.execute("RLSuite.mainWindow:ShowTab('log')")
+check(bool(rt.eval("RLSuite.mainWindow.currentTab == 'log'")), "SelectTab keeps the 'log' key (was silently rewritten to 'group' -> opened Groupmaking)")
+check(bool(rt.eval("RLSuite.combatLog.frame:IsShown() == true")), "clicking the Log tab shows the combat log window (not Groupmaking)")
+rt.execute("RLSuite.combatLog.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
 check(bool(rt.eval("RLSuite.combatLog.db ~= nil and RLSuite.combatLog.db.saveFights == 15 and RLSuite.combatLog.db.maxEvents == 3000")), "db.combatlog defaults loaded (saveFights 15, maxEvents 3000)")
 
 # --- I.2 helpers: guid npc id + realm strip + flags ---
