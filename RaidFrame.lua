@@ -92,15 +92,6 @@ local RF_BP_PRIORITY = {
 }
 local RF_BP_BTN_W = 72
 
--- Drop-target outline for empty slots (pre-boss only). Transparent fill,
--- subtle border: it is a placeholder, not a HUD backdrop.
-local RF_EMPTY_BACKDROP = {
-    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile = true, tileSize = 16, edgeSize = 8,
-    insets = { left = 2, right = 2, top = 2, bottom = 2 },
-}
-
 -- Bordino DORATO di drop: indica lo slot in cui il player trascinato
 -- atterrerebbe se rilasciassi ADESSO (blocco pieno = swap, vuoto = move).
 -- Decorazione pura: bordo su frame figlio (MAI toccare il backdrop dello
@@ -930,9 +921,10 @@ function RF:RefreshDropTargets()
                 if slot.member then
                     anyMember = true
                 elseif dragging then
-                    slot:SetBackdrop(RF_EMPTY_BACKDROP)
-                    slot:SetBackdropColor(0, 0, 0, 0)
-                    slot:SetBackdropBorderColor(0.32, 0.32, 0.36, 0.9)
+                    -- NIENTE bordo "dialog": lo slot vuoto resta invisibile
+                    -- ma continua a ricevere il drop (il bordino DORATO del
+                    -- dropGlow segna comunque la destinazione sotto il cursore).
+                    slot:SetBackdrop(nil)
                     slot:Show()
                 else
                     slot:SetBackdrop(nil)
@@ -1028,11 +1020,10 @@ function RF:_SetupTankSlot(slot, member, active)
         self:FillSlot(slot, member)
         slot._tankFilled = true
     else
+        -- Slot tank senza assegnazione: nessun bordo "dialog", NIENTE
+        -- placeholder: invisibile come gli slot vuoti dei gruppi (non e'
+        -- un drop target: MT/OT arrivano da GetPartyAssignment del raid).
         self:ClearSlot(slot)
-        slot:SetBackdrop(RF_EMPTY_BACKDROP)
-        slot:SetBackdropColor(0, 0, 0, 0)
-        slot:SetBackdropBorderColor(0.32, 0.32, 0.36, 0.9)
-        slot:Show()
         slot._tankFilled = false
     end
 end

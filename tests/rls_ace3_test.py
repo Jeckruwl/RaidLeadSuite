@@ -1158,6 +1158,8 @@ row._scripts.OnMouseDown(row, 'LeftButton')
 """)
 check(bool(rt.eval("NOSHIFT_SRC == nil")), "no Shift: plain click does NOT start a player drag (shift gates drag from clicks)")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == true")), "shift+drag: empty slots become visible ONLY while dragging a player")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]._backdrop == nil")), "empty player slots stay border-free even while dragging (dialog borders must disappear)")
+check(bool(rt.eval("RLSuite.raidFrame.tankSlots[1]._backdrop == nil")), "tank slots never carry a dialog border")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == true")), "shift+drag: empty group headers appear during the drag (drop targets)")
 rt.execute("""
 local row = RLSuite.raidFrame.slots[6]
@@ -1388,13 +1390,13 @@ TANK_MAN_MT = (RLSuite.raidFrame.tankSlots[1].member.name == 'F2')
 TANK_MAN_OT = (RLSuite.raidFrame.tankSlots[2].member.name == 'F4')
 RLSuite.debugTanks = { mt = false, ot = false }   -- svuotato INTENZIONALMENTE
 RLSuite.raidFrame:Rebuild()
-TANK_CLEAR_STAYS = (RLSuite.raidFrame.tankSlots[1].member == nil and RLSuite.raidFrame.tankSlots[1]:IsShown() == true)
+TANK_CLEAR_STAYS = (RLSuite.raidFrame.tankSlots[1].member == nil and RLSuite.raidFrame.tankSlots[1]:IsShown() == false)
 RLSuite.debugTanks = SAVED_DT
 RLSuite.raidFrame:Rebuild()
 TANK_BACK = (RLSuite.raidFrame.tankSlots[1].member.name == 'Testplayer' or (SAVED_DT and RLSuite.raidFrame.tankSlots[1].member.name == SAVED_DT.mt))
 """)
 check(bool(rt.eval("TANK_MAN_MT") and bool(rt.eval("TANK_MAN_OT"))), "debug: manual MT/OT assignment (via the MT/OT buttons' debug store) overrides the auto-fill")
-check(bool(rt.eval("TANK_CLEAR_STAYS")), "debug: an intentionally cleared tank bar stays empty and visible (no auto-refill)")
+check(bool(rt.eval("TANK_CLEAR_STAYS")), "debug: an intentionally cleared tank bar stays empty and hidden (no auto-refill, no dialog border)")
 check(bool(rt.eval("TANK_BACK")), "debug tank assignments restored")
 check(bool(rt.eval("#RLSuite.raidFrame.rows == 6")), "group rows unaffected by the Tanks group (a tank appears in BOTH places)")
 

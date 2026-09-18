@@ -7,7 +7,20 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.10.3**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.10.4**.
+
+## Novità della sessione 1.10.4 (questo branch, dopo 1.10.3) — niente più bordi "dialog" sulle barre player
+
+- I bordi stile tooltip/dialog sono SPARITI dalle barre dei giocatori:
+  - gli slot vuoti che appaiono come drop target durante lo shift+drag sono
+    ORA invisibili (restano cliccabili: il bordino DORATO del dropGlow segna
+    comunque la destinazione sotto il cursore);
+  - gli slot MT/OT senza assegnazione sono ORA nascosti del tutto (non sono
+    drop target: MT/OT arrivano solo da GetPartyAssignment del raid o dai
+    pulsanti debug), niente più riquadri grigi sempre visibili.
+- Rimossa la costante RF_EMPTY_BACKDROP (inutilizzata).
+482 check PASS (contratto aggiornato: svuotamento intenzionale MT/OT =
+invisibile, non più visibile-con-bordo; slot vuoti/tank mai con backdrop).
 
 ## Novità della sessione 1.10.3 (questo branch, dopo 1.10.2) — tasto Raid Buffs allineato come G1
 
@@ -1017,7 +1030,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 480 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 482 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
