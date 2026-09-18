@@ -473,12 +473,13 @@ end
 function MW:LayoutKeyForTab(key)
     if key == "group" then return "groupmaking" end
     if key == "raidframe" then return "raidframe" end
+    if key == "log" then return "combatlog" end
     return key -- ms / loot
 end
 
 function MW:HideAllWindows()
     if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
-    local keys = { "group", "raidframe", "ms", "loot" }
+    local keys = { "group", "raidframe", "ms", "loot", "log" }
     for _, k in ipairs(keys) do
         local pane = self:PaneForTab(k)
         if pane then pane:Hide() end

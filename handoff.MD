@@ -7,7 +7,21 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.1**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.2**.
+
+## Novità della sessione 1.11.2 (questo branch, dopo 1.11.1) — fix 3.3.5: il tab Log non apriva nulla
+
+API assenti sul client 3.3.5a che rompevano l'init del modulo a meta' (il
+mock di test le possiede, il client no):
+- `Frame:SetClipsChildren` (API 5.0.4+): RIMOSSA dal widget grafico.
+- `UnitPower/UnitPowerMax` (API 4.0+): sostituite con `UnitMana/UnitManaMax`
+  (l'API corretta di WotLK) nel sampling di power%.
+- Il widget grafico e' ora costruito PER ULTIMO in CreateFrame: un suo
+  errore non puo' piu' impedire la creazione della finestra.
+- `LayoutKeyForTab('log')` ora risponde 'combatlog' (stessa chiave di
+  drag/resize persistenti, niente piu' layout db diviso) e "log" entra in
+  HideAllWindows (CloseTab ora nasconde anche il combat log).
+537 check PASS (regressione: layout key + graph creato a init).
 
 ## Novità della sessione 1.11.1 (questo branch, dopo 1.11.0) — fix: il tab Log non apriva piu' Groupmaking
 
@@ -1113,7 +1127,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 535 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 537 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

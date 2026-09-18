@@ -373,7 +373,7 @@ function CL:SampleTick()
         if name and hpm and hpm > 0 then
             addSample(f.samples.health, name, hp / hpm * 100)
         end
-        local pw, pwm = UnitPower(u), UnitPowerMax(u)
+        local pw, pwm = UnitMana(u), UnitManaMax(u)
         if name and pwm and pwm > 0 then
             addSample(f.samples.power, name, pw / pwm * 100)
         end
@@ -653,7 +653,6 @@ end
 function CL:NewGraph(parent, w, h)
     local g = CreateFrame("Button", nil, parent)
     g:SetSize(w, h)
-    g:SetClipsChildren(true)
     g:RegisterForClicks("LeftButtonDown", "LeftButtonUp")
     g.width, g.height = w, h
 
@@ -903,8 +902,6 @@ function CL:CreateFrame()
     self.stepDropdown:SetPoint("LEFT", stepLbl, "RIGHT", 6, 0)
 
     -- player selector nel grafico (riusa la selezione sinistra: click lista = player)
-    self.graph = self:NewGraph(self.graphPane, 640, 330)
-    self.graph:SetPoint("TOPLEFT", self.graphPane, "TOPLEFT", 30, -52)
     self.graphHint = self.graphPane:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     self.graphHint:SetPoint("TOPLEFT", self.graphPane, "TOPLEFT", 30, -34)
     self.graphHint:SetTextColor(1, 0.82, 0)
@@ -952,6 +949,11 @@ function CL:CreateFrame()
     f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
     f.closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+    -- Il widget grafico viene costruito PER ULTIMO: un suo errore non puo'
+    -- mai impedire la creazione della finestra/comandi.
+    self.graph = self:NewGraph(self.graphPane, 640, 330)
+    self.graph:SetPoint("TOPLEFT", self.graphPane, "TOPLEFT", 30, -52)
 
     f:SetScript("OnShow", function() CL:RefreshUI() end)
 end

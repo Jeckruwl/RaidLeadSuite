@@ -377,6 +377,8 @@ UnitIsUnit = function() return true end
 UnitGUID = function() return "guid" end
 UnitPower = function() return 50 end
 UnitPowerMax = function() return 100 end
+UnitMana = function() return 50 end
+UnitManaMax = function() return 100 end
 UnitPosition = function() return 0, 0, 0 end
 UnitClassification = function() return "normal" end
 UnitCreatureType = function() return "Humanoid" end
@@ -2604,6 +2606,8 @@ print("== Scenario I: Combat Log (parser 3.3.5, segmentazione pull, store, aggre
 check(bool(rt.eval("RLSuite.combatLog ~= nil and RLSuite.combatLog.frame ~= nil")), "combat log module and window exist")
 check(bool(rt.eval("RLSuite.mainWindow:PaneForTab('log') == RLSuite.combatLog.frame")), "main window 'log' tab pane is the combat log window")
 check(bool(rt.eval("RLSuite.mainWindow.tabs.log ~= nil")), "'Log' tab button exists on the main bar")
+check(bool(rt.eval("RLSuite.combatLog.graph ~= nil")), "combat log graph widget created at init")
+check(bool(rt.eval("RLSuite.mainWindow:LayoutKeyForTab('log') == 'combatlog'")), "layout key for the log tab is 'combatlog' (matches drag/resize persistence)")
 rt.execute("RLSuite.mainWindow:ShowTab('log')")
 check(bool(rt.eval("RLSuite.mainWindow.currentTab == 'log'")), "SelectTab keeps the 'log' key (was silently rewritten to 'group' -> opened Groupmaking)")
 check(bool(rt.eval("RLSuite.combatLog.frame:IsShown() == true")), "clicking the Log tab shows the combat log window (not Groupmaking)")
