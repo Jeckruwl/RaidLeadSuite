@@ -1446,7 +1446,7 @@ check(bool(rt.eval("TANK_TBAR_FAKE")), "debug/fake tanks leave the target bar em
 
 # Raid Buffs matrix panel (Method style)
 check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn ~= nil and RLSuite.raidFrame.buffPanelBtn.label:GetText() == 'Raid Buffs'")), "'Raid Buffs' toggle button exists with its label")
-check(bool(rt.eval("(function() local b = RLSuite.raidFrame.buffPanelBtn; local p = b and b._points[#b._points]; return p ~= nil and p[1] == 'TOPRIGHT' and p[2] == RLSuite.raidFrame.tankSlots[2].targetBar and p[3] == 'BOTTOMRIGHT' end)()")), "'Raid Buffs' button sits UNDER the tank target bars (anchored to the OT target bar)")
+check(bool(rt.eval("(function() local b = RLSuite.raidFrame.buffPanelBtn; local p = b and b._points[#b._points]; local gh = RLSuite.raidFrame.groupHeaders[1]._points[#RLSuite.raidFrame.groupHeaders[1]._points]; return p ~= nil and p[1] == 'BOTTOMRIGHT' and p[3] == 'TOPLEFT' and gh ~= nil and math.abs((p[5] or 0) - (gh[5] or 0)) < 0.001 end)()")), "'Raid Buffs' button aligned like the G1 header: bottom edge on the G1 text line below the tank target bars")
 check(bool(rt.eval("RLSuite.raidFrame.buffPanel == nil")), "no floating side panel: the buff matrix is PART of the raid frame")
 check(bool(rt.eval("#RLSuite.raidFrame:_MatrixCols() == 25")), "25 visible columns (all Icy-Veins raid-buff categories incl. AP%%, DR%%, Heal+, Repl, SpellHaste; flask/food excluded)")
 rt.execute("""

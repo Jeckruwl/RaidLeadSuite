@@ -1650,11 +1650,17 @@ function RF:ApplyLayout()
         -- MAI nulla.
         if not headersOn then y = y - m.groupSpacing end
         shown = true
-        -- Bottone "Raid Buffs": SOTTO le barre dei target dei tank (bordo
-        -- destro allineato alla barra target dell'OT).
+        -- Bottone "Raid Buffs": sotto le barre target dei tank, mA ALLINEATO
+        -- COME L'HEADER G1: il suo bordo INFERIORE = fondo della zona strip
+        -- (stessa linea del testo "Gruppo 1"), bordo DESTRO = fine barra.
         if self.buffPanelBtn and otSlot and otSlot.targetBar then
             self.buffPanelBtn:ClearAllPoints()
-            self.buffPanelBtn:SetPoint("TOPRIGHT", otSlot.targetBar, "BOTTOMRIGHT", 0, 0)
+            if headersOn then
+                self.buffPanelBtn:SetPoint("BOTTOMRIGHT", self.content, "TOPLEFT",
+                    m.rowWidth, y - (m.cellW + 4))
+            else
+                self.buffPanelBtn:SetPoint("TOPRIGHT", otSlot.targetBar, "BOTTOMRIGHT", 0, 0)
+            end
             self.buffPanelBtn:Show()
         end
     elseif self.buffPanelBtn then

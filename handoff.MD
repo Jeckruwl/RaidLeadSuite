@@ -7,7 +7,15 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.10.2**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.10.3**.
+
+## Novità della sessione 1.10.3 (questo branch, dopo 1.10.2) — tasto Raid Buffs allineato come G1
+
+Il bottone "Raid Buffs" ora ha il bordo INFERIORE sulla stessa linea del
+fondo del testo "Gruppo 1" (BOTTOMRIGHT -> content TOPLEFT a
+(rowWidth, y - stripH)), bordo destro = fine barra. Quando non c'e' roster
+resta appeso sotto la barra target dell'OT come prima.
+480 check PASS.
 
 ## Novità della sessione 1.10.2 (questo branch, dopo 1.10.1) — layout G1/strip stabile
 
