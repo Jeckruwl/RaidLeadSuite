@@ -206,6 +206,7 @@ function RF:RegisterEvents()
     self:RegisterEvent("UNIT_HEALTH", "OnUnitEvent")
     self:RegisterEvent("UNIT_MANA", "OnUnitEvent")
     self:RegisterEvent("UNIT_AURA", "OnUnitEvent")
+    self:RegisterEvent("UNIT_TARGET", function() RF:UpdateTankTargets() end)
     self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", "OnCombatLog")
     -- refresh periodico (prima un frame OnUpdate con accumulo a 0.5s)
     self:ScheduleRepeatingTimer("UpdateAll", 0.5)
@@ -503,10 +504,26 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
     -- Le barre TANK non li hanno: al loro posto il tag MT/OT dorato.
     if row.isTank then
         local tag = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        tag:SetPoint("LEFT", row, "LEFT", 8, 0)
+        -- Posizionato in LayoutSlotGeometry: ATTACCATO a sinistra della barra.
         tag:SetText(tankTag)
         tag:SetTextColor(1, 0.82, 0)
         row.tankTag = tag
+        -- Barra TARGET del tank: al posto dei CD del player, a destra della
+        -- barra HP. Mostra nome + HP% del bersaglio attuale del tank.
+        local tbar = CreateFrame("StatusBar", nil, row)
+        tbar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        tbar:SetMinMaxValues(0, 100)
+        tbar:SetValue(0)
+        local tbg = tbar:CreateTexture(nil, "BACKGROUND")
+        tbg:SetAllPoints(tbar)
+        tbg:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        tbg:SetVertexColor(0, 0, 0, 0.45)
+        tbar.bg = tbg
+        local tfs = tbar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        tfs:SetPoint("LEFT", tbar, "LEFT", 3, 0)
+        tfs:SetTextColor(1, 1, 1)
+        tbar.nameText = tfs
+        row.targetBar = tbar
     else
         row.flaskIcon = self:MakeConsumableIcon(row, "flask")
         row.foodIcon = self:MakeConsumableIcon(row, "food")
@@ -734,6 +751,27 @@ function RF:LayoutSlotGeometry(slot, m)
         slot.bar:ClearAllPoints()
         slot.bar:SetSize(m.barWidth, m.barHeight)
         slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", leftX, 0)
+        -- Tag MT/OT: ATTACCATO al bordo sinistro della barra (non fluttuante
+        -- nello spazio consumabili).
+        if slot.tankTag then
+            slot.tankTag:ClearAllPoints()
+            slot.tankTag:SetPoint("RIGHT", slot.bar, "LEFT", -3, 0)
+        end
+        -- Barra TARGET dove prima c'erano i CD (solo tank).
+        if slot.targetBar then
+            slot.targetBar:ClearAllPoints()
+            slot.targetBar:SetSize(m.rowWidth - leftX - m.barWidth - 4, m.barHeight)
+            slot.targetBar:SetPoint("TOPLEFT", slot.bar, "TOPRIGHT", 4, 0)
+            local tex = self.db and self.db.appearance and self.db.appearance.barTexture
+                or "Interface\\TargetingFrame\\UI-StatusBar"
+            slot.targetBar:SetStatusBarTexture(tex)
+            if slot.targetBar.bg then slot.targetBar.bg:SetTexture(tex) end
+            local fontFile = (self.db and self.db.appearance and self.db.appearance.font) or RLSuite.utils:GetUIFont()
+            local tflags = (self.db and self.db.appearance and self.db.appearance.fontOutline == false) and "" or "OUTLINE"
+            if slot.targetBar.nameText then
+                slot.targetBar.nameText:SetFont(fontFile, m.nameFontSize, tflags)
+            end
+        end
         -- Texture della barra (fill + track), configurabile.
         local app = self.db and self.db.appearance or {}
         local tex = app.barTexture or "Interface\\TargetingFrame\\UI-StatusBar"
@@ -752,13 +790,23 @@ function RF:LayoutSlotGeometry(slot, m)
         end
     end
     for j, cd in ipairs(slot.cdIcons or {}) do
-        cd:ClearAllPoints()
-        cd:SetSize(iconSize, iconSize)
-        cd:SetPoint("LEFT", slot.bar, "RIGHT", 4 + (j - 1) * (iconSize + 2), 0)
+        if slot.isTank then
+            -- Barre tank: MAI i CD del player a destra; al loro posto la
+            -- barra target del tank (slot.targetBar).
+            cd:Hide()
+        else
+            cd:ClearAllPoints()
+            cd:SetSize(iconSize, iconSize)
+            cd:SetPoint("LEFT", slot.bar, "RIGHT", 4 + (j - 1) * (iconSize + 2), 0)
+        end
     end
 end
 
 function RF:ApplySlotCDs(slot, class)
+    if slot.isTank then
+        for _, cd in ipairs(slot.cdIcons or {}) do cd:Hide() end
+        return
+    end
     slot._cdClass = class
     local abilities = RLSuite.keyAbilities[class] or {}
     for j = 1, RF_MAX_CDS do
@@ -1042,7 +1090,39 @@ function RF:UpdateAll()
     for _, t in ipairs(self.tankSlots or {}) do
         self:UpdateRow(t)
     end
+    self:UpdateTankTargets()
     self:RefreshBuffMatrix()
+end
+
+-- Barre TARGET dei tank: nome + HP% del bersaglio attuale di MT e OT.
+-- Solo unit reali (mai lookup su player fittizi di debug, regola v1.5.3).
+function RF:UpdateTankTargets()
+    for ti = 1, RF_TANK_COUNT do
+        local slot = self.tankSlots and self.tankSlots[ti]
+        local tb = slot and slot.targetBar
+        if tb then
+            local name, pct, r, g, b = "", 0, 0.75, 0.15, 0.15 -- ostile di default
+            if slot.unit and not slot.fake and UnitExists and UnitExists(slot.unit) then
+                local tu = slot.unit .. "target"
+                if UnitExists(tu) then
+                    name = UnitName(tu) or ""
+                    local maxhp = UnitHealthMax and UnitHealthMax(tu) or 0
+                    pct = maxhp > 0 and (UnitHealth(tu) / maxhp * 100) or 0
+                    if UnitIsPlayer and UnitIsPlayer(tu) and UnitClass then
+                        local _, cls = UnitClass(tu)
+                        local cc = RAID_CLASS_COLORS and cls and RAID_CLASS_COLORS[cls]
+                        if cc then r, g, b = cc.r, cc.g, cc.b end
+                    elseif UnitIsFriend and UnitIsFriend("player", tu) then
+                        r, g, b = 0.2, 0.6, 0.2
+                    end
+                end
+            end
+            tb:SetMinMaxValues(0, 100)
+            tb:SetValue(pct)
+            if tb.SetStatusBarColor then tb:SetStatusBarColor(r, g, b) end
+            if tb.nameText then tb.nameText:SetText(name) end
+        end
+    end
 end
 
 function RF:UpdateRow(row)

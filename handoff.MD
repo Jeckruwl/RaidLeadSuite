@@ -7,7 +7,20 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.10.0**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.10.1**.
+
+## Novità della sessione 1.10.1 (questo branch, dopo 1.10.0) — barre MT/OT: target bar al posto dei CD
+
+- Barre MT/OT: MAI piu' CD del player a destra (ApplySlotCDs salta gli slot
+  tank e LayoutSlotGeometry nasconde sempre le 4 icone).
+- Al loro posto `slot.targetBar`: StatusBar a destra della barra HP che mostra
+  nome + HP% del TARGET ATTUALE del tank (colore: classe se player, rosso se
+  ostile, verde se alleato). Refresh su evento UNIT_TARGET + dentro UpdateAll
+  (RF:UpdateTankTargets). Regola v1.5.3 rispettata: tank fittizi/debug ->
+  barra vuota, nessuna query su unit fake.
+- Tag MT/OT: ancorato RIGHT->LEFT della barra (-3): attaccato al bordo
+  sinistro della barra (prima fluttuava nello spazio consumabili).
+479 check PASS (+6 nuovi check tank: tag, no-CD, target bar + fake-guard).
 
 ## Novità della sessione 1.10.0 (questo branch, dopo 1.9.9) — TUTTI i bottoni con skin ACE
 
@@ -984,7 +997,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 473 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 479 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

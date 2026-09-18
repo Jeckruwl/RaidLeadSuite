@@ -118,7 +118,7 @@ function methods:GetMinMaxValues() return 0, 100 end
 function methods:GetValue() return self._value end
 function methods:SetMinMaxValues(...) return self end
 function methods:SetStatusBarTexture(...) self._statusbarTex = select(1, ...); return self end
-function methods:SetStatusBarColor(...) return self end
+function methods:SetStatusBarColor(r,g,b,a) self._sbColor={r,g,b,a}; return self end
 function methods:SetAlpha(a) self._alpha = a; return self end
 function methods:StartMoving() self._moving = true; return self end
 function methods:StopMovingOrSizing() self._moving = false; return self end
@@ -1397,6 +1397,52 @@ check(bool(rt.eval("TANK_MAN_MT") and bool(rt.eval("TANK_MAN_OT"))), "debug: man
 check(bool(rt.eval("TANK_CLEAR_STAYS")), "debug: an intentionally cleared tank bar stays empty and visible (no auto-refill)")
 check(bool(rt.eval("TANK_BACK")), "debug tank assignments restored")
 check(bool(rt.eval("#RLSuite.raidFrame.rows == 6")), "group rows unaffected by the Tanks group (a tank appears in BOTH places)")
+
+# --- tank bars: MT/OT tag attached to the bar, no player CDs, target bar ---
+rt.execute("""
+RLSuite.raidFrame:ApplyLayout()
+local mtb = RLSuite.raidFrame.tankSlots[1]
+local tp = mtb.tankTag._points[#mtb.tankTag._points]
+TANK_TAG_OK = (tp[1] == 'RIGHT' and tp[2] == mtb.bar and tp[3] == 'LEFT' and tp[4] == -3)
+TANK_NOCD = true
+for ti = 1, 2 do
+    for j = 1, 4 do
+        local cd = RLSuite.raidFrame.tankSlots[ti].cdIcons[j]
+        TANK_NOCD = TANK_NOCD and (cd:IsShown() == false)
+    end
+end
+local tb = mtb.targetBar
+local bp = tb._points[#tb._points]
+local m = RLSuite.raidFrame:LayoutMetrics()
+TANK_TBAR = (tb ~= nil and bp[2] == mtb.bar and bp[3] == 'TOPRIGHT'
+    and tb._w == (m.rowWidth - (4 + 2 * m.iconSize + 4) - m.barWidth - 4))
+
+-- barra target con unit reali mockate (salva/ripristina i global)
+local S_UE, S_UN, S_UH, S_UHM, S_UIP, S_UC = UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass
+mtb.unit = 'raid3'; mtb.fake = nil
+UnitExists = function(u) return u == 'raid3' or u == 'raid3target' end
+UnitName = function(u) if u == 'raid3target' then return 'Bossob' end return 'Testplayer' end
+UnitHealth = function(u) if u == 'raid3target' then return 500 end return 80 end
+UnitHealthMax = function(u) if u == 'raid3target' then return 1000 end return 100 end
+UnitIsPlayer = function(u) return false end
+RLSuite.raidFrame:UpdateTankTargets()
+TANK_TBAR_NAME = (mtb.targetBar.nameText:GetText() == 'Bossob')
+TANK_TBAR_VAL = (mtb.targetBar._value ~= nil and math.abs(mtb.targetBar._value - 50) < 0.01)
+TANK_TBAR_COL = (mtb.targetBar._sbColor ~= nil and math.abs(mtb.targetBar._sbColor[1] - 0.75) < 0.001)
+-- tank fittizio (debug): barra target VUOTA (mai query su unit fake)
+mtb.unit = nil; mtb.fake = true
+RLSuite.raidFrame:UpdateTankTargets()
+TANK_TBAR_FAKE = (mtb.targetBar.nameText:GetText() == '' and (mtb.targetBar._value == nil or mtb.targetBar._value == 0))
+mtb.fake = true
+UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass = S_UE, S_UN, S_UH, S_UHM, S_UIP, S_UC
+RLSuite.raidFrame:UpdateTankTargets()
+""")
+check(bool(rt.eval("TANK_TAG_OK")), "MT/OT tag attached to the bar's LEFT edge (not floating in the left space)")
+check(bool(rt.eval("TANK_NOCD")), "tank bars never show player CDs on the right")
+check(bool(rt.eval("TANK_TBAR")), "tank bars have a TARGET bar where the CDs were (size = former CD zone)")
+check(bool(rt.eval("TANK_TBAR_NAME")) and bool(rt.eval("TANK_TBAR_VAL")), "tank target bar shows current target name + HP% from real units")
+check(bool(rt.eval("TANK_TBAR_COL")), "tank target bar colors red for hostile targets")
+check(bool(rt.eval("TANK_TBAR_FAKE")), "debug/fake tanks leave the target bar empty (no fake-unit API queries)")
 
 # Raid Buffs matrix panel (Method style)
 check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn ~= nil and RLSuite.raidFrame.buffPanelBtn.label:GetText() == 'Raid Buffs'")), "'Raid Buffs' toggle button exists with its label")
