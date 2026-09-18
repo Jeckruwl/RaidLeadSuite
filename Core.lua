@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.10.6"
+RLSuite.version = "1.11.0"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -117,6 +117,17 @@ local defaults = {
             tradeWindow = 7200,
             filters = { recipes = false, boe = false, gems = false, shards = false },
         },
+        combatlog = {
+            enabled = true,
+            saveFights = 15,
+            maxEvents = 3000,
+            filters = {
+                damage = true, heal = true, death = true, aura = true,
+                cast = true, interrupt = true, dispel = true, energize = true,
+            },
+            options = { showSpellIds = false, disableBuffs = false },
+            fights = {},
+        },
         appearance = {
             theme = "default",
             font = "Fonts\\FRIZQT__.TTF",
@@ -137,6 +148,7 @@ local defaults = {
             raidframe = { scale = 1 },
             ms = { scale = 1 },
             loot = { scale = 1 },
+            combatlog = { scale = 1 },
             config = { scale = 1 },
         },
     },
@@ -1615,6 +1627,7 @@ function RLSuite:InitModules()
     if self.raidFrame and self.raidFrame.Init then self.raidFrame:Init() end
     if self.msManager and self.msManager.Init then self.msManager:Init() end
     if self.lootManager and self.lootManager.Init then self.lootManager:Init() end
+    if self.combatLog and self.combatLog.Init then self.combatLog:Init() end
     if self.config and self.config.Init then self.config:Init() end
     if self.mainWindow and self.mainWindow.Init then self.mainWindow:Init() end
     if self.config and self.config.ApplyTheme then

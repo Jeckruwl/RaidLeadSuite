@@ -7,7 +7,50 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.10.6**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.0**.
+
+## Novità della sessione 1.11.0 (questo branch, dopo 1.10.6) — COMBAT LOG stile MRT (Fight log in-game)
+
+Nuovo modulo **CombatLog.lua** + tab "Log" nella mainbar: registrazione e
+visualizzazione dei combat log in gioco, architettura ispetta a
+Method/Exorsus Raid Tools (Logexampl = riferimento read-only, mai modificato/spostato).
+
+- **Parser CLEU 3.3.5** (args diretti, no CombatLogGetCurrentEventInfo):
+  categorie damage/heal/death/aura/cast/interrupt/dispel/energize, suffix
+  decodificati per subEvent (spell/swung/heal/aura/interrupt/dispel/energize),
+  realm-strip dei nomi, NPC id da GUID (hex "F1xx": entry = chars 9-12, o
+  formato moderno Creature-...-ID-), flag PLAYER=1024 NPC=2048 PET=4096
+  FRIENDLY=16 via aritmetica pura (no bit lib).
+- **Segmentazione pull**: su 3.3.5a non esistono ENCOUNTER_START/END →
+  PLAYER_REGEN_DISABLED/ENABLED; nome pull = primo boss noto (tabella NPC
+  ICC/RS/ToC/Ulduar/Naxx/VoA/Ony/Maly/Sarth); UNIT_DIED boss => KILL,
+  altrimenti WIPE.
+- **Store**: ring buffer pull (saveFights=15 default) con cap eventi/pull
+  (3000 default + contatore dropped), filtri di cattura per categoria,
+  opzione disableBuffs; persistenza profilo SOLO a fine combat.
+- **Viewer identico a MRT**: finestra 730x540, selezione fight (dropdown, "[LIVE]" per il fight in corso),
+  tab Damage/Healing/Enemies/Interrupts/Auras/Players spells/Power/Graphs.
+  Lista sx: sorgenti ordinate (colori classe, amount+%); click => breakdown
+  per spell a destra con tooltip Total/Hits/Crit + Overkill/Absorbed/Blocked.
+  Enemies = danno subito per NPC. Interrupts/Dispels = righe evento stile
+  "X interrupt Y with Z (interrupted)". Auras = count + uptime% con
+  breakdown per target (stack aperti chiusi a fine fight). Power = energize
+  per tipo (Mana/Rage/Energy/Runic...) + per player.
+- **Tab Graphs con grafico**: widget port del concetto ExLib.CreateGraph
+  (assi, serie lineari da pool texture, vline rosse sulle morti, label max-Y,
+  tooltip hover, zoom a trascina + click=reset): modalita' DPS / Health /
+  Power, selettore "Step, sec." (1/2/3/5/10), "Total DPS" o player
+  selezionato dalla lista sx. Health/Power% campionati 1 Hz sui raid members
+  (+ boss via target dei membri, "[BOSS] nome").
+- Barra inferiore: **Send report** (top-5 del tab corrente in RAID),
+  **Clear** (Shift+click, svuota i pull salvati), checkbox **Live**
+  (aggiornamento 2s durante il combat), info eventi/dropped.
+- Wiring: toc, db.combatlog defaults, InitModules, PaneForTab/tabDefs/
+  ALL_KEYS/windowMins(640x420)/layoutKeys/resizable "combatlog", ~30 stringhe
+  Locale.
+533 check PASS (+29 Scenario I: parser, GUID, realm, segmentazione, filtri,
+aggregazioni totali/spell/aure/enemy/interrupt/players/DPS, UI tabs+click,
+grafico serie+vline, clear, cap ring buffer).
 
 ## Novità della sessione 1.10.6 (questo branch, dopo 1.10.5) — keypad MacroBar senza bordo
 
@@ -1063,7 +1106,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 504 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 533 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

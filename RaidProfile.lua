@@ -119,7 +119,7 @@ end
 -- Offset a cascata per le finestre senza posizione salvata: cosi'
 -- aprendone piu' d'una non si sovrappongono tutte nello stesso punto.
 function MW:DefaultCascadeOffset(ignoreKey)
-    local ALL_KEYS = { "group", "raidframe", "ms", "loot" }
+    local ALL_KEYS = { "group", "raidframe", "ms", "loot", "log" }
     local n = 0
     for _, k in ipairs(ALL_KEYS) do
         if k ~= ignoreKey and self:IsTabOpen(k) then
@@ -156,6 +156,7 @@ function MW:CreateFrame()
         { key = "raidframe", label = "Raid Frame" },
         { key = "ms",        label = "MS" },
         { key = "loot",      label = "Loot" },
+        { key = "log",       label = "Log" },
     }
     self.tabs = {}
     self.currentTab = nil
@@ -462,6 +463,8 @@ function MW:PaneForTab(key)
         return RLSuite.msManager and RLSuite.msManager.frame
     elseif key == "loot" then
         return RLSuite.lootManager and RLSuite.lootManager.frame
+    elseif key == "log" then
+        return RLSuite.combatLog and RLSuite.combatLog.frame
     end
     return nil
 end
@@ -518,12 +521,16 @@ function MW:RegisterAllWindows()
     RLSuite.windowMins.loot = function()
         return 480, 340
     end
+    RLSuite.windowMins.log = function()
+        return 640, 420
+    end
 
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
     local layoutKeys = {
         group = "groupmaking",
         ms = "ms",
         loot = "loot",
+        log = "combatlog",
     }
     for key, lkey in pairs(layoutKeys) do
         local pane = self:PaneForTab(key)
@@ -551,6 +558,7 @@ function MW:RegisterAllWindows()
         group = { "groupmaking", 420, 380, "groupmaking" },
         ms = { "ms", 320, 260, "ms" },
         loot = { "loot", 440, 300, "loot" },
+        log = { "combatlog", 600, 400, "combatlog" },
     }
     for key, cfg in pairs(resizable) do
         local pane = self:PaneForTab(key)

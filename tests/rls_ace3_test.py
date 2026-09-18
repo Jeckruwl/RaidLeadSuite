@@ -262,7 +262,9 @@ function UnitAffectingCombat(u) return false end
 function IsInRaid() return false end
 function GetNumRaidMembers() return 0 end
 function GetNumGroupMembers() return 0 end
-function GetRaidRosterInfo(i) return nil end
+ROSTER_MOCK = {}
+function GetRaidRosterInfo(i) local r = ROSTER_MOCK[i]; if r then return r[1], r[2], r[3], r[4], r[5], r[6] end return nil end
+RAID_CLASS_COLORS = { WARRIOR = { r = 0.78, g = 0.61, b = 0.43 }, PALADIN = { r = 0.96, g = 0.55, b = 0.73 }, DRUID = { r = 1, g = 0.49, b = 0.04 } }
 function IsRaidLeader() return false end
 function IsRaidOfficer() return false end
 function InviteUnit(name) end
@@ -373,6 +375,8 @@ UnitLevel = function() return 80 end
 UnitIsPlayer = function() return true end
 UnitIsUnit = function() return true end
 UnitGUID = function() return "guid" end
+UnitPower = function() return 50 end
+UnitPowerMax = function() return 100 end
 UnitPosition = function() return 0, 0, 0 end
 UnitClassification = function() return "normal" end
 UnitCreatureType = function() return "Humanoid" end
@@ -526,7 +530,7 @@ LIBS = [
 ADDON_FILES = [
     "Locale.lua", "Utils.lua", "Core.lua", "RaidProfile.lua",
     "MacroBar.lua", "GroupMaking.lua", "RaidFrame.lua",
-    "MSManager.lua", "LootManager.lua", "Config.lua",
+    "MSManager.lua", "LootManager.lua", "CombatLog.lua", "Config.lua",
 ]
 
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -2591,6 +2595,166 @@ check(bool(rt.eval("H_PICKED == true and H_TRADECL == true and H_CLOSED2 == true
 
 # pulizia storico usato nello scenario H
 rt.execute("local lm = RLSuite.lootManager; lm.history = {}; if lm.db then lm.db.history = lm.history end; lm.selectedItem = nil; lm:UpdateHistory()")
+
+# =====================================================================
+print("== Scenario I: Combat Log (parser 3.3.5, segmentazione pull, store, aggregazioni, UI tabs, grafico) ==")
+# =====================================================================
+
+# --- I.1 wiring: tab, finestra, defaults ---
+check(bool(rt.eval("RLSuite.combatLog ~= nil and RLSuite.combatLog.frame ~= nil")), "combat log module and window exist")
+check(bool(rt.eval("RLSuite.mainWindow:PaneForTab('log') == RLSuite.combatLog.frame")), "main window 'log' tab pane is the combat log window")
+check(bool(rt.eval("RLSuite.mainWindow.tabs.log ~= nil")), "'Log' tab button exists on the main bar")
+check(bool(rt.eval("RLSuite.combatLog.db ~= nil and RLSuite.combatLog.db.saveFights == 15 and RLSuite.combatLog.db.maxEvents == 3000")), "db.combatlog defaults loaded (saveFights 15, maxEvents 3000)")
+
+# --- I.2 helpers: guid npc id + realm strip + flags ---
+rt.execute("""
+local cl = RLSuite.combatLog
+G_NPC = cl:NpcIdFromGUID('0xF130008F040000AA')
+G_NPC2 = cl:NpcIdFromGUID('0xF1300090020000BB')
+G_MODERN = cl:NpcIdFromGUID('Creature-0-1463-0-63-36612-0000123ABC')
+G_PLAYERGUID = cl:NpcIdFromGUID('0x0700000001234ABC')
+G_SHORT = cl:ShortName('Testplayer-TestRealm')
+G_SHORT2 = cl:ShortName('OtherName')
+""")
+check(bool(rt.eval("G_NPC == 36612")), "3.3.5 GUID parse: Marrowgar npc id 36612 from hex GUID")
+check(bool(rt.eval("G_NPC2 == 36866")), "3.3.5 GUID parse: second npc id (36866)")
+check(bool(rt.eval("G_MODERN == 36612")), "modern dash GUID parse also yields the npc id")
+check(bool(rt.eval("G_PLAYERGUID == nil")), "player GUID does not produce an npc id")
+check(bool(rt.eval("G_SHORT == 'Testplayer' and G_SHORT2 == 'OtherName'")), "realm suffix stripped for same-realm names only")
+
+# --- I.3 registrazione: pull, eventi, kill, ring buffer, filtri ---
+rt.execute("""
+local cl = RLSuite.combatLog
+local now = GetTime()
+cl.selFight = nil
+-- fight 1: danni + kill Marrowgar
+cl:OnRegenDisabled()
+I_REC1 = (cl.current ~= nil)
+-- player -> boss: SPELL_DAMAGE (id, name, school, amount, overkill, school2, resisted, blocked, absorbed, critical)
+cl:OnCLEU(nil, now, 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
+cl:OnCLEU(nil, now, 'SPELL_DAMAGE', '0x0p', 'PlayerTwo', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Frostbolt', 2, 3000, 100, 0, 0, 200, 0, 0)
+cl:OnCLEU(nil, now, 'SWING_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 1500, 0, 1, 0, 0, 0, 0)
+cl:OnCLEU(nil, now, 'SPELL_HEAL', '0x0p', 'HealerOne', 1024+16+1, '0x0q', 'PlayerOne', 1024+16+1, 200, 'Flash Heal', 2, 4000, 500, 0, 0)
+-- aura uptime: 10s applicate poi rimosse (fake GetTime avanzato via t2)
+cl:OnCLEU(nil, now, 'SPELL_AURA_APPLIED', '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, '0x0p', 'PlayerOne', 1024+16+1, 300, 'Bone Spike', 6, 'DEBUFF')
+cl:OnCLEU(nil, now, 'SPELL_INTERRUPT', '0x0p', 'KickerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 400, 'Kick', 1, 500, 'Frost Bolt', 4)
+cl:OnCLEU(nil, now, 'UNIT_DIED', '0x0p', '', 0, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64)
+I_BOSS = cl.current.boss
+I_KILL0 = cl.current.kill
+I_CNT1 = cl.current.count
+cl:OnRegenEnabled()
+I_REC0 = (cl.current == nil)
+I_F1 = cl.db.fights[1]
+I_KILLF = I_F1.kill == true
+I_PERSISTCNT = #cl.db.fights
+""")
+check(bool(rt.eval("I_REC1 == true and I_REC0 == true")), "combat start/end opens and closes a fight segment")
+check(bool(rt.eval("I_BOSS == 'Lord Marrowgar' and I_KILLF == true")), "fight named after the boss NPC and marked KILL on its UNIT_DIED")
+check(bool(rt.eval("I_CNT1 == 7 and I_PERSISTCNT == 1")), "7 events captured and fight persisted into db.fights")
+check(rt.eval("I_F1.name") == "Lord Marrowgar", "saved fight carries the boss name")
+
+# --- I.4 filtri cattura: damage off => non registrato; buffs off ---
+rt.execute("""
+local cl = RLSuite.combatLog
+cl.db.filters.damage = false
+cl:OnRegenDisabled()
+local now = GetTime()
+cl:OnCLEU(nil, now, 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF1300090020000BB', 'Sindragosa', 2048+64, 100, 'Fireball', 4, 5000, 0)
+cl:OnCLEU(nil, now, 'SPELL_HEAL', '0x0p', 'HealerOne', 1024+16+1, '0x0q', 'PlayerOne', 1024+16+1, 200, 'Flash Heal', 2, 4000, 500, 0, 0)
+I_FLTCNT = cl.current.count
+cl:OnRegenEnabled()
+cl.db.filters.damage = true
+""")
+check(bool(rt.eval("I_FLTCNT == 1")), "capture filters skip disabled categories (damage off: only the heal lands)")
+
+# --- I.5 aggregazioni ---
+rt.execute("""
+local cl = RLSuite.combatLog
+ROSTER_MOCK = { { 'PlayerOne', 1, 1, 80, 80, 'WARRIOR' }, { 'PlayerTwo', 1, 1, 80, 80, 'PALADIN' }, { 'HealerOne', 1, 1, 80, 80, 'DRUID' } }
+local f = cl.db.fights[2] -- fight di Marrowgar (subito dopo: il fight filtrato e' [1])
+local rows, total = cl:AggTotals(f, 'damage')
+I_TOT = total
+I_TOP = rows[1] and rows[1].name
+I_TOPAMT = rows[1] and rows[1].amt
+local srows, stotal = cl:AggSpells(f, 'damage', 'PlayerOne')
+I_SPELLS = #srows
+I_SP1 = srows[1] and srows[1].amt
+local arows = cl:AggAuras(f)
+I_AURAUPS = 0
+for _, a in ipairs(arows) do if a.name == 'Bone Spike' then I_AURAUPS = a.up end end
+local erows, etotal = cl:AggEnemies(f)
+I_ENEMY = erows[1] and erows[1].name
+local irows = cl:AggInterrupts(f, 'interrupt')
+I_ITXT = irows[1] and irows[1].text
+local prows = cl:FightPlayers(f)
+I_PSP = #prows
+local dps = cl:DpsSeries(f, 'PlayerOne', 1)
+I_DPSMAX = 0
+for _, p in ipairs(dps) do if p[2] > I_DPSMAX then I_DPSMAX = p[2] end end
+""")
+check(bool(rt.eval("I_TOT == 9500 and I_TOP == 'PlayerOne' and I_TOPAMT == 6500")), "damage totals per source aggregated (PlayerOne 6500 of 9500)")
+check(bool(rt.eval("I_SPELLS >= 2 and I_SP1 == 5000")), "per-spell breakdown for the selected source")
+check(bool(rt.eval("I_AURAUPS > 0")), "aura uptime engine closes the opened aura at fight end")
+check(bool(rt.eval("I_ENEMY == 'Lord Marrowgar'")), "enemies tab: damage taken by boss")
+check(bool(rt.eval("I_ITXT == 'KickerOne interrupt Lord Marrowgar with Kick (Frost Bolt)'")), "interrupt row formatted MRT-style (X interrupt Y with Z (interrupted))")
+check(bool(rt.eval("I_PSP >= 3")), "player list of the fight enumerated from GUID flags")
+check(bool(rt.eval("I_DPSMAX >= 6000")), "DPS series buckets spike over 6000 on the nuke second")
+
+# --- I.6 UI: tab presenti, liste, selezione, grafico ---
+rt.execute("""
+local cl = RLSuite.combatLog
+ROSTER_MOCK = { { 'PlayerOne', 1, 1, 80, 80, 'WARRIOR' } }
+cl.selFight = cl.db.fights[2]
+cl:SelectTab('damage')
+I_LROWS = #cl._lRows
+I_LTOP = cl._lRows[1] and cl._lRows[1].txt1:GetText()
+-- click prima riga = selezione sorgente -> breakdown a destra
+cl._lRows[1]._scripts.OnClick(cl._lRows[1])
+I_SEL = cl.selSource
+I_RROWS = #cl._rRows
+cl:SelectTab('interrupts')
+I_IL = 0
+for _, r in ipairs(cl._lRows) do if r:IsShown() then I_IL = I_IL + 1 end end
+cl:SelectTab('graphs')
+I_GPANE = (cl.leftBox:IsShown() == false and cl.graphPane:IsShown() == true)
+cl:RefreshGraph()
+I_SERIES = (cl.graph.series ~= nil and #cl.graph.series > 0)
+I_VLINES = (cl.graph.vlines ~= nil and #cl.graph.vlines >= 1)
+cl:SelectTab('damage')
+I_BACK = (cl.leftBox:IsShown() == true and cl.graphPane:IsShown() == false)
+""")
+check(bool(rt.eval("I_LTOP == '1. PlayerOne'")), "left pane lists sources sorted (PlayerOne first)")
+check(bool(rt.eval("I_SEL == 'PlayerOne' and I_RROWS >= 2")), "clicking a source fills the right pane with the spell breakdown")
+check(bool(rt.eval("I_IL == 1")), "interrupts tab lists the kick event")
+check(bool(rt.eval("I_GPANE == true and I_SERIES == true")), "graphs tab shows the graph with a DPS series drawn from the fight")
+check(bool(rt.eval("I_VLINES == true")), "death events drawn as vertical markers on the graph")
+check(bool(rt.eval("I_BACK == true")), "leaving the graphs tab restores the two lists")
+
+# --- I.7 clear + report + live dropdown ---
+rt.execute("""
+local cl = RLSuite.combatLog
+CHAT_LOG = {}
+IsShiftKeyDown = function() return true end
+cl.clearBtn._scripts.OnClick(cl.clearBtn)
+I_WIPED = (#cl.db.fights == 0)
+IsShiftKeyDown = SAVED_ISD or function() return false end
+""")
+check(bool(rt.eval("I_WIPED == true")), "Shift+Clear wipes the saved fights")
+
+# --- I.8 ring buffer cap (saveFights) ---
+rt.execute("""
+local cl = RLSuite.combatLog
+cl.db.saveFights = 3
+for i = 1, 5 do
+    cl:OnRegenDisabled()
+    cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 100, 0)
+    cl:OnRegenEnabled()
+end
+I_CAP = #cl.db.fights
+cl.db.saveFights = 15
+cl.db.fights = {}
+""")
+check(bool(rt.eval("I_CAP == 3")), "fights ring buffer capped at saveFights (3/5 kept)")
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenarios G+H (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 

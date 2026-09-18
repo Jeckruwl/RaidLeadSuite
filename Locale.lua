@@ -153,6 +153,37 @@ do
 
     L["Open the trade with the winner first, then click the item icon."] = true
 
+    -- CombatLog
+    L["Combat log"] = true
+    L["Select fight"] = true
+    L["Send report"] = true
+    L["Shift+click to wipe the saved fights."] = true
+    L["No fights recorded"] = true
+    L["[LIVE]"] = true
+    L["Live"] = true
+    L["Events"] = true
+    L["dropped"] = true
+    L["Total"] = true
+    L["By cast"] = true
+    L["By target"] = true
+    L["Spells list"] = true
+    L["Select player"] = true
+    L["Uptime"] = true
+    L["Interrupts"] = true
+    L["Dispels"] = true
+    L["Damage"] = true
+    L["Healing"] = true
+    L["Enemies"] = true
+    L["Auras"] = true
+    L["Players spells"] = true
+    L["Power"] = true
+    L["Graphs"] = true
+    L["DPS"] = true
+    L["Health"] = true
+    L["Total DPS"] = true
+    L["Step, sec."] = true
+    L["drag: zoom, click: reset"] = true
+
     -- MacroBar
     L["Macrobar is disabled in Config."] = true
     L["Phase: %s"] = true
