@@ -26,9 +26,32 @@ function LM:Init()
     self.db = RLSuite.db.profile.loot
     self.history = self.db.history or {}
     self.db.history = self.history
+    self.db.filters = self.db.filters or {}
     self.currentRoll = nil
     self.preMessage = ""
     self:CreateFrame()
+    -- Loot da item in borsa (Sack of Frosty Treasures & co.): viene sempre
+    -- IGNORATO. Unica provenienza di quel loot e' una loot window aperta
+    -- da UseContainerItem: marcata a LOOT_OPENED (entro 2s dall'uso),
+    -- smarcata a LOOT_CLOSED. Le loot window dei boss NON seguono mai un
+    -- UseContainerItem, quindi il flag non tocca il loot dei boss.
+    self._containerUseT = nil
+    self._containerLoot = false
+    self:RegisterEvent("LOOT_OPENED", "OnLootOpened")
+    self:RegisterEvent("LOOT_CLOSED", "OnLootClosed")
+    hooksecurefunc("UseContainerItem", function()
+        LM._containerUseT = GetTime()
+    end)
+end
+
+function LM:OnLootOpened()
+    local t = self._containerUseT
+    self._containerLoot = (t ~= nil and (GetTime() - t) < 2) or false
+end
+
+function LM:OnLootClosed()
+    self._containerLoot = false
+    self._containerUseT = nil
 end
 
 function LM:Toggle()
@@ -97,9 +120,41 @@ function LM:CreateFrame()
         LM:UpdateHistory()
     end)
 
+    -- Checkbox "ignore loots": escludono intere categorie sia in cattura
+    -- (mai registrate) sia a video (le righe gia' in storico spariscono).
+    local ignoreLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ignoreLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -78)
+    ignoreLabel:SetText("ignore loots:")
+    self.ignoreChecks = {}
+    local ignoreDefs = {
+        { key = "recipes", label = "recipes" },
+        { key = "boe",     label = "BOE" },
+        { key = "gems",    label = "gems" },
+        { key = "shards",  label = "shards" },
+    }
+    local ix = 96
+    for _, def in ipairs(ignoreDefs) do
+        local cb = CreateFrame("CheckButton", "RLSuiteLootIgnore_" .. def.key, f, "UICheckButtonTemplate")
+        cb:SetSize(20, 20)
+        cb:SetPoint("TOPLEFT", f, "TOPLEFT", ix, -72)
+        cb:SetChecked(self.db and self.db.filters and self.db.filters[def.key] and true or false)
+        cb:SetScript("OnClick", function(btn)
+            if LM.db and LM.db.filters then
+                LM.db.filters[def.key] = btn:GetChecked() and true or false
+            end
+            LM:UpdateHistory()
+        end)
+        local lbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        lbl:SetPoint("LEFT", cb, "RIGHT", 2, 0)
+        lbl:SetText(def.label)
+        self.ignoreChecks[def.key] = cb
+        ix = ix + 20 + (#def.label * 7) + 18
+    end
+
+    -- Header spostato sotto la riga delle checkbox (-74 -> -100).
     local header = CreateFrame("Frame", nil, f)
-    header:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -74)
-    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -74)
+    header:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -100)
+    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -100)
     header:SetHeight(18)
     self.histHeader = header
     self:PaintHeader(header)
@@ -170,6 +225,17 @@ function LM:CreateFrame()
     self.rerollBtn:SetText("Reroll")
     self.rerollBtn:Disable()
     self.rerollBtn:SetScript("OnClick", function() self:DoReroll() end)
+
+    -- Stesso tasto dell'MS Manager: annuncia le MS changes in raid (e le
+    -- pre-pone al messaggio di roll come preMessage). Utile mentre si lootano.
+    self.announceMSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.announceMSBtn)
+    self.announceMSBtn:SetSize(124, 24)
+    self.announceMSBtn:SetPoint("LEFT", self.rerollBtn, "RIGHT", 6, 0)
+    self.announceMSBtn:SetText("Announce Changes")
+    self.announceMSBtn:SetScript("OnClick", function()
+        RLSuite.msManager:GenerateMessage()
+    end)
 
     f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
@@ -311,6 +377,7 @@ function LM:SpawnDebugLoot()
 end
 
 function LM:OnLootMessage(msg)
+    if self._containerLoot then return end -- loot da item in borsa: MAI tracciato
     local itemLink = RLSuite.utils:GetItemLinkFromChat(msg or "")
     if not itemLink then return end
     local itemName, _, quality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemLink)
@@ -356,7 +423,87 @@ function LM:ProcessPendingLoot()
     end
 end
 
+-- Emblemi WotLK: MAI tracciati (regola fissa, senza checkbox).
+local LM_EMBLEM_IDS = { [40752] = true, [40753] = true, [45624] = true, [47241] = true, [49426] = true }
+-- Shard da incantamento: Dream Shard / Small Dream Shard / Abyss Crystal
+-- (WotLK) + i corrispettivi TBC e vanilla.
+local LM_SHARD_IDS = {
+    [34052] = true, [34053] = true, [34057] = true,
+    [22448] = true, [22449] = true, [22450] = true, [20725] = true,
+    [14343] = true, [14344] = true,
+}
+local LM_GEM_CLASSES = { Gem = true, Gemma = true }
+local LM_RECIPE_CLASSES = { Recipe = true, Ricetta = true }
+
+-- BOE detection: la riga di vincolo nel tooltip usa la globale localizzata
+-- ITEM_BIND_ON_EQUIP (e ITEM_BIND_ON_PICKUP per i BoP, che chiude il giro).
+function LM:IsBindOnEquip(itemLink)
+    GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+    pcall(function() GameTooltip:SetHyperlink(itemLink) end)
+    local lines = (GameTooltip.NumLines and GameTooltip:NumLines()) or 0
+    for i = 2, lines do
+        local fs = _G["GameTooltipTextLeft" .. i]
+        local txt = fs and fs.GetText and fs:GetText()
+        if txt and txt == ITEM_BIND_ON_PICKUP then
+            GameTooltip:Hide()
+            return false
+        end
+        if txt and txt == ITEM_BIND_ON_EQUIP then
+            GameTooltip:Hide()
+            return true
+        end
+    end
+    GameTooltip:Hide()
+    return false
+end
+
+-- Categoria speciale del pezzo (governano le checkbox "ignore loots" e
+-- l'esclusione fissa degli emblemi). nil = loot normale.
+function LM:LootCategory(itemLink, itemName)
+    if not itemLink then return nil end
+    local id = tonumber(string.match(itemLink, "Hitem:(%d+)"))
+    if id then
+        if LM_EMBLEM_IDS[id] then return "EMBLEM" end
+        if LM_SHARD_IDS[id] then return "SHARD" end
+    end
+    local itemClass = select(6, GetItemInfo(itemLink))
+    if itemClass then
+        if LM_GEM_CLASSES[itemClass] then return "GEM" end
+        if LM_RECIPE_CLASSES[itemClass] then return "RECIPE" end
+    end
+    if self:DetectItemType(itemLink, itemName) == "PATTERN" then
+        return "RECIPE"
+    end
+    if self:IsBindOnEquip(itemLink) then
+        return "BOE"
+    end
+    return nil
+end
+
+function LM:EntryCategory(entry)
+    if entry._cat == nil then
+        entry._cat = self:LootCategory(entry.itemLink, entry.itemName) or false
+    end
+    if entry._cat == false then return nil end
+    return entry._cat
+end
+
+-- Le categorie attive nelle checkbox "ignore loots" (e gli emblemi, sempre):
+-- usato sia in cattura (AddToHistory) sia a video (MatchesFilter).
+function LM:IsCategoryIgnored(cat)
+    if cat == nil then return false end
+    if cat == "EMBLEM" then return true end
+    local f = (self.db and self.db.filters) or {}
+    if cat == "RECIPE" then return f.recipes == true end
+    if cat == "BOE" then return f.boe == true end
+    if cat == "GEM" then return f.gems == true end
+    if cat == "SHARD" then return f.shards == true end
+    return false
+end
+
 function LM:AddToHistory(itemLink, itemName, itemTexture, quality)
+    -- Filtro in cattura: categorie ignorate MAI registrate.
+    if self:IsCategoryIgnored(self:LootCategory(itemLink, itemName)) then return end
     if quality == nil and itemLink then
         local _, _, q = GetItemInfo(itemLink)
         quality = q
@@ -408,6 +555,7 @@ function LM:MatchesFilter(entry)
     if self.db and self.db.rarityFilter ~= nil then
         f = self.db.rarityFilter
     end
+    if self:IsCategoryIgnored(self:EntryCategory(entry)) then return false end
     if f == nil or f == "all" then return true end
     local q = self:EntryQuality(entry)
     return q >= tonumber(f)
@@ -868,6 +1016,9 @@ function LM:ShowTradeWindow(item)
     f:SetSize(230, LM_TRADE_ICON + 2 * LM_TRADE_PAD)
     f:SetFrameStrata("DIALOG")
     RLSuite.utils:SkinFrame(f)
+    -- Il frame NON cattura MAI i click (passano alla lista loot dietro):
+    -- catturano solo l'icona cliccabile e la X di chiusura.
+    f:EnableMouse(false)
     table.insert(self.tradeWindows, f)
 
     -- icona cliccabile a sinistra, alta quanto la finestra
@@ -899,14 +1050,21 @@ function LM:ShowTradeWindow(item)
     btn:SetAllPoints(icon)
     btn:EnableMouse(true)
     btn:RegisterForClicks("LeftButtonUp")
+    f.pickBtn = btn
     btn:SetScript("OnClick", function()
-        if item.itemLink then
-            PickupItem(item.itemLink)
-        end
         if TradeFrame and TradeFrame:IsShown() then
+            if item.itemLink then
+                PickupItem(item.itemLink)
+            end
             ClickTradeButton(1)
+            self:CloseTradeWindow(f)
+        else
+            -- NIENTE pickup senza trade aperto: un item sul cursore trasforma
+            -- OGNI click dell'interfaccia in un'azione del cursore e la lista
+            -- loot smette di rispondere (il bug "finestra pickup = lista
+            -- bloccata"). Il pezzo si prende solo quando il trade e' aperto.
+            RLSuite.utils:Print(L["Open the trade with the winner first, then click the item icon."])
         end
-        self:CloseTradeWindow(f)
     end)
 
     f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -946,7 +1104,7 @@ function LM:StackTradeWindows()
             if prev then
                 w:SetPoint("TOP", prev, "BOTTOM", 0, -LM_TRADE_GAP)
             else
-                w:SetPoint("CENTER", UIParent, "CENTER", 0, 140)
+                w:SetPoint("TOP", UIParent, "TOP", 0, -80)
             end
             prev = w
         end

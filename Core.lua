@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.10.4"
+RLSuite.version = "1.10.5"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -115,6 +115,7 @@ local defaults = {
             rerollDuration = 5,
             rarityFilter = "all",
             tradeWindow = 7200,
+            filters = { recipes = false, boe = false, gems = false, shards = false },
         },
         appearance = {
             theme = "default",

@@ -7,7 +7,33 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.10.4**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.10.5**.
+
+## Novità della sessione 1.10.5 (questo branch, dopo 1.10.4) — MacroBar numeri + Loot Manager (piattaforma ignore)
+
+**MacroBar**: rimossi i numerini indice sulle icone; resta solo il keybind (se assegnato).
+
+**Loot Manager**:
+- **Fix click lista**: la finestra "Click to pick up" non blocca piu' la
+  lista: (a) NIENTE piu' PickupItem senza trade aperto (item sul cursore =
+  TUTTI i click UI diventano azioni del cursore); il pezzo si prende SOLO a
+  trade aperto (click = pickup + trascina in slot 1 + chiudi); (b) frame
+  pickup mouse-disabled (catturano solo icona+X); (c) pila finestre spostata
+  in CIMA allo schermo (TOP, -80), lontana dalla finestra loot.
+- **Emblemi MAI tracciati** (id Heroism/Valor/Conquest/Triumph/Frost).
+- **Loot da item in borsa ignorato** (Sack of Frosty Treasures ecc.):
+  hooksecurefunc su UseContainerItem + LOOT_OPENED/LOOT_CLOSED marcano la
+  loot window "da container"; quei CHAT_MSG_LOOT vengono scartati.
+- **Tasto "Announce Changes"** anche nel Loot Manager (a destra di Reroll):
+  esegue la stessa GenerateMessage dell'MS Manager.
+- **Checkbox "ignore loots:" recipes / BOE / gems / shards** sotto il titolo:
+  filtro in cattura (mai registrati) E a video (le righe spariscono),
+  persistenti in db.loot.filters. Ricette: classe Recipe/Ricetta o euristica
+  pattern esistente; gemme: classe Gem/Gemma; shards: id noti (Dream Shard,
+  Abyss Crystal, famiglie TBC/vanilla); BOE: scan tooltip per la riga
+  ITEM_BIND_ON_EQUIP / ITEM_BIND_ON_PICKUP (globali localizzate).
+502 check PASS (Scenario H nuovo: numeri macrobar, emblemi, bag-loot con
+hook mock reale, 4 checkbox, tasto announce con spy, click pickup gated).
 
 ## Novità della sessione 1.10.4 (questo branch, dopo 1.10.3) — niente più bordi "dialog" sulle barre player
 
@@ -1030,7 +1056,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 482 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 502 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

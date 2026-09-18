@@ -219,6 +219,21 @@ UIParent._w = 1920; UIParent._h = 1080
 Minimap = newFrame({ _name = "Minimap" })
 Minimap._w = 156; Minimap._h = 156
 GameTooltip = newFrame({ _name = "GameTooltip" })
+function methods:SetHyperlink(l) self._hyper = l; return self end
+function methods:NumLines() return 8 end
+for i = 1, 8 do
+    local fs = newFrame({ _name = "GameTooltipTextLeft" .. i })
+    fs._isFontString = true
+    _G["GameTooltipTextLeft" .. i] = fs
+end
+TOOLTIP_REFRESH = function()
+    for i = 1, 8 do
+        local fs = _G["GameTooltipTextLeft" .. i]
+        fs.SetText(fs, TOOLTIP_LINES[i] or "")
+    end
+end
+TradeFrame = newFrame({ _name = "TradeFrame" })
+TradeFrame:Hide()
 DEFAULT_CHAT_FRAME = newFrame({ _name = "DEFAULT_CHAT_FRAME" })
 SlashCmdList = {}
 hash_SlashCmdList = {}
@@ -252,7 +267,12 @@ function IsRaidLeader() return false end
 function IsRaidOfficer() return false end
 function InviteUnit(name) end
 function SendChatMessage(msg, typ, lang, dest) CHAT_LOG = CHAT_LOG or {}; CHAT_LOG[#CHAT_LOG+1] = tostring(typ) .. '|' .. tostring(msg) end
-function GetItemInfo(link) return "Item", link, 4, 1, 1, 1, 1, 1, 1, "Interface\\Icons\\INV_Misc_QuestionMark" end
+ITEMINFO_DB = {}
+function GetItemInfo(link)
+    local row = ITEMINFO_DB[link]
+    if row then return unpack(row) end
+    return "Item", link, 4, 1, 1, 1, 1, 1, 1, "Interface\\Icons\\INV_Misc_QuestionMark"
+end
 function GetItemQualityColor(q) return 1, 0.5, 0 end
 function GetSpellInfo(id) return "Spell" end
 function IsShiftKeyDown() return false end
@@ -321,8 +341,16 @@ ChatFontNormal = makeFont("ChatFontNormal")
 NumberFontNormal = makeFont("NumberFontNormal")
 
 PlaySound = function() end
-hooksecurefunc = function() end
-unhooksecurefunc = function() end
+HOOKS = {}
+hooksecurefunc = function(name, fn) if HOOKS[name] == nil then HOOKS[name] = fn end end
+unhooksecurefunc = function(name) HOOKS[name] = nil end
+PICKED_ITEM = nil
+TRADE_BTN = 0
+function PickupItem(link) PICKED_ITEM = link end
+function ClickTradeButton(i) TRADE_BTN = i end
+ITEM_BIND_ON_EQUIP = "Binds when equipped"
+ITEM_BIND_ON_PICKUP = "Binds on pickup"
+TOOLTIP_LINES = {}
 SetDesaturation = function() end
 GetDesaturation = function() return false end
 PanelTemplates_TabResize = function() end
@@ -2324,8 +2352,9 @@ rt.execute("local f = RLSuite.lootManager.tradeWindows[1]; local p, rel, rp = f.
 check(bool(rt.eval("TXT_OK == true")), "'Click to pick up item' sits to the RIGHT of the icon")
 check(bool(rt.eval("RLSuite.lootManager.tradeWindows[1].text:GetText() == 'Click to pick up item'")), "pickup text preserved")
 rt.execute("RLSuite.lootManager:CloseTradeWindow(RLSuite.lootManager.tradeWindows[1])")
-rt.execute("local p, rel, rp, x, y = RLSuite.lootManager.tradeWindows[1]:GetPoint(1); RISE_OK = (p == 'CENTER' and rel == UIParent and rp == 'CENTER' and y == 140)")
-check(bool(rt.eval("RISE_OK == true")), "closing the first pickup window makes the next one rise to the base anchor")
+rt.execute("local p, rel, rp, x, y = RLSuite.lootManager.tradeWindows[1]:GetPoint(1); RISE_OK = (p == 'TOP' and rel == UIParent and rp == 'TOP' and y == -80)")
+check(bool(rt.eval("RISE_OK == true")), "closing the first pickup window makes the next one rise to the base anchor (top of the screen)")
+check(bool(rt.eval("RLSuite.lootManager.tradeWindows[1]._enabledMouse == false")), "pickup window frame NEVER captures mouse (only its icon and close button do)")
 rt.execute("RLSuite.lootManager:CloseAllTradeWindows()")
 
 # --- G.8 Groupmaking: 2-column class bar order + reduced minimum height ---
@@ -2413,7 +2442,155 @@ check(bool(rt.eval("W10_GRAY")), "rolled item row is greyed out in the loot list
 check(bool(rt.eval("W10_DESAT")), "rolled item icon is desaturated in the loot list")
 rt.execute("RLSuite.lootManager:CloseAllTradeWindows()")
 
-check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario G (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
+# =====================================================================
+print("== Scenario H: macrobar numbers off, loot ignore rules, MS announce in loot, pickup click fix ==")
+# =====================================================================
+
+# --- H.1 MacroBar: i numerini sulle icone non esistono piu' ---
+check(bool(rt.eval("RLSuite.macrobar.buttons[1].numText == nil")), "macrobar icons have NO index numbers anymore")
+check(bool(rt.eval("RLSuite.macrobar.buttons[1].hotkey ~= nil")), "macrobar keybind text kept on the icons")
+
+# --- H.2 Loot Manager: emblemi SEMPRE ignorati ---
+rt.execute("""
+local lm = RLSuite.lootManager
+lm.history = {}; if lm.db then lm.db.history = lm.history end
+lm.selectedItem = nil
+lm:UpdateHistory()
+H_N0 = #lm.history
+lm:OnLootMessage('You receive loot: |cffa335ee|Hitem:49426:0:0:0:0:0:0:0:80|h[Emblem of Frost]|h|r.')
+H_EMB = #lm.history
+lm:OnLootMessage('You receive loot: |cffa335ee|Hitem:40753:0:0:0:0:0:0:0:80|h[Emblem of Valor]|h|r.')
+H_EMB2 = #lm.history
+""")
+check(bool(rt.eval("H_N0 == 0 and H_EMB == 0 and H_EMB2 == 0")), "emblems (Frost/Valor) are NEVER recorded in the loot history")
+rt.execute("RLSuite.lootManager:UpdateHistory(); H_EMBROWS = #RLSuite.lootManager.histRows")
+check(bool(rt.eval("H_EMBROWS == 0")), "no emblem rows ever show in the list")
+
+# --- H.3 Loot Manager: loot da item in borsa ignorato ---
+rt.execute("""
+local lm = RLSuite.lootManager
+H_BAG_OK = (HOOKS.UseContainerItem ~= nil)  -- hook registrato a Init
+if HOOKS.UseContainerItem then HOOKS.UseContainerItem() end  -- simula uso Sack of Frosty Treasures
+lm:OnLootOpened()
+H_B1 = #lm.history
+lm:OnLootMessage('You receive loot: |cffa335ee|Hitem:50100:0:0:0:0:0:0:0:80|h[Sack Item]|h|r.')
+H_B2 = #lm.history
+lm:OnLootClosed()
+H_BAG_FLAG = (lm._containerLoot == false)
+lm:OnLootMessage('You receive loot: |cffa335ee|Hitem:50100:0:0:0:0:0:0:0:80|h[Sack Item]|h|r.')
+H_B3 = #lm.history
+""")
+check(bool(rt.eval("H_BAG_OK == true")), "UseContainerItem is hooked to detect bag-loot windows")
+check(bool(rt.eval("H_B1 == 0 and H_B2 == 0")), "loot from items opened in the player bags (Sack of Frosty Treasures) is ignored")
+check(bool(rt.eval("H_BAG_FLAG == true and H_B3 == 1")), "after the bag window closes, normal boss loot is recorded again")
+
+# --- H.4 Loot Manager: checkbox ignore loots (recipes/BOE/gems/shards) ---
+rt.execute("""
+local lm = RLSuite.lootManager
+lm.history = {}; if lm.db then lm.db.history = lm.history end
+lm.selectedItem = nil
+lm:UpdateHistory()
+H_CK = (lm.ignoreChecks ~= nil and lm.ignoreChecks.recipes ~= nil and lm.ignoreChecks.boe ~= nil
+    and lm.ignoreChecks.gems ~= nil and lm.ignoreChecks.shards ~= nil)
+ITEMINFO_DB['|cff0070dd|Hitem:99901:0:0:0:0:0:0:0:80|h[Pattern: Test Boots]|h|r']
+    = {'Pattern: Test Boots', '|cff0070dd|Hitem:99901:0:0:0:0:0:0:0:80|h[Pattern: Test Boots]|h|r', 3, 80, 80, 'Recipe', 'Leatherworking', 1, '', 'tex'}
+ITEMINFO_DB['|cff0070dd|Hitem:99902:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r']
+    = {'Bold Cardinal Ruby', '|cff0070dd|Hitem:99902:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r', 3, 80, 80, 'Gem', 'Red', 1, '', 'tex'}
+""")
+check(bool(rt.eval("H_CK == true")), "the 4 'ignore loots' checkboxes exist (recipes/BOE/gems/shards)")
+rt.execute("""
+local lm = RLSuite.lootManager
+local function clickCB(key, state)
+    local cb = lm.ignoreChecks[key]
+    cb:SetChecked(state)
+    cb._scripts.OnClick(cb, 'LeftButton')
+end
+H_F0 = #lm.history
+-- gems on
+clickCB('gems', true)
+lm:OnLootMessage('You receive loot: |cff0070dd|Hitem:99902:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r.')
+H_GEM_CAP = #lm.history
+lm:UpdateHistory()
+H_GEM_ROWS = #lm.histRows
+-- gems off
+clickCB('gems', false)
+lm:OnLootMessage('You receive loot: |cff0070dd|Hitem:99902:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r.')
+H_GEM_ON = #lm.history
+H_GEM_ROWS2 = #lm.histRows
+-- recipes on
+local n0 = #lm.history
+clickCB('recipes', true)
+lm:OnLootMessage('You receive loot: |cff0070dd|Hitem:99901:0:0:0:0:0:0:0:80|h[Pattern: Test Boots]|h|r.')
+H_REC = (#lm.history == n0)
+clickCB('recipes', false)
+-- shards on
+clickCB('shards', true)
+lm:OnLootMessage('You receive loot: |cff0070dd|Hitem:34052:0:0:0:0:0:0:0:80|h[Dream Shard]|h|r.')
+H_SHARD = (#lm.history == n0)
+clickCB('shards', false)
+-- BOE on: 99904 Armatura con tooltip 'Binds when equipped'
+ITEMINFO_DB['|cffa335ee|Hitem:99904:0:0:0:0:0:0:0:80|h[BOE Chestplate]|h|r']
+    = {'BOE Chestplate', '|cffa335ee|Hitem:99904:0:0:0:0:0:0:0:80|h[BOE Chestplate]|h|r', 4, 80, 80, 'Armor', 'Plate', 1, '', 'tex'}
+TOOLTIP_LINES = { [2] = ITEM_BIND_ON_EQUIP }
+TOOLTIP_REFRESH()
+clickCB('boe', true)
+lm:OnLootMessage('You receive loot: |cffa335ee|Hitem:99904:0:0:0:0:0:0:0:80|h[BOE Chestplate]|h|r.')
+H_BOE = (#lm.history == n0)
+clickCB('boe', false)
+lm:OnLootMessage('You receive loot: |cffa335ee|Hitem:99904:0:0:0:0:0:0:0:80|h[BOE Chestplate]|h|r.')
+H_BOE2 = (#lm.history == n0 + 1)
+TOOLTIP_LINES = {}
+TOOLTIP_REFRESH()
+H_FIL_DB = (lm.db.filters.gems == false and lm.db.filters.shards == false)
+""")
+check(bool(rt.eval("H_F0 == 0 and H_GEM_CAP == 0")), "'gems' checkbox: gem loot is never recorded while enabled")
+check(bool(rt.eval("H_GEM_ON == 1 and H_GEM_ROWS2 == 1")), "'gems' checkbox off: gem loot recorded again")
+check(bool(rt.eval("H_REC == true")), "'recipes' checkbox: recipe loot ignored")
+check(bool(rt.eval("H_SHARD == true")), "'shards' checkbox: Dream Shard ignored")
+check(bool(rt.eval("H_BOE == true and H_BOE2 == true")), "'BOE' checkbox: bind-on-equip loot ignored only while enabled")
+check(bool(rt.eval("H_FIL_DB == true")), "checkbox states persist into db.loot.filters")
+
+# --- H.5 Announce Changes button also in the Loot Manager ---
+rt.execute("""
+local lm = RLSuite.lootManager
+H_ANC = (lm.announceMSBtn ~= nil and lm.announceMSBtn:GetText() == 'Announce Changes')
+MS_CALLED = 0
+local orig = RLSuite.msManager.GenerateMessage
+RLSuite.msManager.GenerateMessage = function() MS_CALLED = MS_CALLED + 1 end
+lm.announceMSBtn._scripts.OnClick(lm.announceMSBtn)
+RLSuite.msManager.GenerateMessage = orig
+""")
+check(bool(rt.eval("H_ANC == true")), "'Announce Changes' button present in the Loot Manager")
+check(bool(rt.eval("MS_CALLED == 1")), "clicking it runs the MS Manager announce (GenerateMessage)")
+
+# --- H.6 pickup click: NIENTE item sul cursore senza trade aperto ---
+rt.execute("""
+local lm = RLSuite.lootManager
+lm:CloseAllTradeWindows()
+PICKED_ITEM = nil
+TRADE_BTN = 0
+TradeFrame:Hide()
+lm:ShowTradeWindow({ itemTexture = 'tex', itemLink = '|cffa335ee|Hitem:42|h[Loot A]|h|r', assignedTo = 'Winnerbot' })
+local tw = lm.tradeWindows[1]
+H_PB = (tw.pickBtn ~= nil)
+tw.pickBtn._scripts.OnClick(tw.pickBtn)
+H_NOPICK = (PICKED_ITEM == nil)
+H_STAY = (#lm.tradeWindows == 1 and tw:IsShown())
+TradeFrame:Show()
+tw.pickBtn._scripts.OnClick(tw.pickBtn)
+H_PICKED = (PICKED_ITEM == '|cffa335ee|Hitem:42|h[Loot A]|h|r')
+H_TRADECL = (TRADE_BTN == 1)
+H_CLOSED2 = (#lm.tradeWindows == 0)
+TradeFrame:Hide()
+""")
+check(bool(rt.eval("H_PB == true")), "pickup icon button reference kept for the gated click")
+check(bool(rt.eval("H_NOPICK == true and H_STAY == true")), "no trade open: click does NOT put the item on the cursor and keeps the window (list stays clickable)")
+check(bool(rt.eval("H_PICKED == true and H_TRADECL == true and H_CLOSED2 == true")), "trade open: click picks the item up, drops it in trade slot 1 and closes the window")
+
+# pulizia storico usato nello scenario H
+rt.execute("local lm = RLSuite.lootManager; lm.history = {}; if lm.db then lm.db.history = lm.history end; lm.selectedItem = nil; lm:UpdateHistory()")
+
+check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenarios G+H (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 
 print()
 if fails:

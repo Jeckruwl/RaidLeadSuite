@@ -151,6 +151,8 @@ do
     L["No MS changes recorded."] = true
     L["Requesting MS changes - type in raid: ms <spec> you have only 40s"] = true
 
+    L["Open the trade with the winner first, then click the item icon."] = true
+
     -- MacroBar
     L["Macrobar is disabled in Config."] = true
     L["Phase: %s"] = true

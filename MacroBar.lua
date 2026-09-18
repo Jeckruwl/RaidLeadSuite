@@ -220,11 +220,6 @@ function MB:CreateButtons()
         btn.hotkey:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
         btn.hotkey:SetText("")
 
-        btn.numText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        btn.numText:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 2, 2)
-        btn.numText:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
-        btn.numText:SetText(i)
-
         RLSuite.utils:SkinMacroButton(btn)
         self.buttons[i] = btn
     end
