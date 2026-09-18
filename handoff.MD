@@ -7,7 +7,19 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.10.1**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.10.2**.
+
+## Novità della sessione 1.10.2 (questo branch, dopo 1.10.1) — layout G1/strip stabile
+
+- **Header G1 attaccato IN BASSO** alla sua riga (ancora BOTTOMLEFT).
+- **Zona strip SEMPRE riservata** (cellW+4 = dimensione icone intestazione)
+  tra Tanks e G1: le icone BCI compaiono/scompaiono DENTRO la zona con il
+  tasto "Raid Buffs" e NIENTE si sposta sotto (niente groupSpacing extra
+  prima di G1 quando c'e' roster: il gap Tanks->G1 e' sempre = stripH).
+- **Tasto "Raid Buffs" SOTTO le barre target dei tank**: ancorato
+  TOPRIGHT->BOTTOMRIGHT della barra target dell'OT.
+480 check PASS (BP_HDR_TOP riscritto sul nuovo ancoraggio; BP_NOSHIFT nuovo:
+le righe player non si muovono MAI tra matrice on/off; anchor bottone rebasato).
 
 ## Novità della sessione 1.10.1 (questo branch, dopo 1.10.0) — barre MT/OT: target bar al posto dei CD
 
@@ -997,7 +1009,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 479 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 480 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

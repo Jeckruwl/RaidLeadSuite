@@ -1446,7 +1446,7 @@ check(bool(rt.eval("TANK_TBAR_FAKE")), "debug/fake tanks leave the target bar em
 
 # Raid Buffs matrix panel (Method style)
 check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn ~= nil and RLSuite.raidFrame.buffPanelBtn.label:GetText() == 'Raid Buffs'")), "'Raid Buffs' toggle button exists with its label")
-check(bool(rt.eval("(function() local b = RLSuite.raidFrame.buffPanelBtn; local p = b and b._points[#b._points]; return p ~= nil and p[1] == 'LEFT' and p[2] == RLSuite.raidFrame.tankSlots[2] and p[3] == 'RIGHT' end)()")), "'Raid Buffs' button sits to the RIGHT of the OT bar (anchored to the second tank slot)")
+check(bool(rt.eval("(function() local b = RLSuite.raidFrame.buffPanelBtn; local p = b and b._points[#b._points]; return p ~= nil and p[1] == 'TOPRIGHT' and p[2] == RLSuite.raidFrame.tankSlots[2].targetBar and p[3] == 'BOTTOMRIGHT' end)()")), "'Raid Buffs' button sits UNDER the tank target bars (anchored to the OT target bar)")
 check(bool(rt.eval("RLSuite.raidFrame.buffPanel == nil")), "no floating side panel: the buff matrix is PART of the raid frame")
 check(bool(rt.eval("#RLSuite.raidFrame:_MatrixCols() == 25")), "25 visible columns (all Icy-Veins raid-buff categories incl. AP%%, DR%%, Heal+, Repl, SpellHaste; flask/food excluded)")
 rt.execute("""
@@ -1510,7 +1510,9 @@ BP_HDR_H = (RLSuite.raidFrame._buffHdrBtns[1].height == 80 or (RLSuite.raidFrame
 local hb1 = RLSuite.raidFrame._buffHdrBtns[1]
 local hbpt = hb1._points[#hb1._points]
 local gh1pt = RLSuite.raidFrame.groupHeaders[1]._points[#RLSuite.raidFrame.groupHeaders[1]._points]
-BP_HDR_TOP = (hbpt[2] == RLSuite.raidFrame.frame and gh1pt ~= nil and math.abs((hbpt[5] or 0) - (gh1pt[5] or 0)) < 0.001)
+BP_HDR_TOP = (hbpt[2] == RLSuite.raidFrame.frame and gh1pt ~= nil and gh1pt[1] == 'BOTTOMLEFT'
+    and math.abs((hbpt[5] or 0) - ((gh1pt[5] or 0) + (RLSuite.raidFrame:LayoutMetrics().cellW + 4))) < 0.001)
+SLOT1Y_ON = RLSuite.raidFrame.slots[1]._points[1][5]
 local hbg = RLSuite.raidFrame._buffHdrBg
 BP_HDR_BG = (hbg ~= nil and hbg:IsShown() == true and hbg._texRGBA ~= nil
     and math.abs(hbg._texRGBA[1] - 0.5) < 0.001 and math.abs(hbg._texRGBA[2] - 0.5) < 0.001
@@ -1561,7 +1563,7 @@ check(bool(rt.eval("BP_PRIO1")), "most important buffs first: column 1 is the Ki
 check(bool(rt.eval("BP_PRIOLAST")), "least priority last: retribution-aura column closes the row")
 check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "column headers show the user's BCI icons (media/BUFFCATICONS/BCI_<c-1>.tga, current column order): one direct SetTexture, no fallbacks")
 check(bool(rt.eval("BP_HDR_ICONSZ")), "header icons are square with fixed size = iconSize + iconSpacing (the column pitch)")
-check(bool(rt.eval("BP_HDR_TOP")), "category header icons are aligned with the G1 group header row (not a strip above the frame)")
+check(bool(rt.eval("BP_HDR_TOP")), "G1 header attaches to the BOTTOM of its permanent strip zone; icons live in the zone above the text")
 check(bool(rt.eval("BP_LAYOUT_DONE")), "matrix header build can never abort ApplyLayout half-way: whole layout completes (groups + backdrop + cells)")
 check(bool(rt.eval("BP_HDR_OUT")), "category header buttons live OUTSIDE the panel (children of the window) and STAY visible with the matrix open")
 check(bool(rt.eval("BP_TANK_UNDER")), "the Tanks header sits at the very top of the frame (icon strip moved down to G1)")
@@ -1694,6 +1696,7 @@ local m2 = RLSuite.raidFrame:LayoutMetrics()
 BP_W_KEEP = (m2.W == m2.rowWidth)
 RB_OFF = (BP_PSLOT._matrixBg ~= nil and BP_PSLOT._matrixBg:IsShown() == false)
 BP_HDR_PERM = (RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == false and RLSuite.raidFrame._buffHdrBtns[NC]:IsShown() == false)
+BP_NOSHIFT = (SLOT1Y_ON ~= nil and math.abs(RLSuite.raidFrame.slots[1]._points[1][5] - SLOT1Y_ON) < 0.001)
 BP_HBG_OFF = (RLSuite.raidFrame._buffHdrBg == nil or RLSuite.raidFrame._buffHdrBg:IsShown() == false)
 """)
 check(bool(rt.eval("BP_CLOSED")), "second click on 'Raid Buffs' hides the row icons/cells")
@@ -1706,6 +1709,7 @@ check(bool(rt.eval("BP_W_KEEP")), "matrix columns zone stays OUTSIDE the window 
 check(bool(rt.eval("RB_OFF")), "per-row backdrops are hidden when the matrix icons are off")
 check(bool(rt.eval("BP_HDR_PERM")), "header icon row HIDDEN again when the 'Raid Buffs' pipe is off (button toggles the header row)")
 check(bool(rt.eval("BP_HBG_OFF")), "header strip backdrop hidden when the matrix is off")
+check(bool(rt.eval("BP_NOSHIFT")), "toggling the buff matrix never shifts the player rows (strip zone always reserved between Tanks and G1)")
 
 # --- F.4 MT/OT assignment: SECURE macro buttons (SetPartyAssignment is PROTECTED) ---
 check(rt.eval("RLSuite.mainWindow.mtBtn:GetAttribute('type')") == 'macro', "MT button is a SECURE macro button (protected SetPartyAssignment never called)")

@@ -1644,13 +1644,17 @@ function RF:ApplyLayout()
                 if ti == 2 then otSlot = t end -- OT = seconda barra tank
             end
         end
-        y = y - m.groupSpacing
+        -- Lo spazio tra Tanks e G1 = SEMPRE la zona strip (cellW+4 = la
+        -- dimensione delle icone d'intestazione): niente groupSpacing extra
+        -- quando c'e' il roster, cosi' accendere/spegnere i buff non sposta
+        -- MAI nulla.
+        if not headersOn then y = y - m.groupSpacing end
         shown = true
-        -- Bottone "Raid Buffs": A DESTRA DELLA BARRA DELL'OT (bordo destro
-        -- della sua riga, centrato in verticale sulla barra).
-        if self.buffPanelBtn and otSlot then
+        -- Bottone "Raid Buffs": SOTTO le barre dei target dei tank (bordo
+        -- destro allineato alla barra target dell'OT).
+        if self.buffPanelBtn and otSlot and otSlot.targetBar then
             self.buffPanelBtn:ClearAllPoints()
-            self.buffPanelBtn:SetPoint("LEFT", otSlot, "RIGHT", 0, 0)
+            self.buffPanelBtn:SetPoint("TOPRIGHT", otSlot.targetBar, "BOTTOMRIGHT", 0, 0)
             self.buffPanelBtn:Show()
         end
     elseif self.buffPanelBtn then
@@ -1660,40 +1664,48 @@ function RF:ApplyLayout()
         local hdr = self.groupHeaders and self.groupHeaders[g]
         local hdrShown = hdr ~= nil and hdr:IsShown()
         if hdrShown then
-            hdr:ClearAllPoints()
-            hdr:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
-            hdr:SetWidth(m.rowWidth)
             shown = true
-            if g == 1 and matrixOn and mCols then
-                -- STRIP ICONE ALL'ALTEZZA DELL'HEADER G1: nell'area colonne (x
-                -- oltre il bordo destro delle barre), stessa y del testo
-                -- "Gruppo 1". La riga consuma max(header, strip) di verticale.
+            if g == 1 and headersOn and mCols then
+                -- ZONA STRIP SEMPRE RISERVATA (cellW+4 = dimensione delle icone
+                -- d'intestazione) tra Tanks e G1, a matrice accesa o spenta:
+                -- le icone compaiono/scompaiono DENTRO la zona senza spostare
+                -- niente sotto. Header G1: ATTACCATO IN BASSO alla sua riga.
                 local stripH = m.cellW + 4
-                for c = 1, #mCols do
-                    local btn = self._buffHdrBtns and self._buffHdrBtns[c]
-                    if btn then
-                        btn:ClearAllPoints()
-                        btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
-                            m.rowWidth + 4 + (c - 1) * m.cellW, y)
-                        btn:SetSize(m.cellW, stripH)
+                hdr:ClearAllPoints()
+                hdr:SetPoint("BOTTOMLEFT", self.content, "TOPLEFT", 2, y - stripH)
+                hdr:SetWidth(m.rowWidth)
+                if matrixOn then
+                    for c = 1, #mCols do
+                        local btn = self._buffHdrBtns and self._buffHdrBtns[c]
+                        if btn then
+                            btn:ClearAllPoints()
+                            btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
+                                m.rowWidth + 4 + (c - 1) * m.cellW, y)
+                            btn:SetSize(m.cellW, stripH)
+                        end
                     end
+                    -- Backdrop UNICO della strip: valore del backdrop barre
+                    -- (appearance.matrixBackdrop, Config -> Raid Frame).
+                    local bg = self._buffHdrBg
+                    if not bg then
+                        bg = self.frame:CreateTexture(nil, "BACKGROUND")
+                        self._buffHdrBg = bg
+                    end
+                    local bc = (self.db and self.db.appearance and self.db.appearance.matrixBackdrop) or {}
+                    bg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
+                    bg:ClearAllPoints()
+                    bg:SetPoint("TOPLEFT", self.frame, "TOPLEFT", m.rowWidth + 2, y)
+                    bg:SetSize(#mCols * m.cellW + 6, stripH)
+                    bg:Show()
+                elseif self._buffHdrBg then
+                    self._buffHdrBg:Hide()
                 end
-                -- Backdrop UNICO dietro la strip: PRENDE IL VALORE dal backdrop
-                -- delle barre (appearance.matrixBackdrop, Config -> Raid Frame).
-                local bg = self._buffHdrBg
-                if not bg then
-                    bg = self.frame:CreateTexture(nil, "BACKGROUND")
-                    self._buffHdrBg = bg
-                end
-                local bc = (self.db and self.db.appearance and self.db.appearance.matrixBackdrop) or {}
-                bg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
-                bg:ClearAllPoints()
-                bg:SetPoint("TOPLEFT", self.frame, "TOPLEFT", m.rowWidth + 2, y)
-                bg:SetSize(#mCols * m.cellW + 6, stripH)
-                bg:Show()
-                y = y - math.max(m.groupHeaderH, stripH)
+                y = y - stripH
             else
                 if g == 1 and self._buffHdrBg then self._buffHdrBg:Hide() end
+                hdr:ClearAllPoints()
+                hdr:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
+                hdr:SetWidth(m.rowWidth)
                 y = y - m.groupHeaderH
             end
         end
