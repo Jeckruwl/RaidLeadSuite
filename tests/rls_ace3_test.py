@@ -2449,6 +2449,8 @@ print("== Scenario H: macrobar numbers off, loot ignore rules, MS announce in lo
 # --- H.1 MacroBar: i numerini sulle icone non esistono piu' ---
 check(bool(rt.eval("RLSuite.macrobar.buttons[1].numText == nil")), "macrobar icons have NO index numbers anymore")
 check(bool(rt.eval("RLSuite.macrobar.buttons[1].hotkey ~= nil")), "macrobar keybind text kept on the icons")
+check(bool(rt.eval("RLSuite.macrobar.keypadFrame._noOuterBorder == true")), "macrobar keypad (key buttons section) flagged borderless")
+check(bool(rt.eval("(function() local k = RLSuite.macrobar.keypadFrame; return k._backdrop ~= nil and (k._backdropBorderColor[4] or 1) == 0 end)()")), "keypad section: themed fill kept, border fully invisible")
 
 # --- H.2 Loot Manager: emblemi SEMPRE ignorati ---
 rt.execute("""

@@ -7,7 +7,14 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.10.5**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.10.6**.
+
+## Novità della sessione 1.10.6 (questo branch, dopo 1.10.5) — keypad MacroBar senza bordo
+
+La sezione tasti della MacroBar (keypad Ready/Pull/Break) e' marcata
+`_noOuterBorder`: resta il riempimento a tema ma il Tooltip-Border e'
+invisibile (stesso trattamento di main bar, Groupmaking, MS, Loot).
+504 check PASS (2 nuovi: flag borderless + borderColor alpha 0 con fill).
 
 ## Novità della sessione 1.10.5 (questo branch, dopo 1.10.4) — MacroBar numeri + Loot Manager (piattaforma ignore)
 
@@ -1056,7 +1063,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 502 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 504 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

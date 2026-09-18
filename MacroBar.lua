@@ -539,6 +539,9 @@ function MB:CreateKeypad()
     self.keypadFrame = CreateFrame("Frame", "RLSuiteMacroKeypad", self.frame)
     self.keypadFrame:SetSize(kw, kh)
     self.keypadFrame:SetPoint("TOP", self.macroHost or self.frame, "BOTTOM", 0, -4)
+    -- Niente bordo sulla sezione tasti: riempimento a tema, Tooltip-Border
+    -- invisibile (stesso trattamento _noOuterBorder di main/GM/MS/LM).
+    self.keypadFrame._noOuterBorder = true
     self:AttachShiftDrag(self.keypadFrame)
 
     self.keypadButtons = {}
