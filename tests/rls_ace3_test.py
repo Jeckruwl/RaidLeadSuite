@@ -2639,6 +2639,16 @@ check(rt.eval("R_W2 <= 1024 and R_H2 <= 768"), "resize grip CLAMPED to the scree
 check(rt.eval("R_LASTW == R_W2 and R_LASTW > 0"), "resize grip size persisted on release (auto-finish outside the grip works)")
 rt.execute("Rh:Hide()")
 
+# window self-heal regression: brutalized saved sizes are clamped back on open
+rt.execute("RLSuite.utils:WindowLayout('combatlog').width = 5001; RLSuite.utils:WindowLayout('combatlog').height = 3001")
+rt.execute("RLSuite.mainWindow:ShowTab('log')")
+check(rt.eval("RLSuite.combatLog.frame:GetWidth() <= 1024 and RLSuite.combatLog.frame:GetHeight() <= 768"), "opening a tab heals oversized SAVED window dims (<= screen): the Log window comes back on-screen by itself")
+check(rt.eval("RLSuite.utils:WindowLayout('combatlog').width == 1024"), "healed size written back into the saved layout (no more repeating blow-up)")
+rt.execute("Cw = CreateFrame('Frame', nil, UIParent); Cw:Show(); Cw:SetSize(5000, 3000); Cw:SetPoint('TOPLEFT', UIParent, 'TOPLEFT', 0, 0); RLSuite.utils:ClampWindowToScreen(Cw)")
+check(rt.eval("Cw:GetWidth() == 1024 and Cw:GetHeight() == 768"), "ClampWindowToScreen directly clamps any oversized frame to the screen")
+rt.execute("Cw:Hide(); RLSuite.combatLog.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
+
+
 check(bool(rt.eval("RLSuite.combatLog.db ~= nil and RLSuite.combatLog.db.saveFights == 15 and RLSuite.combatLog.db.maxEvents == 3000")), "db.combatlog defaults loaded (saveFights 15, maxEvents 3000)")
 
 # --- I.2 helpers: guid npc id + realm strip + flags ---

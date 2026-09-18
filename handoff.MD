@@ -7,7 +7,17 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.3**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.4**.
+
+## Novità della sessione 1.11.4 (questo branch, dopo 1.11.3) — auto-sanazione finestre: mai piu' grip fuori schermo
+
+Il bug resize di 1.11.2 aveva gia' scritto nei salvataggi dimensioni
+enormi: riaprendo, la finestra tornava gigantesca e il grip restava
+fuori schermo anche col nuovo resize. Ora l'apertura di QUALUNQUE tab
+(SelectTab) clampa la dimensione salvata/allo schermo e riscrive i
+valori sanati nel layout db; nuovo `Utils:ClampWindowToScreen` riporta
+dentro lo schermo size e posizione di qualunque frame sovradimensionato.
+543 check PASS.
 
 ## Novità della sessione 1.11.3 (questo branch, dopo 1.11.2) — fix resize handle: niente piu' finestre enormi
 
@@ -35,7 +45,7 @@ mock di test le possiede, il client no):
   HideAllWindows (CloseTab ora nasconde anche il combat log).
 537 check PASS (regressione: layout key + graph creato a init).
 
-## Novità della sessione 1.11.1 (questo branch, dopo 1.11.0) — fix: il tab Log non apriva piu' Groupmaking
+PLACEHOLDER_A
 
 `MW:SelectTab` aveva una whitelist hardcoded (group/raidframe/ms/loot):
 la chiave "log" veniva riscritta in "group" e il tab apriva Groupmaking.

@@ -690,6 +690,38 @@ function Utils:ApplySavedPos(frame, key, cascadeOffset)
     end
 end
 
+-- Riporta una finestra dentro lo schermo: clamp della dimensione (mai
+-- piu' grande dello schermo, in coordinate della scala effettiva) e
+-- riposizionamento se un angolo finisce fuori vista. Serve per
+-- auto-sanare i salvataggi rovinati (es. dimensioni enormi registrate
+-- mentre il vecchio StartSizing litigava con il clamp dello schermo).
+function Utils:ClampWindowToScreen(frame)
+    if not frame or not (GetScreenWidth and GetScreenHeight) then return end
+    local scale = frame:GetEffectiveScale() or 1
+    local sw = (GetScreenWidth() or 0) / scale
+    local sh = (GetScreenHeight() or 0) / scale
+    if sw <= 0 or sh <= 0 then return end
+    local w = frame:GetWidth() or 0
+    local h = frame:GetHeight() or 0
+    if w > sw or h > sh then
+        w = math.min(w, sw)
+        h = math.min(h, sh)
+        frame:SetSize(w, h)
+    end
+    local left = frame.GetLeft and frame:GetLeft()
+    local top = frame.GetTop and frame:GetTop()
+    if type(left) == "number" and type(top) == "number" then
+        local newLeft = left
+        if left < 0 then newLeft = 0 elseif left + w > sw then newLeft = math.max(0, sw - w) end
+        local newTop = top
+        if top > sh then newTop = sh elseif top - h < 0 then newTop = h end
+        if newLeft ~= left or newTop ~= top then
+            frame:ClearAllPoints()
+            frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", newLeft, newTop)
+        end
+    end
+end
+
 -- Porta una finestra in primo piano sopra le altre (stessa strata).
 -- Assegna un frame level esplicito e distanziato (passo 50): cosi' i
 -- figli con frameLevel relativo (+5..+20: grip di resize, editbox, ecc.)

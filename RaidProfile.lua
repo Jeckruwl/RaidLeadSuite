@@ -614,10 +614,18 @@ function MW:SelectTab(key)
             pw = math.max(pw, mw)
             ph = math.max(ph, mh)
         end
+        -- auto-sanazione di salvataggi rovinati: la dimensione salvata
+        -- non puo' superare lo schermo (ereditato dal vecchio bug resize)
+        local swn, shn = (GetScreenWidth and GetScreenWidth()) or 0, (GetScreenHeight and GetScreenHeight()) or 0
+        if swn > 0 and pw > swn then pw = swn if L.width and L.width > swn then L.width = swn end end
+        if shn > 0 and ph > shn then ph = shn if L.height and L.height > shn then L.height = shn end end
         pane:SetSize(pw, ph)
         RLSuite.utils:ApplySavedPos(pane, lkey, function()
             return self:DefaultCascadeOffset(key)
         end)
+        if RLSuite.utils.ClampWindowToScreen then
+            RLSuite.utils:ClampWindowToScreen(pane)
+        end
         -- porta la finestra in primo piano sopra le altre (strata HIGH +
         -- frame level distanziato: niente sovrapposizioni parziali)
         RLSuite.utils:RaiseWindow(pane)
