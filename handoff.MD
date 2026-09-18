@@ -7,7 +7,19 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.2**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.3**.
+
+## Novità della sessione 1.11.3 (questo branch, dopo 1.11.2) — fix resize handle: niente piu' finestre enormi
+
+Tutte le finestre ridimensionabili (grip UI-ChatIM-SizeGrabber in basso a
+destra) usavano `StartSizing("BOTTOMRIGHT")`: il sizing nativo usa coordinate
+assolute del cursore e litiga con `SetClampedToScreen` — vicino ai bordi la
+finestra si gonfiava in modo enorme e il grip finiva fuori schermo (a volte
+piu' volte di seguito). Riscritto come resize CUSTOM: delta relativo alla
+posizione del mouse-down, scala effettiva rispettata, dimensione SEMPRE
+clampata entro lo schermo (e nello spazio a destra del bordo sinistro della
+finestra), fine drag robusta anche a rilascio fuori grip. 540 check PASS
+(regressione: delta mouse, clamp schermo, persistenza dimensione).
 
 ## Novità della sessione 1.11.2 (questo branch, dopo 1.11.1) — fix 3.3.5: il tab Log non apriva nulla
 
@@ -1127,7 +1139,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 537 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 540 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·

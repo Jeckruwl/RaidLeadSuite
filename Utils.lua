@@ -782,30 +782,61 @@ function Utils:AddResizeGrip(frame, key, minW, minH, onResized)
     grip:SetFrameLevel((frame:GetFrameLevel() or 1) + 20)
     grip:EnableMouse(true)
 
+    -- Resize CUSTOM (niente StartSizing): il ridimensionamento nativo
+    -- calcola il delta dalle coordinate assolute del cursore e litiga con
+    -- SetClampedToScreen: vicino ai bordi la finestra si gonfia a dimensioni
+    -- enormi e il grip finisce fuori schermo. Qui il delta e' relativo alla
+    -- posizione di partenza del mouse e la dimensione e' SEMPRE clampata
+    -- dentro lo schermo (in coordinate della scala effettiva della finestra).
     local sizing = false
-    grip:SetScript("OnMouseDown", function(self2, button)
-        if button ~= "LeftButton" then return end
-        sizing = true
-        local mw, mh = currentMin()
-        if frame.SetMinResize then
-            frame:SetMinResize(mw, mh)
-        end
-        frame:StartSizing("BOTTOMRIGHT")
-    end)
-    grip:SetScript("OnMouseUp", function()
+    local startW, startH, startCX, startCY, startMW, startMH
+    local function finishResize()
         if not sizing then return end
         sizing = false
-        frame:StopMovingOrSizing()
         local mw, mh = currentMin()
         local w = math.max(mw, frame:GetWidth() or mw)
         local h = math.max(mh, frame:GetHeight() or mh)
         frame:SetSize(w, h)
         L.width = w
         L.height = h
-        if frame.SetMinResize then
-            frame:SetMinResize(mw, mh)
-        end
         if onResized then onResized(w, h) end
+    end
+    grip:SetScript("OnMouseDown", function(self2, button)
+        if button ~= "LeftButton" then return end
+        sizing = true
+        startW = frame:GetWidth() or minW
+        startH = frame:GetHeight() or minH
+        startMW, startMH = currentMin()
+        local scale = frame:GetEffectiveScale() or 1
+        local cx, cy = GetCursorPosition()
+        startCX = (cx or 0) / scale
+        startCY = (cy or 0) / scale
+    end)
+    grip:SetScript("OnMouseUp", finishResize)
+    grip:SetScript("OnUpdate", function()
+        if not sizing then return end
+        -- lo spostamento finisce anche se il rilascio avviene fuori grip
+        if not IsMouseButtonDown("LeftButton") then
+            finishResize()
+            return
+        end
+        local scale = frame:GetEffectiveScale() or 1
+        local cx, cy = GetCursorPosition()
+        local w = startW + ((cx or 0) / scale - startCX)
+        local h = startH - ((cy or 0) / scale - startCY)
+        -- MAI oltre lo schermo (e oltre lo spazio restante a destra del
+        -- bordo sinistro della finestra): niente piu' finestre enormi ne'
+        -- grip trascinati fuori vista
+        local sw = (GetScreenWidth() or 0) / scale
+        local sh = (GetScreenHeight() or 0) / scale
+        local left = (frame.GetLeft and frame:GetLeft()) or 0
+        if sw > 0 then
+            local wMax = sw - (left or 0)
+            if wMax < sw then w = math.min(wMax, w) end
+            w = math.min(sw, w)
+        end
+        if sh > 0 then h = math.min(sh, h) end
+        frame:SetSize(math.max(startMW, w), math.max(startMH, h))
     end)
     return grip
 end

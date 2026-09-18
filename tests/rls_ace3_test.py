@@ -379,6 +379,8 @@ UnitPower = function() return 50 end
 UnitPowerMax = function() return 100 end
 UnitMana = function() return 50 end
 UnitManaMax = function() return 100 end
+GetScreenWidth = function() return 1024 end
+GetScreenHeight = function() return 768 end
 UnitPosition = function() return 0, 0, 0 end
 UnitClassification = function() return "normal" end
 UnitCreatureType = function() return "Humanoid" end
@@ -2612,6 +2614,31 @@ rt.execute("RLSuite.mainWindow:ShowTab('log')")
 check(bool(rt.eval("RLSuite.mainWindow.currentTab == 'log'")), "SelectTab keeps the 'log' key (was silently rewritten to 'group' -> opened Groupmaking)")
 check(bool(rt.eval("RLSuite.combatLog.frame:IsShown() == true")), "clicking the Log tab shows the combat log window (not Groupmaking)")
 rt.execute("RLSuite.combatLog.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
+
+# resize grip regression: delta relativo al mouse-down, clampato allo schermo
+rt.execute("Rh = CreateFrame('Frame', nil, UIParent); Rh:Show(); Rh:SetSize(300, 200); Rh:SetPoint('TOPLEFT', UIParent, 'TOPLEFT', -100, -100)")
+rt.execute("R_GRIP = RLSuite.utils:AddResizeGrip(Rh, 'rsztest', 100, 80)")
+rt.execute("""
+SAVED_GCP_R, SAVED_IMBD_R = GetCursorPosition, IsMouseButtonDown
+GetCursorPosition = function() return 300, 150 end
+IsMouseButtonDown = function() return true end
+R_GRIP._scripts["OnMouseDown"](R_GRIP, "LeftButton")
+GetCursorPosition = function() return 400, 200 end
+R_GRIP._scripts["OnUpdate"](R_GRIP)
+R_W1, R_H1 = Rh:GetWidth(), Rh:GetHeight()
+GetCursorPosition = function() return 100000, -100000 end
+R_GRIP._scripts["OnUpdate"](R_GRIP)
+R_W2, R_H2 = Rh:GetWidth(), Rh:GetHeight()
+IsMouseButtonDown = function() return false end
+R_GRIP._scripts["OnUpdate"](R_GRIP)
+R_LASTW = RLSuite.utils:WindowLayout('rsztest').width
+GetCursorPosition, IsMouseButtonDown = SAVED_GCP_R, SAVED_IMBD_R
+""")
+check(rt.eval("math.abs(R_W1 - 400) < 0.01 and math.abs(R_H1 - 150) < 0.01"), "resize grip follows the mouse delta while dragging (400x150)")
+check(rt.eval("R_W2 <= 1024 and R_H2 <= 768"), "resize grip CLAMPED to the screen: window can never become huge again (was the StartSizing bug)")
+check(rt.eval("R_LASTW == R_W2 and R_LASTW > 0"), "resize grip size persisted on release (auto-finish outside the grip works)")
+rt.execute("Rh:Hide()")
+
 check(bool(rt.eval("RLSuite.combatLog.db ~= nil and RLSuite.combatLog.db.saveFights == 15 and RLSuite.combatLog.db.maxEvents == 3000")), "db.combatlog defaults loaded (saveFights 15, maxEvents 3000)")
 
 # --- I.2 helpers: guid npc id + realm strip + flags ---
