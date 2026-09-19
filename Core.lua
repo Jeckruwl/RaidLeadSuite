@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.11.6"
+RLSuite.version = "1.11.7"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -990,12 +990,20 @@ function RLSuite:DebugTestMS()
     self.utils:Print(string.format(L["Debug: %d fake MS whispers sent."], n))
 end
 
+-- Pannello DEBUG: "Clear loot" — svuota la storia del Loot Manager e
+-- chiude le finestre pickup (non richiede lo stop del debug).
+function RLSuite:DebugClearLoot()
+    if not (self.lootManager and self.lootManager.ClearHistory) then return end
+    self.lootManager:ClearHistory()
+    self.utils:Print(L["Debug: loot history cleared."])
+end
+
 -- Pannello DEBUG stile main bar: appare solo in debug mode, accanto alla
 -- barra principale. Raccoglie i comandi di simulazione.
 function RLSuite:EnsureDebugPanel()
     if self.debugPanel then return end
     local f = CreateFrame("Frame", "RLSuiteDebugPanel", UIParent)
-    f:SetSize(328, 78)
+    f:SetSize(344, 78)
     f:SetFrameStrata("HIGH")
     f:SetMovable(true)
     f:EnableMouse(true)
@@ -1013,9 +1021,10 @@ function RLSuite:EnsureDebugPanel()
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
     title:SetText("|cffff9900RLS DEBUG|r")
     local defs = {
-        { text = L["Fill Group"], x = 0,   y = 0,  fn = function() RLSuite:DebugFillGroup() end },
-        { text = L["Fill Loot"],  x = 158, y = 0,  fn = function() RLSuite:DebugFillLoot() end },
-        { text = L["Whisp test"], x = 0,   y = 24, fn = function()
+        { text = L["Fill Group"], i = 0, fn = function() RLSuite:DebugFillGroup() end },
+        { text = L["Fill Loot"],  i = 1, fn = function() RLSuite:DebugFillLoot() end },
+        { text = L["Clear loot"], i = 2, fn = function() RLSuite:DebugClearLoot() end },
+        { text = L["Whisp test"], i = 3, fn = function()
             local gm = RLSuite.groupmaking
             if not gm then return end
             if not gm.spamActive then
@@ -1023,13 +1032,13 @@ function RLSuite:EnsureDebugPanel()
             end
             gm:StartDebugWhispers()
         end },
-        { text = L["Test MS"], x = 158, y = 24, fn = function() RLSuite:DebugTestMS() end },
+        { text = L["Test MS"], i = 4, fn = function() RLSuite:DebugTestMS() end },
     }
     f.debugButtons = {}
     for _, d in ipairs(defs) do
         local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        b:SetSize(150, 20)
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", 10 + d.x, -26 - d.y)
+        b:SetSize(106, 20)
+        b:SetPoint("TOPLEFT", f, "TOPLEFT", 10 + (d.i % 3) * (106 + 6), -26 - math.floor(d.i / 3) * 24)
         self.utils:SkinButton(b)
         b:SetText(d.text)
         b:SetScript("OnClick", d.fn)

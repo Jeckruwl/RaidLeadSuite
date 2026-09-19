@@ -1096,8 +1096,12 @@ function LM:CloseAllTradeWindows()
     self.tradeWindows = {}
 end
 
--- Impila le finestre aperte UNA SOTTO L'ALTRA dalla prima (ancorata al
--- centro-alto dello schermo). Ogni nuova vincita finisce in coda.
+-- Impila le finestre aperte UNA SOTTO L'ALTRA, affiancate alla finestra
+-- del Loot Manager (lato con piu' spazio libero: destra o sinistra).
+-- MAI piu' al centro dello schermo: stavano SOPRA il listato e, dopo un
+-- paio di roll, i loro bottoni catturavano i click destinati alle righe
+-- (il bug "dopo due roll non clicco piu' i pezzi"). Solo se la finestra
+-- del Loot Manager non e' visibile ripiombano al centro-alto, come prima.
 function LM:StackTradeWindows()
     local prev = nil
     for _, w in ipairs(self.tradeWindows or {}) do
@@ -1106,7 +1110,18 @@ function LM:StackTradeWindows()
             if prev then
                 w:SetPoint("TOP", prev, "BOTTOM", 0, -LM_TRADE_GAP)
             else
-                w:SetPoint("TOP", UIParent, "TOP", 0, -80)
+                local lm = self.frame
+                if lm and lm.IsShown and lm:IsShown() then
+                    local left = (lm.GetLeft and lm:GetLeft()) or 0
+                    local sw = (GetScreenWidth and GetScreenWidth()) or 1024
+                    if left < sw / 2 then
+                        w:SetPoint("TOPLEFT", lm, "TOPRIGHT", 8, 0)
+                    else
+                        w:SetPoint("TOPRIGHT", lm, "TOPLEFT", -8, 0)
+                    end
+                else
+                    w:SetPoint("TOP", UIParent, "TOP", 0, -80)
+                end
             end
             prev = w
         end

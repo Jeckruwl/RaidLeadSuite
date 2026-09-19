@@ -2837,7 +2837,7 @@ RLSuite:ApplyDebugMode()
 """)
 check(bool(rt.eval("RLSuite.debugPanel ~= nil")), "debug panel created when debug mode turns on")
 check(bool(rt.eval("RLSuite.debugPanel:IsShown() == true")), "debug panel shown only while debug mode is on (looks like a mini main bar)")
-check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 4")), "debug panel has exactly 4 command buttons")
+check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 5")), "debug panel has 5 command buttons (with Clear loot)")
 check(bool(rt.eval("RLSuite.debugPanel.debugButtons[1]:GetText() == 'Fill Group' or RLSuite.debugPanel.debugButtons[1]:GetText() == 'Riempi gruppo'")), "first debug button is Fill Group")
 rt.execute("RLSuite:DebugFillGroup()")
 check(bool(rt.eval("#RLSuite:DebugRoster() >= 15")), "Fill Group fills the simulated raid with fake players")
@@ -2862,6 +2862,53 @@ check(bool(rt.eval("GN_TIMER")), "Whisp test schedules the fake whisper flow (st
 rt.execute("RLSuite.db.profile.debug = false; RLSuite:ApplyDebugMode()")
 check(bool(rt.eval("RLSuite.debugPanel:IsShown() == false")), "debug panel hides when debug mode turns off")
 rt.execute("RLSuite.db.profile.debug = DBG_PROFILE_SAVED; if DBG_PROFILE_SAVED then RLSuite:ApplyDebugMode() end")
+
+# --- Loot list stays clickable after two rolls (pickup windows no longer over the list) ---
+rt.execute("""
+local lm = RLSuite.lootManager
+RLSuite.db.profile.debug = true
+RLSuite.mainWindow:ShowTab('loot')
+lm:ClearHistory()
+lm:SpawnDebugLoot()
+for i = 1, 2 do
+    local item = nil
+    for j = #lm.history, 1, -1 do
+        if not lm.history[j].assignedTo then item = lm.history[j]; break end
+    end
+    lm:SelectItem(item)
+    lm:StartRoll("MS")
+    if lm.currentRoll then
+        lm.currentRoll.rolls[1] = {name="Tankbot", roll=97}
+        lm.currentRoll.rolls[2] = {name="Healbot", roll=72}
+    end
+    for tick = 1, 30 do if lm.rollTimer then lm:RollTick() end end
+end
+RLL_TRADE_N = #lm.tradeWindows
+RLL_P = lm.tradeWindows[1] and lm.tradeWindows[1]._points[1] or nil
+local row = lm.histRows[1]
+local entry = row and row.entry or nil
+if row then row._scripts["OnClick"](row) end
+RLL_CLICK_OK = (lm.selectedItem == entry)
+lm:ClearHistory()
+RLSuite.lootManager.frame:Hide()
+RLSuite.mainWindow.currentTab = nil
+""")
+check(bool(rt.eval("RLL_TRADE_N == 2")), "two roll cycles each stacked one pick-up window (2 kept open)")
+check(bool(rt.eval("RLL_CLICK_OK")), "loot list rows stay CLICKABLE after two rolls (regression of the blocked list)")
+check(bool(rt.eval("RLL_P ~= nil and RLL_P[2] == RLSuite.lootManager.frame")), "pick-up windows anchor to the loot window EDGE, never over the list")
+
+# --- Debug panel: Clear loot ---
+rt.execute("""
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+RLSuite.lootManager:SpawnDebugLoot()
+CL_N = #RLSuite.lootManager.history
+RLSuite:DebugClearLoot()
+""")
+check(bool(rt.eval("CL_N > 0 and #RLSuite.lootManager.history == 0")), "Clear loot empties the loot history")
+check(bool(rt.eval("#RLSuite.lootManager.tradeWindows == 0")), "Clear loot closes any open pick-up windows")
+rt.execute("RLSuite.db.profile.debug = false; RLSuite:ApplyDebugMode()")
+
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenarios G+H (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 

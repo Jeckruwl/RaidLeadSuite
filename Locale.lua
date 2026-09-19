@@ -161,6 +161,8 @@ L["LookingForGroup"] = "Ricerca Gruppo"
 L["World"] = "Mondo"
 L["global"] = "globale"
 
+L["Clear loot"] = "Svuota loot"
+L["Debug: loot history cleared."] = "Debug: storico loot svuotato."
 L["Fill Group"] = "Riempi gruppo"
 L["Fill Loot"] = "Riempi loot"
 L["Whisp test"] = "Whisper di test"

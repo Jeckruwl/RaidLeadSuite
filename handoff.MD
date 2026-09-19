@@ -7,7 +7,22 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.6**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.7**.
+
+## Novità della sessione 1.11.7 (questo branch, dopo 1.11.6) — listato loot cliccabile + Clear loot in debug bar
+
+- **Bug**: le finestre "click to pick up" delle vincite erano ancorate al
+  centro-alto dello schermo e, aperte in pila dopo un paio di roll,
+  coprivano le righe del listato Loot Manager: frame trasparente ai click
+  ma bottoni icona/X cattivi => i pezzi smettevano di rispondere. Ora le
+  finestre pickup si IMPILANO AFFIANCATE alla finestra del Loot Manager
+  (lato con piu' spazio, destra/sinistra via GetLeft vs GetScreenWidth),
+  con fallback al centro solo se la finestra loot non e' visibile.
+- **Pannello debug**: quinto pulsante "Clear loot"
+  (RLSuite:DebugClearLoot -> LM:ClearHistory, chiude anche le pickup).
+  Layout debug bar da 2x2 a 3x2 celle (106px), larghezza 344.
+563 check PASS (regressione: due roll -> due pickup -> click riga OK,
+punto di ancoraggio == edge finestra loot, clear svuota history+pickup).
 
 ## Novità della sessione 1.11.6 (questo branch, dopo 1.11.5) — pannello DEBUG stile main bar
 
