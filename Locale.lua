@@ -161,6 +161,17 @@ L["LookingForGroup"] = "Ricerca Gruppo"
 L["World"] = "Mondo"
 L["global"] = "globale"
 
+L["Fill Group"] = "Riempi gruppo"
+L["Fill Loot"] = "Riempi loot"
+L["Whisp test"] = "Whisper di test"
+L["Test MS"] = "Test MS"
+L["Debug mode is OFF."] = "Modalita' debug OFF."
+L["Debug: raid filled with %d fake players."] = "Debug: raid riempito con %d giocatori fittizi."
+L["Debug: loot spawned from %s."] = "Debug: loot generato da %s."
+L["Debug: %d fake MS whispers sent."] = "Debug: %d whisper MS fittizi inviati."
+L["Ask MS changes first (MS Manager), then click Test MS."] = "Chiedi prima gli MS change (MS Manager), poi clicca Test MS."
+L["Start the spammer first, then Whisp test sends the fake whispers."] = "Avvia prima lo spammer, poi Whisper di test invia i whisper fittizi."
+
 L["Combat log"] = true
     L["Select fight"] = true
     L["Send report"] = true

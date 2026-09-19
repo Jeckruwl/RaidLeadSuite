@@ -339,8 +339,10 @@ function LM:SetPreMessage(msg)
     end
 end
 
-function LM:SpawnDebugLoot()
-    local raid = (RLSuite.db.profile.groupmaking and RLSuite.db.profile.groupmaking.raid) or "Icecrown Citadel"
+-- raidName opzionale: nil = usa il raid selezionato in Groupmaking (debug
+-- standard), altrimenti il pool del raid indicato (Debug panel "Fill Loot").
+function LM:SpawnDebugLoot(raidName)
+    local raid = raidName or (RLSuite.db.profile.groupmaking and RLSuite.db.profile.groupmaking.raid) or "Icecrown Citadel"
     local pool = (RLSuite.debugLoot and RLSuite.debugLoot[raid]) or {49623, 49908, 52025}
     local bosses = (RLSuite.raidDB[raid] and RLSuite.raidDB[raid].bosses) or {"Unknown"}
     local ids = {}

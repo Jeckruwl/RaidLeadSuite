@@ -2829,6 +2829,40 @@ cl.db.fights = {}
 """)
 check(bool(rt.eval("I_CAP == 3")), "fights ring buffer capped at saveFights (3/5 kept)")
 
+# --- Debug panel (RLS DEBUG bar with Fill Group / Fill Loot / Whisp test / Test MS) ---
+rt.execute("""
+DBG_PROFILE_SAVED = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+""")
+check(bool(rt.eval("RLSuite.debugPanel ~= nil")), "debug panel created when debug mode turns on")
+check(bool(rt.eval("RLSuite.debugPanel:IsShown() == true")), "debug panel shown only while debug mode is on (looks like a mini main bar)")
+check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 4")), "debug panel has exactly 4 command buttons")
+check(bool(rt.eval("RLSuite.debugPanel.debugButtons[1]:GetText() == 'Fill Group' or RLSuite.debugPanel.debugButtons[1]:GetText() == 'Riempi gruppo'")), "first debug button is Fill Group")
+rt.execute("RLSuite:DebugFillGroup()")
+check(bool(rt.eval("#RLSuite:DebugRoster() >= 15")), "Fill Group fills the simulated raid with fake players")
+check(bool(rt.eval("""(function() local seen = {} for _, m in ipairs(RLSuite:DebugRoster()) do seen[m.class] = true end local n = 0 for _ in pairs(seen) do n = n + 1 end return n >= 6 end)()""")), "Fill Group fakes span many different classes")
+rt.execute("LM_HIST_N = #RLSuite.lootManager.history")
+rt.execute("RLSuite:DebugFillLoot()")
+check(bool(rt.eval("#RLSuite.lootManager.history > LM_HIST_N")), "Fill Loot appends random pieces to the loot history (random raid pool)")
+rt.execute("""
+RLSuite.msManager.listening = true
+RLSuite:DebugTestMS()
+""")
+check(bool(rt.eval("#RLSuite.msManager.db >= 3")), "Test MS feeds fake 'ms <spec>' whispers into the MS manager while listening")
+rt.execute("RLSuite.msManager:StopListening(false); RLSuite.msManager.db = {}; RLSuite.msManager:UpdateList()")
+rt.execute("""
+RLSuite.groupmaking.spamActive = true
+RLSuite.groupmaking:StartDebugWhispers()
+GN_TIMER = RLSuite.groupmaking.debugWhisperTimer ~= nil
+RLSuite.groupmaking:StopDebugWhispers()
+RLSuite.groupmaking.spamActive = false
+""")
+check(bool(rt.eval("GN_TIMER")), "Whisp test schedules the fake whisper flow (stops cleanly)")
+rt.execute("RLSuite.db.profile.debug = false; RLSuite:ApplyDebugMode()")
+check(bool(rt.eval("RLSuite.debugPanel:IsShown() == false")), "debug panel hides when debug mode turns off")
+rt.execute("RLSuite.db.profile.debug = DBG_PROFILE_SAVED; if DBG_PROFILE_SAVED then RLSuite:ApplyDebugMode() end")
+
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenarios G+H (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 
 print()

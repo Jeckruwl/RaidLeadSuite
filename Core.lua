@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.11.5"
+RLSuite.version = "1.11.6"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -894,6 +894,151 @@ function RLSuite:DebugRebalanceGroups(ngroups)
     self:DebugSyncSubgroups()
 end
 
+-- Nomi/classi fittizi per "Fill Group": copertura di tutte le classi con
+-- spec diverse, cosi' Raid Group e Raid Frame mostrano una comp varia.
+local DEBUG_FILL_POOL = {
+    {name="Drakbot", class="WARRIOR", spec="prot"},
+    {name="Ironclad", class="WARRIOR", spec="fury"},
+    {name="Holymoon", class="PALADIN", spec="holy"},
+    {name="Retalia", class="PALADIN", spec="retri"},
+    {name="Zapdora", class="MAGE", spec="arcane"},
+    {name="Frostnova", class="MAGE", spec="fire"},
+    {name="Stabbitha", class="ROGUE", spec="combat"},
+    {name="Shivv", class="ROGUE", spec="assassin"},
+    {name="Moowrath", class="DRUID", spec="feral"},
+    {name="Leafsong", class="DRUID", spec="resto"},
+    {name="Holylite", class="PRIEST", spec="holy"},
+    {name="Shadowmel", class="PRIEST", spec="shadow"},
+    {name="Totemly", class="SHAMAN", spec="resto"},
+    {name="Stormcall", class="SHAMAN", spec="ele"},
+    {name="Frostbite", class="DEATHKNIGHT", spec="frost"},
+    {name="Bloodlord", class="DEATHKNIGHT", spec="blood"},
+    {name="Warlocky", class="WARLOCK", spec="destro"},
+    {name="Demoness", class="WARLOCK", spec="demo"},
+    {name="Arrowz", class="HUNTER", spec="marks"},
+    {name="Beastlord", class="HUNTER", spec="bm"},
+}
+
+local function debugShuffle(list)
+    for i = #list, 2, -1 do
+        local j = math.random(1, i)
+        list[i], list[j] = list[j], list[i]
+    end
+    return list
+end
+
+-- Pannello DEBUG: "Fill Group" — riempie il raid simulato con fittizi
+-- di classi/spec diverse fino a riempire gli slot (25-man size).
+function RLSuite:DebugFillGroup()
+    if not self:DebugMode() then
+        self.utils:Print(L["Debug mode is OFF."])
+        return
+    end
+    local pool = {}
+    for _, f in ipairs(DEBUG_FILL_POOL) do pool[#pool + 1] = f end
+    debugShuffle(pool)
+    local added = 0
+    for _, f in ipairs(pool) do
+        local m = self:DebugInviteAccept(f.name, f.class)
+        if m then
+            m.spec = f.spec
+            added = added + 1
+        end
+    end
+    self.utils:Print(string.format(L["Debug: raid filled with %d fake players."], added))
+end
+
+-- Pannello DEBUG: "Fill Loot" — pezzi casuali pescati dal pool di un RAID
+-- A CASO (non necessariamente quello selezionato in Groupmaking).
+function RLSuite:DebugFillLoot()
+    if not self:DebugMode() then
+        self.utils:Print(L["Debug mode is OFF."])
+        return
+    end
+    if not (self.lootManager and self.lootManager.SpawnDebugLoot) then return end
+    local raids = {}
+    for raid in pairs(self.debugLoot or {}) do raids[#raids + 1] = raid end
+    if #raids == 0 then return end
+    local raid = raids[math.random(1, #raids)]
+    self.lootManager:SpawnDebugLoot(raid)
+    self.utils:Print(string.format(L["Debug: loot spawned from %s."], raid))
+end
+
+-- Pannello DEBUG: "Test MS" — da usare DOPO aver chiesto gli MS changes
+-- (MS Manager in ascolto): simula i whisper "ms <spec>" di alcuni fittizi.
+function RLSuite:DebugTestMS()
+    if not self:DebugMode() then
+        self.utils:Print(L["Debug mode is OFF."])
+        return
+    end
+    local msm = RLSuite.msManager
+    if not msm then return end
+    if msm.listening ~= true then
+        self.utils:Print(L["Ask MS changes first (MS Manager), then click Test MS."])
+        return
+    end
+    local specs = { "fury", "retri", "fire", "shadow", "balance", "resto", "frost", "destro" }
+    local cands = {}
+    for _, m in ipairs(self:DebugRoster()) do
+        if not m.isPlayer then cands[#cands + 1] = m end
+    end
+    debugShuffle(cands)
+    local n = math.min(6, #cands)
+    for i = 1, n do
+        msm:ParseMSMessage(cands[i].name, "ms " .. specs[((i - 1) % #specs) + 1])
+    end
+    self.utils:Print(string.format(L["Debug: %d fake MS whispers sent."], n))
+end
+
+-- Pannello DEBUG stile main bar: appare solo in debug mode, accanto alla
+-- barra principale. Raccoglie i comandi di simulazione.
+function RLSuite:EnsureDebugPanel()
+    if self.debugPanel then return end
+    local f = CreateFrame("Frame", "RLSuiteDebugPanel", UIParent)
+    f:SetSize(328, 78)
+    f:SetFrameStrata("HIGH")
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", function(s) s:StartMoving() end)
+    f:SetScript("OnDragStop", function(s) s:StopMovingOrSizing() end)
+    local bar = self.mainWindow and self.mainWindow.frame
+    if bar then
+        f:SetPoint("TOPLEFT", bar, "TOPRIGHT", 8, 0)
+    else
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
+    end
+    self.utils:SkinFrame(f)
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
+    title:SetText("|cffff9900RLS DEBUG|r")
+    local defs = {
+        { text = L["Fill Group"], x = 0,   y = 0,  fn = function() RLSuite:DebugFillGroup() end },
+        { text = L["Fill Loot"],  x = 158, y = 0,  fn = function() RLSuite:DebugFillLoot() end },
+        { text = L["Whisp test"], x = 0,   y = 24, fn = function()
+            local gm = RLSuite.groupmaking
+            if not gm then return end
+            if not gm.spamActive then
+                RLSuite.utils:Print(L["Start the spammer first, then Whisp test sends the fake whispers."])
+            end
+            gm:StartDebugWhispers()
+        end },
+        { text = L["Test MS"], x = 158, y = 24, fn = function() RLSuite:DebugTestMS() end },
+    }
+    f.debugButtons = {}
+    for _, d in ipairs(defs) do
+        local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        b:SetSize(150, 20)
+        b:SetPoint("TOPLEFT", f, "TOPLEFT", 10 + d.x, -26 - d.y)
+        self.utils:SkinButton(b)
+        b:SetText(d.text)
+        b:SetScript("OnClick", d.fn)
+        f.debugButtons[#f.debugButtons + 1] = b
+    end
+    f:Hide()
+    self.debugPanel = f
+end
+
 -- Called whenever the simulated roster changes (invite accepted, debug
 -- toggled, ...). Refreshes the Raid Group panel and the Raid Frame. Every
 -- refresh is protected: an error in one UI must NEVER block the other (the
@@ -1350,6 +1495,13 @@ function RLSuite:ApplyDebugMode()
     -- restava vuoto finche' non arrivava il primo invito.
     self:DebugRosterChanged()
     self:UpdatePhaseUI()
+    -- Pannello debug: compare vicino alla main bar solo in debug mode.
+    if self:DebugMode() then
+        self:EnsureDebugPanel()
+        if self.debugPanel then self.debugPanel:Show() end
+    elseif self.debugPanel then
+        self.debugPanel:Hide()
+    end
 end
 
 function RLSuite:UpdateRaidContext()

@@ -7,7 +7,22 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.5**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.6**.
+
+## Novità della sessione 1.11.6 (questo branch, dopo 1.11.5) — pannello DEBUG stile main bar
+
+In debug mode compare **RLS DEBUG**: una mini-barra trascinabile (SkinFrame
++ SkinButton come la main bar) accanto alla barra principale, con 4 comandi:
+- **Fill Group**: riempie il raid simulato con fittizi a caso (pool di 20
+  nomi, tutte le 10 classi, spec diverse; m.spec memorizzato sul membro).
+- **Fill Loot**: SpawnDebugLoot ora accetta un raid; il pannello pesca un
+  RAID A CASO dalla tabella debugLoot e genera i pezzi (SpawnDebugLoot(gm
+  raid) resta il default per l'auto-spawn all'accensione).
+- **Whisp test**: riusa GM:StartDebugWhispers; se lo spammer non e' attivo
+  stampa il promemoria (i whisper finti arrivano solo a spammer attivo).
+- **Test MS**: da cliccare DOPO "Ask MS changes": whisper fittizi
+  "ms <spec>" di 6 membri casuali del roster in MSManager:ParseMSMessage.
+Il pannello si mostra/nasconde in ApplyDebugMode. 558 check PASS.
 
 ## Novità della sessione 1.11.5 (questo branch, dopo 1.11.4) — comp ideale xN + canale spam global
 
