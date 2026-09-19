@@ -823,7 +823,9 @@ function CL:CreateFrame()
     fightLbl:SetText(L["Select fight"])
     self.fightDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteCombatLogFightDD", 240, 20)
     self.fightDropdown:ClearAllPoints()
-    self.fightDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -10)
+    -- lascia libera la zona della X di chiusura (-34..-4): il bordo
+    -- destro del dropdown non la sfiora piu'
+    self.fightDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -44, -10)
 
     -- Tab bar
     self.tabBtns = {}

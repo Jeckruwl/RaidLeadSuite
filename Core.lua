@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.11.12"
+RLSuite.version = "1.11.13"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -1092,10 +1092,10 @@ function RLSuite:EnsureDebugPanel()
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
     title:SetText("|cffff9900RLS DEBUG|r")
     local defs = {
-        { text = L["Fill Group"], i = 0, fn = function() RLSuite:DebugFillGroup() end },
-        { text = L["Fill Loot"],  i = 1, fn = function() RLSuite:DebugFillLoot() end },
-        { text = L["Clear loot"], i = 2, fn = function() RLSuite:DebugClearLoot() end },
-        { text = L["Whisp test"], i = 3, fn = function()
+        { text = L["Fill Raid"], i = 0, fn = function() RLSuite:DebugFillGroup() end },
+        { text = L["Test Loot"],  i = 1, fn = function() RLSuite:DebugFillLoot() end },
+        { text = L["Empty Loot"], i = 2, fn = function() RLSuite:DebugClearLoot() end },
+        { text = L["Test Whisplist"], i = 3, fn = function()
             -- SOLO questo tasto manda i whisper finti: arrivano subito,
             -- anche senza spammer attivo (GM:DebugWhisperBurst).
             if RLSuite.groupmaking and RLSuite.groupmaking.DebugWhisperBurst then

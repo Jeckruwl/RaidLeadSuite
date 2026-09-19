@@ -7,7 +7,17 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.12**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.13**.
+
+## Novità della sessione 1.11.13 (questo branch, dopo 1.11.12) — debug bar inglese + fix grafici log
+
+- Etichette debug bar in inglese: Fill Raid / Test Loot / Empty Loot /
+  Test Whisplist (Test MS e Log Test gia' inglesi).
+- CombatLog: la dropdown del fight si fermava a x=-16, dentro la zona
+  della X rossa di chiusura (-34..-4) -> spostata a -44.
+- CombatLog: min width 640 -> 730 (i 8 tab in alto, 16 + 8*88 = 720,
+  sforavano); aggiornato anche il clamp iniziale del resize grip.
+584 check PASS.
 
 ## Novità della sessione 1.11.12 (questo branch, dopo 1.11.11) — tasto Log Test nella debug bar
 

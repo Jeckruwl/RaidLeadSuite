@@ -2837,7 +2837,7 @@ RLSuite:ApplyDebugMode()
 check(bool(rt.eval("RLSuite.debugPanel ~= nil")), "debug panel created when debug mode turns on")
 check(bool(rt.eval("RLSuite.debugPanel:IsShown() == true")), "debug panel shown only while debug mode is on (looks like a mini main bar)")
 check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 6")), "debug panel has 6 command buttons (with Log Test)")
-check(bool(rt.eval("RLSuite.debugPanel.debugButtons[1]:GetText() == 'Fill Group' or RLSuite.debugPanel.debugButtons[1]:GetText() == 'Riempi gruppo'")), "first debug button is Fill Group")
+check(bool(rt.eval("RLSuite.debugPanel.debugButtons[1]:GetText() == 'Fill Raid' or RLSuite.debugPanel.debugButtons[1]:GetText() == 'Riempi raid'")), "first debug button is Fill Group")
 rt.execute("RLSuite:DebugFillGroup()")
 check(bool(rt.eval("#RLSuite:DebugRoster() >= 15")), "Fill Group fills the simulated raid with fake players")
 check(bool(rt.eval("""(function() local seen = {} for _, m in ipairs(RLSuite:DebugRoster()) do seen[m.class] = true end local n = 0 for _ in pairs(seen) do n = n + 1 end return n >= 6 end)()""")), "Fill Group fakes span many different classes")
@@ -2938,7 +2938,12 @@ RLSuite:ApplyDebugMode()
 check(bool(rt.eval("LL_N == 0")), "enabling debug mode no longer spawns loot by itself")
 check(bool(rt.eval("LL_N2 > 0")), "the Fill Loot button is the ONLY thing spawning debug loot")
 
-# --- Loot Manager: min width includes the MS announce button; window fixed like the equip panel ---
+# --- CombatLog window: dropdown clears the close X; min width covers the tab row ---
+check(bool(rt.eval("""(function() local p = RLSuite.combatLog.fightDropdown._points[1] return p ~= nil and p[4] ~= nil and p[4] <= -40 end)()""")), "fight dropdown stays CLEAR of the close X (-44, no more clipping)")
+check(bool(rt.eval("RLSuite.windowMins.log() >= 730")), "log min width covers the full top tab row (8 tabs x 88px + margins)")
+check(bool(rt.eval("(function() local tx = 0 for _ in pairs(RLSuite.combatLog.tabBtns) do tx = tx + 1 end return (16 + tx * 88) <= RLSuite.windowMins.log() + 10 end)()")), "every top tab stays inside the min-width window")
+
+# --- Loot Manager: min width includes the MS announce button# --- Loot Manager: min width includes the MS announce button; window fixed like the equip panel ---
 rt.execute("LM_MINW = RLSuite.windowMins.loot()")
 check(bool(rt.eval("LM_MINW >= 506")), "loot min width fits all roll buttons incl. Announce Changes (no clipping)")
 rt.execute("RLSuite.mainWindow:ShowTab('loot')")
