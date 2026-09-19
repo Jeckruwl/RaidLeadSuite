@@ -888,12 +888,11 @@ check(bool(rt.eval("DRAK_IN_GROUP == true")), "Raid Group panel shows the accept
 rt.execute("local b = RLSuite.groupmaking.wlGroupSlots[1]; SLOT_OK = (b ~= nil and b:IsShown() and (b:GetWidth() or 0) > 0 and b.nameFS ~= nil and type(b.GetObjectType) == 'function' and b:GetObjectType() == 'Button')")
 check(bool(rt.eval("SLOT_OK == true")), "Raid Group slots are visible Buttons with explicit size")
 
-# --- Debug fake whispers: spammer active -> 10 whispers into the Whisplist ---
+# --- Debug fake whispers: NO auto-flow, only the debug-bar burst feeds the Whisplist ---
 rt.execute("RLSuite.groupmaking:StartSpam()")
-check(bool(rt.eval("RLSuite.groupmaking.debugWhisperTimer ~= nil")), "StartSpam (debug) schedules the fake-whisper timer")
-rt.execute("for i=1,10 do RLSuite.groupmaking:DebugWhisperTick() end")
-check(bool(rt.eval("#RLSuite.groupmaking.whisperDB.entries == 10")), "10 fake whispers produce 10 Whisplist entries")
-check(bool(rt.eval("RLSuite.groupmaking.debugWhisperTimer == nil")), "fake-whisper timer stops after the 10th whisper")
+check(bool(rt.eval("#RLSuite.groupmaking.whisperDB.entries == 0")), "Starting the spammer no longer auto-sends fake whispers")
+rt.execute("RLSuite.groupmaking:DebugWhisperBurst()")
+check(bool(rt.eval("#RLSuite.groupmaking.whisperDB.entries == 10")), "DebugWhisperBurst instantly delivers 10 fake whispers into the Whisplist")
 rt.execute("RLSuite.groupmaking:StopSpam()")
 
 # --- Inviting a fake whisperer behaves like a real accept ---
@@ -2852,13 +2851,15 @@ RLSuite:DebugTestMS()
 check(bool(rt.eval("#RLSuite.msManager.db >= 3")), "Test MS feeds fake 'ms <spec>' whispers into the MS manager while listening")
 rt.execute("RLSuite.msManager:StopListening(false); RLSuite.msManager.db = {}; RLSuite.msManager:UpdateList()")
 rt.execute("""
-RLSuite.groupmaking.spamActive = true
-RLSuite.groupmaking:StartDebugWhispers()
-GN_TIMER = RLSuite.groupmaking.debugWhisperTimer ~= nil
-RLSuite.groupmaking:StopDebugWhispers()
-RLSuite.groupmaking.spamActive = false
+DBG_W_SAVED = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = true
+RLSuite.groupmaking.whisperDB.entries = {}
+local btn = RLSuite.debugPanel.debugButtons[4]
+btn._scripts["OnClick"](btn)
+RLSuite.db.profile.debug = DBG_W_SAVED
 """)
-check(bool(rt.eval("GN_TIMER")), "Whisp test schedules the fake whisper flow (stops cleanly)")
+check(bool(rt.eval("#RLSuite.groupmaking.whisperDB.entries == 10")), "Whisp test button alone delivers all 10 fake whispers into the real whisplist")
+check(bool(rt.eval("RLSuite.groupmaking.spamActive ~= true")), "Whisp test works WITHOUT the spammer running (no auto-flow at all)")
 rt.execute("RLSuite.db.profile.debug = false; RLSuite:ApplyDebugMode()")
 check(bool(rt.eval("RLSuite.debugPanel:IsShown() == false")), "debug panel hides when debug mode turns off")
 rt.execute("RLSuite.db.profile.debug = DBG_PROFILE_SAVED; if DBG_PROFILE_SAVED then RLSuite:ApplyDebugMode() end")
@@ -2896,6 +2897,25 @@ RLSuite.mainWindow.currentTab = nil
 check(bool(rt.eval("RLL_TRADE_N == 2")), "two roll cycles each stacked one pick-up window (2 kept open)")
 check(bool(rt.eval("RLL_CLICK_OK")), "loot list rows stay CLICKABLE after two rolls (regression of the blocked list)")
 check(bool(rt.eval("RLL_P ~= nil and RLL_P[2] == RLSuite.lootManager.frame")), "pick-up windows anchor to the loot window EDGE, never over the list")
+
+# --- Debug panel layout: single column, non-draggable, anchored to the main bar ---
+check(bool(rt.eval("""(function() local xs = nil for _, b in ipairs(RLSuite.debugPanel.debugButtons) do local p = b._points[1]; if not p then return false end; if xs == nil then xs = p[4] elseif p[4] ~= xs then return false end end return true end)()""")), "debug panel buttons form a SINGLE column")
+check(bool(rt.eval("""(function() local f = RLSuite.debugPanel return f._points[1] ~= nil and f._points[1][2] == RLSuite.mainWindow.frame end)()""")), "debug panel is anchored to the main bar (moves with it, never saved)")
+check(bool(rt.eval("RLSuite.debugPanel._scripts['OnDragStart'] == nil")), "debug panel is NOT draggable (part of the main bar)")
+
+# --- Debug mode no longer auto-fills the loot manager ---
+rt.execute("""
+RLSuite.lootManager:ClearHistory()
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+LL_N = #RLSuite.lootManager.history
+RLSuite:DebugFillLoot()
+LL_N2 = #RLSuite.lootManager.history
+RLSuite.db.profile.debug = false
+RLSuite:ApplyDebugMode()
+""")
+check(bool(rt.eval("LL_N == 0")), "enabling debug mode no longer spawns loot by itself")
+check(bool(rt.eval("LL_N2 > 0")), "the Fill Loot button is the ONLY thing spawning debug loot")
 
 # --- Loot Manager: min width includes the MS announce button; window fixed like the equip panel ---
 rt.execute("LM_MINW = RLSuite.windowMins.loot()")

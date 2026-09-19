@@ -7,7 +7,23 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.10**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.11**.
+
+## Novità della sessione 1.11.11 (questo branch, dopo 1.11.10) — debug bar ordinate + whisper solo dal tasto
+
+- **Niente auto-loot all'accensione del debug**: il loot finto nasce SOLO
+  dal tasto "Riempi loot" (SpawnDebugLoot non viene piu' chiamato in
+  ApplyDebugMode).
+- **Whisper di test**: spariti gli 8 messaggi automatici e il promemoria
+  sullo spammer; il percorso reale OnWhisper registra solo a spammer
+  attivo, quindi il burst simula spamActive per la durata dell'iniezione e
+  la Whisplist si popola lo stesso (10/10 istantanei).
+- **Debug bar: colonna singola** verticale con tutti e 5 i tasti, NON
+  spostabile e ancorata alla main bar (TOPLEFT->TOPRIGHT relativo, segue
+  la barra ovunque).
+- Reroll debug: TI pareggiati fittizi rispondono sempre (niente piu'
+  "No valid rerolls!" intermittente): il pareggio si risolve sempre.
+577 check PASS (3 run consecutive).
 
 ## Novità della sessione 1.11.10 (questo branch, dopo 1.11.9) — Loot Manager reattivo al trade (pannello Blizzard)
 

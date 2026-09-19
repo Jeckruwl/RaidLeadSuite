@@ -1041,10 +1041,8 @@ function GM:StartSpam()
     local interval = self.db.spamInterval or 60
     if self.spamTimer then self:CancelTimer(self.spamTimer) end
     self.spamTimer = self:ScheduleRepeatingTimer("DoSpam", interval)
-    -- Debug mode: simuliamo 10 whisper fittizi per testare la Whisplist.
-    if RLSuite.DebugMode and RLSuite:DebugMode() then
-        self:StartDebugWhispers()
-    end
+    -- NIENTE whisper fittizi automatici: li invia SOLO il tasto "Whisp
+    -- test" della debug bar (GM:DebugWhisperBurst).
     RLSuite.utils:Print(L["Spammer started."])
 end
 
@@ -1055,7 +1053,6 @@ function GM:StopSpam()
         self:CancelTimer(self.spamTimer)
         self.spamTimer = nil
     end
-    self:StopDebugWhispers()
     RLSuite.utils:Print(L["Spammer stopped."])
 end
 
@@ -1093,41 +1090,26 @@ local DEBUG_WHISPER_POOL = {
     { name = "Arrowz",    class = "HUNTER",      role = "dps",    spec = "marks", gs = 5900 },
 }
 
-function GM:StartDebugWhispers()
-    self:StopDebugWhispers()
-    self.debugWhisperIndex = 0
-    self.debugWhisperTimer = self:ScheduleRepeatingTimer("DebugWhisperTick", 0.5)
-end
-
-function GM:StopDebugWhispers()
-    if self.debugWhisperTimer and self.CancelTimer then
-        self:CancelTimer(self.debugWhisperTimer)
-    end
-    self.debugWhisperTimer = nil
-    self.debugWhisperIndex = nil
-end
-
--- Emette il prossimo whisper fittizio e si ferma dopo il 10o.
-function GM:DebugWhisperTick()
+-- Invia IMMEDIATAMENTE tutti i 10 whisper fittizi del pool, passando dal
+-- percorso reale GM:OnWhisper (quindi la Whisplist si popola esattamente
+-- come con giocatori veri, spammer attivo o no). Unica sorgente dei
+-- whisper di test: il tasto "Whisp test" della debug bar.
+function GM:DebugWhisperBurst()
     if not (RLSuite.DebugMode and RLSuite:DebugMode()) then
-        self:StopDebugWhispers()
+        RLSuite.utils:Print(L["Debug mode is OFF."])
         return
     end
-    if not self.spamActive then
-        self:StopDebugWhispers()
-        return
+    -- Il percorso reale dei whisper (OnWhisper) registra SOLO a spammer
+    -- attivo: per il test simuliamo quello stato solo durante il burst,
+    -- senza cambiare il comportamento reale dello spammer.
+    local savedSpamActive = self.spamActive
+    self.spamActive = true
+    for _, fake in ipairs(DEBUG_WHISPER_POOL) do
+        local msg = string.lower(fake.class) .. " " .. fake.role .. " spec " .. fake.spec .. " " .. fake.gs .. " gs"
+        self:OnWhisper(fake.name, msg)
     end
-    self.debugWhisperIndex = (self.debugWhisperIndex or 0) + 1
-    local fake = DEBUG_WHISPER_POOL[self.debugWhisperIndex]
-    if not fake then
-        self:StopDebugWhispers()
-        return
-    end
-    local msg = string.lower(fake.class) .. " " .. fake.role .. " spec " .. fake.spec .. " " .. fake.gs .. " gs"
-    self:OnWhisper(fake.name, msg)
-    if self.debugWhisperIndex >= #DEBUG_WHISPER_POOL then
-        self:StopDebugWhispers()
-    end
+    self.spamActive = savedSpamActive
+    RLSuite.utils:Print(string.format(L["Debug: %d fake whispers sent."], #DEBUG_WHISPER_POOL))
 end
 
 -- ============================================================

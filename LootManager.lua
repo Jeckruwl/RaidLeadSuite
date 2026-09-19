@@ -979,10 +979,10 @@ function LM:DoReroll()
     -- altrimenti il pareggio di test si fermava a "No valid rerolls!".
     if RLSuite.DebugMode and RLSuite:DebugMode() then
         local template = self:GetRollTemplate()
+        -- a differenza dello StartRoll (80% di presenza), nel reroll TUTTI
+        -- i pareggiati fittizi rispondono: il pareggio si risolve sempre.
         for _, w in ipairs(winners) do
-            if math.random(1, 10) > 2 then
-                self:OnSystemRoll(string.format(template, w.name, math.random(1, 100), 1, 100))
-            end
+            self:OnSystemRoll(string.format(template, w.name, math.random(1, 100), 1, 100))
         end
     end
 

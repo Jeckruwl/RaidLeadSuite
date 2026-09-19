@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.11.10"
+RLSuite.version = "1.11.11"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -1002,14 +1002,13 @@ end
 -- barra principale. Raccoglie i comandi di simulazione.
 function RLSuite:EnsureDebugPanel()
     if self.debugPanel then return end
+    -- Colonna singola, NON spostabile e ancorata alla main bar: dove va la
+    -- barra va anche il pannello (punto relativo alla barra, mai salvato).
     local f = CreateFrame("Frame", "RLSuiteDebugPanel", UIParent)
-    f:SetSize(344, 78)
+    f:SetSize(126, 26 + 5 * 24 + 10)
     f:SetFrameStrata("HIGH")
-    f:SetMovable(true)
+    f:SetMovable(false)
     f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", function(s) s:StartMoving() end)
-    f:SetScript("OnDragStop", function(s) s:StopMovingOrSizing() end)
     local bar = self.mainWindow and self.mainWindow.frame
     if bar then
         f:SetPoint("TOPLEFT", bar, "TOPRIGHT", 8, 0)
@@ -1025,12 +1024,11 @@ function RLSuite:EnsureDebugPanel()
         { text = L["Fill Loot"],  i = 1, fn = function() RLSuite:DebugFillLoot() end },
         { text = L["Clear loot"], i = 2, fn = function() RLSuite:DebugClearLoot() end },
         { text = L["Whisp test"], i = 3, fn = function()
-            local gm = RLSuite.groupmaking
-            if not gm then return end
-            if not gm.spamActive then
-                RLSuite.utils:Print(L["Start the spammer first, then Whisp test sends the fake whispers."])
+            -- SOLO questo tasto manda i whisper finti: arrivano subito,
+            -- anche senza spammer attivo (GM:DebugWhisperBurst).
+            if RLSuite.groupmaking and RLSuite.groupmaking.DebugWhisperBurst then
+                RLSuite.groupmaking:DebugWhisperBurst()
             end
-            gm:StartDebugWhispers()
         end },
         { text = L["Test MS"], i = 4, fn = function() RLSuite:DebugTestMS() end },
     }
@@ -1038,7 +1036,8 @@ function RLSuite:EnsureDebugPanel()
     for _, d in ipairs(defs) do
         local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
         b:SetSize(106, 20)
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", 10 + (d.i % 3) * (106 + 6), -26 - math.floor(d.i / 3) * 24)
+        -- colonna unica: tutti i tasti uno sotto l'altro
+        b:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -26 - d.i * 24)
         self.utils:SkinButton(b)
         b:SetText(d.text)
         b:SetScript("OnClick", d.fn)
@@ -1486,9 +1485,8 @@ function RLSuite:ApplyDebugMode()
     self.debugBuffs = nil   -- aure simulati dei fake (debug)
     if self:DebugMode() then
         self.utils:Print("|cffff9900" .. L["DEBUG MODE ON"] .. "|r - " .. L["Simulated raid, messages are whispered to you."])
-        if self.lootManager and self.lootManager.SpawnDebugLoot then
-            self.lootManager:SpawnDebugLoot()
-        end
+        -- NIENTE auto-loot: il loot finto arriva SOLO dal tasto "Fill Loot"
+        -- della debug bar ("Fill Loot", RLSuite:DebugFillLoot).
     else
         self.utils:Print("Debug mode OFF.")
         -- Il Loot Manager si SVUOTA uscendo dalla debug mode: storico,
