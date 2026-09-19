@@ -7,7 +7,21 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.11**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.12**.
+
+## Novità della sessione 1.11.12 (questo branch, dopo 1.11.11) — tasto Log Test nella debug bar
+
+Sesto tasto **"Test log"**: RLSuite:DebugLogTest() alimenta il CombatLog
+con 3 pull fittizi completi attraverso il percorso reale OnCLEU/Regen
+(GUID boss col formato esadecimale vero, entry id in chars 9-12):
+- Lord Marrowgar (KILL): swing spavaldaturi, Fireball crit, danno boss su
+  tank, cure (Flash Heal/Chain Heal), Bone Spike APPLIED+REMOVED (uptime
+  aure), Kick (interrupt), Replenishment (power), morte player (vline).
+- Lady Deathwhisper (WIPE): senza boss death.
+- Professor Putricide (KILL): crit Eviscerate, Malleable Goo, Pummel.
+SampleTick chiamato a ogni evento: anche la tabella Health/Power del tab
+Grafici ha serie. Il RefreshUI aggiorna la finestra se aperta.
+581 check PASS.
 
 ## Novità della sessione 1.11.11 (questo branch, dopo 1.11.10) — debug bar ordinate + whisper solo dal tasto
 

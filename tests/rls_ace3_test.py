@@ -2836,7 +2836,7 @@ RLSuite:ApplyDebugMode()
 """)
 check(bool(rt.eval("RLSuite.debugPanel ~= nil")), "debug panel created when debug mode turns on")
 check(bool(rt.eval("RLSuite.debugPanel:IsShown() == true")), "debug panel shown only while debug mode is on (looks like a mini main bar)")
-check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 5")), "debug panel has 5 command buttons (with Clear loot)")
+check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 6")), "debug panel has 6 command buttons (with Log Test)")
 check(bool(rt.eval("RLSuite.debugPanel.debugButtons[1]:GetText() == 'Fill Group' or RLSuite.debugPanel.debugButtons[1]:GetText() == 'Riempi gruppo'")), "first debug button is Fill Group")
 rt.execute("RLSuite:DebugFillGroup()")
 check(bool(rt.eval("#RLSuite:DebugRoster() >= 15")), "Fill Group fills the simulated raid with fake players")
@@ -2897,6 +2897,27 @@ RLSuite.mainWindow.currentTab = nil
 check(bool(rt.eval("RLL_TRADE_N == 2")), "two roll cycles each stacked one pick-up window (2 kept open)")
 check(bool(rt.eval("RLL_CLICK_OK")), "loot list rows stay CLICKABLE after two rolls (regression of the blocked list)")
 check(bool(rt.eval("RLL_P ~= nil and RLL_P[2] == RLSuite.lootManager.frame")), "pick-up windows anchor to the loot window EDGE, never over the list")
+
+# --- Debug panel: Log Test fills the combat log with fake fights ---
+rt.execute("""
+DBG_L_SAVED = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = true
+RLSuite.combatLog.db.fights = {}
+local btn = RLSuite.debugPanel.debugButtons[6]
+btn._scripts["OnClick"](btn)
+CL_N = #RLSuite.combatLog.db.fights
+CL_MG = nil
+CL_LD = nil
+for _, fq in ipairs(RLSuite.combatLog.db.fights) do
+    if fq.name == 'Lord Marrowgar' then CL_MG = fq end
+    if fq.name == 'Lady Deathwhisper' then CL_LD = fq end
+end
+""")
+check(bool(rt.eval("CL_N == 3")), "Log Test feeds three fake fights into the combat log")
+check(bool(rt.eval("CL_MG ~= nil and CL_MG.kill == true")), "fake Marrowgar fight is a named KILL (segmentation works through the real path)")
+check(bool(rt.eval("CL_LD ~= nil and CL_LD.kill ~= true")), "fake Lady fight is a WIPE")
+check(bool(rt.eval("(function() local rows, tot = RLSuite.combatLog:AggTotals(CL_MG, 'damage') return tot ~= nil and tot > 5000 end)()")), "fake fights contain real damage aggregation (tabs/graphs have data)")
+rt.execute("RLSuite.combatLog.db.fights = {}; RLSuite.db.profile.debug = DBG_L_SAVED")
 
 # --- Debug panel layout: single column, non-draggable, anchored to the main bar ---
 check(bool(rt.eval("""(function() local xs = nil for _, b in ipairs(RLSuite.debugPanel.debugButtons) do local p = b._points[1]; if not p then return false end; if xs == nil then xs = p[4] elseif p[4] ~= xs then return false end end return true end)()""")), "debug panel buttons form a SINGLE column")
