@@ -271,7 +271,10 @@ RAID_CLASS_COLORS = { WARRIOR = { r = 0.78, g = 0.61, b = 0.43 }, PALADIN = { r 
 function IsRaidLeader() return false end
 function IsRaidOfficer() return false end
 function InviteUnit(name) end
-function SendChatMessage(msg, typ, lang, dest) CHAT_LOG = CHAT_LOG or {}; CHAT_LOG[#CHAT_LOG+1] = tostring(typ) .. '|' .. tostring(msg) end
+function SendChatMessage(msg, typ, lang, dest)
+  CHAT_LOG = CHAT_LOG or {}; CHAT_LOG[#CHAT_LOG+1] = tostring(typ) .. '|' .. tostring(msg)
+  if tostring(typ) == 'CHANNEL' then CHAT_DEST = CHAT_DEST or {}; CHAT_DEST[#CHAT_DEST+1] = tostring(dest) end
+end
 ITEMINFO_DB = {}
 function GetItemInfo(link)
     local row = ITEMINFO_DB[link]
@@ -765,6 +768,13 @@ check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.args.look ==
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.modulemenu.args.barScale ~= nil and RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixCols ~= nil")), "Module Menu keeps barScale + matrix controls")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.modulemenu.args.height == nil and RLSuite.config:BuildOptionsTable().args.modulemenu.args.anchors == nil")), "Module Menu: 'Default window height' and 'Toggle Anchors' removed")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.groupmaking.args.scale == nil")), "Groupmaking scale slider removed")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.groupmaking.args.spamNum_General ~= nil and RLSuite.config:BuildOptionsTable().args.groupmaking.args.spamNum_global ~= nil")), "Groupmaking: every channel has a Channel # input")
+rt.execute("RLSuite.config:BuildOptionsTable().args.groupmaking.args.spamNum_global.set(nil, '12')")
+check(bool(rt.eval("RLSuite.db.profile.groupmaking.spamChannelNums.global == 12")), "Channel # set('12') stores number 12 in spamChannelNums")
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.groupmaking.args.spamNum_global.get()") == "12", "Channel # get() renders the stored number")
+rt.execute("RLSuite.config:BuildOptionsTable().args.groupmaking.args.spamNum_global.set(nil, '')")
+check(bool(rt.eval("RLSuite.db.profile.groupmaking.spamChannelNums.global == nil")), "clearing Channel # reverts to auto-detect")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.debug.args.fakeLoot == nil")), "'Fill fake loot' button removed from Debug config")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.macros.args.layout.args.enable == nil")), "Macros -> Bar Layout 'Enable' checkbox removed")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.macros.args.layout.args.scale == nil")), "Macros -> Bar Layout scale slider removed")
 rt.execute("RLSuite.config:OpenMacroEditorPanel(); HUD_COUNT = 0; for _, c in ipairs(ALLFRAMES) do if c._text == 'HUD on/off' then HUD_COUNT = HUD_COUNT + 1 end end")
@@ -880,6 +890,26 @@ RLSuite.db.profile.debug = DEBUG_SAVED
 RLSuite.groupmaking.db.spamChannels = SPCH_SAVED
 """)
 check(bool(rt.eval("CHAN_HIT ~= nil and CHAN_HIT:find('CHANNEL|', 1, true) == 1 and CHAN_HIT:find('LFM', 1, true) ~= nil")), "DoSpam actually posts the LFM message to the custom 'global' channel")
+rt.execute("""
+CHAT_DEST = {}
+CHAT_LOG = {}
+DEBUG_SAVED2 = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = false
+GCN_SAVED2 = GetChannelName
+GetChannelName = function() return 7 end
+SPCH_SAVED2 = RLSuite.groupmaking.db.spamChannels
+SPNUM_SAVED2 = RLSuite.groupmaking.db.spamChannelNums
+RLSuite.groupmaking.db.spamChannels = {'global'}
+RLSuite.groupmaking.db.spamChannelNums = { global = 9 }
+RLSuite.groupmaking:DoSpam()
+CHAN_DEST_HIT = CHAT_DEST[1]; CHAN_MSG2 = CHAT_LOG[1]
+GetChannelName = GCN_SAVED2
+RLSuite.db.profile.debug = DEBUG_SAVED2
+RLSuite.groupmaking.db.spamChannels = SPCH_SAVED2
+RLSuite.groupmaking.db.spamChannelNums = SPNUM_SAVED2
+""")
+check(rt.eval("CHAN_DEST_HIT") == "9", "explicit channel number (9) overrides name resolution (would be 7)")
+check(bool(rt.eval("CHAN_MSG2 ~= nil and CHAN_MSG2:find('LFM', 1, true) ~= nil")), "explicit channel number still posts the LFM message")
 check(bool(rt.eval("RLSuite.db.profile.groupmaking.spamChannels ~= nil and #RLSuite.db.profile.groupmaking.spamChannels >= 1")), "spam channel list persists in the db (Config Groupmaking toggles)")
 # --- Debug mode: shared simulated roster used by Raid Frame + Raid Group ---
 rt.execute("RLSuite.db.profile.debug = true")

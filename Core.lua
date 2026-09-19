@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.11.17"
+RLSuite.version = "1.11.18"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -60,6 +60,7 @@ local defaults = {
             otherReq = "",
             comp = {},
             spamChannels = {"General", "Trade"},
+            spamChannelNums = {},
             spamInterval = 60,
             showSpecsInMessage = false,
         },

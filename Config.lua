@@ -57,6 +57,12 @@ local function textarea(name, desc, order, get, set)
              multiline = 2, get = get, set = set }
 end
 
+-- Piccolo campo numerico a meta' larghezza (es. numero canale chat).
+local function numinput(name, desc, order, get, set)
+    return { type = "input", name = name, desc = desc, order = order,
+             width = "half", get = get, set = set }
+end
+
 -- ------------------------------------------------------------------
 -- Category tree (AceGUI TreeGroup) + node -> options path map.
 -- Leaves map to an AceConfig path; the Macro Editor is a leaf whose
@@ -313,11 +319,6 @@ function CFG:BuildOptionsTable()
                     RLSuite:ApplyDebugMode()
                 end
             end),
-        fakeLoot = execute(L["Fill fake loot"], nil, 2, function()
-            if RLSuite.lootManager and RLSuite.lootManager.SpawnDebugLoot then
-                RLSuite.lootManager:SpawnDebugLoot()
-            end
-        end),
     }
 
     -- General: SOLO opzioni font + slider Scale globale (tutti i moduli).
@@ -385,12 +386,29 @@ function CFG:BuildOptionsTable()
     -- snapshot Scale in General)
     local groupmaking = {
         spamDesc = { type = "description", name = L["Spam channels"] .. ":", order = 1, fontSize = "medium" },
-        spamGeneral = toggle(L["General"], nil, 2, gmSpamGet("General"), gmSpamSet("General")),
-        spamTrade = toggle(L["Trade"], nil, 3, gmSpamGet("Trade"), gmSpamSet("Trade")),
-        spamLFG = toggle(L["LookingForGroup"], nil, 4, gmSpamGet("LookingForGroup"), gmSpamSet("LookingForGroup")),
-        spamWorld = toggle(L["World"], nil, 5, gmSpamGet("World"), gmSpamSet("World")),
-        spamGlobal = toggle(L["global"], nil, 6, gmSpamGet("global"), gmSpamSet("global")),
     }
+    -- Ogni canale: checkbox + campo numero canale affiancato. Numero 0 o
+    -- vuoto = risoluzione automatica da GetChannelName(nome); un numero
+    -- esplicito > 0 ha la precedenza sul nome.
+    local _gmChans = { "General", "Trade", "LookingForGroup", "World", "global" }
+    for i, ch in ipairs(_gmChans) do
+        local tgl = toggle(L[ch], nil, 1 + i, gmSpamGet(ch), gmSpamSet(ch))
+        tgl.width = "half"
+        groupmaking["spam_" .. ch] = tgl
+        groupmaking["spamNum_" .. ch] = numinput(L["Channel #"], L["Explicit channel number; leave empty (or 0) to auto-detect by name."], 1 + i + 0.01,
+            (function(c) return function()
+                local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+                local n = d and d.spamChannelNums and tonumber(d.spamChannelNums[c])
+                return (n and n > 0) and tostring(n) or ""
+            end end)(ch),
+            (function(c) return function(_, v)
+                local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+                if not d then return end
+                d.spamChannelNums = d.spamChannelNums or {}
+                local n = tonumber(v)
+                d.spamChannelNums[c] = (n and n > 0) and n or nil
+            end end)(ch))
+    end
 
     -- --- Macros / Bar Layout -------------------------------------
     if RLSuite.macrobar and RLSuite.macrobar.EnsurePhases then

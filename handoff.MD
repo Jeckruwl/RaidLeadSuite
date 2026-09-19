@@ -7,9 +7,14 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.17**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.18**.
 
-## Novità della sessione 1.11.17 (questo branch, dopo 1.11.16) — riforma pannello Config
+## Novità della sessione 1.11.18 (questo branch, dopo 1.11.17) — channel # per canale + debug alleggerito
+
+- **Groupmaking**: ogni canale spam ha ora la casella **Channel #** affiancata alla checkbox. Il numero esplicito (>0) ha la precedenza sulla risoluzione automatica via `GetChannelName(nome)`; vuoto/0 = auto. Salvato in `groupmaking.spamChannelNums` (default `{}` in Core).
+- **Debug**: rimosso il tasto **“Fill fake loot”** dalla voce Debug del Config (resta solo “Enable debug mode”).
+
+## Novità della sessione 1.11.17 (questo branch, dopo 1.11.16) — riforma pannello Config (storico)
 
 - Struttura categorie: **General** (SOLO Font + Scale globale), **Module Menu** (ex General/Window: barScale + Columns + Buttons per column, senza altezza e senza Toggle Anchors), **Groupmaking** (solo spam channels), **Macros** (Bar Layout senza “Enable”, Macro Editor senza tasto HUD), **Raid Frame** (SOLO Layout — eliminati Checks, Alert Messages, Position), **Saved Raids** (penultimo), **Debug** (ultimo, voce top-level).
 - Eliminate le voci top **MS Manager** e **Loot Manager** (contenevano solo lo slider scale).

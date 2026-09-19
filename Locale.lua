@@ -71,6 +71,8 @@ do
     L["AtlasLoot is not loaded."] = true
     L["Spammer started."] = true
     L["Spammer stopped."] = true
+    L["Channel #"] = true
+    L["Explicit channel number; leave empty (or 0) to auto-detect by name."] = true
     L["Whisper from %s received."] = true
     L["Received whispers"] = true
     L["Raid Group"] = true
@@ -155,6 +157,8 @@ do
 
     -- CombatLog
     L["Spam channels"] = "Canali spam"
+    L["Channel #"] = "N° canale"
+    L["Explicit channel number; leave empty (or 0) to auto-detect by name."] = "Numero canale esplicito; lascia vuoto (o 0) per rilevarlo dal nome."
 L["General"] = "Generale"
 L["Trade"] = "Commercio"
 L["LookingForGroup"] = "Ricerca Gruppo"
