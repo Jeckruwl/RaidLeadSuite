@@ -942,6 +942,17 @@ function LM:DoReroll()
     self.currentRoll.active = true
     if self.rerollBtn then self.rerollBtn:Disable() end
 
+    -- In debug i fittizi rerollano anche loro (come nello StartRoll),
+    -- altrimenti il pareggio di test si fermava a "No valid rerolls!".
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        local template = self:GetRollTemplate()
+        for _, w in ipairs(winners) do
+            if math.random(1, 10) > 2 then
+                self:OnSystemRoll(string.format(template, w.name, math.random(1, 100), 1, 100))
+            end
+        end
+    end
+
     -- Non-overlapping: cancel any previous reroll/roll countdown.
     self:CancelRollTimers()
     self.rerollRemaining = self.db.rerollDuration or 5
@@ -991,7 +1002,17 @@ function LM:ResetButtons()
     if self.rollMSBtn then self.rollMSBtn:Enable() end
     if self.rollOSBtn then self.rollOSBtn:Enable() end
     if self.rollOtherBtn then self.rollOtherBtn:Enable() end
-    if self.rerollBtn then self.rerollBtn:Disable() end
+    if self.rerollBtn then
+        -- MAI disabilitare un reroll pendente: in caso di pareggio il
+        -- ResetButtons() finale di AnnounceWinner cancellava subito il
+        -- tasto appena abilitato (il bug "pari e il reroll non parte").
+        local pending = self.currentRoll and self.currentRoll.rerollWinners
+        if pending and #pending > 1 then
+            self.rerollBtn:Enable()
+        else
+            self.rerollBtn:Disable()
+        end
+    end
 end
 
 -- Finestre "click to pick up": si IMPILANO una sotto l'altra (mai

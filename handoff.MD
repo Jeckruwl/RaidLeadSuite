@@ -7,7 +7,16 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.7**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.8**.
+
+## Novità della sessione 1.11.8 (questo branch, dopo 1.11.7) — reroll su pareggio ora si attiva
+
+Bug: il ramo "tie" di AnnounceWinner abilitava il tasto Reroll e il
+ResetButtons() finale lo disabilitava subito dopo (pareggio => reroll mai
+disponibile). ResetButtons ora MANTIENE abilitato il reroll se currentRoll
+ha rerollWinners pendenti; inoltre DoReroll in debug inietta anche i
+reroll fittizi (prima un pareggio di debug si chiudeva con "No valid
+rerolls!"). 565 check PASS.
 
 ## Novità della sessione 1.11.7 (questo branch, dopo 1.11.6) — listato loot cliccabile + Clear loot in debug bar
 

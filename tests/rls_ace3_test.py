@@ -2897,6 +2897,32 @@ check(bool(rt.eval("RLL_TRADE_N == 2")), "two roll cycles each stacked one pick-
 check(bool(rt.eval("RLL_CLICK_OK")), "loot list rows stay CLICKABLE after two rolls (regression of the blocked list)")
 check(bool(rt.eval("RLL_P ~= nil and RLL_P[2] == RLSuite.lootManager.frame")), "pick-up windows anchor to the loot window EDGE, never over the list")
 
+# --- Reroll button stays ENABLED after a tie (AnnounceWinner -> ResetButtons bug) ---
+rt.execute("""
+local lm = RLSuite.lootManager
+RLSuite.db.profile.debug = true
+RLSuite.mainWindow:ShowTab('loot')
+lm:ClearHistory()
+lm:SpawnDebugLoot()
+lm:SelectItem(lm.history[#lm.history])
+lm:StartRoll("MS")
+lm.currentRoll.rolls = {}
+lm.currentRoll.rolls[1] = {name="Tankbot", roll=42}
+lm.currentRoll.rolls[2] = {name="Healbot", roll=42}
+lm.currentRoll.rolls[3] = {name="Dpsbot", roll=7}
+for tick = 1, 30 do if lm.rollTimer then lm:RollTick() end end
+RR_ENABLED = lm.rerollBtn:IsEnabled()
+lm:DoReroll()
+RR_ROLLS = #lm.currentRoll.rolls
+for tick = 1, 30 do if lm.rerollTimer then lm:RerollTick() end end
+RR_DONE_ITEM = (lm.history[#lm.history].assignedTo == "Tankbot" or lm.history[#lm.history].assignedTo == "Healbot")
+lm:ClearHistory()
+RLSuite.lootManager.frame:Hide()
+RLSuite.mainWindow.currentTab = nil
+RLSuite.db.profile.debug = false
+""")
+check(bool(rt.eval("RR_ENABLED == true")), "a TIE keeps the Reroll button enabled (was disabled by the trailing ResetButtons)")
+check(bool(rt.eval("RR_DONE_ITEM")), "debug reroll resolves the tie and assigns the item to one of the tied fakes")
 # --- Debug panel: Clear loot ---
 rt.execute("""
 RLSuite.db.profile.debug = true
