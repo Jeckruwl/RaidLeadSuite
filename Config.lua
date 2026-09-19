@@ -408,10 +408,43 @@ function CFG:BuildOptionsTable()
     local savedraids = { type = "group", name = L["Saved Raids"], order = 2, args = savedArgs }
 
     -- --- Groupmaking ---------------------------------------------
+    -- Canali per lo spam LFM (General/Trade/LFG/World e il custom "global")
+    local function gmSpamGet(chan)
+        return function()
+            local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+            if not d then return false end
+            for _, c in ipairs(d.spamChannels or {}) do
+                if strlower(c) == strlower(chan) then return true end
+            end
+            return false
+        end
+    end
+    local function gmSpamSet(chan)
+        return function(_, v)
+            local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+            if not d then return end
+            d.spamChannels = d.spamChannels or {}
+            local found = false
+            for i = #d.spamChannels, 1, -1 do
+                if strlower(d.spamChannels[i]) == strlower(chan) then
+                    found = true
+                    if not v then table.remove(d.spamChannels, i) end
+                    break
+                end
+            end
+            if v and not found then table.insert(d.spamChannels, chan) end
+        end
+    end
     local groupmaking = {
         scale = slider(L["Scale"], nil, 1, 0.70, 1.30, 0.05,
             function() return self:Layout("groupmaking").scale end,
             function(_, v) self:Layout("groupmaking").scale = v; self:ApplyAll() end),
+        spamDesc = { type = "description", name = L["Spam channels"] .. ":", order = 2, fontSize = "medium" },
+        spamGeneral = toggle(L["General"], nil, 3, gmSpamGet("General"), gmSpamSet("General")),
+        spamTrade = toggle(L["Trade"], nil, 4, gmSpamGet("Trade"), gmSpamSet("Trade")),
+        spamLFG = toggle(L["LookingForGroup"], nil, 5, gmSpamGet("LookingForGroup"), gmSpamSet("LookingForGroup")),
+        spamWorld = toggle(L["World"], nil, 6, gmSpamGet("World"), gmSpamSet("World")),
+        spamGlobal = toggle(L["global"], nil, 7, gmSpamGet("global"), gmSpamSet("global")),
     }
 
     -- --- Macros / Bar Layout -------------------------------------

@@ -154,7 +154,14 @@ do
     L["Open the trade with the winner first, then click the item icon."] = true
 
     -- CombatLog
-    L["Combat log"] = true
+    L["Spam channels"] = "Canali spam"
+L["General"] = "Generale"
+L["Trade"] = "Commercio"
+L["LookingForGroup"] = "Ricerca Gruppo"
+L["World"] = "Mondo"
+L["global"] = "globale"
+
+L["Combat log"] = true
     L["Select fight"] = true
     L["Send report"] = true
     L["Shift+click to wipe the saved fights."] = true

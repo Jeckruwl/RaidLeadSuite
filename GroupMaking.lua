@@ -938,12 +938,30 @@ function GM:BuildSpamMessage()
         if n > 5 then return "rest" end
         return tostring(n)
     end
+    -- Spec duplicate nella comp ideale: nome UNA sola volta + numero
+    -- ("holy x2" invece di "holy, holy"), ordine di prima comparsa.
+    local function fmtSpecList(list)
+        local seen, order = {}, {}
+        for _, s in ipairs(list) do
+            if not seen[s] then
+                seen[s] = 0
+                table.insert(order, s)
+            end
+            seen[s] = seen[s] + 1
+        end
+        local parts = {}
+        for _, s in ipairs(order) do
+            local n = seen[s]
+            table.insert(parts, n > 1 and (s .. " x" .. n) or s)
+        end
+        return table.concat(parts, ", ")
+    end
     local roles = {}
     local showSpecs = self.db and self.db.showSpecsInMessage
     if showSpecs then
         for _, def in ipairs(roleOrder) do
             if needed[def.key] and needed[def.key] > 0 then
-                table.insert(roles, def.label .. "(" .. table.concat(specLists[def.key], ", ") .. ")")
+                table.insert(roles, def.label .. "(" .. fmtSpecList(specLists[def.key]) .. ")")
             end
         end
     else

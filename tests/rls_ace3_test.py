@@ -845,6 +845,34 @@ check(bool(rt.eval("(SPAM_MSG:find('Need', 1, true) or 0) < (SPAM_MSG:find('Res'
 check(bool(rt.eval("(SPAM_MSG:find('Res', 1, true) or 0) < (SPAM_MSG:find('no hunters', 1, true) or 0)")), "Other requirements still at the end (after Res)")
 rt.execute("RLSuite.groupmaking:ClearSlot(1)")
 
+# --- Ideal comp: duplicate specs collapse to "name xN" in the LFM message ---
+rt.execute("RLSuite.groupmaking.db.showSpecsInMessage = true")
+rt.execute("RLSuite.groupmaking:FillSlot(3, 'PRIEST', 'healer', nil, 'holy')")
+rt.execute("RLSuite.groupmaking:FillSlot(4, 'PRIEST', 'healer', nil, 'holy')")
+rt.execute("RLSuite.groupmaking:FillSlot(5, 'PRIEST', 'healer', nil, 'disc')")
+rt.execute("SPAM_MSG_S = RLSuite.groupmaking:BuildSpamMessage()")
+check(bool(rt.eval("SPAM_MSG_S:find('HPriest x2', 1, true) ~= nil")), "duplicate ideal-comp specs collapse to 'HPriest x2' (never repeated)")
+check(bool(rt.eval("SPAM_MSG_S:find('HPriest, HPriest', 1, true) == nil")), "the raw duplicate 'HPriest, HPriest' is gone from the message")
+check(bool(rt.eval("SPAM_MSG_S:find('Disco', 1, true) ~= nil and SPAM_MSG_S:find('Disco x', 1, true) == nil")), "single specs still shown once without a count")
+rt.execute("RLSuite.groupmaking:ClearSlot(3); RLSuite.groupmaking:ClearSlot(4); RLSuite.groupmaking:ClearSlot(5)")
+
+# --- Groupmaking spam channels: the custom 'global' channel is honored ---
+rt.execute("""
+CHAT_LOG = {}
+DEBUG_SAVED = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = false
+GCN_SAVED = GetChannelName
+GetChannelName = function(c) if strlower(tostring(c)) == 'global' then return 7 end return nil end
+SPCH_SAVED = RLSuite.groupmaking.db.spamChannels
+RLSuite.groupmaking.db.spamChannels = {'global'}
+RLSuite.groupmaking:DoSpam()
+CHAN_HIT = CHAT_LOG[1]
+GetChannelName = GCN_SAVED
+RLSuite.db.profile.debug = DEBUG_SAVED
+RLSuite.groupmaking.db.spamChannels = SPCH_SAVED
+""")
+check(bool(rt.eval("CHAN_HIT ~= nil and CHAN_HIT:find('CHANNEL|', 1, true) == 1 and CHAN_HIT:find('LFM', 1, true) ~= nil")), "DoSpam actually posts the LFM message to the custom 'global' channel")
+check(bool(rt.eval("RLSuite.db.profile.groupmaking.spamChannels ~= nil and #RLSuite.db.profile.groupmaking.spamChannels >= 1")), "spam channel list persists in the db (Config Groupmaking toggles)")
 # --- Debug mode: shared simulated roster used by Raid Frame + Raid Group ---
 rt.execute("RLSuite.db.profile.debug = true")
 rt.execute("RLSuite:ApplyDebugMode()")

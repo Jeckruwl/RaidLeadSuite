@@ -7,7 +7,18 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.4**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.5**.
+
+## Novità della sessione 1.11.5 (questo branch, dopo 1.11.4) — comp ideale xN + canale spam global
+
+- **Messaggio LFM**: spec duplicate nella comp ideale ora collassano in
+  "HPriest x2" (invece di "HPriest, HPriest"); ordine = prima comparsa,
+  nessun numero per le spec singole.
+- **Config -> Groupmaking**: nuovo blocco "Spam channels" con toggle per
+  General / Trade / LookingForGroup / World e il canale custom **global**
+  (Warmane). Le scelte restano in db.groupmaking.spamChannels e DoSpam le
+  usa cosi' come sono (GetChannelName risolve anche canali custom).
+548 check PASS.
 
 ## Novità della sessione 1.11.4 (questo branch, dopo 1.11.3) — auto-sanazione finestre: mai piu' grip fuori schermo
 
