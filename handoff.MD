@@ -7,7 +7,14 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.14**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.15**.
+
+## Novità della sessione 1.11.15 (questo branch, dopo 1.11.14) — debug bar SEMPRE inglese
+
+Rimosse le traduzioni italiane delle 4 etichette debug bar: Fill Raid /
+Test Loot / Empty Loot / Test Whisplist ora sono in inglese su QUALUNQUE
+client (il file Locale precedente le rimandava in italiano su client itIT,
+per questo le si vedeva ancora tradotte). 586 check PASS.
 
 ## Novità della sessione 1.11.14 (questo branch, dopo 1.11.13) — min height finestra Log
 
