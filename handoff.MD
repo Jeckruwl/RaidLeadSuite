@@ -7,9 +7,14 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.16**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.17**.
 
-## Novità della sessione 1.11.16 (questo branch, dopo 1.11.15) — pulsanti e debug bar borderless
+## Novità della sessione 1.11.17 (questo branch, dopo 1.11.16) — riforma pannello Config
+
+- Struttura categorie: **General** (SOLO Font + Scale globale), **Module Menu** (ex General/Window: barScale + Columns + Buttons per column, senza altezza e senza Toggle Anchors), **Groupmaking** (solo spam channels), **Macros** (Bar Layout senza “Enable”, Macro Editor senza tasto HUD), **Raid Frame** (SOLO Layout — eliminati Checks, Alert Messages, Position), **Saved Raids** (penultimo), **Debug** (ultimo, voce top-level).
+- Eliminate le voci top **MS Manager** e **Loot Manager** (contenevano solo lo slider scale).
+- Eliminati TUTTI gli slider Scale per-modulo: un unico slider **Scale** in General governa ogni finestra (groupmaking, MS, loot, combat log, Raid Frame HUD, MacroBar).
+## Novità della sessione 1.11.16 (questo branch, dopo 1.11.15) — pulsanti e debug bar borderless (storico)
 
 - **SkinButton senza bordo dialog**: tutti i pulsanti skinnati (Roll MS/OS/
   FFA, Reroll, Announce Changes, Raid Buffs, tab, debug bar...) ora hanno

@@ -13,6 +13,8 @@ FRAMES = {}             -- name -> frame
 local methods = {}
 local FrameMT = { __index = methods }
 
+ALLFRAMES = {}          -- flat registry di ogni frame creato (audit checks)
+
 local function newFrame(t)
     local o = setmetatable(t or {}, FrameMT)
     o._w = 0; o._h = 0; o._shown = true
@@ -20,6 +22,7 @@ local function newFrame(t)
     o._backdropColor = {0,0,0,1}; o._isFontString = false
     o._wordWrap = false; o._locked = false; o._highlight = false
     o._fontHeight = 14
+    ALLFRAMES[#ALLFRAMES + 1] = o
     return o
 end
 
@@ -740,43 +743,48 @@ check(bool(rt.eval("RLSuite.config.tree ~= nil and RLSuite.config.tree.type == '
 check(bool(rt.eval("LibStub('AceConfigRegistry-3.0'):GetOptionsTable('RLSuite', 'dialog', 'AceConfigDialog-3.0') ~= nil")), "RLSuite options table registered with AceConfigRegistry")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().type == 'group'")), "BuildOptionsTable returns a root group")
 
-# Every category from the old window is still present in the options table.
+# Nuova struttura del Config (v1.11.17): General, Module Menu, Groupmaking,
+# Macros, Raid Frame, Saved Raids (penultimo), Debug (ultimo). Niente
+# MS/Loot top-level, niente tab Checks/Alerts/Position, General = Font+Scale.
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.type == 'group'")), "General category present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.modulemenu.type == 'group'")), "Module Menu category present (ex General/Window)")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.type == 'group'")), "Saved Raids category present")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.groupmaking.type == 'group'")), "Groupmaking category present")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.macros.args.layout.type == 'group'")), "Macros -> Bar Layout present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.pos ~= nil")), "Raid Frame -> Position present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.ms.type == 'group'")), "MS category present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.loot.type == 'group'")), "Loot category present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.debug.type == 'group'")), "Debug category present (top-level)")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.ms == nil and RLSuite.config:BuildOptionsTable().args.loot == nil")), "MS Manager and Loot Manager top-level entries removed")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.args.save1load ~= nil")), "saved raids rendered as Load/Delete executes (dynamic)")
 
-# The navigation tree lists all 7 categories, with the Macro Editor as a node.
+# Ordering: Saved Raids penultimo, Debug ultimo.
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.order") == 6, "Saved Raids is second-to-last (order 6)")
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.debug.order") == 7, "Debug is the last entry (order 7)")
+
+# --- 1.11.17 user-requested removals ---
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.args.scale ~= nil and RLSuite.config:BuildOptionsTable().args.general.args.font ~= nil")), "General = font + global Scale slider only")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.args.look == nil and RLSuite.config:BuildOptionsTable().args.general.args.window == nil and RLSuite.config:BuildOptionsTable().args.general.args.debug == nil")), "General sub-groups (Appearance/Window/Debug) removed")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.modulemenu.args.barScale ~= nil and RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixCols ~= nil")), "Module Menu keeps barScale + matrix controls")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.modulemenu.args.height == nil and RLSuite.config:BuildOptionsTable().args.modulemenu.args.anchors == nil")), "Module Menu: 'Default window height' and 'Toggle Anchors' removed")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.groupmaking.args.scale == nil")), "Groupmaking scale slider removed")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.macros.args.layout.args.enable == nil")), "Macros -> Bar Layout 'Enable' checkbox removed")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.macros.args.layout.args.scale == nil")), "Macros -> Bar Layout scale slider removed")
+rt.execute("RLSuite.config:OpenMacroEditorPanel(); HUD_COUNT = 0; for _, c in ipairs(ALLFRAMES) do if c._text == 'HUD on/off' then HUD_COUNT = HUD_COUNT + 1 end end")
+check(rt.eval("HUD_COUNT") == 0, "Macro editor 'Show HUD' (HUD on/off) button removed")
+
+# The navigation tree lists the reformed 7 categories, with the Macro Editor as a node.
 rt.execute("local t = RLSuite.config.tree.tree; CATS = {}; for _,n in ipairs(t) do CATS[n.value] = n end")
-check(bool(rt.eval("CATS.general ~= nil and CATS.savedraids ~= nil and CATS.groupmaking ~= nil and CATS.macros ~= nil and CATS.raidframe ~= nil and CATS.ms ~= nil and CATS.loot ~= nil")), "tree lists all 7 categories")
+check(bool(rt.eval("CATS.general ~= nil and CATS.modulemenu ~= nil and CATS.savedraids ~= nil and CATS.groupmaking ~= nil and CATS.macros ~= nil and CATS.raidframe ~= nil and CATS.debug ~= nil and CATS.ms == nil and CATS.loot == nil")), "tree lists the reformed 7 categories")
 check(bool(rt.eval("CATS.macros.children[1].value == 'layout' and CATS.macros.children[2].value == 'editor'")), "Macros node has Bar Layout + Macro Editor children")
-check(bool(rt.eval("CATS.general.children[1].value == 'look' and CATS.general.children[4].value == 'debug'")), "General node has Appearance/Font/Window/Debug children")
+check(bool(rt.eval("CATS.general.children == nil")), "General is a flat leaf (no children)")
 
-# theme select get/set through the AceConfig closures
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.args.look.args.theme.get() == 'default'")), "theme get() -> 'default' on fresh profile")
-rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.look.args.theme.set(nil, 'gold')")
-check(bool(rt.eval("RLSuite.db.profile.appearance.theme == 'gold'")), "theme set('gold') writes appearance.theme")
-check(bool(rt.eval("RLSuite.db.profile.appearance.fill.r == 0.10")), "theme set applies the gold preset fill color")
+# Global scale slider (General): every module follows it.
+rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.scale.set(nil, 0.85)")
+check(bool(rt.eval("RLSuite.db.profile.appearance.scale == 0.85")), "global Scale writes appearance.scale")
+check(bool(rt.eval("RLSuite.db.profile.raidframe.scale == 0.85 and RLSuite.db.profile.macrobar.scale == 0.85")), "global Scale propagates to raidframe + macrobar via ApplyAll")
+rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.scale.set(nil, 1)")
 
-# color get returns 4 channels; set writes rgb and switches to 'custom'
-rt.execute("local t = RLSuite.config:BuildOptionsTable().args.general.args.look.args.fill; local r,g,b,a = t.get(); C_CHAN = {r,g,b,a}")
-check(bool(rt.eval("type(C_CHAN[1]) == 'number' and C_CHAN[4] == 1")), "color get() returns 4 numeric channels")
-rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.look.args.fill.set(nil, 0.25, 0.5, 0.75, 1)")
-check(bool(rt.eval("RLSuite.db.profile.appearance.fill.r == 0.25 and RLSuite.db.profile.appearance.fill.b == 0.75")), "color set() writes r/g/b")
-check(bool(rt.eval("RLSuite.db.profile.appearance.theme == 'custom'")), "color set() switches theme to 'custom'")
-
-# anchor toggle drives ApplyAnchorMode
-rt.execute("RLSuite.db.profile.anchorMode = false")
-rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.window.args.anchors.set(nil, true)")
-check(bool(rt.eval("RLSuite.db.profile.anchorMode == true")), "anchors set(true) -> ApplyAnchorMode -> anchorMode=true")
-
-# debug toggle
+# debug toggle (own top-level entry now)
 rt.execute("RLSuite.db.profile.debug = false")
-rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.debug.args.debugMode.set(nil, true)")
+rt.execute("RLSuite.config:BuildOptionsTable().args.debug.args.debugMode.set(nil, true)")
 check(bool(rt.eval("RLSuite.db.profile.debug == true")), "debugMode set(true) writes profile.debug")
 
 # saved raids dynamic list via NotifyChange
@@ -787,10 +795,10 @@ check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.args.save
 
 # Node selection feeds the matching AceConfig path into the tree content.
 check(bool(rt.eval("RLSuite.config.OpenMacroEditorPanel ~= nil and RLSuite.config.CreateMacroEditor ~= nil")), "Macro Editor API preserved")
-rt.execute("RLSuite.config:SelectNode('general' .. string.char(1) .. 'look')")
-check(bool(rt.eval("RLSuite.config.currentNode == 'general' .. string.char(1) .. 'look'")), "SelectNode routes to general/look")
-check(bool(rt.eval("RLSuite.config.tree:GetUserData('basepath') ~= nil and RLSuite.config.tree:GetUserData('basepath')[1] == 'general' and RLSuite.config.tree:GetUserData('basepath')[2] == 'look'")), "general/look feeds at the general.look path")
-check(bool(rt.eval("#RLSuite.config.tree.children == 1")), "options rendered into the tree content area")
+rt.execute("RLSuite.config:SelectNode('general')")
+check(bool(rt.eval("RLSuite.config.currentNode == 'general'")), "SelectNode routes to general")
+check(bool(rt.eval("RLSuite.config.tree:GetUserData('basepath') ~= nil and RLSuite.config.tree:GetUserData('basepath')[1] == 'general'")), "general node feeds at the general path")
+check(rt.eval("#RLSuite.config.tree.children") >= 1, "options rendered into the tree content area")
 
 # The Macro Editor lives inside the same window, under the Macros node.
 rt.execute("RLSuite.config:OpenMacroEditorPanel()")
@@ -1140,11 +1148,11 @@ rt.execute("RLSuite.raidFrame.Toggle = RLSuite.raidFrame._origToggle")
 
 # --- old settings window moved to Config ---
 check(bool(rt.eval("RLSuite.mainWindow.tabPanels == nil")), "old Raid Frame settings window removed from the tab bar")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.behavior ~= nil")), "Raid Frame -> Checks present in Config")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.alerts ~= nil")), "Raid Frame -> Alert Messages present in Config")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.behavior == nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.alerts == nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.pos == nil")), "Raid Frame: Checks / Alert Messages / Position tabs removed")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout == nil")), "Raid Frame options flattened: only Layout controls, directly on the group")
 
 # --- Raid Frame config: right panel shows a tab window (one tab per sub-item) ---
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.childGroups == 'tab'")), "Raid Frame group renders sub-items as tabs")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.childGroups == nil")), "Raid Frame group no longer splits into tabs (Layout only)")
 rt.execute("RF_TREE = RLSuite.config.tree.tree; RF_NODE = nil; for _, n in ipairs(RF_TREE) do if n.value == 'raidframe' then RF_NODE = n end end")
 check(bool(rt.eval("RF_NODE ~= nil and RF_NODE.children == nil")), "Raid Frame is a leaf node (tabs live in the right panel)")
 rt.execute("RLSuite.config:SelectNode('raidframe')")
@@ -1152,12 +1160,12 @@ check(bool(rt.eval("RLSuite.config.currentNode == 'raidframe'")), "selecting Rai
 check(bool(rt.eval("LAST_ERROR == nil or LAST_ERROR == None")), "no error rendering the Raid Frame tab window")
 
 # --- Layout tab controls ---
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.iconSize ~= nil")), "Layout -> Icon size present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.barHeight == nil")), "Layout -> Player bar height option removed: bar height is AUTOMATIC from icon size")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.iconSize ~= nil")), "Layout -> Icon size present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.barHeight == nil")), "Layout -> Player bar height option removed: bar height is AUTOMATIC from icon size")
 check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().barHeight == RLSuite.raidFrame:LayoutMetrics().iconSize")), "player bar height follows icon size automatically (barHeight == iconSize)")
-check(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.rowSpacing.min") == -10, "Row spacing slider goes below zero, down to -10 (bars may overlap)")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.barWidth ~= nil")), "Layout -> Player bar width present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.nameFontSize ~= nil")), "Layout -> Name font size present")
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.rowSpacing.min") == -10, "Row spacing slider goes below zero, down to -10 (bars may overlap)")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.barWidth ~= nil")), "Layout -> Player bar width present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.nameFontSize ~= nil")), "Layout -> Name font size present")
 
 # --- clean HUD: no backdrop / border / close button ---
 check(bool(rt.eval("RLSuite.raidFrame.frame:GetBackdrop() == nil")), "HUD has no backdrop")
@@ -1421,10 +1429,10 @@ check(bool(rt.eval("WF_LOCALE")), "localized client: Well Fed matched via locali
 check(bool(rt.eval("RLSuite.raidFrame.rows[1].member.name == 'F5'")), "roster restored after Well Fed test")
 
 # --- F.3 FONT COLOR option + TANKS group + RAID BUFFS matrix panel ---
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.fontColor ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.fontColor.type == 'color'")), "Layout -> Font color picker present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.fontColor ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.fontColor.type == 'color'")), "Layout -> Font color picker present")
 for key, label in [("iconSpacing","Icon spacing"),("rowSpacing","Row spacing"),("groupSpacing","Group spacing"),("groupHeaderFontSize","Group header font size")]:
-    check(bool(rt.eval(f"RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.{key} ~= nil")), f"Layout -> {label} slider present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.matrixBackdrop ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.matrixBackdrop.type == 'color'")), "Layout -> Buff check backdrop color picker (color+alpha) present")
+    check(bool(rt.eval(f"RLSuite.config:BuildOptionsTable().args.raidframe.args.{key} ~= nil")), f"Layout -> {label} slider present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.matrixBackdrop ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.matrixBackdrop.type == 'color'")), "Layout -> Buff check backdrop color picker (color+alpha) present")
 rt.execute("""
 local prof = RLSuite.db.profile.raidframe
 SAVED_FC = prof.appearance.fontColor
@@ -2003,6 +2011,7 @@ rt.execute("""
 local f = RLSuite.raidFrame.frame
 local row = RLSuite.raidFrame.rows[1]
 f._rlsMoving = nil; f._moving = false
+RLSuite.db.profile.anchorMode = true
 row._scripts.OnMouseDown(row, 'RightButton')
 PLAIN_MOVING = f._rlsMoving; PLAIN_WAS_MOVING = f._moving
 row._scripts.OnMouseUp(row, 'RightButton')
@@ -2028,6 +2037,7 @@ f._scripts.OnMouseDown(f, 'RightButton')
 FSHIFT = f._rlsMoving; FSHIFT_MOVING = f._moving
 f._scripts.OnMouseUp(f, 'RightButton')
 IsShiftKeyDown = SAVED_ISD2
+RLSuite.db.profile.anchorMode = false
 """)
 check(bool(rt.eval("FPLAIN == nil and FSHIFT == true and FSHIFT_MOVING == true")), "Shift+right on the HUD background also starts/stops the move")
 
@@ -2158,12 +2168,12 @@ RLSuite.raidFrame:FillSlot(row, SAVED_MEMBER_G)
 check(bool(rt.eval("RLSuite.raidFrame.rows[1].member.name == 'F5'")), "roster restored after secure-layer test")
 
 # --- F.3 Raid Frame layout options: font / outline / bar texture / opacity ---
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.font ~= nil")), "Layout -> Font type present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.fontOutline ~= nil")), "Layout -> Font outline toggle present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.barTexture ~= nil")), "Layout -> Bar texture present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.alpha ~= nil")), "Layout -> Opacity slider present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.font ~= nil")), "Layout -> Font type present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.fontOutline ~= nil")), "Layout -> Font outline toggle present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.barTexture ~= nil")), "Layout -> Bar texture present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.alpha ~= nil")), "Layout -> Opacity slider present")
 rt.execute(r"""
-local o = RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args
+local o = RLSuite.config:BuildOptionsTable().args.raidframe.args
 o.barTexture.set(nil, 'Interface\\Buttons\\WHITE8x8')
 o.font.set(nil, 'Fonts\\MORPHEUS.TTF')
 o.fontOutline.set(nil, false)
@@ -2174,7 +2184,7 @@ check(bool(rt.eval(r"RLSuite.raidFrame.rows[1].bar.nameText._fontArgs[1] == 'Fon
 check(bool(rt.eval("RLSuite.raidFrame.rows[1].bar.nameText._fontArgs[3] == ''")), "font outline toggle removes the outline")
 check(rt.eval("RLSuite.raidFrame.frame._alpha") == 0.8, "opacity option applied to the whole HUD")
 rt.execute(r"""
-local o = RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args
+local o = RLSuite.config:BuildOptionsTable().args.raidframe.args
 o.barTexture.set(nil, 'Interface\\TargetingFrame\\UI-StatusBar')
 o.font.set(nil, 'Fonts\\FRIZQT__.TTF')
 o.fontOutline.set(nil, true)
@@ -2188,15 +2198,15 @@ print("== Scenario G: main bar MT/OT + realtime config, loot pickup stack, debug
 
 # --- G.1 Config -> Window sliders apply to the main bar IN REAL TIME ---
 rt.execute("W0 = RLSuite.mainWindow.frame:GetWidth()")
-rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.window.args.matrixCols.set(nil, 4)")
+rt.execute("RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixCols.set(nil, 4)")
 rt.execute("W1 = RLSuite.mainWindow.frame:GetWidth()")
 check(bool(rt.eval("W1 > W0")), "matrix Columns slider re-layouts the main bar in real time (w %d -> %d)" % (rt.eval("W0"), rt.eval("W1")))
-rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.window.args.matrixCols.set(nil, 2)")
+rt.execute("RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixCols.set(nil, 2)")
 rt.execute("H0 = RLSuite.mainWindow.frame:GetHeight()")
-rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.window.args.matrixRows.set(nil, 8)")
+rt.execute("RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixRows.set(nil, 8)")
 rt.execute("H1 = RLSuite.mainWindow.frame:GetHeight()")
 check(bool(rt.eval("H1 > H0")), "matrix Rows slider re-layouts the main bar in real time (h %d -> %d)" % (rt.eval("H0"), rt.eval("H1")))
-rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.window.args.matrixRows.set(nil, 4)")
+rt.execute("RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixRows.set(nil, 4)")
 
 # --- G.2 MT / OT: two small buttons sharing ONE matrix cell ---
 check(bool(rt.eval("RLSuite.mainWindow.mtBtn ~= nil and RLSuite.mainWindow.otBtn ~= nil")), "MT / OT buttons exist on the main bar")
