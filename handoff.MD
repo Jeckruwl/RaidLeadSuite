@@ -7,7 +7,15 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.13**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.14**.
+
+## Novità della sessione 1.11.14 (questo branch, dopo 1.11.13) — min height finestra Log
+
+Anche l'altezza minima del CombatLog rispetta lo stack reale: 78
+(dropdown/tab/header) + 398 (liste) + ~30 (barra report/clear/live) +
+margini = 540 (era 420: sotto, la barra inferiore clippava le liste).
+Aggiornati windowMins.log e il clamp iniziale del resize grip.
+585 check PASS.
 
 ## Novità della sessione 1.11.13 (questo branch, dopo 1.11.12) — debug bar inglese + fix grafici log
 

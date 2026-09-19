@@ -528,7 +528,10 @@ function MW:RegisterAllWindows()
     RLSuite.windowMins.log = function()
         -- min width = riga dei tab in alto (16 + 8 tab da 86px + gap da 2),
         -- sotto i 724px i tasti sbordano fuori finestra.
-        return 730, 420
+        -- min height = stack reale: 78 (dropdown+tab+header) + 398 (liste)
+        -- + ~30 (barra report/clear/live) + margini: sotto i 540 la barra
+        -- inferiore clippa le liste.
+        return 730, 540
     end
 
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
@@ -568,7 +571,7 @@ function MW:RegisterAllWindows()
         group = { "groupmaking", 420, 380, "groupmaking" },
         ms = { "ms", 320, 260, "ms" },
         loot = { "loot", 440, 300, "loot" },
-        log = { "combatlog", 730, 420, "combatlog" },
+        log = { "combatlog", 730, 540, "combatlog" },
     }
     for key, cfg in pairs(resizable) do
         local pane = self:PaneForTab(key)

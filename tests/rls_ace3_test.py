@@ -2941,6 +2941,7 @@ check(bool(rt.eval("LL_N2 > 0")), "the Fill Loot button is the ONLY thing spawni
 # --- CombatLog window: dropdown clears the close X; min width covers the tab row ---
 check(bool(rt.eval("""(function() local p = RLSuite.combatLog.fightDropdown._points[1] return p ~= nil and p[4] ~= nil and p[4] <= -40 end)()""")), "fight dropdown stays CLEAR of the close X (-44, no more clipping)")
 check(bool(rt.eval("RLSuite.windowMins.log() >= 730")), "log min width covers the full top tab row (8 tabs x 88px + margins)")
+check(bool(rt.eval("(function() local _, h = RLSuite.windowMins.log() return h ~= nil and h >= 540 end)()")), "log min height covers the stacked content (lists 398 + top area 78 + bottom bar, never clipped)")
 check(bool(rt.eval("(function() local tx = 0 for _ in pairs(RLSuite.combatLog.tabBtns) do tx = tx + 1 end return (16 + tx * 88) <= RLSuite.windowMins.log() + 10 end)()")), "every top tab stays inside the min-width window")
 
 # --- Loot Manager: min width includes the MS announce button# --- Loot Manager: min width includes the MS announce button; window fixed like the equip panel ---
