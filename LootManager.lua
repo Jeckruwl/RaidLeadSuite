@@ -240,7 +240,41 @@ function LM:CreateFrame()
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
     f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 
+    self:HookTradePanel()
     self:EnsureTicker()
+end
+
+-- Ancoraggio "finestra nativa": normalmente in alto a sinistra (16, -116),
+-- ma se il trade e' aperto il Loot Manager cede la sinistra al trade e si
+-- sposta SUBITO a destra di esso (come fanno equip/talenti/spellbook con
+-- gli altri pannelli Blizzard).
+function LM:AnchorDefault()
+    if not self.frame then return end
+    self.frame:ClearAllPoints()
+    local x = 16
+    if self.tradeOpen and TradeFrame and TradeFrame.IsShown and TradeFrame:IsShown() then
+        x = (TradeFrame.GetRight and TradeFrame:GetRight() or 0) + 10
+    end
+    if x < 16 then x = 16 end
+    self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", x, -116)
+end
+
+-- Gancio una tantum al TradeFrame di Blizzard (OnShow/OnHide): il pannello
+-- "sa" cosa c'e' aperto e reagisce nell'istante in cui il trade appare
+-- ("quando aprono una trade si sposta a destra lasciando il trade a
+-- sinistra"). Registrabile anche a runtime se il TradeFrame esiste gia'.
+function LM:HookTradePanel()
+    if self._tradeHooked then return end
+    if not (TradeFrame and TradeFrame.HookScript) then return end
+    self._tradeHooked = true
+    TradeFrame:HookScript("OnShow", function()
+        LM.tradeOpen = true
+        LM:AnchorDefault()
+    end)
+    TradeFrame:HookScript("OnHide", function()
+        LM.tradeOpen = false
+        LM:AnchorDefault()
+    end)
 end
 
 function LM:SkinBox(box)

@@ -2906,6 +2906,30 @@ check(bool(rt.eval("""(function() local p = RLSuite.lootManager.frame._points[1]
 check(bool(rt.eval("RLSuite.combatLog.frame._scripts['OnDragStart'] ~= nil")), "other windows keep their draggable behavior (combat log untouched)")
 rt.execute("RLSuite.lootManager.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
 
+# --- Loot Manager yields the left side to an open Trade (native panel behavior) ---
+rt.execute("""
+TradeFrame = CreateFrame('Frame', 'RLSuiteTestTrade', UIParent)
+TradeFrame.GetRight = function() return 410 end
+RLSuite.lootManager._tradeHooked = nil
+RLSuite.lootManager:HookTradePanel()
+RLSuite.mainWindow:ShowTab('loot')
+local p1 = RLSuite.lootManager.frame._points[1]
+TF_X1 = p1 and p1[4] or 0
+TradeFrame:Show()
+TradeFrame._scripts['OnShow'](TradeFrame)
+TF_X2 = RLSuite.lootManager.frame._points[1] and RLSuite.lootManager.frame._points[1][4] or 0
+TradeFrame:Hide()
+TradeFrame._scripts['OnHide'](TradeFrame)
+TF_X3 = RLSuite.lootManager.frame._points[1] and RLSuite.lootManager.frame._points[1][4] or 0
+RLSuite.lootManager.frame:Hide()
+RLSuite.mainWindow.currentTab = nil
+RLSuite.lootManager.tradeOpen = false
+""")
+check(bool(rt.eval("TF_X1 == 16")), "loot opens at the left equip-style spot when no trade is open")
+check(bool(rt.eval("TF_X2 == 420")), "opening Trade instantly pushes the loot manager to the right of it (trade keeps the left)")
+check(bool(rt.eval("TF_X3 == 16")), "closing Trade puts the loot manager back on the left")
+rt.execute("TradeFrame = nil")
+
 # --- Reroll button stays ENABLED after a tie (AnnounceWinner -> ResetButtons bug) ---
 rt.execute("""
 local lm = RLSuite.lootManager

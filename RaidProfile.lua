@@ -628,11 +628,15 @@ function MW:SelectTab(key)
         if shn > 0 and ph > shn then ph = shn if L.height and L.height > shn then L.height = shn end end
         pane:SetSize(pw, ph)
         if key == "loot" then
-            -- finestra tipo equip: sempre allo stesso posto, in alto a
-            -- sinistra sotto il menu manager; ignora qualsiasi posizione
-            -- salvata da precedenti sessioni (quando era trascinabile).
-            pane:ClearAllPoints()
-            pane:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 16, -116)
+            -- finestra tipo equip: posizione fissa nativa (in alto a
+            -- sinistra; a DESTRA del trade quando e' aperto), decisa da
+            -- LM:AnchorDefault; ignora posizioni salvate storiche.
+            if RLSuite.lootManager and RLSuite.lootManager.AnchorDefault then
+                RLSuite.lootManager:AnchorDefault()
+            else
+                pane:ClearAllPoints()
+                pane:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 16, -116)
+            end
         else
             RLSuite.utils:ApplySavedPos(pane, lkey, function()
                 return self:DefaultCascadeOffset(key)

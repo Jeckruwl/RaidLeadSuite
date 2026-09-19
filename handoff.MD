@@ -7,7 +7,18 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.9**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.10**.
+
+## Novità della sessione 1.11.10 (questo branch, dopo 1.11.9) — Loot Manager reattivo al trade (pannello Blizzard)
+
+Il Loot Manager ora si comporta DAVVERO come un pannello nativo: apre in
+alto a sinistra (16,-116, stile equip), e quando il TradeFrame compare si
+SPOSTA SUBITO a destra del trade (`x = TradeFrame:GetRight() + 10`),
+lasciando il trade a sinistra; alla chiusura del trade torna a sinistra.
+Se il trade si apre mentre il LM e' chiuso, all'apertura successiva il LM
+nasce gia' a destra (stato tradeOpen persistente). Hook una-tantum su
+TradeFrame OnShow/OnHide (LM:HookTradePanel), anchor centralizzato in
+LM:AnchorDefault chiamato anche da SelectTab. 572 check PASS.
 
 ## Novità della sessione 1.11.9 (questo branch, dopo 1.11.8) — Loot Manager fissato (tipo pannello equip) + min width
 
