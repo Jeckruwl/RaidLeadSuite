@@ -2261,32 +2261,32 @@ check(bool(rt.eval("RLSuite.groupmaking.compSlots[1].roleIconBg:GetParent() == R
 check(bool(rt.eval("RLSuite.groupmaking.specCells[1].buttons[1]._backdrop.edgeSize == 16")), "class bar spec icons use even thicker borders (edgeSize 16)")
 check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[1]._backdrop.edgeSize == 14")), "Raid Group slots a bit thicker than before without self-clipping (edgeSize 14)")
 
-# --- G.6b ACE button skin: no Blizzard default graphics on dialog buttons ---
+# --- G.6b ACE button skin: borderless, no Blizzard default graphics ---
 rt.execute("""
 local function aceSkin(b)
     if not (b and b._backdrop) then return false end
-    return b._backdrop.bgFile == "Interface\\\\Buttons\\\\WHITE8x8"
-        and b._backdrop.edgeFile == "Interface\\\\Tooltips\\\\UI-Tooltip-Border"
+    -- BOTTONI BORDERLESS: fill piatto WHITE8x8, NESSUN bordo dialog (edgeFile == nil)
+    return b._backdrop.bgFile == [[Interface\Buttons\WHITE8x8]]
+        and b._backdrop.edgeFile == nil
         and b._backdropColor and math.abs(b._backdropColor[1] - 0.16) < 0.001
-        and b._backdropBorderColor and math.abs(b._backdropBorderColor[1] - 0.45) < 0.001
 end
 ACE_RF = aceSkin(RLSuite.raidFrame.buffPanelBtn)
 ACE_GM = aceSkin(RLSuite.groupmaking.diffBtn10) and aceSkin(RLSuite.groupmaking.spamBtn)
 ACE_LM = aceSkin(RLSuite.lootManager.rollMSBtn) and aceSkin(RLSuite.lootManager.rerollBtn)
 ACE_MS = aceSkin(RLSuite.msManager.requestBtn) and aceSkin(RLSuite.msManager.genMsgBtn)
--- hover = bordo oro (hook OnEnter)
+-- hover = fill che schiarisce (hooks OnEnter/OnLeave), mai un bordo
 local b0 = RLSuite.raidFrame.buffPanelBtn
 if b0._scripts and b0._scripts.OnEnter then b0._scripts.OnEnter(b0) end
-ACE_HOVER = (b0._backdropBorderColor and math.abs(b0._backdropBorderColor[1] - 0.85) < 0.001
-    and math.abs(b0._backdropBorderColor[2] - 0.70) < 0.001)
+ACE_HOVER = (b0._backdropColor and math.abs(b0._backdropColor[1] - 0.26) < 0.001
+    and math.abs(b0._backdropColor[2] - 0.29) < 0.001)
 if b0._scripts and b0._scripts.OnLeave then b0._scripts.OnLeave(b0) end
-ACE_LEAVE = (b0._backdropBorderColor and math.abs(b0._backdropBorderColor[1] - 0.45) < 0.001)
+ACE_LEAVE = (b0._backdropColor and math.abs(b0._backdropColor[1] - 0.16) < 0.001)
 """)
-check(bool(rt.eval("ACE_RF")), "ACE skin on the 'Raid Buffs' button (dark flat + tooltip border)")
-check(bool(rt.eval("ACE_GM")), "ACE skin on Groupmaking dialog buttons (no Blizzard default graphics)")
-check(bool(rt.eval("ACE_LM")), "ACE skin on Loot manager dialog buttons")
-check(bool(rt.eval("ACE_MS")), "ACE skin on MS Manager dialog buttons")
-check(bool(rt.eval("ACE_HOVER") and bool(rt.eval("ACE_LEAVE"))), "ACE buttons: hover lights the border gold, leaving restores it")
+check(bool(rt.eval("ACE_RF")), "ACE skin on the 'Raid Buffs' button (borderless dark flat)")
+check(bool(rt.eval("ACE_GM")), "ACE skin on Groupmaking buttons: no dialog border, no Blizzard default graphics")
+check(bool(rt.eval("ACE_LM")), "ACE skin on Loot manager buttons (borderless)")
+check(bool(rt.eval("ACE_MS")), "ACE skin on MS Manager buttons (borderless)")
+check(bool(rt.eval("ACE_HOVER") and bool(rt.eval("ACE_LEAVE"))), "borderless buttons: hover brightens the fill, leaving restores it")
 
 # --- G.7 Debug OFF empties the Loot Manager (history + pickup windows) ---
 rt.execute("RLSuite.lootManager:AddToHistory('|cffff8000|Hitem:1|h[Test]|h|r', 'Test Item', 'tex', 4)")
@@ -2920,6 +2920,16 @@ check(bool(rt.eval("(function() local rows, tot = RLSuite.combatLog:AggTotals(CL
 rt.execute("RLSuite.combatLog.db.fights = {}; RLSuite.db.profile.debug = DBG_L_SAVED")
 
 check(bool(rt.eval("RLSuite.debugPanel.debugButtons[2]:GetText() == 'Test Loot' and RLSuite.debugPanel.debugButtons[3]:GetText() == 'Empty Loot' and RLSuite.debugPanel.debugButtons[4]:GetText() == 'Test Whisplist'")), "debug bar buttons are in English on EVERY client locale")
+
+check(bool(rt.eval("RLSuite.debugPanel._noOuterBorder == true")), "debug bar has no dialog border (borderless like the main bar)")
+check(bool(rt.eval("""(function() local b = RLSuite.debugPanel.debugButtons[1] return b._backdrop ~= nil and b._backdrop.edgeFile == nil end)()""")), "debug bar buttons are borderless too")
+
+# --- List rows (clickable buttons) are borderless ---
+rt.execute("""
+local r = RLSuite.lootManager.histRows and RLSuite.lootManager.histRows[1]
+ROW_EDGEOK = (r == nil) or (r._backdrop ~= nil and r._backdrop.edgeFile == nil)
+""")
+check(bool(rt.eval("ROW_EDGEOK")), "list rows (loot/whisper/log) lost their dialog border; selection now uses a marked fill")
 
 # --- Debug panel layout: single column, non-draggable, anchored to the main bar ---# --- Debug panel layout: single column, non-draggable, anchored to the main bar ---
 check(bool(rt.eval("""(function() local xs = nil for _, b in ipairs(RLSuite.debugPanel.debugButtons) do local p = b._points[1]; if not p then return false end; if xs == nil then xs = p[4] elseif p[4] ~= xs then return false end end return true end)()""")), "debug panel buttons form a SINGLE column")

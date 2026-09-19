@@ -440,40 +440,38 @@ function Utils:SkinButton(btn)
         local ht = btn.GetHighlightTexture and btn:GetHighlightTexture()
         if ht and ht.SetVertexColor then ht:SetVertexColor(1, 1, 1, 0.08) end
     end
+    -- BOTTONI BORDERLESS: niente piu' il bordo "dialog" (UI-Tooltip-Border)
+    -- su alcun pulsante dell'addon. Resta il fill scuro; l'hover schiarisce
+    -- il riempimento invece di accendere un bordo.
     if btn.SetBackdrop then
         btn:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            edgeSize = 8,
-            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+            insets = { left = 0, right = 0, top = 0, bottom = 0 },
         })
         btn:SetBackdropColor(0.16, 0.18, 0.22, 0.95)
-        btn:SetBackdropBorderColor(0.45, 0.45, 0.48, 1)
     end
     if btn.HookScript then
         btn:HookScript("OnEnter", function(s)
-            if s.SetBackdropBorderColor then s:SetBackdropBorderColor(0.85, 0.70, 0.20, 1) end
+            if s.SetBackdropColor then s:SetBackdropColor(0.26, 0.29, 0.36, 0.98) end
         end)
         btn:HookScript("OnLeave", function(s)
-            if s.SetBackdropBorderColor then s:SetBackdropBorderColor(0.45, 0.45, 0.48, 1) end
+            if s.SetBackdropColor then s:SetBackdropColor(0.16, 0.18, 0.22, 0.95) end
         end)
     end
 end
 
 function Utils:SkinRow(row, selected)
     if not row or not row.SetBackdrop then return end
+    -- Anche le righe-lista (pulsanti) sono borderless: la selezione non si
+    -- affida piu' al bordo oro ma a un riempimento caldo ben piu' marcato.
     row:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 8,
         insets = {left = 0, right = 0, top = 0, bottom = 0},
     })
     if selected then
-        row:SetBackdropColor(0.25, 0.18, 0.02, 0.95)
-        row:SetBackdropBorderColor(0.85, 0.70, 0.20, 1)
+        row:SetBackdropColor(0.34, 0.26, 0.06, 0.98)
     else
         row:SetBackdropColor(0.05, 0.05, 0.07, 0.9)
-        row:SetBackdropBorderColor(0.45, 0.45, 0.48, 1)
     end
 end
 

@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.11.15"
+RLSuite.version = "1.11.16"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -1087,6 +1087,8 @@ function RLSuite:EnsureDebugPanel()
     else
         f:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
     end
+    -- Borderless come la main bar (_noOuterBorder = fill tenuto, bordo via).
+    f._noOuterBorder = true
     self.utils:SkinFrame(f)
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)

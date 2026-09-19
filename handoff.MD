@@ -7,7 +7,22 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.15**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.16**.
+
+## Novità della sessione 1.11.16 (questo branch, dopo 1.11.15) — pulsanti e debug bar borderless
+
+- **SkinButton senza bordo dialog**: tutti i pulsanti skinnati (Roll MS/OS/
+  FFA, Reroll, Announce Changes, Raid Buffs, tab, debug bar...) ora hanno
+  SOLO il fill piatto scuro; l'hover schiarisce il riempimento invece di
+  accendere il bordo oro (highlight White8x8 0.08 resta).
+- **SkinRow senza bordo dialog**: anche le righe-lista cliccabili (loot,
+  whisplist, combat log) perdono l'UI-Tooltip-Border; la selezione passa
+  da bordo oro a riempimento caldo ben piu' marcato (0.34,0.26,0.06).
+- **Debug bar borderless** (_noOuterBorder = fill tenuto, bordo via), come
+  la main bar.
+I bordi "artwork" RLS (comp icons, raid group slots, RLS_BORDER 16/14)
+NON sono toccati: sono il look tematico richiesto a suo tempo, non bordi
+dialog. 589 check PASS.
 
 ## Novità della sessione 1.11.15 (questo branch, dopo 1.11.14) — debug bar SEMPRE inglese
 
