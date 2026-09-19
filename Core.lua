@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.11.8"
+RLSuite.version = "1.11.9"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 

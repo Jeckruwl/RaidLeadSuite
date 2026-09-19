@@ -72,11 +72,10 @@ function LM:CreateFrame()
     f:SetSize(500, 500)
     f:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
     f:SetFrameStrata("HIGH")
-    f:SetMovable(true)
+    -- NON trascinabile: il Loot Manager si comporta come una finestra
+    -- nativa (pannello equip), posizione fissa decisa da SelectTab.
+    f:SetMovable(false)
     f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
     f:Hide()
     f._noOuterBorder = true
     self.frame = f

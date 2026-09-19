@@ -7,7 +7,20 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.8**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.9**.
+
+## Novità della sessione 1.11.9 (questo branch, dopo 1.11.8) — Loot Manager fissato (tipo pannello equip) + min width
+
+- **Min width 480 -> 510**: i bottoni in basso (Roll MS/OS/FFA/Reroll da
+  80px + Announce Changes da 124px + margini) occupano ~506px; sotto, il
+  tasto "Announce Changes" (MS) sbordava fuori finestra.
+- **Non spostabile**: rimosso MakeDraggable dal tab loot e SetMovable/
+  RegisterForDrag dal CreateFrame del Loot Manager; ad ogni apertura la
+  finestra si riancora a TOPLEFT UIParent 16,-116 (in alto a sinistra
+  sotto il menu manager), ignorando le posizioni salvate di quando era
+  trascinabile. Comportamento identico a una finestra nativa: si apre,
+  si chiude, sta dove sta.
+569 check PASS.
 
 ## Novità della sessione 1.11.8 (questo branch, dopo 1.11.7) — reroll su pareggio ora si attiva
 

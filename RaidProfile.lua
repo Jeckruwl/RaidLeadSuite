@@ -520,7 +520,10 @@ function MW:RegisterAllWindows()
         return 350, 280
     end
     RLSuite.windowMins.loot = function()
-        return 480, 340
+        -- larghezza minima = spazio reale dei bottoni di roll
+        -- (16 + Roll MS/OS/FFA/Reroll 4x80 + Announce Changes 124 + margini):
+        -- sotto i 506 il tasto MS "Announce Changes" sborda fuori finestra.
+        return 510, 340
     end
     RLSuite.windowMins.log = function()
         return 640, 420
@@ -537,7 +540,11 @@ function MW:RegisterAllWindows()
         local pane = self:PaneForTab(key)
         if pane and not pane._rlsWindow then
             pane._rlsWindow = true
-            RLSuite.utils:MakeDraggable(pane, lkey)
+            -- Loot Manager: NON spostabile, si comporta come una finestra
+            -- nativa (es. pannello equip): posizione fissa, mai trascinabile.
+            if key ~= "loot" then
+                RLSuite.utils:MakeDraggable(pane, lkey)
+            end
             RLSuite.utils:MakeClickToFront(pane)
             -- la X della finestra chiude anche lo stato del tab nella barra
             if pane.closeBtn then
@@ -620,9 +627,17 @@ function MW:SelectTab(key)
         if swn > 0 and pw > swn then pw = swn if L.width and L.width > swn then L.width = swn end end
         if shn > 0 and ph > shn then ph = shn if L.height and L.height > shn then L.height = shn end end
         pane:SetSize(pw, ph)
-        RLSuite.utils:ApplySavedPos(pane, lkey, function()
-            return self:DefaultCascadeOffset(key)
-        end)
+        if key == "loot" then
+            -- finestra tipo equip: sempre allo stesso posto, in alto a
+            -- sinistra sotto il menu manager; ignora qualsiasi posizione
+            -- salvata da precedenti sessioni (quando era trascinabile).
+            pane:ClearAllPoints()
+            pane:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 16, -116)
+        else
+            RLSuite.utils:ApplySavedPos(pane, lkey, function()
+                return self:DefaultCascadeOffset(key)
+            end)
+        end
         if RLSuite.utils.ClampWindowToScreen then
             RLSuite.utils:ClampWindowToScreen(pane)
         end

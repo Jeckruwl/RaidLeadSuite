@@ -2897,6 +2897,15 @@ check(bool(rt.eval("RLL_TRADE_N == 2")), "two roll cycles each stacked one pick-
 check(bool(rt.eval("RLL_CLICK_OK")), "loot list rows stay CLICKABLE after two rolls (regression of the blocked list)")
 check(bool(rt.eval("RLL_P ~= nil and RLL_P[2] == RLSuite.lootManager.frame")), "pick-up windows anchor to the loot window EDGE, never over the list")
 
+# --- Loot Manager: min width includes the MS announce button; window fixed like the equip panel ---
+rt.execute("LM_MINW = RLSuite.windowMins.loot()")
+check(bool(rt.eval("LM_MINW >= 506")), "loot min width fits all roll buttons incl. Announce Changes (no clipping)")
+rt.execute("RLSuite.mainWindow:ShowTab('loot')")
+check(bool(rt.eval("RLSuite.lootManager.frame._scripts['OnDragStart'] == nil")), "loot window is NOT draggable anymore (behaves like the native equip panel)")
+check(bool(rt.eval("""(function() local p = RLSuite.lootManager.frame._points[1] return p ~= nil and p[1] == 'TOPLEFT' and p[2] == UIParent and p[4] == 16 and p[5] == -116 end)()""")), "loot window anchors to the fixed equip-style spot (TOPLEFT 16,-116 of UIParent)")
+check(bool(rt.eval("RLSuite.combatLog.frame._scripts['OnDragStart'] ~= nil")), "other windows keep their draggable behavior (combat log untouched)")
+rt.execute("RLSuite.lootManager.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
+
 # --- Reroll button stays ENABLED after a tie (AnnounceWinner -> ResetButtons bug) ---
 rt.execute("""
 local lm = RLSuite.lootManager
