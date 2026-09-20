@@ -509,6 +509,13 @@ function Utils:CloseDropdownMenu()
     end
 end
 
+-- Richiesta esplicita: niente cadaveri invisibili sopra i moduli.
+function Utils:AssertNoZombieCatcher()
+    if self.dropCatcher and self.dropCatcher:IsShown() and not (self.activeMenu and self.activeMenu:IsShown()) then
+        self:CloseDropdownMenu()
+    end
+end
+
 function Utils:CreateDropdown(parent, name, width, height)
     local dd = CreateFrame("Frame", name, parent)
     dd:SetSize(width, height)
@@ -542,6 +549,20 @@ function Utils:CreateDropdown(parent, name, width, height)
     end
     dd:SetScript("OnMouseUp", toggle)
     dd.button:SetScript("OnClick", toggle)
+    -- Guardia "pannello invisibile" (fstack): il catcher a tutto schermo e
+    -- il menu NON devono mai sopravvivere alla propria finestra. Quando la
+    -- finestra (o il dropdown stesso) viene nascosta senza che il menu sia
+    -- stato chiuso, forza la chiusura: senza questa rete il cadavere del
+    -- catcher restava sopra TUTTO e rubava i click a tutta la UI. Vale per
+    -- TUTTI i moduli, perche' usano tutti questo CreateDropdown.
+    dd:SetScript("OnHide", function()
+        if Utils.activeMenu and Utils.activeMenu.owner == dd then
+            Utils:CloseDropdownMenu()
+        elseif Utils.dropCatcher and Utils.dropCatcher:IsShown() and Utils.activeMenu == nil then
+            -- catcher zombie senza menu: ugualmente chiuso
+            Utils:CloseDropdownMenu()
+        end
+    end)
     return dd
 end
 

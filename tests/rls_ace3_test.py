@@ -97,9 +97,9 @@ function methods:GetStringHeight()
     return 0
 end
 function methods:GetStringWidth() return #tostring(self._text) * 7 end
-function methods:SetNormalTexture(...) return self end
+function methods:SetNormalTexture(t) self._normal = t; return self end
 function methods:SetPushedTexture(...) return self end
-function methods:SetHighlightTexture(...) return self end
+function methods:SetHighlightTexture(t) self._highlightTex = t; return self end
 function methods:SetChecked(b) self._checked = b and true or false; return self end
 function methods:GetChecked() return self._checked end
 function methods:SetAutoFocus(...) return self end
@@ -3066,6 +3066,106 @@ RLSuite:DebugClearLoot()
 check(bool(rt.eval("CL_N > 0 and #RLSuite.lootManager.history == 0")), "Clear loot empties the loot history")
 check(bool(rt.eval("#RLSuite.lootManager.tradeWindows == 0")), "Clear loot closes any open pick-up windows")
 rt.execute("RLSuite.db.profile.debug = false; RLSuite:ApplyDebugMode()")
+
+
+# === Scenario 1.11.19: X bianche Close.tga, PH:<fase> in matrice, barretta ==================
+print("\n== v1.11.19: white Close.tga X buttons, macrobar PH text, main title bar, fstack guard ==")
+
+# -- media presenti e referenziate
+import os
+check(os.path.isfile("media/Close.tga") and os.path.isfile("media/Arrowup.tga"), "media/Close.tga + media/Arrowup.tga exist in the addon folder")
+
+# -- MS changes: X piu' grande (20x20) e bianca (Close.tga)
+rt.execute("RLSuite.msManager:AddEntry('BigX', 'Frost'); MSROW = RLSuite.msManager.rows and RLSuite.msManager.rows[1]")
+rt.execute("RLSuite.msManager:UpdateList()")
+rt.execute("""
+MS_DEL = nil
+for _, c in ipairs(ALLFRAMES) do
+    if c._parent ~= nil and c._w == 20 and c._h == 20 and c._text == nil and c._normal and tostring(c._normal):find('Close.tga') then
+        MS_DEL = MS_DEL or c
+    end
+end
+""")
+found_ms = rt.eval("MS_DEL ~= nil")
+if not found_ms:
+    # fallback: cammina le righe del listato ms direttamente
+    rt.execute("for _, r in ipairs(RLSuite.msManager.listContent and RLSuite.msManager.listContent._children or {}) do end; MS_DEL = nil")
+rt.execute("""
+-- scansione robusta: cerca fra TUTTI i frame un button 20x20 con normal texture Close.tga
+MS_DEL = nil
+for _, c in ipairs(ALLFRAMES) do
+    if c._normal ~= nil and tostring(c._normal):find('Close.tga', 1, true) and c._w == 20 and c._h == 20 then MS_DEL = c end
+end
+""")
+check(bool(rt.eval("MS_DEL ~= nil")), "MS changes list: red X is now a white Close.tga button")
+check(bool(rt.eval("MS_DEL == nil or (MS_DEL._w == 20 and MS_DEL._h == 20)")), "MS changes X is bigger (20x20, was 14x14)")
+
+# -- GroupMaking: le x rosse testuali sono diventate tessere bianche
+rt.execute("""
+GM_WHITE = 0; GM_RED_TEXT = 0
+for _, c in ipairs(ALLFRAMES) do
+    if c._text == 'x' then GM_RED_TEXT = GM_RED_TEXT + 1 end
+    if c._normal ~= nil and tostring(c._normal):find('Close.tga', 1, true) then GM_WHITE = GM_WHITE + 1 end
+end
+""")
+check(rt.eval("GM_RED_TEXT") == 0, "no red 'x' text buttons remain in the suite")
+check(int(rt.eval("GM_WHITE") or 0) >= 2, "white Close.tga X buttons exist in GroupMaking rows (calendar + whisplist)")
+
+# -- MacroBar: testo fase dentro la matrice, formato PH:<FASE>
+rt.execute("MBPT = RLSuite.macrobar.phaseText")
+check(bool(rt.eval("MBPT ~= nil")), "macrobar phase text exists")
+rt.execute("MBP = MBPT._points[1] or {}; MBPTN = MBPT.GetText and MBPT:GetText() or ''")
+check(bool(rt.eval("MBP[1] == 'TOPLEFT'")), "phase text anchored TOPLEFT INSIDE the macro host (matrix)")
+check(bool(rt.eval("MBPTN:sub(1,3) == 'PH:'")), "phase text format is PH:<phase>")
+check(rt.eval("MBPTN") == "PH:PRE-RAID", "initial phase text is PH:PRE-RAID")
+rt.execute("RLSuite.context = 'preboss'; RLSuite.macrobar:UpdatePhase()")
+check(rt.eval("RLSuite.macrobar.phaseText:GetText()") == "PH:PRE-BOSS", "phase text updates to PH:PRE-BOSS")
+rt.execute("RLSuite.context = 'preraid'; RLSuite.macrobar:UpdatePhase()")
+
+# -- Barretta titolo main bar: 20px, sopra la finestra, larghezza ereditata
+rt.execute("TB = RLSuite.mainWindow.titleBar")
+check(bool(rt.eval("TB ~= nil")), "main title bar exists")
+check(rt.eval("TB._h") == 20, "title bar height is exactly 20px")
+rt.execute("TB_P1 = TB._points[1] or {}; TB_P2 = TB._points[2] or {}")
+check(bool(rt.eval("TB_P1[1] == 'BOTTOMLEFT' and TB_P1[3] == 'TOPLEFT' and TB_P2[1] == 'BOTTOMRIGHT' and TB_P2[3] == 'TOPRIGHT'")), "title bar spans the full main-bar width (anchored to both top corners)")
+check(bool(rt.eval("TB.title ~= nil and TB.title:GetText() == 'RLS'")), "title shows 'RLS' on the left")
+check(bool(rt.eval("TB.arrowBtn ~= nil and tostring(TB.arrowBtn._normal):find('Arrowup.tga', 1, true)")), "arrowup.tga button present on the right")
+check(bool(rt.eval("TB.closeBtn ~= nil and tostring(TB.closeBtn._normal):find('Close.tga', 1, true)")), "Close.tga button present on the right")
+
+# -- Barretta: arrow = solo pannello; close = tutto chiuso
+rt.execute("""
+f = RLSuite.mainWindow.frame
+f:Show(); TB:Show()
+TB.arrowBtn._scripts.OnClick(TB.arrowBtn)
+A1 = f:IsShown(); A1TB = TB:IsShown()
+TB.arrowBtn._scripts.OnClick(TB.arrowBtn)
+A2 = f:IsShown()
+f:Show(); TB:Show()
+TB.closeBtn._scripts.OnClick(TB.closeBtn)
+C_F = f:IsShown(); C_TB = TB:IsShown()
+""")
+check(bool(rt.eval("A1 == false and A1TB == true")), "arrowup: hides ONLY the panel under the bar (bar stays)")
+check(bool(rt.eval("A2 == true")), "arrowup: shows the panel back under the bar")
+check(bool(rt.eval("C_F == false and C_TB == false")), "Close.tga: closes the main bar (panel + title bar)")
+
+# -- Toggle tab riallinea anche la barretta
+rt.execute("RLSuite.mainWindow:ShowTab('group')")
+check(bool(rt.eval("RLSuite.mainWindow.frame:IsShown() and RLSuite.mainWindow.titleBar:IsShown()")), "ShowTab shows the window AND the title bar")
+rt.execute("RLSuite.mainWindow.frame:Hide(); RLSuite.mainWindow.titleBar:Hide(); RLSuite.mainWindow:CloseTab()")
+
+# -- fstack guard: chiudere la finestra NON lascia catcher zombie
+rt.execute("""
+dd = RLSuite.lootManager.rarityDropdown
+RLSuite.utils:ToggleDropdownMenu(dd)
+ZS_MENU = RLSuite.utils.activeMenu; ZS_CAT = RLSuite.utils.dropCatcher:IsShown()
+dd._scripts.OnHide(dd)
+ZS_AFTER_MENU = RLSuite.utils.activeMenu; ZS_AFTER_CAT = RLSuite.utils.dropCatcher:IsShown()
+""")
+check(bool(rt.eval("ZS_MENU ~= nil and ZS_CAT == true")), "opening the rarity dropdown shows menu + fullscreen catcher")
+check(bool(rt.eval("ZS_AFTER_MENU == nil and ZS_AFTER_CAT == false")), "hiding the window kills menu AND catcher (no invisible fullscreen blocker)")
+# zombie catcher globale recuperato anche se perso l'owner
+rt.execute("RLSuite.utils.dropCatcher:Show(); RLSuite.utils.activeMenu = nil; RLSuite.utils:AssertNoZombieCatcher()")
+check(bool(rt.eval("RLSuite.utils.dropCatcher:IsShown() == false")), "zombie catcher with no menu is force-closed")
 
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenarios G+H (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))

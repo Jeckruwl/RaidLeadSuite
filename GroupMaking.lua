@@ -2798,10 +2798,9 @@ function GM:RenderAutoinviteMirrorInvites()
         xBtn:SetSize(14, 14)
         xBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
         row.xBtn = xBtn
-        local xText = FontStr(xBtn, "OVERLAY", 11)
-        xText:SetPoint("CENTER", xBtn, "CENTER", 0, 0)
-        xText:SetText("x")
-        xText:SetTextColor(0.8, 0.2, 0.2)
+        -- X BIANCA (Close.tga), non piu' testo rosso
+        xBtn:SetNormalTexture("Interface\\AddOns\\RaidLeadSuite\\media\\Close.tga")
+        xBtn:SetHighlightTexture("Interface\\AddOns\\RaidLeadSuite\\media\\Close.tga")
         xBtn:SetScript("OnClick", function() self:CalendarRemoveInvitee(nm) end)
 
         local statusFS = FontStr(row, "OVERLAY", 11)
@@ -3056,12 +3055,9 @@ function GM:BuildAutoNameListUI()
             self:RemoveAutoName(name)
         end)
         row.xBtn = xBtn
-        local xText = FontStr(xBtn, "OVERLAY", 12)
-        xText:SetPoint("CENTER", xBtn, "CENTER", 0, 0)
-        xText:SetText("x")
-        xText:SetTextColor(0.8, 0.2, 0.2)
-        xBtn:SetScript("OnEnter", function() xText:SetTextColor(1, 0.3, 0.3) end)
-        xBtn:SetScript("OnLeave", function() xText:SetTextColor(0.8, 0.2, 0.2) end)
+        -- X BIANCA (Close.tga), non piu' testo rosso
+        xBtn:SetNormalTexture("Interface\\AddOns\\RaidLeadSuite\\media\\Close.tga")
+        xBtn:SetHighlightTexture("Interface\\AddOns\\RaidLeadSuite\\media\\Close.tga")
 
         -- clic destro sull'intera riga = rimozione (compatibilita').
         row:SetScript("OnClick", function(s, button)

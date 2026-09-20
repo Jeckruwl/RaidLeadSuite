@@ -162,9 +162,14 @@ function MB:CreateFrame()
     self.macroHost = host
     self:AttachShiftDrag(host)
 
-    self.phaseText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.phaseText:SetPoint("BOTTOM", host, "TOP", 0, 2)
-    self.phaseText:SetText("MacroBar")
+    -- Testo di fase DENTRO la matrice, prima cella in alto a sinistra,
+    -- formato "PH:<FASE>" (non piu' sopra la barra).
+    local MB_PRETTY_PHASE = { preraid = "PRE-RAID", preboss = "PRE-BOSS", infight = "IN-FIGHT" }
+    self.prettyPhaseLabels = MB_PRETTY_PHASE
+    self.phaseText = host:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.phaseText:SetPoint("TOPLEFT", host, "TOPLEFT", 4, -3)
+    self.phaseText:SetTextColor(1, 0.82, 0)
+    self.phaseText:SetText("PH:PRE-RAID")
 end
 
 -- FIX: Non usare ActionButtonTemplate, crea bottoni custom
@@ -360,7 +365,7 @@ function MB:ApplyLayout()
 
     if self.phaseText then
         self.phaseText:ClearAllPoints()
-        self.phaseText:SetPoint("BOTTOM", self.macroHost or self.frame, "TOP", 0, 2)
+        self.phaseText:SetPoint("TOPLEFT", self.macroHost or self.frame, "TOPLEFT", 4, -3)
     end
 
     for i = 1, 12 do
@@ -602,7 +607,8 @@ end
 function MB:UpdatePhase()
     local phase = RLSuite.context or "preraid"
     if self.phaseText then
-        self.phaseText:SetText(string.format(L["Phase: %s"], string.upper(phase)))
+        local pretty = (self.prettyPhaseLabels and self.prettyPhaseLabels[phase]) or string.upper(phase)
+        self.phaseText:SetText("PH:" .. pretty)
     end
     self:LoadMacrosForPhase(phase)
     self:LoadKeybinds(phase)

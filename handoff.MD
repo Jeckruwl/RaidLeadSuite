@@ -7,9 +7,18 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.18**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.19**.
 
-## Novità della sessione 1.11.18 (questo branch, dopo 1.11.17) — channel # per canale + debug alleggerito
+## Novità della sessione 1.11.19 (questo branch, dopo 1.11.18) — icone Close/Arrowup, barretta main, fstack guard
+
+- **media/Close.tga** (X bianca) e **media/Arrowup.tga** (freccia bianca): nuove texture (32x32 TGA) generate per l'addon.
+- **MS changes**: le X delle righe sono diventate **bianche** (Close.tga) e **più grandi**: 20x20 (erano 14x14).
+- **Tutte le “x” rosse dei moduli** (GroupMaking calendar invitees + whisplist auto) sostituite con bottoni testurizzati **Close.tga bianchi** (niente più fontstring rossi).
+- **MacroBar**: testo di fase ora **dentro la matrice** (prima cella in alto a sinistra), formato **PH:<FASE>** (PRE-RAID / PRE-BOSS / IN-FIGHT), oro.
+- **Main bar**: nuova **barretta titolo 20px** fissa sopra la finestra, larghezza ereditata dalla main bar (anchor ai due angoli). A sinistra **RLS** oro; a destra **Arrowup.tga** (mostra/nasconde SOLO il pannello sotto la barretta) e **Close.tga** (chiude main bar + barretta). /rls, minimappa e tab riallineano entrambi.
+- **Bug fstack**: `CreateDropdown` ora aggancia OnHide al dropdown: se la finestra ospite si chiude/col menu ancora aperto, menu e **catcher full-screen invisibile** vengono forzatamente chiusi (era il pannello invisibile che rubava i click a tutta la UI). Vale per TUTTI i moduli (condividono lo stesso util). Aggiunto `Utils:AssertNoZombieCatcher` per i casi zombie residui.
+
+## Novità della sessione 1.11.18 (questo branch, dopo 1.11.17) — channel # per canale + debug alleggerito (storico)
 
 - **Groupmaking**: ogni canale spam ha ora la casella **Channel #** affiancata alla checkbox. Il numero esplicito (>0) ha la precedenza sulla risoluzione automatica via `GetChannelName(nome)`; vuoto/0 = auto. Salvato in `groupmaking.spamChannelNums` (default `{}` in Core).
 - **Debug**: rimosso il tasto **“Fill fake loot”** dalla voce Debug del Config (resta solo “Enable debug mode”).

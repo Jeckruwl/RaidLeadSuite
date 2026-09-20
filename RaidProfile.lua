@@ -16,8 +16,10 @@ function MW:Toggle()
     if self.frame and self.frame:IsShown() then
         self:CloseTab()
         self.frame:Hide()
+        if self.titleBar then self.titleBar:Hide() end
     elseif self.frame then
         self.frame:Show()
+        if self.titleBar then self.titleBar:Show() end
         self:CloseTab()
         -- /rls mostra anche l'HUD MacroBar (se abilitata e non gia' visibile)
         self:ShowMacrobarHud()
@@ -48,6 +50,7 @@ function MW:ShowTab(key)
     end
     if not self.frame then return end
     self.frame:Show()
+    if self.titleBar then self.titleBar:Show() end
     self:SelectTab(key)
 end
 
@@ -146,7 +149,58 @@ function MW:CreateFrame()
     RLSuite.utils:SkinFrame(f)
     RLSuite.utils:ClampWindow(f)
 
-    -- Niente titolo: la barra contiene solo i bottoni (matrice + fase +
+    -- === Barretta titolo 20px SOPRA la main bar ======================
+    -- Eredita la larghezza della main bar (anchor a tutti e due gli
+    -- angoli). A sinistra: "RLS"; a destra: Arrowup.tga (mostra/nasconde
+    -- il pannello sotto alla barretta) e Close.tga (chiude la main bar).
+    local tb = CreateFrame("Frame", "RLSuiteMainTitleBar", UIParent)
+    tb:SetHeight(20)
+    tb:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 0)
+    tb:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 0)
+    tb:SetFrameStrata(f:GetFrameStrata() or "HIGH")
+    tb:EnableMouse(true)
+    tb._noOuterBorder = true
+    tb:Hide()
+    self.titleBar = tb
+    RLSuite.utils:SkinFrame(tb)
+
+    local tbTitle = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    tbTitle:SetPoint("LEFT", tb, "LEFT", 6, 0)
+    tbTitle:SetText("RLS")
+    tbTitle:SetTextColor(1, 0.82, 0)
+    tb.title = tbTitle
+
+    local CLOSE_TGA = "Interface\\AddOns\\RaidLeadSuite\\media\\Close.tga"
+    local ARROW_TGA = "Interface\\AddOns\\RaidLeadSuite\\media\\Arrowup.tga"
+    local crashBtn = CreateFrame("Button", nil, tb)
+    crashBtn:SetSize(16, 16)
+    crashBtn:SetPoint("TOPRIGHT", tb, "TOPRIGHT", -2, -2)
+    crashBtn:SetNormalTexture(CLOSE_TGA)
+    crashBtn:SetHighlightTexture(CLOSE_TGA)
+    crashBtn:SetScript("OnClick", function()
+        MW:CloseTab()
+        f:Hide()
+        tb:Hide()
+    end)
+    tb.closeBtn = crashBtn
+
+    local arrBtn = CreateFrame("Button", nil, tb)
+    arrBtn:SetSize(16, 16)
+    arrBtn:SetPoint("RIGHT", crashBtn, "LEFT", -2, 0)
+    arrBtn:SetNormalTexture(ARROW_TGA)
+    arrBtn:SetHighlightTexture(ARROW_TGA)
+    arrBtn:SetScript("OnClick", function()
+        -- pannellino: mostra/nasconde la main bar SOTTO la barretta
+        if f:IsShown() then
+            MW:CloseTab()
+            f:Hide()
+        else
+            f:Show()
+        end
+    end)
+    tb.arrowBtn = arrBtn
+
+    -- Niente titolo dentro la finestra: i bottoni restano (matrice + fase +
     -- X di chiusura e icona SaveRaid). La Config si apre dalla minimappa
     -- (clic destro) o da /rls config.
 
@@ -301,6 +355,7 @@ function MW:CreateFrame()
     self.closeBtn:SetScript("OnClick", function()
         self:CloseTab()
         f:Hide()
+        if self.titleBar then self.titleBar:Hide() end
     end)
 
     -- Config: accessibile dal clic destro sull'icona della minimappa e da
