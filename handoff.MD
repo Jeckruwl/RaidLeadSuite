@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.35 (questo branch, dopo 1.11.34) — guard per TUTTE le finestre + barretta
+
+Causa definitiva: la main window viene SCALATA (`L.scale`) e su 3.3.5 `SetClampedToScreen` sui frame scalati è rotto in drag. Soluzione IDENTICA per tutte le finestre: `Utils:MakeDraggable` ora crea un **guard OnUpdate** (`_rlsDragGuard`) attivo solo durante il drag → `Utils:ClampWindowToScreen` scale-aware riporta la finestra nei bordi in tempo reale + sul drop. La barretta riprende il suo drag proxy ma legato allo STESSO guard di `f`. Versione 1.11.35.
+
 ## Novità della sessione 1.11.34 (questo branch, dopo 1.11.33) — drag della main bar IDENTICO alle altre finestre (niente proxy)
 
 Il proxy `f:StartMoving()` lanciato dai drag della barretta ignorava il clamp dell'engine — per questo la barra usciva anche con SetClampedToScreen(true). RIMOSSO il proxy: la barretta ha solo `RegisterForDrag("LeftButton")` e il drag muove direttamente `f` (già `Utils:MakeDraggable(f, "main")` = SetClampedToScreen(true) come le altre finestre) — stessa identica meccanica, stessi limiti. Eliminato anche il guard OnUpdate (non serve più).

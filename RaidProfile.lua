@@ -166,11 +166,21 @@ function MW:CreateFrame()
     RLSuite.utils:SkinFrame(tb)
 
     -- La barretta TRASCINA tutta la main bar: clic sinistro + trascina.
-    -- TRASCINAMENTO IDENTICO ALLE ALTRE FINESTRE: la finestra f (gia'
-    -- MakeDraggable/ClampWindow) muove SE STESSA ricevendo RegisterForDrag
-    -- anche dalla barretta. Niente StartMoving per proxy.
+    -- La barretta trascina la main bar (proxy), MA con lo stesso guard di
+    -- clamp usato da MakeDraggable: durante il drag la finestra non esce
+    -- MAI dai bordi (workaround del bug SetClampedToScreen+scala).
     tb:RegisterForDrag("LeftButton")
     tb:EnableMouse(true)
+    tb:SetScript("OnDragStart", function()
+        f:StartMoving()
+        if f._rlsDragGuard then f._rlsDragGuard:Show() end
+    end)
+    tb:SetScript("OnDragStop", function()
+        f:StopMovingOrSizing()
+        if f._rlsDragGuard then f._rlsDragGuard:Hide() end
+        RLSuite.utils:ClampWindowToScreen(f)
+        RLSuite.utils:PersistFramePos(f, "main")
+    end)
 
     local tbTitle = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     tbTitle:SetPoint("LEFT", tb, "LEFT", 8, 0)

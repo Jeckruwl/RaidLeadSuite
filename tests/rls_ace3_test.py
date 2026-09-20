@@ -3256,7 +3256,7 @@ TB23DRAG = TB23._dragButtons ~= nil
 TB23PROXY = TB23._scripts.OnDragStart ~= nil or TB23._scripts.OnDragStop ~= nil
 """)
 check(bool(rt.eval("TB23DRAG == true")), "title bar is REGISTERED for LeftButton drag")
-check(bool(rt.eval("TB23PROXY == false")), "title bar debates NO custom drag scripts: the drag moves the main window DIRECTLY (MakeDraggable/SetClampedToScreen like every other window)")
+check(bool(rt.eval("TB23PROXY == true")), "title bar drags the main window with the SAME drag guard as every other window (clamps during drag)")
 
 # -- v1.11.30: icone barretta dimezzate (11x11) + freccia su/giu con il pannello
 rt.execute("""
@@ -3275,7 +3275,9 @@ check(rt.eval("TC_OPEN30") == '0,1,0,1', "arrow points UP when the panel is OPEN
 # -- v1.11.31: la barra non esce mai dallo schermo
 _rp = open("RaidProfile.lua", encoding="utf-8").read()
 check('MakeDraggable(f, "main")' in _rp, "main window uses Utils:MakeDraggable (SAME drag+clamp as every other window)")
-check(bool(rt.eval("RLSuite.mainWindow.frame._rlsDraggable == true")), "main window is flagged _rlsDraggable by MakeDraggable (SetClampedToScreen + RaiseWindow like every other window)")
+check(bool(rt.eval("RLSuite.mainWindow.frame._rlsDraggable == true and RLSuite.mainWindow.frame._rlsDragGuard ~= nil")), "main window flagged _rlsDraggable AND guarded by MakeDraggable (same clamp guard as every other window)")
+_u35 = open("Utils.lua", encoding="utf-8").read()
+check('_rlsDragGuard' in _u35 and _u35.count("ClampWindowToScreen(frame)") >= 1 and _u35.count("ClampWindowToScreen(self2)") >= 1, "MakeDraggable clamps ALL windows during drag + on drop (the identical machinery everywhere)")
 check('tb:RegisterForDrag("LeftButton")' in _rp and 'f:StartMoving()' not in _rp, "title bar passes the drag DIRECTLY to the main window (no StartMoving proxy, same as every other window)")
 check('ClampWindowToScreen(self.frame)' in open("MacroBar.lua", encoding="utf-8").read(), "macrobar shift-drag drop clamped inside the screen")
 check('ClampWindowToScreen(self2)' in open("MacroBar.lua", encoding="utf-8").read(), "macrobar anchor-mode drop clamped inside the screen")

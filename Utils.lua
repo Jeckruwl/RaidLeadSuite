@@ -893,15 +893,31 @@ function Utils:MakeDraggable(frame, key)
     frame:SetMovable(true)
     frame:EnableMouse(true)
     self:ClampWindow(frame)
+    -- Guard anti-bug 3.3.5: SetClampedToScreen NON clamp nella scala <=/ >
+    -- (i frame scalati possono uscire dallo schermo durante il drag).
+    -- Mentre il drag e' attivo, ogni frame riporta la finestra nei bordi
+    -- (clamp scale-aware: GetLeft/GetTop / EffectiveScale) — IDENTICO per
+    -- OGNI finestra dell'addon, main bar compresa.
+    local guard = CreateFrame("Frame")
+    guard:Hide()
+    guard:SetScript("OnUpdate", function()
+        Utils:ClampWindowToScreen(frame)
+    end)
+    frame._rlsDragGuard = guard
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", function(self2)
         Utils:RaiseWindow(frame)
+        guard:Show()
         self2:StartMoving()
     end)
-    frame:SetScript("OnDragStop", function(self2)
+    local function dragStop(self2)
+        guard:Hide()
         self2:StopMovingOrSizing()
+        Utils:ClampWindowToScreen(self2)
         Utils:PersistFramePos(self2, key)
-    end)
+    end
+    frame:SetScript("OnDragStop", dragStop)
+    frame._rlsDragStop = dragStop
 end
 
 -- Grip di ridimensionamento in basso a destra. Salva width/height nel
