@@ -3211,6 +3211,56 @@ check(bool(rt.eval("P15_X == 89 and P15_Y == -8")), "first key button of the top
 check(bool(rt.eval("RDY_X == 8 and RDY_Y == -34")), "second-row key buttons keep the first cell (only the top row holds the PH tassel)")
 rt.execute("RLSuite.context = 'preraid'; RLSuite.macrobar:UpdateKeypad('preraid'); RLSuite.macrobar:UpdatePhase()")
 
+# === Scenario 1.11.23: X bianche ovunque (MakeCloseX), no X rossa in main bar, barretta trascinabile =
+print("\n== v1.11.23: white Close.blp X on every window close, no red X inside main bar, draggable title bar ==")
+import glob
+_red = []
+for _f in glob.glob("*.lua"):
+    if "UIPanelCloseButton" in open(_f, encoding="utf-8").read():
+        _red.append(_f)
+check(_red == [], "no UIPanelCloseButton remains in ANY addon module file (white Close.blp X everywhere)")
+check('function Utils:MakeCloseX' in open("Utils.lua", encoding="utf-8").read(), "Utils:MakeCloseX shared helper exists")
+check(bool(rt.eval("RLSuite.utils.MakeCloseX ~= nil")), "MakeCloseX live in the runtime")
+
+rt.execute("""
+CLOSE_OK = 0
+CLOSE_BAD = ''
+local function chk(btn)
+    if btn ~= nil then
+        if btn._normal ~= nil and tostring(btn._normal):find('Close.blp', 1, true) and btn._w == 22 and btn._h == 22 then
+            CLOSE_OK = CLOSE_OK + 1
+        else
+            CLOSE_BAD = CLOSE_BAD .. 'x'
+        end
+    end
+end
+chk(RLSuite.combatLog and RLSuite.combatLog.frame and RLSuite.combatLog.frame.closeBtn)
+chk(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame and RLSuite.groupmaking.mainFrame.closeBtn)
+chk(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame and RLSuite.groupmaking.whisplistFrame.closeBtn)
+chk(RLSuite.lootManager and RLSuite.lootManager.frame and RLSuite.lootManager.frame.closeBtn)
+chk(RLSuite.msManager and RLSuite.msManager.frame and RLSuite.msManager.frame.closeBtn)
+""")
+check(int(rt.eval("CLOSE_OK") or 0) == 5, "all 5 built window-close buttons are the 22x22 white Close.blp X (CL/GM/GM-wl/LM/MS)")
+check(rt.eval("CLOSE_BAD") == '', "no close button kept the old red Blizzard artwork")
+
+# -- LA X ROSSA nella main bar: eliminata
+check(bool(rt.eval("RLSuite.mainWindow.closeBtn == nil")), "the red X INSIDE the main bar is GONE (only the title bar X remains)")
+check('CreateFrame("Button", nil, f, "UIPanelCloseButton")' not in open("RaidProfile.lua", encoding="utf-8").read(), "RaidProfile main window: no more UIPanelCloseButton creation")
+
+# -- Barretta trascinabile: muove TUTTA la main bar
+rt.execute("""
+TB23 = RLSuite.mainWindow.titleBar
+MF23 = RLSuite.mainWindow.frame
+TB23DRAG = TB23._dragButtons ~= nil
+TB23._scripts.OnDragStart(TB23)
+MID_DRAG = MF23._moving == true
+TB23._scripts.OnDragStop(TB23)
+AFTER_DRAG = MF23._moving == false
+""")
+check(bool(rt.eval("TB23DRAG == true")), "title bar is REGISTERED for LeftButton drag")
+check(bool(rt.eval("MID_DRAG and AFTER_DRAG")), "dragging the title bar MOVES the whole main window (start + stop)")
+
+
 
 # -- scroll clip util: registrazione nei moduli
 check(bool(rt.eval("RLSuite.lootManager.histContent._rlsScrollClip ~= nil")), "scroll clip registered on LootManager history")

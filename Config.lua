@@ -868,9 +868,8 @@ function CFG:CreateMacroIconPicker(parent)
     title:SetPoint("TOPLEFT", picker, "TOPLEFT", 10, -8)
     title:SetText(L["Macro icon"])
 
-    local close = CreateFrame("Button", nil, picker, "UIPanelCloseButton")
+    local close = RLSuite.utils:MakeCloseX(picker, function() picker:Hide() end)
     close:SetPoint("TOPRIGHT", picker, "TOPRIGHT", -2, -2)
-    close:SetScript("OnClick", function() picker:Hide() end)
 
     local scroll = CreateFrame("ScrollFrame", "RLSuiteCfgMacroIconScroll", picker, "FauxScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", picker, "TOPLEFT", 8, -28)

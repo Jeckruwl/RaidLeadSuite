@@ -7,7 +7,14 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.22**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
+
+## Novità della sessione 1.11.23 (questo branch, dopo 1.11.22) — X bianche ovunque, X rossa eliminata, barretta trascinabile
+
+- **TUTTE le X di chiusura delle finestre usano la X bianca** `RLSuite.utils:MakeCloseX(parent, onclick)` (BLP nativo `media\\Close.blp` via AddonTexture, 22x22, no bordo): CombatLog, GroupMaking (main + whisplist), LootManager (main + finestra trade), MSManager, MacroBar (frame keybind), Config (picker icone macro). La barretta usava già Close.blp da 1.11.21.
+- **La X ROSSA dentro la main bar è stata ELIMINATA**: in `RaidProfile` la finestra principale non crea più `self.closeBtn` (col template rosso Blizzard). Resta SOLO la X bianca nella barretta sopra la main bar.
+- **La barretta ora TRASCINA tutta la main bar**: RegisterForDrag LeftButton → `f:StartMoving()`/`StopMovingOrSizing()` del frame principale.
+- Test: nessun `UIPanelCloseButton` resta in nessun file modulo; i 5 close delle finestre costruite sono la X bianca; `mainWindow.closeBtn == nil`; drag della barretta muove la finestra.
 
 ## Novità della sessione 1.11.22 (questo branch, dopo 1.11.21) — PH dentro il KEYPAD
 

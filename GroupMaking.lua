@@ -407,9 +407,8 @@ function GM:CreateMainWindow()
     self.whisplistBtn:SetText("InviteEngine")
     self.whisplistBtn:SetScript("OnClick", function() self:ToggleWhisplist() end)
 
-    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 
     -- ORA posso chiamare BuildCompSlots e BuildClassBar (previewText esiste)
     self:BuildCompSlots()
@@ -1336,9 +1335,8 @@ function GM:CreateWhisplistWindow()
         self:SetInviteEngineTab("whisper")
     end
 
-    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 end
 
 -- Crea la barra a tab con AceGUI-3.0 (widget TabGroup) e posiziona il suo

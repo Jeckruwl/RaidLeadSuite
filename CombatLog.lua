@@ -950,9 +950,8 @@ function CL:CreateFrame()
     self.infoText:SetPoint("LEFT", liveLbl, "RIGHT", 12, 0)
     self.infoText:SetText("")
 
-    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 
     -- Il widget grafico viene costruito PER ULTIMO: un suo errore non puo'
     -- mai impedire la creazione della finestra/comandi.

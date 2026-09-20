@@ -119,9 +119,8 @@ function MSM:CreateFrame()
     self.genMsgBtn:SetText("Announce Changes")
     self.genMsgBtn:SetScript("OnClick", function() self:GenerateMessage() end)
 
-    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 end
 
 function MSM:SkinInner()

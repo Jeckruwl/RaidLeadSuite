@@ -984,12 +984,11 @@ function MB:OpenKeybindUI(phase)
     title:SetText("Macrobar Keybinds")
     self.bindTitle = title
 
-    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    close:SetScript("OnClick", function()
+    local close = RLSuite.utils:MakeCloseX(f, function()
         self.bindingIndex = nil
         f:Hide()
     end)
+    close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
 
     local hint = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hint:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -28)

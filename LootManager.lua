@@ -237,9 +237,8 @@ function LM:CreateFrame()
         RLSuite.msManager:GenerateMessage()
     end)
 
-    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 
     self:HookTradePanel()
     self:EnsureTicker()
@@ -1127,9 +1126,8 @@ function LM:ShowTradeWindow(item)
         end
     end)
 
-    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn = RLSuite.utils:MakeCloseX(f, function() self:CloseTradeWindow(f) end)
     f.closeBtn:SetPoint("RIGHT", f, "RIGHT", 0, 0)
-    f.closeBtn:SetScript("OnClick", function() self:CloseTradeWindow(f) end)
 
     self:StackTradeWindows()
 end

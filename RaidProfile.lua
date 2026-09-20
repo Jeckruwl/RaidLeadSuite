@@ -165,6 +165,11 @@ function MW:CreateFrame()
     self.titleBar = tb
     RLSuite.utils:SkinFrame(tb)
 
+    -- La barretta TRASCINA tutta la main bar: clic sinistro + trascina.
+    tb:RegisterForDrag("LeftButton")
+    tb:SetScript("OnDragStart", function() f:StartMoving() end)
+    tb:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
+
     local tbTitle = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     tbTitle:SetPoint("LEFT", tb, "LEFT", 8, 0)
     tbTitle:SetText("RLS")
@@ -352,13 +357,6 @@ function MW:CreateFrame()
     self.phaseText:SetJustifyH("LEFT")
     self.phaseText:Hide()
 
-    self.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    self.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    self.closeBtn:SetScript("OnClick", function()
-        self:CloseTab()
-        f:Hide()
-        if self.titleBar then self.titleBar:Hide() end
-    end)
 
     -- Config: accessibile dal clic destro sull'icona della minimappa e da
     -- /rls config (niente piu' icona rotellina nella barra principale).

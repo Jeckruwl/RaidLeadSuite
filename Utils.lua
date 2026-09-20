@@ -8,6 +8,21 @@ local Utils = RLSuite.utils
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
+-- X bianca (BLP nativo) per CHIUDERE le finestre, via AddonTexture
+-- (risolve RLSuite|RaidLeadSuite). MAI path hardcoded col nome cartella.
+-- Tutte le finestre dell'addon usano questo bottone: niente piu'
+-- la X rossa di Blizzard (template di default del pannello).
+function Utils:MakeCloseX(parent, onclick)
+    local tx = RLSuite:AddonTexture("media\\Close.blp")
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(22, 22)
+    b:SetBackdrop(nil)
+    b:SetNormalTexture(tx)
+    b:SetHighlightTexture(tx)
+    if onclick then b:SetScript("OnClick", onclick) end
+    return b
+end
+
 function Utils:Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[RLSuite]|r " .. tostring(msg))
 end
