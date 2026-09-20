@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.11.38"
+RLSuite.version = "1.11.39"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -724,6 +724,21 @@ function RLSuite:ChatCommand(input)
     msg = string.lower(msg)
     if msg == "help" or msg == "?" then
         self:PrintHelp()
+    elseif msg == "mousefocus" or msg == "fstack" then
+        -- Diagnostica click-blocker: chi sta RUBANDO il click sotto il cursore
+        local mf = GetMouseFocus and GetMouseFocus() or nil
+        if not mf then
+            self:Print("mousefocus: nothing under the cursor")
+        else
+            local n = mf.GetName and mf:GetName() or tostring(mf)
+            local p = (mf.GetParent and mf:GetParent()) or nil
+            local pn = p and (p.GetName and p:GetName() or tostring(p)) or "nil"
+            self:Print(string.format("focus=%s parent=%s level=%s strata=%s mouse=%s",
+                tostring(n), tostring(pn),
+                tostring(mf.GetFrameLevel and mf:GetFrameLevel()),
+                tostring(mf.GetFrameStrata and mf:GetFrameStrata()),
+                tostring(mf.IsMouseEnabled and mf:IsMouseEnabled())))
+        end
     elseif msg == "macrobar" then
         if self.macrobar then self.macrobar:Toggle() end
     elseif msg == "rfhud" then

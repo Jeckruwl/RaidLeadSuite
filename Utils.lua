@@ -575,6 +575,11 @@ end
 -- ============================================================
 function Utils:RegisterScrollClip(scroll, content)
     if not scroll or not content then return end
+    -- Il frame "content" non deve MAI prendere topmost-mouse: e' grande
+    -- quanto tutta l'area della lista e in fstack appare come il pannello
+    -- invisibile che copre gli elementi. Le righe-bottone dentro ci
+    -- passano da sopra.
+    if content.EnableMouse then content:EnableMouse(false) end
     content._rlsScrollClip = { scroll = scroll, rows = {} }
     local function refresh()
         Utils:RefreshScrollClip(content)
@@ -882,9 +887,18 @@ end
 -- finestra sopra e parti sotto un'altra) quando si spostano le finestre.
 function Utils:RaiseWindow(frame)
     if not frame then return end
-    RLSuite.windowLevel = (RLSuite.windowLevel or 10) + 50
+    -- Cap a 1000: con level illimitato ogni click spingeva la finestra
+    -- sempre piu' in alto (fstack mostrava i livelli saltare di +50) e
+    -- dopo una sessione di click i rubaclick alti si accavallano.
+    local cur = RLSuite.windowLevel or 10
+    if cur < 1000 then
+        cur = cur + 50
+        RLSuite.windowLevel = cur
+    end
     frame:SetFrameStrata("HIGH")
-    frame:SetFrameLevel(RLSuite.windowLevel)
+    if (frame:GetFrameLevel() or 0) ~= cur then
+        frame:SetFrameLevel(cur)
+    end
 end
 
 -- Clic su una finestra = portala in primo piano. Vale per i click che

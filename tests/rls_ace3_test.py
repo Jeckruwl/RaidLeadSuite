@@ -3192,6 +3192,13 @@ AM38 = RLSuite.utils.activeMenu
 """)
 check(bool(rt.eval("M38 ~= nil and C38 == true")), "dropdown opens menu + catcher")
 check(bool(rt.eval("C38A == false and AM38 == nil")), "hiding the menu BY ANY MEANS also hides the catcher (engine-level defense)")
+# -- v1.11.39: content scroll non mouse-eating + raise cap + mousefocus diag
+_u = open("Utils.lua", encoding="utf-8").read()
+check('content:EnableMouse(false)' in _u, "every scroll content is mouse-free (no window-sized invisible blockers)")
+check('cur < 1000' in _u, "RaiseWindow level capped (no +50-per-click inflation)")
+check('mousefocus' in open("Core.lua", encoding='utf-8').read(), "/rls mousefocus diagnostic command available")
+check(bool(rt.eval("RLSuite.lootManager.histContent._enabledMouse == false")), "loot history content does not swallow clicks")
+
 
 
 

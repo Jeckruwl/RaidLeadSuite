@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.39 (questo branch, dopo 1.11.38) — hardening fstack/blocker + /rls mousefocus diagnostico
+
+L'analisi dell'fstack dell'utente (RLSuiteLootHistory tra due frame anonimi) dimostra solo che il 3.3.5 framestack elenca frame non-mouse; non identifica il rubaclick. Hardening spedito: (a) TUTTI gli scroll-content (registrati tramite RegisterScrollClip) ora `EnableMouse(false)` — il content grande-tutta-l'area non comparirà più come pannello coprente; (b) `RaiseWindow` con cap a 1000: basta inflazione di frame-level a ogni click (+50 in fstack osservata); (c) nuovo `/rls mousefocus` che stampa focus/parent/level/strata/mouse del frame che ruba il click sotto il cursore — output atteso dall'utente per diagnosticare l'ultima causa residua. Versione 1.11.39.
+
 ## Novità della sessione 1.11.38 (questo branch, dopo 1.11.37) — il "pannello invisibile" (fstack zombie) è il drop catcher, ucciso in tutti i moduli
 
 Il prompt `RLSuiteDropCatcher` era un bottone FULL-SCREEN INVISIBILE mostrato per i dropdown: a volte restava zombie (click su strata superiori/TOOLTIP, finestra padre chiusa col menu aperto) e in fstack copriva la finestra di Loot Manager bloccando ogni click. Fix centrali in `Utils` (valide per TUTTI i moduli, nessun fix per-modulo):
