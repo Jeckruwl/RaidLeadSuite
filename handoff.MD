@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.40 (questo branch, dopo 1.11.39) — focus=RLSuiteLootManager (misura precisa degli hitbox)
+
+Il mousefocus dell'utente (focus=finestra LM, mouse=1, sparisce solo sopra figli diretti) prova che le righe della lista NON ricevono il mouse: hit-test cade sulla finestra. Spedito: revert del content:EnableMouse(false) (era inerte ma ridondante); nuovo `/rls lmdebug` che stampa i rect effettivi [sinistra..destra x bottom..top], livelli, visibilità, stato mouse di window/histBox/histScroll/histContent/prima riga + coordinate del cursore normalizzate sal scale effettiva — output atteso per distinguere bug rettangolo-offset (scala/resize) da bug z/hierarchy. Versione 1.11.40.
+
 ## Novità della sessione 1.11.39 (questo branch, dopo 1.11.38) — hardening fstack/blocker + /rls mousefocus diagnostico
 
 L'analisi dell'fstack dell'utente (RLSuiteLootHistory tra due frame anonimi) dimostra solo che il 3.3.5 framestack elenca frame non-mouse; non identifica il rubaclick. Hardening spedito: (a) TUTTI gli scroll-content (registrati tramite RegisterScrollClip) ora `EnableMouse(false)` — il content grande-tutta-l'area non comparirà più come pannello coprente; (b) `RaiseWindow` con cap a 1000: basta inflazione di frame-level a ogni click (+50 in fstack osservata); (c) nuovo `/rls mousefocus` che stampa focus/parent/level/strata/mouse del frame che ruba il click sotto il cursore — output atteso dall'utente per diagnosticare l'ultima causa residua. Versione 1.11.39.

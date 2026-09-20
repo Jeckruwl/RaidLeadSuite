@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.11.39"
+RLSuite.version = "1.11.40"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -738,6 +738,37 @@ function RLSuite:ChatCommand(input)
                 tostring(mf.GetFrameLevel and mf:GetFrameLevel()),
                 tostring(mf.GetFrameStrata and mf:GetFrameStrata()),
                 tostring(mf.IsMouseEnabled and mf:IsMouseEnabled())))
+        end
+    elseif msg == "lmdebug" then
+        -- Misura hitbox vs cursore per la lista Loot: dice se le righe sono
+        -- dove si vedono o se l'engine le hit-testa altrove.
+        local lm = self.lootManager
+        if not (lm and lm.histScroll) then
+            self:Print("lmdebug: Loot Manager non aperto")
+        else
+            local fmt = function(fr)
+                if not fr then return "nil" end
+                local l, r, t, b = fr:GetLeft(), fr:GetRight(), fr:GetTop(), fr:GetBottom()
+                local n = fr.GetName and fr:GetName() or tostring(fr)
+                return string.format("%s[%.0f..%.0f x %.0f..%.0f lvl=%s shown=%s mouse=%s]",
+                    tostring(n), l or -1, r or -1, b or -1, t or -1,
+                    tostring(fr:GetFrameLevel() or -1),
+                    tostring(fr:IsShown() and true or false),
+                    tostring(fr._enabledMouse ~= false))
+            end
+            local ok, res = pcall(function()
+                local x, y = GetCursorPosition()
+                local es = (UIParent and UIParent.GetEffectiveScale) and UIParent:GetEffectiveScale() or 1
+                x, y = x / es, y / es
+                local row = lm.histRows and lm.histRows[1] or nil
+                self:Print(string.format("cursor=(%.1f,%.1f) / scale=%.3f", x, y, (lm.frame and lm.frame.GetEffectiveScale and lm.frame:GetEffectiveScale()) or -1))
+                self:Print("window " .. fmt(lm.frame))
+                self:Print("histBox " .. fmt(lm.histBox))
+                self:Print("histScroll " .. fmt(lm.histScroll))
+                self:Print("histContent " .. fmt(lm.histContent))
+                self:Print("row1 " .. fmt(row))
+            end)
+            if not ok then self:Print("lmdebug error: " .. tostring(res)) end
         end
     elseif msg == "macrobar" then
         if self.macrobar then self.macrobar:Toggle() end

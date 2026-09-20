@@ -575,11 +575,6 @@ end
 -- ============================================================
 function Utils:RegisterScrollClip(scroll, content)
     if not scroll or not content then return end
-    -- Il frame "content" non deve MAI prendere topmost-mouse: e' grande
-    -- quanto tutta l'area della lista e in fstack appare come il pannello
-    -- invisibile che copre gli elementi. Le righe-bottone dentro ci
-    -- passano da sopra.
-    if content.EnableMouse then content:EnableMouse(false) end
     content._rlsScrollClip = { scroll = scroll, rows = {} }
     local function refresh()
         Utils:RefreshScrollClip(content)
