@@ -154,7 +154,7 @@ function MW:CreateFrame()
     -- angoli). A sinistra: "RLS"; a destra: Arrowup.tga (mostra/nasconde
     -- il pannello sotto alla barretta) e Close.tga (chiude la main bar).
     local tb = CreateFrame("Frame", "RLSuiteMainTitleBar", UIParent)
-    tb:SetHeight(20)
+    tb:SetHeight(30)
     -- gap 2px: barretta STACCATA dalla main bar (non incollata)
     tb:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 2)
     tb:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 2)
@@ -166,18 +166,19 @@ function MW:CreateFrame()
     RLSuite.utils:SkinFrame(tb)
 
     local tbTitle = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    tbTitle:SetPoint("LEFT", tb, "LEFT", 6, 0)
+    tbTitle:SetPoint("LEFT", tb, "LEFT", 8, 0)
     tbTitle:SetText("RLS")
     tbTitle:SetTextColor(1, 0.82, 0)
     tb.title = tbTitle
 
-    local CLOSE_TGA = "Interface\\AddOns\\RaidLeadSuite\\media\\Close.tga"
-    local ARROW_TGA = "Interface\\AddOns\\RaidLeadSuite\\media\\Arrowup.tga"
+    -- BLP nativo + AddonTexture: MAI path hardcoded col nome cartella.
+    local CLOSE_TX = RLSuite:AddonTexture("media\\Close.blp")
+    local ARROW_TX = RLSuite:AddonTexture("media\\Arrowup.blp")
     local crashBtn = CreateFrame("Button", nil, tb)
-    crashBtn:SetSize(16, 16)
-    crashBtn:SetPoint("TOPRIGHT", tb, "TOPRIGHT", -2, -2)
-    crashBtn:SetNormalTexture(CLOSE_TGA)
-    crashBtn:SetHighlightTexture(CLOSE_TGA)
+    crashBtn:SetSize(22, 22)
+    crashBtn:SetPoint("TOPRIGHT", tb, "TOPRIGHT", -4, -4)
+    crashBtn:SetNormalTexture(CLOSE_TX)
+    crashBtn:SetHighlightTexture(CLOSE_TX)
     crashBtn:SetScript("OnClick", function()
         MW:CloseTab()
         f:Hide()
@@ -186,10 +187,10 @@ function MW:CreateFrame()
     tb.closeBtn = crashBtn
 
     local arrBtn = CreateFrame("Button", nil, tb)
-    arrBtn:SetSize(16, 16)
-    arrBtn:SetPoint("RIGHT", crashBtn, "LEFT", -2, 0)
-    arrBtn:SetNormalTexture(ARROW_TGA)
-    arrBtn:SetHighlightTexture(ARROW_TGA)
+    arrBtn:SetSize(22, 22)
+    arrBtn:SetPoint("RIGHT", crashBtn, "LEFT", -4, 0)
+    arrBtn:SetNormalTexture(ARROW_TX)
+    arrBtn:SetHighlightTexture(ARROW_TX)
     arrBtn:SetScript("OnClick", function()
         -- pannellino: mostra/nasconde la main bar SOTTO la barretta
         if f:IsShown() then

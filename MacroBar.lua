@@ -162,23 +162,17 @@ function MB:CreateFrame()
     self.macroHost = host
     self:AttachShiftDrag(host)
 
-    -- Testo di fase DENTRO la matrice, prima cella in alto a sinistra,
-    -- formato "PH:<FASE>" (non piu' sopra la barra). I bottoni macro
-    -- stanno a frame level +10: una fontstring sul parent finirebbe
-    -- SOTTO di loro e sparirebbe. Quindi la stringa vive in un piccolo
-    -- holder a livello piu' alto dei bottoni (mouse disattivato: i click
-    -- sul tasto sotto devono continuare a funzionare).
+    -- PH:<FASE> come TASSELLO DELLA MATRICE: un delle stesse celle dei
+    -- pulsanti macro, in prima cella. Bottone SENZA sfondo e SENZA bordo,
+    -- NON cliccabile (niente RegisterForClicks, mouse spento).
     local MB_PRETTY_PHASE = { preraid = "PRE-RAID", preboss = "PRE-BOSS", infight = "IN-FIGHT" }
     self.prettyPhaseLabels = MB_PRETTY_PHASE
-    local labelHolder = CreateFrame("Frame", nil, host)
-    labelHolder:SetSize(90, 12)
-    labelHolder:SetPoint("TOPLEFT", host, "TOPLEFT", 4, -3)
-    labelHolder:EnableMouse(false)
-    labelHolder:SetFrameLevel((f:GetFrameLevel() or 1) + 50)
-    self.phaseLabelHolder = labelHolder
-    self.phaseText = labelHolder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.phaseText:SetAllPoints(labelHolder)
-    self.phaseText:SetJustifyH("LEFT")
+    local phaseSlot = CreateFrame("Button", nil, host)
+    phaseSlot:SetBackdrop(nil)
+    phaseSlot:EnableMouse(false)
+    self.phaseSlot = phaseSlot
+    self.phaseText = phaseSlot:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.phaseText:SetPoint("CENTER", phaseSlot, "CENTER", 0, 0)
     self.phaseText:SetTextColor(1, 0.82, 0)
     self.phaseText:SetText("PH:PRE-RAID")
 end
@@ -323,12 +317,12 @@ function MB:ApplyLayout()
 
     local filled = self:FilledSlots()
     local n = #filled
+    -- la matrice ha UN posto in piu': il tassello PH occupa la cella 0
+    local nTotal = n + 1
     local cols = tonumber(p.columns) or 12
     if cols < 1 then cols = 1 end
-    if n == 0 then
-        cols = 1
-    elseif cols > n then
-        cols = n
+    if cols > nTotal then
+        cols = nTotal
     end
     local size = tonumber(p.buttonSize) or 32
     local sp = tonumber(p.spacing) or 2
@@ -337,10 +331,7 @@ function MB:ApplyLayout()
     local hm = tonumber(p.heightMult) or 1
     if wm < 1 then wm = 1 end
     if hm < 1 then hm = 1 end
-    local rows = 1
-    if n > 0 then
-        rows = math.ceil(n / cols)
-    end
+    local rows = math.ceil(nTotal / cols)
     local innerW = cols * size + (cols - 1) * sp
     local innerH = rows * size + (rows - 1) * sp
     local extraW = (wm - 1) * (size + sp)
@@ -374,11 +365,13 @@ function MB:ApplyLayout()
         self.macroHost:SetSize(hostW, hostH)
     end
 
-    if self.phaseLabelHolder then
-        -- riallinea e TIENTI sopra i bottoni (level +50)
-        self.phaseLabelHolder:ClearAllPoints()
-        self.phaseLabelHolder:SetPoint("TOPLEFT", self.macroHost or self.frame, "TOPLEFT", 4, -3)
-        self.phaseLabelHolder:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 50)
+    -- tassello PH: prima cella della matrice, stesso livello dei bottoni
+    if self.phaseSlot then
+        self.phaseSlot:ClearAllPoints()
+        self.phaseSlot:SetSize(size, size)
+        self.phaseSlot:SetPoint("TOPLEFT", self.macroHost or self.frame, "TOPLEFT", pad, -pad)
+        self.phaseSlot:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 10)
+        self.phaseSlot:Show()
     end
 
     for i = 1, 12 do
@@ -389,8 +382,9 @@ function MB:ApplyLayout()
         local btn = self.buttons[slot]
         if btn then
             btn:SetSize(size, size)
-            local col = (vis - 1) % cols
-            local row = math.floor((vis - 1) / cols)
+            -- il bottone 'vis'-esimo va nella cella 'vis' (la cella 0 e' PH)
+            local col = vis % cols
+            local row = math.floor(vis / cols)
             btn:ClearAllPoints()
             btn:SetPoint("TOPLEFT", self.macroHost or self.frame, "TOPLEFT", pad + col * (size + sp), -pad - row * (size + sp))
             if RLSuite.utils.SkinMacroButton then

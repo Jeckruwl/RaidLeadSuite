@@ -2804,8 +2804,8 @@ function GM:RenderAutoinviteMirrorInvites()
         xBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
         row.xBtn = xBtn
         -- X BIANCA (Close.tga), non piu' testo rosso
-        xBtn:SetNormalTexture("Interface\\AddOns\\RaidLeadSuite\\media\\Close.tga")
-        xBtn:SetHighlightTexture("Interface\\AddOns\\RaidLeadSuite\\media\\Close.tga")
+        xBtn:SetNormalTexture(RLSuite:AddonTexture("media\\Close.blp"))
+        xBtn:SetHighlightTexture(RLSuite:AddonTexture("media\\Close.blp"))
         xBtn:SetScript("OnClick", function() self:CalendarRemoveInvitee(nm) end)
 
         local statusFS = FontStr(row, "OVERLAY", 11)
@@ -3063,8 +3063,8 @@ function GM:BuildAutoNameListUI()
         end)
         row.xBtn = xBtn
         -- X BIANCA (Close.tga), non piu' testo rosso
-        xBtn:SetNormalTexture("Interface\\AddOns\\RaidLeadSuite\\media\\Close.tga")
-        xBtn:SetHighlightTexture("Interface\\AddOns\\RaidLeadSuite\\media\\Close.tga")
+        xBtn:SetNormalTexture(RLSuite:AddonTexture("media\\Close.blp"))
+        xBtn:SetHighlightTexture(RLSuite:AddonTexture("media\\Close.blp"))
 
         -- clic destro sull'intera riga = rimozione (compatibilita').
         row:SetScript("OnClick", function(s, button)

@@ -7,9 +7,17 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.20**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.21**.
 
-## Novità della sessione 1.11.20 (questo branch, dopo 1.11.19) — fix in-game (texture, label, barretta, scroll)
+## Novità della sessione 1.11.21 (questo branch, dopo 1.11.20) — texture BLP native + PH tassello matrice + barretta 30px
+
+- **Texture invisibili in game — CAUSA VERA**: path hardcodati `Interface\AddOns\RaidLeadSuite\media\...`. La cartella addon può chiamarsi `RLSuite` o `RaidLeadSuite` (per questo esiste `RLSuite:AddonTexture()`); col nome diverso i file non venivano trovati = icone invisibili ovunque. Ora TUTTE le texture addon passano da **AddonTexture()**.
+- **media/Close.blp + media/Arrowup.blp**: icone rigenerate in **BLP2 nativo 3.3.5** (palettizzato alpha-8, 32x32). I TGA rotti sono stati eliminati dal repo. Referenze in MS changes, GroupMaking (calendar + whisplist) e barretta main.
+- **Barretta main**: altezza **30px** (era 20), icone 22x22.
+- **PH diventa un TASSELLO DELLA MATRICE**: bottone non cliccabile (mouse off), senza sfondo e senza bordo, stesso parent dei tasti macro e stesso frame level. Occupa la **cella 0** della matrice (i bottoni macro partono dalla cella 1, colonne/righe contano nTotale = n+1). Testo **PH:<FASE>** oro centrato sul tassello.
+- (Rimangono pile full di 1.11.20: clip-input degli scroll su tutti i moduli + dropdown guard/reuse.)
+
+## Novità della sessione 1.11.20 (questo branch, dopo 1.11.19) — fix in-game (texture, label, barretta, scroll) (storico)
 
 - **media/Close.tga rigenerata**: la X della 1.11.19 era quasi vuota (gate margini invertito → solo 30px agli angoli). Ora X piena al centro (68% copertura). Anche Arrowup.tga ingrassata (78%).
 - **MacroBar PH:<fase>**: la fontstring era una texture figlia del frame e i bottoni macro (frame level +10) la COPRIVANO. Ora vive in un holder a livello +50 (EnableMouse(false), i click sui tasti sotto restano vivi). Visibile davvero nella prima cella.

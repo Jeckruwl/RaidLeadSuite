@@ -219,8 +219,10 @@ function MSM:UpdateList()
         local delBtn = CreateFrame("Button", nil, row)
         delBtn:SetSize(20, 20)
         delBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-        delBtn:SetNormalTexture("Interface\\AddOns\\RaidLeadSuite\\media\\Close.tga")
-        delBtn:SetHighlightTexture("Interface\\AddOns\\RaidLeadSuite\\media\\Close.tga")
+        -- BLP nativo 3.3.5 + AddonTexture(): la cartella dell'addon si
+        -- puo' chiamare RSuite/RaidLeadSuite: MAI path hardcoded.
+        delBtn:SetNormalTexture(RLSuite:AddonTexture("media\\Close.blp"))
+        delBtn:SetHighlightTexture(RLSuite:AddonTexture("media\\Close.blp"))
         delBtn:EnableMouse(true)
         delBtn:RegisterForClicks("LeftButtonUp")
         delBtn:SetScript("OnClick", function()

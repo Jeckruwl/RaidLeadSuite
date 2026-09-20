@@ -73,7 +73,7 @@ function methods:SetBackdrop(b) self._backdrop=b; return self end
 function methods:SetBackdropColor(r,g,b,a) self._backdropColor={r,g,b,a}; return self end
 function methods:SetBackdropBorderColor(r,g,b,a) self._backdropBorderColor={r,g,b,a}; return self end
 function methods:CreateTexture(n, layer) local t=newFrame({_parent=self}); t._layer=layer; return t end
-function methods:CreateFontString(n, layer, tmpl) local f=newFrame({}); f._layer=layer; f._isFontString=true; return f end
+function methods:CreateFontString(n, layer, tmpl) local f=newFrame({_parent=self}); f._layer=layer; f._isFontString=true; return f end
 function methods:SetText(t) self._text = t or ""; return self end
 function methods:GetText() return self._text end
 function methods:SetFont(...) self._fontArgs = {...}; return self end
@@ -3068,20 +3068,23 @@ check(bool(rt.eval("#RLSuite.lootManager.tradeWindows == 0")), "Clear loot close
 rt.execute("RLSuite.db.profile.debug = false; RLSuite:ApplyDebugMode()")
 
 
-# === Scenario 1.11.19: X bianche Close.tga, PH:<fase> in matrice, barretta ==================
-print("\n== v1.11.19: white Close.tga X buttons, macrobar PH text, main title bar, fstack guard ==")
+# === Scenario 1.11.19: X bianche Close.blp, PH:<fase> in matrice, barretta ==================
+print("\n== v1.11.19: white Close.blp X buttons, macrobar PH text, main title bar, fstack guard ==")
 
 # -- media presenti e referenziate
 import os
-check(os.path.isfile("media/Close.tga") and os.path.isfile("media/Arrowup.tga"), "media/Close.tga + media/Arrowup.tga exist in the addon folder")
+check(os.path.isfile("media/Close.blp") and os.path.isfile("media/Arrowup.blp"), "media/Close.blp + media/Arrowup.blp (BLP2 native) exist in the addon folder")
+for _p in ("media/Close.blp", "media/Arrowup.blp"):
+    _d = open(_p, "rb").read()
+    check(_d[:4] == b"BLP2" and len(_d) > 100, _p + " is a valid BLP2 file")
 
-# -- MS changes: X piu' grande (20x20) e bianca (Close.tga)
+# -- MS changes: X piu' grande (20x20) e bianca (Close.blp)
 rt.execute("RLSuite.msManager:AddEntry('BigX', 'Frost'); MSROW = RLSuite.msManager.rows and RLSuite.msManager.rows[1]")
 rt.execute("RLSuite.msManager:UpdateList()")
 rt.execute("""
 MS_DEL = nil
 for _, c in ipairs(ALLFRAMES) do
-    if c._parent ~= nil and c._w == 20 and c._h == 20 and c._text == nil and c._normal and tostring(c._normal):find('Close.tga') then
+    if c._parent ~= nil and c._w == 20 and c._h == 20 and c._text == nil and c._normal and tostring(c._normal):find('Close.blp') then
         MS_DEL = MS_DEL or c
     end
 end
@@ -3091,13 +3094,13 @@ if not found_ms:
     # fallback: cammina le righe del listato ms direttamente
     rt.execute("for _, r in ipairs(RLSuite.msManager.listContent and RLSuite.msManager.listContent._children or {}) do end; MS_DEL = nil")
 rt.execute("""
--- scansione robusta: cerca fra TUTTI i frame un button 20x20 con normal texture Close.tga
+-- scansione robusta: cerca fra TUTTI i frame un button 20x20 con normal texture Close.blp
 MS_DEL = nil
 for _, c in ipairs(ALLFRAMES) do
-    if c._normal ~= nil and tostring(c._normal):find('Close.tga', 1, true) and c._w == 20 and c._h == 20 then MS_DEL = c end
+    if c._normal ~= nil and tostring(c._normal):find('Close.blp', 1, true) and c._w == 20 and c._h == 20 then MS_DEL = c end
 end
 """)
-check(bool(rt.eval("MS_DEL ~= nil")), "MS changes list: red X is now a white Close.tga button")
+check(bool(rt.eval("MS_DEL ~= nil")), "MS changes list: red X is now a white Close.blp button")
 check(bool(rt.eval("MS_DEL == nil or (MS_DEL._w == 20 and MS_DEL._h == 20)")), "MS changes X is bigger (20x20, was 14x14)")
 
 # -- GroupMaking: le x rosse testuali sono diventate tessere bianche
@@ -3105,18 +3108,20 @@ rt.execute("""
 GM_WHITE = 0; GM_RED_TEXT = 0
 for _, c in ipairs(ALLFRAMES) do
     if c._text == 'x' then GM_RED_TEXT = GM_RED_TEXT + 1 end
-    if c._normal ~= nil and tostring(c._normal):find('Close.tga', 1, true) then GM_WHITE = GM_WHITE + 1 end
+    if c._normal ~= nil and tostring(c._normal):find('Close.blp', 1, true) then GM_WHITE = GM_WHITE + 1 end
 end
 """)
 check(rt.eval("GM_RED_TEXT") == 0, "no red 'x' text buttons remain in the suite")
-check(int(rt.eval("GM_WHITE") or 0) >= 2, "white Close.tga X buttons exist in GroupMaking rows (calendar + whisplist)")
+check(int(rt.eval("GM_WHITE") or 0) >= 2, "white Close.blp X buttons exist in GroupMaking rows (calendar + whisplist)")
 
 # -- MacroBar: testo fase dentro la matrice, formato PH:<FASE>
-rt.execute("MBPT = RLSuite.macrobar.phaseText; MBPH = RLSuite.macrobar.phaseLabelHolder")
+rt.execute("MBPT = RLSuite.macrobar.phaseText; MBPS = RLSuite.macrobar.phaseSlot")
 check(bool(rt.eval("MBPT ~= nil")), "macrobar phase text exists")
-check(bool(rt.eval("MBPH ~= nil and MBPH._enabledMouse == false")), "phase text lives in a mouse-free label holder above the buttons")
-rt.execute("MBP = MBPH._points[1] or {}; MBPTN = MBPT.GetText and MBPT:GetText() or ''")
-check(bool(rt.eval("MBP[1] == 'TOPLEFT'")), "phase text anchored TOPLEFT INSIDE the macro host (matrix)")
+check(bool(rt.eval("MBPS ~= nil and MBPS._enabledMouse == false")), "PH is a NON-CLICKABLE button slot in the matrix (mouse off)")
+check(bool(rt.eval("MBPS._backdrop == nil")), "PH slot has NO backdrop and NO border")
+check(bool(rt.eval("MBPT._parent == MBPS")), "PH text lives ON the slot button")
+rt.execute("MBP = MBPS._points[1] or {}; MBPTN = MBPT.GetText and MBPT:GetText() or ''")
+check(bool(rt.eval("MBP[1] == 'TOPLEFT'")), "PH slot anchored at the first cell of the matrix (TOPLEFT inside host)")
 check(bool(rt.eval("MBPTN:sub(1,3) == 'PH:'")), "phase text format is PH:<phase>")
 check(rt.eval("MBPTN") == "PH:PRE-RAID", "initial phase text is PH:PRE-RAID")
 rt.execute("RLSuite.context = 'preboss'; RLSuite.macrobar:UpdatePhase()")
@@ -3126,13 +3131,13 @@ rt.execute("RLSuite.context = 'preraid'; RLSuite.macrobar:UpdatePhase()")
 # -- Barretta titolo main bar: 20px, sopra la finestra, larghezza ereditata
 rt.execute("TB = RLSuite.mainWindow.titleBar")
 check(bool(rt.eval("TB ~= nil")), "main title bar exists")
-check(rt.eval("TB._h") == 20, "title bar height is exactly 20px")
+check(rt.eval("TB._h") == 30, "title bar height is exactly 30px")
 rt.execute("TB_P1 = TB._points[1] or {}; TB_P2 = TB._points[2] or {}")
 check(bool(rt.eval("TB_P1[1] == 'BOTTOMLEFT' and TB_P1[3] == 'TOPLEFT' and TB_P2[1] == 'BOTTOMRIGHT' and TB_P2[3] == 'TOPRIGHT'")), "title bar spans the full main-bar width (anchored to both top corners)")
 check(rt.eval("TB_P1[5]") == 2 and rt.eval("TB_P2[5]") == 2, "title bar is DETACHED (2px gap above the main bar)")
 check(bool(rt.eval("TB.title ~= nil and TB.title:GetText() == 'RLS'")), "title shows 'RLS' on the left")
-check(bool(rt.eval("TB.arrowBtn ~= nil and tostring(TB.arrowBtn._normal):find('Arrowup.tga', 1, true)")), "arrowup.tga button present on the right")
-check(bool(rt.eval("TB.closeBtn ~= nil and tostring(TB.closeBtn._normal):find('Close.tga', 1, true)")), "Close.tga button present on the right")
+check(bool(rt.eval("TB.arrowBtn ~= nil and tostring(TB.arrowBtn._normal):find('Arrowup.blp', 1, true)")), "arrowup.tga button present on the right")
+check(bool(rt.eval("TB.closeBtn ~= nil and tostring(TB.closeBtn._normal):find('Close.blp', 1, true)")), "Close.blp button present on the right")
 
 # -- Barretta: arrow = solo pannello; close = tutto chiuso
 rt.execute("""
@@ -3148,7 +3153,7 @@ C_F = f:IsShown(); C_TB = TB:IsShown()
 """)
 check(bool(rt.eval("A1 == false and A1TB == true")), "arrowup: hides ONLY the panel under the bar (bar stays)")
 check(bool(rt.eval("A2 == true")), "arrowup: shows the panel back under the bar")
-check(bool(rt.eval("C_F == false and C_TB == false")), "Close.tga: closes the main bar (panel + title bar)")
+check(bool(rt.eval("C_F == false and C_TB == false")), "Close.blp: closes the main bar (panel + title bar)")
 
 # -- Toggle tab riallinea anche la barretta
 rt.execute("RLSuite.mainWindow:ShowTab('group')")
@@ -3173,35 +3178,36 @@ check(bool(rt.eval("RLSuite.utils.dropCatcher:IsShown() == false")), "zombie cat
 # === v1.11.20: fix texture, label holder, barretta staccata, clip scroll =====================
 print("\n== v1.11.20: TGA fix, macrobar label holder, detached title bar, scroll input clip ==")
 
-# -- TGA validi e PIENI al centro (la v1.11.19 aveva la X quasi vuota)
-def tga_solid_center(path):
-    with open(path, "rb") as fh:
-        data = fh.read()
-    w = data[12] | (data[13] << 8)
-    h = data[14] | (data[15] << 8)
-    if data[2] != 2 or data[16] != 32:
-        return -1, w, h
-    # pixel BGRA, top-origin (0x28): conta alpha>0 nel quadrato centrale 16x16
-    cx0, cy0, cx1, cy1 = w // 4, h // 4, 3 * w // 4, 3 * h // 4
-    solid = 0
-    total = 0
-    for y in range(cy0, cy1):
-        for x in range(cx0, cx1):
-            total += 1
-            a = data[18 + (y * w + x) * 4 + 3]
-            if a > 0:
-                solid += 1
-    return (solid * 100) // total, w, h
+# -- texture del addon: BLP nativi referenziati solo via AddonTexture (MAI path hardcoded)
+import re
+for _f in ("MSManager.lua", "GroupMaking.lua", "RaidProfile.lua"):
+    _src = open(_f, encoding="utf-8").read()
+    check("RaidLeadSuite\\\\media" not in _src, _f + ": no hardcoded addon-folder texture paths (AddonTexture only)")
+check('AddonTexture("media\\\\Close.blp")' in open("MSManager.lua", encoding="utf-8").read(), "MS changes X uses AddonTexture media Close.blp")
+check('AddonTexture("media\\\\Arrowup.blp")' in open("RaidProfile.lua", encoding="utf-8").read(), "title bar arrow uses AddonTexture media Arrowup.blp")
 
-pct, cw, ch = tga_solid_center("media/Close.tga")
-check(cw == 32 and ch == 32 and pct > 30, "Close.tga: white X covers the center (parsed %d%%, 32x32)" % pct)
-pct2, aw, ah = tga_solid_center("media/Arrowup.tga")
-check(aw == 32 and ah == 32 and pct2 > 30, "Arrowup.tga: white arrow covers the center (parsed %d%%, 32x32)" % pct2)
+# -- PH slot e' un bottone della matrice (stesso parent dei tasti macro)
+rt.execute("MBPS = RLSuite.macrobar.phaseSlot")
+check(bool(rt.eval("MBPS ~= nil and MBPS._parent == RLSuite.macrobar.macroHost")), "PH slot is part of the macro button matrix (same parent)")
+# -- shift: il tasto macro segue il tassello PH nella cella successiva
+rt.execute("""
+RLSuite.db.profile.macrobar.macros = { preraid = { { icon = 1, text = 'hi' }, { icon = 2, text = 'yo' } } }
+RLSuite.context = 'preraid'
+RLSuite.macrobar:UpdatePhase()
+FILLED = #(RLSuite.macrobar:FilledSlots())
+B1 = RLSuite.macrobar.buttons[1]
+B1SHOWN = B1 and B1:IsShown()
+PS_P = RLSuite.macrobar.phaseSlot._points[1] or {}
+PS_X = PS_P[4]
+B1P = B1 and B1._points[1] or {}
+B1_X = B1P[4]; B1_Y = B1P[5]
+B2P = RLSuite.macrobar.buttons[2] and RLSuite.macrobar.buttons[2]._points[1] or {}
+B2_X = B2P[4]
+""")
+check(bool(rt.eval("PS_X ~= nil and B1_X ~= nil")), "phase slot and first macro button both positioned")
+check(bool(rt.eval("FILLED == 2 and B1SHOWN == true")), "two seeded macros render in the matrix")
+check(bool(rt.eval("PS_X == 2 and B1_X == PS_X + 34 and B1_Y == -2 and B2_X == B1_X + 34")), "button matrix: macro buttons sit one cell AFTER the PH slot in the same row")
 
-# -- phase label holder flows to the top, visible over buttons
-rt.execute("MBPH = RLSuite.macrobar.phaseLabelHolder")
-check(bool(rt.eval("MBPH ~= nil and MBPH._isFontString == false")), "label holder is a real frame (not a bare fontstring)")
-check(bool(rt.eval("RLSuite.macrobar.phaseText:IsObjectType('FontString') or RLSuite.macrobar.phaseText._isFontString ~= nil")), "phase text remains a fontstring inside the holder")
 
 # -- scroll clip util: registrazione nei moduli
 check(bool(rt.eval("RLSuite.lootManager.histContent._rlsScrollClip ~= nil")), "scroll clip registered on LootManager history")
