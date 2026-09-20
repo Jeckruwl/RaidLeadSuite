@@ -9,6 +9,14 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.38 (questo branch, dopo 1.11.37) — il "pannello invisibile" (fstack zombie) è il drop catcher, ucciso in tutti i moduli
+
+Il prompt `RLSuiteDropCatcher` era un bottone FULL-SCREEN INVISIBILE mostrato per i dropdown: a volte restava zombie (click su strata superiori/TOOLTIP, finestra padre chiusa col menu aperto) e in fstack copriva la finestra di Loot Manager bloccando ogni click. Fix centrali in `Utils` (valide per TUTTI i moduli, nessun fix per-modulo):
+1. Il catcher chiude anche con **tasto destro**.
+2. Il **menu** (dropMenu riusato) ha uno script OnHide: se svanisce per QUALUNQUE motivo, nasconde anche il catcher e pulisce activeMenu — difesa engine-level impossibile da aggirare.
+3. All'apertura del dropdown, HookScript OnHide su TUTTI gli antenati del dd (fino a UIParent): nascondere la finestra/pannello che lo ospita uccide immediatamente menu+catcher.
+Resta `Utils:AssertNoZombieCatcher()` come rete di sicurezza già esistente. Versione 1.11.38.
+
 ## Novità della sessione 1.11.37 (questo branch, dopo 1.11.35) — la BARRA = finestra universale; pannello aperto dalla freccia
 
 MODELLO DEFINITIVO: **la barra è una finestra universale come tutte le altre** (`Utils:MakeUniversalWindow` = MakeDraggable guard-clamped + RaiseWindow + bordo tematico via `SkinFrameBordered`). **La main bar è solo il pannello** apribile/chiudibile con la freccia sulla barra. `MW:Toggle` apre/chiude la BARRA (e con lei il pannello); la freccia tocca SOLO il pannello; la X della barra chiude tutto. Drag della barra = forward alla finestra con `_rlsDragGuard` condiviso: mai fuori schermo. Versione 1.11.37.

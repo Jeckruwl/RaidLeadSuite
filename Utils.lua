@@ -707,6 +707,7 @@ function Utils:ToggleDropdownMenu(dd)
         catcher:SetAllPoints(UIParent)
         catcher:SetFrameStrata("FULLSCREEN_DIALOG")
         catcher:SetFrameLevel(1)
+        catcher:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         catcher:SetScript("OnClick", function() Utils:CloseDropdownMenu() end)
         self.dropCatcher = catcher
     end
@@ -720,6 +721,18 @@ function Utils:ToggleDropdownMenu(dd)
     dd._rlsDropMenu = menu
     menu:SetFrameStrata("FULLSCREEN_DIALOG")
     menu:SetFrameLevel(10)
+    -- Se il menu svanisce per QUALUNQUE ragione (finestra padre nascosta,
+    -- cambio tab, /rls, Hide diretto), IL CATCHER MUORE SEMPRE CON LUI:
+    -- e' l'unica difesa affidabile contro lo zombie full-screen invisibile
+    -- che "copre tutta la finestra" e blocca ogni click (il bug fstack).
+    menu:SetScript("OnHide", function()
+        if Utils.dropCatcher and Utils.dropCatcher:IsShown() then
+            Utils.dropCatcher:Hide()
+        end
+        if Utils.activeMenu == menu then
+            Utils.activeMenu = nil
+        end
+    end)
     -- pulisce i vecchi pulsanti-opzione del rebuild precedente
     if menu.optionButtons then
         for _, ob in ipairs(menu.optionButtons) do ob:Hide() end
@@ -735,6 +748,21 @@ function Utils:ToggleDropdownMenu(dd)
     local width = math.max(dd:GetWidth(), 80)
     menu:SetSize(width, #options * 20 + 8)
     menu:SetPoint("TOPLEFT", dd, "BOTTOMLEFT", 0, -2)
+
+    -- Se qualsiasi finestra/pannello che OSPITA il dropdown si nasconde,
+    -- kill immediato del menu (di killing cascata dal hook 2 anche il catcher).
+    local anc = dd
+    local hops = 0
+    while anc and anc ~= UIParent and hops < 8 do
+        if anc.HookScript and not anc._rlsDropMenuKillHook then
+            anc._rlsDropMenuKillHook = true
+            anc:HookScript("OnHide", function()
+                Utils:CloseDropdownMenu()
+            end)
+        end
+        anc = anc.GetParent and anc:GetParent()
+        hops = hops + 1
+    end
 
     menu.optionButtons = {}
     for i, opt in ipairs(options) do

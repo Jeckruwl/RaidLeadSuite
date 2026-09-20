@@ -63,6 +63,7 @@ function methods:UnregisterEvent(e)
     return self
 end
 function methods:SetScript(k, fn) self._scripts[k]=fn; return self end
+function methods:HasScript(k) return self._scripts[k] ~= nil end
 function methods:GetScript(k) return self._scripts[k] end
 function methods:HookScript(k, fn)
     local old = self._scripts[k]
@@ -3175,6 +3176,23 @@ check(bool(rt.eval("ZS_AFTER_MENU == nil and ZS_AFTER_CAT == false")), "hiding t
 # zombie catcher globale recuperato anche se perso l'owner
 rt.execute("RLSuite.utils.dropCatcher:Show(); RLSuite.utils.activeMenu = nil; RLSuite.utils:AssertNoZombieCatcher()")
 check(bool(rt.eval("RLSuite.utils.dropCatcher:IsShown() == false")), "zombie catcher with no menu is force-closed")
+# -- v1.11.38: difese definite centrale (tutti i moduli)
+_u = open("Utils.lua", encoding="utf-8").read()
+check('menu:SetScript("OnHide", function()' in _u and 'Utils.activeMenu == nil' in _u.replace(' ', '') or "Utils.activeMenu==nil" in _u.replace(' ', ''), "dropdown menu OnHide always kills the catcher + clears activeMenu")
+check('anc:HookScript("OnHide"' in _u, "ancestor-hide hook: closing the owner window kills menu + catcher")
+check('RegisterForClicks("LeftButtonUp", "RightButtonUp")' in _u, "catcher closes with left AND right click")
+rt.execute("""
+dd38 = RLSuite.lootManager.rarityDropdown
+RLSuite.utils:ToggleDropdownMenu(dd38)
+M38 = RLSuite.utils.activeMenu
+C38 = RLSuite.utils.dropCatcher:IsShown()
+M38._scripts.OnHide(M38)
+C38A = RLSuite.utils.dropCatcher:IsShown()
+AM38 = RLSuite.utils.activeMenu
+""")
+check(bool(rt.eval("M38 ~= nil and C38 == true")), "dropdown opens menu + catcher")
+check(bool(rt.eval("C38A == false and AM38 == nil")), "hiding the menu BY ANY MEANS also hides the catcher (engine-level defense)")
+
 
 
 # === v1.11.20: fix texture, label holder, barretta staccata, clip scroll =====================
