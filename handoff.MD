@@ -7,9 +7,16 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.19**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.20**.
 
-## Novità della sessione 1.11.19 (questo branch, dopo 1.11.18) — icone Close/Arrowup, barretta main, fstack guard
+## Novità della sessione 1.11.20 (questo branch, dopo 1.11.19) — fix in-game (texture, label, barretta, scroll)
+
+- **media/Close.tga rigenerata**: la X della 1.11.19 era quasi vuota (gate margini invertito → solo 30px agli angoli). Ora X piena al centro (68% copertura). Anche Arrowup.tga ingrassata (78%).
+- **MacroBar PH:<fase>**: la fontstring era una texture figlia del frame e i bottoni macro (frame level +10) la COPRIVANO. Ora vive in un holder a livello +50 (EnableMouse(false), i click sui tasti sotto restano vivi). Visibile davvero nella prima cella.
+- **Barretta main**: **staccata** (gap 2px sopra la main bar).
+- **Bug fstack LootManager — la vera causa**: in 3.3.5 lo scroll clippa solo la GRAFICA; le righe-Bottone fuori viewport restano INVISIBILI ma hit-testabili sopra TUTTA la finestra (con tanti loot coprono tutto: "a volte non posso cliccare nulla"). Fix generico `Utils:RegisterScrollClip / ClipScrollRow / RefreshScrollClip`: le righe fuori viewport vengono Nascoste (geometria contenuto invariata → scroll identico). Registrato in **LootManager, CombatLog (2 panelli), MS changes, Whisplist, autonames, mirror invitees**. Bonus: menu dropdown ora RIUSATO per dropdown (mai frame cadaveri nuovi a ogni toggle).
+
+## Novità della sessione 1.11.19 (questo branch, dopo 1.11.18) — icone Close/Arrowup, barretta main, fstack guard (storico)
 
 - **media/Close.tga** (X bianca) e **media/Arrowup.tga** (freccia bianca): nuove texture (32x32 TGA) generate per l'addon.
 - **MS changes**: le X delle righe sono diventate **bianche** (Close.tga) e **più grandi**: 20x20 (erano 14x14).

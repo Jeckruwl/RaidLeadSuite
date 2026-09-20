@@ -163,11 +163,22 @@ function MB:CreateFrame()
     self:AttachShiftDrag(host)
 
     -- Testo di fase DENTRO la matrice, prima cella in alto a sinistra,
-    -- formato "PH:<FASE>" (non piu' sopra la barra).
+    -- formato "PH:<FASE>" (non piu' sopra la barra). I bottoni macro
+    -- stanno a frame level +10: una fontstring sul parent finirebbe
+    -- SOTTO di loro e sparirebbe. Quindi la stringa vive in un piccolo
+    -- holder a livello piu' alto dei bottoni (mouse disattivato: i click
+    -- sul tasto sotto devono continuare a funzionare).
     local MB_PRETTY_PHASE = { preraid = "PRE-RAID", preboss = "PRE-BOSS", infight = "IN-FIGHT" }
     self.prettyPhaseLabels = MB_PRETTY_PHASE
-    self.phaseText = host:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.phaseText:SetPoint("TOPLEFT", host, "TOPLEFT", 4, -3)
+    local labelHolder = CreateFrame("Frame", nil, host)
+    labelHolder:SetSize(90, 12)
+    labelHolder:SetPoint("TOPLEFT", host, "TOPLEFT", 4, -3)
+    labelHolder:EnableMouse(false)
+    labelHolder:SetFrameLevel((f:GetFrameLevel() or 1) + 50)
+    self.phaseLabelHolder = labelHolder
+    self.phaseText = labelHolder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.phaseText:SetAllPoints(labelHolder)
+    self.phaseText:SetJustifyH("LEFT")
     self.phaseText:SetTextColor(1, 0.82, 0)
     self.phaseText:SetText("PH:PRE-RAID")
 end
@@ -363,9 +374,11 @@ function MB:ApplyLayout()
         self.macroHost:SetSize(hostW, hostH)
     end
 
-    if self.phaseText then
-        self.phaseText:ClearAllPoints()
-        self.phaseText:SetPoint("TOPLEFT", self.macroHost or self.frame, "TOPLEFT", 4, -3)
+    if self.phaseLabelHolder then
+        -- riallinea e TIENTI sopra i bottoni (level +50)
+        self.phaseLabelHolder:ClearAllPoints()
+        self.phaseLabelHolder:SetPoint("TOPLEFT", self.macroHost or self.frame, "TOPLEFT", 4, -3)
+        self.phaseLabelHolder:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 50)
     end
 
     for i = 1, 12 do

@@ -1432,6 +1432,7 @@ function GM:BuildWhisplistPage()
     self.wlContent:SetWidth(200)
     self.wlContent:SetHeight(1)
     self.wlScroll:SetScrollChild(self.wlContent)
+    RLSuite.utils:RegisterScrollClip(self.wlScroll, self.wlContent)
     self.wlScroll:SetScript("OnSizeChanged", function(s, w, h)
         if GM.wlContent and w and w > 40 then
             GM.wlContent:SetWidth(w)
@@ -1835,6 +1836,7 @@ function GM:BuildManualPage()
     self.ieAutoNamesContent = CreateFrame("Frame", nil, self.ieAutoNamesScroll)
     self.ieAutoNamesContent:SetSize(200, 10)
     self.ieAutoNamesScroll:SetScrollChild(self.ieAutoNamesContent)
+    RLSuite.utils:RegisterScrollClip(self.ieAutoNamesScroll, self.ieAutoNamesContent)
 end
 
 function GM:BuildCalendarPage()
@@ -2092,6 +2094,7 @@ function GM:BuildCalendarPage()
     self.ieAutoMirrorInviteContent = CreateFrame("Frame", nil, self.ieAutoMirrorInviteList)
     self.ieAutoMirrorInviteContent:SetSize(200, 10)
     self.ieAutoMirrorInviteList:SetScrollChild(self.ieAutoMirrorInviteContent)
+    RLSuite.utils:RegisterScrollClip(self.ieAutoMirrorInviteList, self.ieAutoMirrorInviteContent)
 end
 
 -- ============================================================
@@ -2758,11 +2761,13 @@ function GM:RenderAutoinviteMirrorInvites()
     if not self.ieAutoMirrorInviteContent then return end
     local content = self.ieAutoMirrorInviteContent
     local invites = self:CalendarWorkingInvitees()
+    RLSuite.utils:ClearScrollClip(content)
     local y = 0
     for _, invite in ipairs(invites) do
         local row = CreateFrame("Frame", nil, content)
         row:SetHeight(16)
         row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+        RLSuite.utils:ClipScrollRow(content, row, -y, 16)
         row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
 
         local modIcon = row:CreateTexture(nil, "OVERLAY")
@@ -2813,6 +2818,7 @@ function GM:RenderAutoinviteMirrorInvites()
         y = y - 17
     end
     content:SetHeight(math.max(-y + 2, 10))
+    RLSuite.utils:RefreshScrollClip(content)
     if self.ieAutoMirrorInviteList and self.ieAutoMirrorInviteList.UpdateScrollChildRect then
         self.ieAutoMirrorInviteList:UpdateScrollChildRect()
     end
@@ -3022,6 +3028,7 @@ end
 function GM:BuildAutoNameListUI()
     if not self.ieAutoNamesContent then return end
     local content = self.ieAutoNamesContent
+    RLSuite.utils:ClearScrollClip(content)
     for _, row in ipairs(self._autoNameRows or {}) do
         row:Hide()
         row:SetParent(nil)
@@ -3072,11 +3079,13 @@ function GM:BuildAutoNameListUI()
             s.text:SetTextColor(1, 1, 1)
         end)
 
+        RLSuite.utils:ClipScrollRow(content, row, -y, 16)
         table.insert(self._autoNameRows, row)
         y = y - 17
     end
 
     content:SetHeight(math.max(-y + 2, 10))
+    RLSuite.utils:RefreshScrollClip(content)
     if self.ieAutoNamesScroll and self.ieAutoNamesScroll.UpdateScrollChildRect then
         self.ieAutoNamesScroll:UpdateScrollChildRect()
     end
@@ -3636,6 +3645,7 @@ function GM:UpdateWhisplist()
     end
     self.selectedEntryIndex = selectedIndex
 
+    RLSuite.utils:ClearScrollClip(self.wlContent)
     local y = 0
     for i, entry in ipairs(entries) do
         local row = pool[i] or self:CreateWhisperRow()
@@ -3644,6 +3654,7 @@ function GM:UpdateWhisplist()
         row:SetHeight(24)
         row:SetPoint("TOPLEFT", self.wlContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.wlContent, "TOPRIGHT", 0, -y)
+        RLSuite.utils:ClipScrollRow(self.wlContent, row, y, 24)
         row.entry = entry
 
         local info = entry.name or "Unknown"
@@ -3671,6 +3682,7 @@ function GM:UpdateWhisplist()
 
     self.wlRows = active
     self.wlContent:SetHeight(math.max(y, 1))
+    RLSuite.utils:RefreshScrollClip(self.wlContent)
     self:StyleWhisperRows()
 end
 

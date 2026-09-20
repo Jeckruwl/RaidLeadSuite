@@ -858,6 +858,7 @@ function CL:CreateFrame()
     self.leftContent:SetWidth(214)
     self.leftContent:SetHeight(1)
     self.leftScroll:SetScrollChild(self.leftContent)
+    RLSuite.utils:RegisterScrollClip(self.leftScroll, self.leftContent)
 
     self.rightHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     self.rightHeader:SetPoint("TOPLEFT", f, "TOPLEFT", 280, -62)
@@ -875,6 +876,7 @@ function CL:CreateFrame()
     self.rightContent:SetWidth(390)
     self.rightContent:SetHeight(1)
     self.rightScroll:SetScrollChild(self.rightContent)
+    RLSuite.utils:RegisterScrollClip(self.rightScroll, self.rightContent)
 
     -- Pannello GRAFICO (visibile solo nel tab Graphs: copre entrambe le liste)
     self.graphPane = CreateFrame("Frame", nil, f)
@@ -1076,6 +1078,7 @@ function CL:_FillRows(content, poolName, rows, paintFn, clickFn)
     local pool = self[poolName] or {}
     self[poolName] = pool
     for _, r in ipairs(pool) do r:Hide() end
+    RLSuite.utils:ClearScrollClip(content)
     local y = 0
     for i, data in ipairs(rows) do
         local row = pool[i]
@@ -1086,6 +1089,7 @@ function CL:_FillRows(content, poolName, rows, paintFn, clickFn)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, -y)
+        RLSuite.utils:ClipScrollRow(content, row, y, CL_ROW_H)
         paintFn(row, data, i)
         if clickFn then
             row:SetScript("OnClick", function() clickFn(data) end)
@@ -1096,6 +1100,7 @@ function CL:_FillRows(content, poolName, rows, paintFn, clickFn)
         y = y + CL_ROW_H
     end
     content:SetHeight(math.max(y, 1))
+    RLSuite.utils:RefreshScrollClip(content)
 end
 
 -- Refresh dei due pannelli secondo il tab selezionato.

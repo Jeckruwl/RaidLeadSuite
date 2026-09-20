@@ -171,6 +171,7 @@ function LM:CreateFrame()
     self.histContent:SetWidth(420)
     self.histContent:SetHeight(1)
     self.histScroll:SetScrollChild(self.histContent)
+    RLSuite.utils:RegisterScrollClip(self.histScroll, self.histContent)
     self.histScroll:SetScript("OnSizeChanged", function(s, w, h)
         if LM.histContent and w and w > 50 then
             LM.histContent:SetWidth(w)
@@ -747,11 +748,13 @@ function LM:UpdateHistory()
     -- Pass 2: altezza unica per tutte le righe (quella della voce piu' alta)
     -- e posizionamento verticale con contenuto allineato in alto.
     local rowH = math.max(LM_ROW_MIN_H, 2 * LM_ROW_TOP + maxLines * lineH)
+    RLSuite.utils:ClearScrollClip(self.histContent)
     y = 0
     for _, row in ipairs(self.histRows) do
         row:SetHeight(rowH)
         row:SetPoint("TOPLEFT", self.histContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.histContent, "TOPRIGHT", 0, -y)
+        RLSuite.utils:ClipScrollRow(self.histContent, row, y, rowH)
 
         -- Riposiziona i figli (num, icon, name, boss, itype, remain,
         -- assigned) allineandoli in alto, dentro la riga.
@@ -769,6 +772,7 @@ function LM:UpdateHistory()
         y = y + rowH + LM_ROW_GAP
     end
     self.histContent:SetHeight(math.max(y, 1))
+    RLSuite.utils:RefreshScrollClip(self.histContent)
     self:EnsureTicker()
 end
 

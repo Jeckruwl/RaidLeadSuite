@@ -155,8 +155,9 @@ function MW:CreateFrame()
     -- il pannello sotto alla barretta) e Close.tga (chiude la main bar).
     local tb = CreateFrame("Frame", "RLSuiteMainTitleBar", UIParent)
     tb:SetHeight(20)
-    tb:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 0)
-    tb:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 0)
+    -- gap 2px: barretta STACCATA dalla main bar (non incollata)
+    tb:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 2)
+    tb:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 2)
     tb:SetFrameStrata(f:GetFrameStrata() or "HIGH")
     tb:EnableMouse(true)
     tb._noOuterBorder = true

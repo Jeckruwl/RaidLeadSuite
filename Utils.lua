@@ -516,6 +516,61 @@ function Utils:AssertNoZombieCatcher()
     end
 end
 
+-- ============================================================
+-- Scroll clip di INPUT (bug "fstack LootManager"): in 3.3.5 lo scroll
+-- clippa solo la GRAFICA. Una riga-Bottone (EnableMouse + click) dello
+-- scroll-child fuori dal viewport resta INVISIBILE ma hit-testabile
+-- sopra l'intera finestra e ruba i click a tutto il resto. Con tante
+-- entry il contenuto diventa alto quanto l'intera UI: "a volte non
+-- riesco a cliccare nulla nel Loot Manager".
+-- Rimediato in modo generico: le righe che escono dal viewport vengono
+-- NASCOSTE (Hide = niente grafica e niente input; la geometria del
+-- contenuto non cambia, quindi lo scroll resta identico).
+--
+-- Uso:
+--   1) Utils:RegisterScrollClip(scroll, content) una tantum
+--   2) Utils:ClearScrollClip(content) all'inizio di ogni rebuild righe
+--   3) Utils:ClipScrollRow(content, row, topOffset, height) per riga
+--   4) Utils:RefreshScrollClip(content) alla fine del rebuild
+-- ============================================================
+function Utils:RegisterScrollClip(scroll, content)
+    if not scroll or not content then return end
+    content._rlsScrollClip = { scroll = scroll, rows = {} }
+    local function refresh()
+        Utils:RefreshScrollClip(content)
+    end
+    scroll:HookScript("OnVerticalScroll", refresh)
+    scroll:HookScript("OnMouseWheel", refresh)
+    scroll:HookScript("OnSizeChanged", refresh)
+end
+
+function Utils:ClearScrollClip(content)
+    if content and content._rlsScrollClip then
+        content._rlsScrollClip.rows = {}
+    end
+end
+
+function Utils:ClipScrollRow(content, row, topOffset, h)
+    local st = content and content._rlsScrollClip
+    if not st or not row then return end
+    st.rows[#st.rows + 1] = { row = row, top = topOffset or 0, h = h or 0 }
+end
+
+function Utils:RefreshScrollClip(content)
+    local st = content and content._rlsScrollClip
+    if not st then return end
+    local off = (st.scroll.GetVerticalScroll and st.scroll:GetVerticalScroll()) or 0
+    local vh = (st.scroll.GetHeight and st.scroll:GetHeight()) or 0
+    if vh < 1 then
+        -- dimensione non ancora nota: mostra tutto (comportamento pre-fix)
+        return
+    end
+    for _, r in ipairs(st.rows) do
+        local vis = (r.top < off + vh) and (r.top + r.h > off)
+        if vis then r.row:Show() else r.row:Hide() end
+    end
+end
+
 function Utils:CreateDropdown(parent, name, width, height)
     local dd = CreateFrame("Frame", name, parent)
     dd:SetSize(width, height)
@@ -618,9 +673,17 @@ function Utils:ToggleDropdownMenu(dd)
     self.dropCatcher:Show()
     self.dropCatcher:SetFrameLevel(1)
 
-    local menu = CreateFrame("Frame", "RLSuiteDropMenu", UIParent)
+    -- Riutilizza il menu del dropdown: CREARE un frame nuovo a ogni toggle
+    -- (tra l'altro sempre con lo stesso nome globale) lasciava cadaveri in
+    -- giro per la UI (memoria + incertezze sullo z-order/FX dell'fstack).
+    local menu = dd._rlsDropMenu or CreateFrame("Frame", "RLSuiteDropMenu", UIParent)
+    dd._rlsDropMenu = menu
     menu:SetFrameStrata("FULLSCREEN_DIALOG")
     menu:SetFrameLevel(10)
+    -- pulisce i vecchi pulsanti-opzione del rebuild precedente
+    if menu.optionButtons then
+        for _, ob in ipairs(menu.optionButtons) do ob:Hide() end
+    end
     menu:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -633,8 +696,10 @@ function Utils:ToggleDropdownMenu(dd)
     menu:SetSize(width, #options * 20 + 8)
     menu:SetPoint("TOPLEFT", dd, "BOTTOMLEFT", 0, -2)
 
+    menu.optionButtons = {}
     for i, opt in ipairs(options) do
         local btn = CreateFrame("Button", nil, menu)
+        menu.optionButtons[i] = btn
         btn:SetSize(width - 8, 18)
         btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - (i - 1) * 20)
         local txt = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")

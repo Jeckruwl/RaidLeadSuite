@@ -68,6 +68,7 @@ function MSM:CreateFrame()
     self.listContent:SetWidth(200)
     self.listContent:SetHeight(1)
     self.listScroll:SetScrollChild(self.listContent)
+    RLSuite.utils:RegisterScrollClip(self.listScroll, self.listContent)
     self.listScroll:SetScript("OnSizeChanged", function(s, w, h)
         if MSM.listContent and w and w > 40 then
             MSM.listContent:SetWidth(w)
@@ -193,6 +194,7 @@ function MSM:UpdateList()
         child:SetParent(nil)
     end
     self.listRows = {}
+    RLSuite.utils:ClearScrollClip(self.listContent)
     if self.listScroll then
         local w = self.listScroll:GetWidth()
         if w and w > 40 then self.listContent:SetWidth(w) end
@@ -206,6 +208,7 @@ function MSM:UpdateList()
         row:SetPoint("TOPLEFT", self.listContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.listContent, "TOPRIGHT", 0, -y)
         RLSuite.utils:SkinRow(row, false)
+        RLSuite.utils:ClipScrollRow(self.listContent, row, y, 24)
 
         local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         text:SetPoint("LEFT", row, "LEFT", 8, 0)
@@ -227,6 +230,7 @@ function MSM:UpdateList()
         y = y + 26
     end
     self.listContent:SetHeight(math.max(y, 1))
+    RLSuite.utils:RefreshScrollClip(self.listContent)
 end
 
 function MSM:RequestChanges()

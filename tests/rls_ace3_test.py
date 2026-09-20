@@ -3112,9 +3112,10 @@ check(rt.eval("GM_RED_TEXT") == 0, "no red 'x' text buttons remain in the suite"
 check(int(rt.eval("GM_WHITE") or 0) >= 2, "white Close.tga X buttons exist in GroupMaking rows (calendar + whisplist)")
 
 # -- MacroBar: testo fase dentro la matrice, formato PH:<FASE>
-rt.execute("MBPT = RLSuite.macrobar.phaseText")
+rt.execute("MBPT = RLSuite.macrobar.phaseText; MBPH = RLSuite.macrobar.phaseLabelHolder")
 check(bool(rt.eval("MBPT ~= nil")), "macrobar phase text exists")
-rt.execute("MBP = MBPT._points[1] or {}; MBPTN = MBPT.GetText and MBPT:GetText() or ''")
+check(bool(rt.eval("MBPH ~= nil and MBPH._enabledMouse == false")), "phase text lives in a mouse-free label holder above the buttons")
+rt.execute("MBP = MBPH._points[1] or {}; MBPTN = MBPT.GetText and MBPT:GetText() or ''")
 check(bool(rt.eval("MBP[1] == 'TOPLEFT'")), "phase text anchored TOPLEFT INSIDE the macro host (matrix)")
 check(bool(rt.eval("MBPTN:sub(1,3) == 'PH:'")), "phase text format is PH:<phase>")
 check(rt.eval("MBPTN") == "PH:PRE-RAID", "initial phase text is PH:PRE-RAID")
@@ -3128,6 +3129,7 @@ check(bool(rt.eval("TB ~= nil")), "main title bar exists")
 check(rt.eval("TB._h") == 20, "title bar height is exactly 20px")
 rt.execute("TB_P1 = TB._points[1] or {}; TB_P2 = TB._points[2] or {}")
 check(bool(rt.eval("TB_P1[1] == 'BOTTOMLEFT' and TB_P1[3] == 'TOPLEFT' and TB_P2[1] == 'BOTTOMRIGHT' and TB_P2[3] == 'TOPRIGHT'")), "title bar spans the full main-bar width (anchored to both top corners)")
+check(rt.eval("TB_P1[5]") == 2 and rt.eval("TB_P2[5]") == 2, "title bar is DETACHED (2px gap above the main bar)")
 check(bool(rt.eval("TB.title ~= nil and TB.title:GetText() == 'RLS'")), "title shows 'RLS' on the left")
 check(bool(rt.eval("TB.arrowBtn ~= nil and tostring(TB.arrowBtn._normal):find('Arrowup.tga', 1, true)")), "arrowup.tga button present on the right")
 check(bool(rt.eval("TB.closeBtn ~= nil and tostring(TB.closeBtn._normal):find('Close.tga', 1, true)")), "Close.tga button present on the right")
@@ -3166,6 +3168,83 @@ check(bool(rt.eval("ZS_AFTER_MENU == nil and ZS_AFTER_CAT == false")), "hiding t
 # zombie catcher globale recuperato anche se perso l'owner
 rt.execute("RLSuite.utils.dropCatcher:Show(); RLSuite.utils.activeMenu = nil; RLSuite.utils:AssertNoZombieCatcher()")
 check(bool(rt.eval("RLSuite.utils.dropCatcher:IsShown() == false")), "zombie catcher with no menu is force-closed")
+
+
+# === v1.11.20: fix texture, label holder, barretta staccata, clip scroll =====================
+print("\n== v1.11.20: TGA fix, macrobar label holder, detached title bar, scroll input clip ==")
+
+# -- TGA validi e PIENI al centro (la v1.11.19 aveva la X quasi vuota)
+def tga_solid_center(path):
+    with open(path, "rb") as fh:
+        data = fh.read()
+    w = data[12] | (data[13] << 8)
+    h = data[14] | (data[15] << 8)
+    if data[2] != 2 or data[16] != 32:
+        return -1, w, h
+    # pixel BGRA, top-origin (0x28): conta alpha>0 nel quadrato centrale 16x16
+    cx0, cy0, cx1, cy1 = w // 4, h // 4, 3 * w // 4, 3 * h // 4
+    solid = 0
+    total = 0
+    for y in range(cy0, cy1):
+        for x in range(cx0, cx1):
+            total += 1
+            a = data[18 + (y * w + x) * 4 + 3]
+            if a > 0:
+                solid += 1
+    return (solid * 100) // total, w, h
+
+pct, cw, ch = tga_solid_center("media/Close.tga")
+check(cw == 32 and ch == 32 and pct > 30, "Close.tga: white X covers the center (parsed %d%%, 32x32)" % pct)
+pct2, aw, ah = tga_solid_center("media/Arrowup.tga")
+check(aw == 32 and ah == 32 and pct2 > 30, "Arrowup.tga: white arrow covers the center (parsed %d%%, 32x32)" % pct2)
+
+# -- phase label holder flows to the top, visible over buttons
+rt.execute("MBPH = RLSuite.macrobar.phaseLabelHolder")
+check(bool(rt.eval("MBPH ~= nil and MBPH._isFontString == false")), "label holder is a real frame (not a bare fontstring)")
+check(bool(rt.eval("RLSuite.macrobar.phaseText:IsObjectType('FontString') or RLSuite.macrobar.phaseText._isFontString ~= nil")), "phase text remains a fontstring inside the holder")
+
+# -- scroll clip util: registrazione nei moduli
+check(bool(rt.eval("RLSuite.lootManager.histContent._rlsScrollClip ~= nil")), "scroll clip registered on LootManager history")
+check(bool(rt.eval("RLSuite.combatLog.leftContent._rlsScrollClip ~= nil and RLSuite.combatLog.rightContent._rlsScrollClip ~= nil")), "scroll clip registered on CombatLog panes")
+check(bool(rt.eval("RLSuite.msManager.listContent._rlsScrollClip ~= nil")), "scroll clip registered on MS changes list")
+check(bool(rt.eval("RLSuite.groupmaking.wlContent._rlsScrollClip ~= nil")), "scroll clip registered on whisplist")
+
+# -- util funzionante su frames finti: fuori viewport = Hide, dentro = Show
+rt.execute("""
+U = RLSuite.utils
+ROWS = {}
+V_OFF = 0
+SCR = CreateFrame("Frame", "RlsScrollClipTestScroll", UIParent)
+SCR._h = 100
+SCR.GetVerticalScroll = function() return V_OFF end
+CON = CreateFrame("Frame", "RlsScrollClipTestContent", SCR)
+U:RegisterScrollClip(SCR, CON)
+U:ClearScrollClip(CON)
+local tops = { 0, 60, 96, 200 }
+for i, tp in ipairs(tops) do
+    local r = CreateFrame("Frame", nil, CON)
+    ROWS[i] = r
+    U:ClipScrollRow(CON, r, tp, 24)
+end
+V_OFF = 60
+U:RefreshScrollClip(CON)
+V1 = ROWS[1]:IsShown(); V2 = ROWS[2]:IsShown(); V3 = ROWS[3]:IsShown(); V4 = ROWS[4]:IsShown()
+""")
+check(bool(rt.eval("V1 == false and V2 == true and V3 == true and V4 == false")), "scroll clip: rows outside the viewport are hidden, visible ones stay shown")
+rt.execute("V_OFF = 96; SCR._scripts.OnMouseWheel(SCR); V_AFTER = ROWS[3]:IsShown() and (not ROWS[4]:IsShown())")
+check(bool(rt.eval("V_AFTER == true")), "scroll clip refreshes on scroll events")
+
+# -- dropdown: menu RIUSATO, mai un cadavere nuovo
+rt.execute("""
+dd2 = RLSuite.lootManager.rarityDropdown
+RLSuite.utils:ToggleDropdownMenu(dd2)
+M_A = dd2._rlsDropMenu
+RLSuite.utils:CloseDropdownMenu()
+RLSuite.utils:ToggleDropdownMenu(dd2)
+M_B = dd2._rlsDropMenu
+RLSuite.utils:CloseDropdownMenu()
+""")
+check(bool(rt.eval("M_A ~= nil and M_A == M_B")), "dropdown menu is reused per dropdown (no leaked rebuilds)")
 
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenarios G+H (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
