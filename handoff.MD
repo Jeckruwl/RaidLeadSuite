@@ -9,6 +9,11 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.33 (questo branch, dopo 1.11.32) — guard di clamp anche DURANTE il drag
+
+- Barretta principale: guard OnUpdate attivo durante il drag → `Utils:ClampWindowToScreen(f)` ri-clampa la finestra **in tempo reale** (nemmeno durante il trascinamento può uscire dai bordi).
+- Stesso clamp sul drop aggiunto allo **shift-drag della MacroBar** (`EndShiftDrag`) e allo stop della **anchor mode** (frame e macroHost) — erano gli unici trascinamenti scoperti.
+
 ## Novità della sessione 1.11.32 (questo branch, dopo 1.11.31) — main bar = STESSO trascinamento di tutte le finestre
 
 La main bar ora usa LETTERALMENTE `Utils:MakeDraggable(f, "main")`, lo stesso meccanismo (SetClampedToScreen + RaiseWindow + persist) che usano pannelli/HUD/finestre che NON escono mai dallo schermo. La barretta continua a trascinarla per proxy e sul drop persiste la posizione + ri-clampa dentro i bordi. Versione 1.11.32.

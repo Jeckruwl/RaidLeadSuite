@@ -83,6 +83,8 @@ function MB:EndShiftDrag()
     if not self._shiftDrag then return end
     if self.frame then
         self.frame:StopMovingOrSizing()
+        -- come tutte le finestre: non puo' restare fuori schermo
+        RLSuite.utils:ClampWindowToScreen(self.frame)
     end
     self:SaveHolderPosition()
     self._shiftDrag = false
@@ -123,6 +125,8 @@ function MB:SetAnchorMode(on)
     end
     local function stop(self2)
         self2:StopMovingOrSizing()
+        -- come tutte le finestre: non puo' restare fuori schermo
+        RLSuite.utils:ClampWindowToScreen(self2)
         MB:SaveHolderPosition()
     end
     if on then
