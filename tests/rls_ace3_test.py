@@ -3280,7 +3280,7 @@ check(rt.eval("TC_OPEN30") == '0,1,0,1', "arrow points UP when the panel is OPEN
 _rp = open("RaidProfile.lua", encoding="utf-8").read()
 check('MakeDraggable(f, "main")' in _rp, "main window uses Utils:MakeDraggable (SAME drag+clamp as every other window)")
 check(_rp.count("ClampWindowToScreen(f)") >= 1, "title bar drag still clamps the main window inside the screen on drop")
-check(_rp.count("ClampWindowToScreen(f)") >= 2 and 'tbDragGuard:SetScript("OnUpdate"' in _rp, "title bar drag clamps the main window IN REAL TIME (OnUpdate guard), not just on drop")
+check('tb:RegisterForDrag("LeftButton")' in _rp and 'f:StartMoving()' not in _rp, "title bar passes the drag DIRECTLY to the main window (no StartMoving proxy, same as every other window)")
 check('ClampWindowToScreen(self.frame)' in open("MacroBar.lua", encoding="utf-8").read(), "macrobar shift-drag drop clamped inside the screen")
 check('ClampWindowToScreen(self2)' in open("MacroBar.lua", encoding="utf-8").read(), "macrobar anchor-mode drop clamped inside the screen")
 

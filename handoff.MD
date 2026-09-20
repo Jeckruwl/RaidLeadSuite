@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.34 (questo branch, dopo 1.11.33) — drag della main bar IDENTICO alle altre finestre (niente proxy)
+
+Il proxy `f:StartMoving()` lanciato dai drag della barretta ignorava il clamp dell'engine — per questo la barra usciva anche con SetClampedToScreen(true). RIMOSSO il proxy: la barretta ha solo `RegisterForDrag("LeftButton")` e il drag muove direttamente `f` (già `Utils:MakeDraggable(f, "main")` = SetClampedToScreen(true) come le altre finestre) — stessa identica meccanica, stessi limiti. Eliminato anche il guard OnUpdate (non serve più).
+
 ## Novità della sessione 1.11.33 (questo branch, dopo 1.11.32) — guard di clamp anche DURANTE il drag
 
 - Barretta principale: guard OnUpdate attivo durante il drag → `Utils:ClampWindowToScreen(f)` ri-clampa la finestra **in tempo reale** (nemmeno durante il trascinamento può uscire dai bordi).
