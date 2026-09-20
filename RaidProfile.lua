@@ -176,12 +176,12 @@ function MW:CreateFrame()
     tbTitle:SetTextColor(1, 0.82, 0)
     tb.title = tbTitle
 
-    -- X bianca + freccia come TEXTURE ARTWORK (pattern minimappa, rende
-    -- sempre): AddonTexture risolve la folder RLSuite|RaidLeadSuite.
+    -- X bianca = glyph del font del gioco; freccia = texture built-in del
+    -- client. ZERO file nuovi da media/: le icone ci sono SEMPRE.
     local crashBtn = CreateFrame("Button", nil, tb)
     crashBtn:SetSize(22, 22)
     crashBtn:SetPoint("TOPRIGHT", tb, "TOPRIGHT", -4, -4)
-    RLSuite.utils:ApplyIcon(crashBtn, "media\\Close.blp")
+    RLSuite.utils:ApplyWhiteX(crashBtn, 18)
     crashBtn:SetScript("OnClick", function()
         MW:CloseTab()
         f:Hide()
@@ -192,7 +192,7 @@ function MW:CreateFrame()
     local arrBtn = CreateFrame("Button", nil, tb)
     arrBtn:SetSize(22, 22)
     arrBtn:SetPoint("RIGHT", crashBtn, "LEFT", -4, 0)
-    RLSuite.utils:ApplyIcon(arrBtn, "media\\Arrowup.blp")
+    RLSuite.utils:ApplyArrowUp(arrBtn)
     arrBtn:SetScript("OnClick", function()
         -- pannellino: mostra/nasconde la main bar SOTTO la barretta
         if f:IsShown() then

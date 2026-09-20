@@ -8,45 +8,51 @@ local Utils = RLSuite.utils
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
--- Icone da file (BLP nativi) disegnate come TEXTURE esplicite su layer
--- ARTWORK + HIGHLIGHT, identico al pattern dell'icona minimappa che RENDE
--- SEMPRE in 3.3.5: niente SetNormalTexture/SetHighlightTexture sui bottoni
--- (con texture custom da file non si disegnano in modo affidabile).
--- Il path passa SEMPRE da AddonTexture (folder RLSuite|RaidLeadSuite):
--- MAI path hardcoded col nome cartella.
-function Utils:ApplyIcon(btn, iconRel)
-    local tx = RLSuite:AddonTexture(iconRel)
-    local t = btn:CreateTexture(nil, "ARTWORK")
-    t:SetAllPoints(btn)
-    t:SetTexture(tx)
-    btn.icon = t
-    local hl = btn:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints(btn)
-    hl:SetTexture(tx)
-    hl:SetBlendMode("ADD")
-    btn.hl = hl
-    btn._iconPath = tx
+-- ICONE SENZA FILE NUOVI: i file media/ nuovi (Close.blp / Arrowup.blp)
+-- possono non arrivare mai nella cartella dell'utente -> nell'interfaccia
+-- apparirebbero comunque invisibili. Quindi niente file custom: la X e'
+-- un GLYPH BIANCO del font del gioco (Fonts\\FRIZQT__.TTF, presente in
+-- OGNI installazione), la freccia e' la texture built-in del client
+-- (Interface\\Buttons\\Arrow-Up-*, sempre caricabile). Risultato:
+-- icone IMPOSSIBILI da non vedere.
+function Utils:ApplyWhiteX(btn, fontSize)
+    fontSize = fontSize or 18
+    local fs = btn:CreateFontString(nil, "OVERLAY")
+    fs:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
+    fs:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    fs:SetTextColor(1, 1, 1, 1)
+    fs:SetText("X")
+    btn.icon = fs
+    btn._whiteX = true
     return btn
 end
 
--- Bottone icona da file, gia' completo: dimensione w x h, highlight glow.
-function Utils:MakeIconButton(parent, iconRel, w, h, onclick)
+-- Freccia SU: texture built-in del client (nessun file da media/).
+function Utils:ApplyArrowUp(btn)
+    local t = btn:CreateTexture(nil, "ARTWORK")
+    t:SetAllPoints(btn)
+    t:SetTexture("Interface\\Buttons\\Arrow-Up-Up")
+    btn.icon = t
+    local hl = btn:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints(btn)
+    hl:SetTexture("Interface\\Buttons\\Arrow-Up-Up")
+    hl:SetBlendMode("ADD")
+    btn.hl = hl
+    return btn
+end
+
+-- X bianca per CHIUDERE le finestre: usata da TUTTE le finestre dell'addon.
+function Utils:MakeCloseX(parent, onclick)
     local b = CreateFrame("Button", nil, parent)
-    b:SetSize(w or 22, h or w or 22)
+    b:SetSize(22, 22)
     b:SetBackdrop(nil)
-    Utils:ApplyIcon(b, iconRel)
+    Utils:ApplyWhiteX(b, 18)
     if onclick then
         b:EnableMouse(true)
         b:RegisterForClicks("LeftButtonUp")
         b:SetScript("OnClick", onclick)
     end
     return b
-end
-
--- X bianca (BLP nativo) per CHIUDERE le finestre: usata da tutte le
--- finestre dell'addon. Niente piu' la X rossa di Blizzard.
-function Utils:MakeCloseX(parent, onclick)
-    return Utils:MakeIconButton(parent, "media\\Close.blp", 22, 22, onclick)
 end
 
 function Utils:Print(msg)

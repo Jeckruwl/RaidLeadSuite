@@ -218,9 +218,8 @@ function MSM:UpdateList()
         local delBtn = CreateFrame("Button", nil, row)
         delBtn:SetSize(20, 20)
         delBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-        -- X bianca via ApplyIcon (texture ARTWORK su layer: pattern che
-        -- RENDE sempre in 3.3.5). MAI path hardcoded col nome cartella.
-        RLSuite.utils:ApplyIcon(delBtn, "media\\Close.blp")
+        -- X bianca = glyph del font del gioco: NESSUN file nuovo da copiare.
+        RLSuite.utils:ApplyWhiteX(delBtn, 15)
         delBtn:EnableMouse(true)
         delBtn:RegisterForClicks("LeftButtonUp")
         delBtn:SetScript("OnClick", function()

@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.27 (questo branch, dopo 1.11.26) — icone IMPOSSIBILI da non vedere (zero file nuovi)
+
+VERDETTO FINALE sul "non si vedono": `save.blp` caricava perché era già nell'installazione originale dell'utente; Close/Arrowup erano file NUOVI che non arrivavano nella cartella media (qualsiasi metodo di update) → NOT LOADED per sempre, indipendentemente dall'encoding. Soluzione che non dipende da file nuovi MAI più: **la X è un glyph "X" bianco di Fonts\\FRIZQT__.TTF (presente in OGNI client)** via `Utils:ApplyWhiteX(btn, size)`; **la freccia usa la texture built-in `Interface\\Buttons\\Arrow-Up-Up`** via `Utils:ApplyArrowUp(btn)`. Convertiti: `MakeCloseX` (tutte le finestre), X MS changes, X GroupMaking ×2, X e freccia della barretta. I .blp restano nel repo ma non sono più usati. `/rls icondbg` resta come diagnostica. Versione 1.11.27.
+
 ## Novità della sessione 1.11.26 (questo branch, dopo 1.11.25) — Close/Arrowup RICCOSTRUITI sul contenitore di save.blp
 
 Prova in game `/rls icondbg`: save.blp/hordeicon.blp = **LOADED**, Close/Arrowup miei = NOT LOADED → il client rifiutava i miei FILE anche se "uguali" in header. Fix definitivo: i due .blp ora sono COSTRUITI PER SPLICE sopra `media/save.blp` — **primi 1172 byte (header+palette) copiati byte per byte dal file che carica**, payload DXT5 proprio (1024+256+64+16+16+16 = 1392B, totale 2564B come save.blp). Verifica a doppio controllo: decoder DXT5 INDIPENDENTE → PNG: X bianca e freccia corrette e centrate. Versione 1.11.26.
