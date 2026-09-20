@@ -3275,7 +3275,7 @@ check(rt.eval("TC_OPEN30") == '0,1,0,1', "arrow points UP when the panel is OPEN
 # -- v1.11.31: la barra non esce mai dallo schermo
 _rp = open("RaidProfile.lua", encoding="utf-8").read()
 check('MakeDraggable(f, "main")' in _rp, "main window uses Utils:MakeDraggable (SAME drag+clamp as every other window)")
-check(_rp.count("ClampWindowToScreen(f)") >= 1, "title bar drag still clamps the main window inside the screen on drop")
+check(bool(rt.eval("RLSuite.mainWindow.frame._rlsDraggable == true")), "main window is flagged _rlsDraggable by MakeDraggable (SetClampedToScreen + RaiseWindow like every other window)")
 check('tb:RegisterForDrag("LeftButton")' in _rp and 'f:StartMoving()' not in _rp, "title bar passes the drag DIRECTLY to the main window (no StartMoving proxy, same as every other window)")
 check('ClampWindowToScreen(self.frame)' in open("MacroBar.lua", encoding="utf-8").read(), "macrobar shift-drag drop clamped inside the screen")
 check('ClampWindowToScreen(self2)' in open("MacroBar.lua", encoding="utf-8").read(), "macrobar anchor-mode drop clamped inside the screen")
