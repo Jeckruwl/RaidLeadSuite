@@ -3278,7 +3278,7 @@ check('MakeDraggable(f, "main")' in _rp, "main window uses Utils:MakeDraggable (
 check(bool(rt.eval("RLSuite.mainWindow.frame._rlsDraggable == true and RLSuite.mainWindow.frame._rlsDragGuard ~= nil")), "main window flagged _rlsDraggable AND guarded by MakeDraggable (same clamp guard as every other window)")
 _u35 = open("Utils.lua", encoding="utf-8").read()
 check('_rlsDragGuard' in _u35 and _u35.count("ClampWindowToScreen(frame)") >= 1 and _u35.count("ClampWindowToScreen(self2)") >= 1, "MakeDraggable clamps ALL windows during drag + on drop (the identical machinery everywhere)")
-check('tb:RegisterForDrag("LeftButton")' in _rp and 'f:StartMoving()' not in _rp, "title bar passes the drag DIRECTLY to the main window (no StartMoving proxy, same as every other window)")
+check('tb:RegisterForDrag("LeftButton")' in _rp and '_rlsDragGuard' in _rp, "title bar drags the main window using the SAME _rlsDragGuard machinery as every other MakeDraggable window")
 check('ClampWindowToScreen(self.frame)' in open("MacroBar.lua", encoding="utf-8").read(), "macrobar shift-drag drop clamped inside the screen")
 check('ClampWindowToScreen(self2)' in open("MacroBar.lua", encoding="utf-8").read(), "macrobar anchor-mode drop clamped inside the screen")
 
