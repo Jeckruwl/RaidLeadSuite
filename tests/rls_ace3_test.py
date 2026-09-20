@@ -3276,6 +3276,10 @@ MFW30:Hide(); RLSuite.mainWindow._updateArrowDir()
 check(bool(rt.eval("TB30C._w == 11 and TB30C._h == 11 and TB30A._w == 11 and TB30A._h == 11")), "title bar icons HALVED (11x11)")
 check(rt.eval("TC_CLOSED30") == '0,1,1,0', "arrow FLIPPED VERTICALLY (points DOWN) when the panel is CLOSED")
 check(rt.eval("TC_OPEN30") == '0,1,0,1', "arrow points UP when the panel is OPEN")
+# -- v1.11.31: la barra non esce mai dallo schermo
+_rp = open("RaidProfile.lua", encoding="utf-8").read()
+check(_rp.count("StopMovingOrSizing()\n        -- mai fuori schermo: la finestra rientra sempre nei bordi\n        RLSuite.utils:ClampWindowToScreen(f)") == 2, "both drag paths (window drag + title bar drag) clamp the main window back inside the screen on drop")
+
 
 
 

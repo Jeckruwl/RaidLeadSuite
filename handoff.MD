@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.31 (questo branch, dopo 1.11.30) — main bar mai fuori schermo
+
+`SetClampedToScreen(true)` c'era già ma su 3.3.5 non basta quando il drag parte per proxy dalla barretta. Ora **sia il drag diretto della main bar sia il drag dalla barretta** terminano con `RLSuite.utils:ClampWindowToScreen(f)`: la finestra viene riancorata dentro i bordi a fine trascinamento (mai persa fuori schermo).
+
 ## Novità della sessione 1.11.30 (questo branch, dopo 1.11.29) — icone dimezzate + freccia direzionale
 
 - Tutte le icone close/arrow **dimezzate**: X finestre (MakeCloseX) 22→11, X barretta e freccia 22→11, X MS changes 20→10, X GroupMaking 14→7 e 16→8.

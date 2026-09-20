@@ -142,7 +142,11 @@ function MW:CreateFrame()
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetScript("OnDragStop", function()
+        f:StopMovingOrSizing()
+        -- mai fuori schermo: la finestra rientra sempre nei bordi
+        RLSuite.utils:ClampWindowToScreen(f)
+    end)
     f:Hide()
     f._noOuterBorder = true
     self.frame = f
@@ -168,7 +172,11 @@ function MW:CreateFrame()
     -- La barretta TRASCINA tutta la main bar: clic sinistro + trascina.
     tb:RegisterForDrag("LeftButton")
     tb:SetScript("OnDragStart", function() f:StartMoving() end)
-    tb:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
+    tb:SetScript("OnDragStop", function()
+        f:StopMovingOrSizing()
+        -- mai fuori schermo: la finestra rientra sempre nei bordi
+        RLSuite.utils:ClampWindowToScreen(f)
+    end)
 
     local tbTitle = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     tbTitle:SetPoint("LEFT", tb, "LEFT", 8, 0)
