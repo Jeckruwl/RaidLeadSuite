@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.25 (questo branch, dopo 1.11.24) — icone come texture ARTWORK (rendono davvero)
+
+Le icone custom NON si vedevano perché erano attaccate ai bottoni con `SetNormalTexture`/`SetHighlightTexture` (con file custom non si disegnano in modo affidabile su 3.3.5). Ora **tutte** le icone da file usano `Utils:ApplyIcon(btn, rel)` = textures esplicite su layer **ARTWORK + HIGHLIGHT** (blend ADD), IDENTICO al pattern dell'icona minimappa che renderizza sempre. Convertite: barretta (X + freccia), MS changes X, GroupMaking X x2, e `MakeCloseX` (= `MakeIconButton`) su tutte le finestre. Inoltre `/rls icondbg` stampa path risolto + LOADED/NOT LOADED per ogni file custom (usa `GetTexture()==nil` come test di caricamento, stesso criterio della minimappa). Versione 1.11.25.
+
 ## Novità della sessione 1.11.24 (questo branch, dopo 1.11.23) — le icone ORA SI VEDONO (encoding BLP)
 
 Causa vera dell'invisibilità persistente: i Close/Arrowup .blp erano codificati

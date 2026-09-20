@@ -218,10 +218,9 @@ function MSM:UpdateList()
         local delBtn = CreateFrame("Button", nil, row)
         delBtn:SetSize(20, 20)
         delBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-        -- BLP nativo 3.3.5 + AddonTexture(): la cartella dell'addon si
-        -- puo' chiamare RSuite/RaidLeadSuite: MAI path hardcoded.
-        delBtn:SetNormalTexture(RLSuite:AddonTexture("media\\Close.blp"))
-        delBtn:SetHighlightTexture(RLSuite:AddonTexture("media\\Close.blp"))
+        -- X bianca via ApplyIcon (texture ARTWORK su layer: pattern che
+        -- RENDE sempre in 3.3.5). MAI path hardcoded col nome cartella.
+        RLSuite.utils:ApplyIcon(delBtn, "media\\Close.blp")
         delBtn:EnableMouse(true)
         delBtn:RegisterForClicks("LeftButtonUp")
         delBtn:SetScript("OnClick", function()

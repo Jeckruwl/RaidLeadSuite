@@ -3084,7 +3084,7 @@ rt.execute("RLSuite.msManager:UpdateList()")
 rt.execute("""
 MS_DEL = nil
 for _, c in ipairs(ALLFRAMES) do
-    if c._parent ~= nil and c._w == 20 and c._h == 20 and c._text == nil and c._normal and tostring(c._normal):find('Close.blp') then
+    if c._parent ~= nil and c._w == 20 and c._h == 20 and c._text == nil and c.icon and c.icon._texture and tostring(c.icon._texture):find('Close.blp') then
         MS_DEL = MS_DEL or c
     end
 end
@@ -3097,7 +3097,7 @@ rt.execute("""
 -- scansione robusta: cerca fra TUTTI i frame un button 20x20 con normal texture Close.blp
 MS_DEL = nil
 for _, c in ipairs(ALLFRAMES) do
-    if c._normal ~= nil and tostring(c._normal):find('Close.blp', 1, true) and c._w == 20 and c._h == 20 then MS_DEL = c end
+    if c.icon ~= nil and c.icon._texture ~= nil and tostring(c.icon._texture):find('Close.blp', 1, true) and c._w == 20 and c._h == 20 then MS_DEL = c end
 end
 """)
 check(bool(rt.eval("MS_DEL ~= nil")), "MS changes list: red X is now a white Close.blp button")
@@ -3108,7 +3108,7 @@ rt.execute("""
 GM_WHITE = 0; GM_RED_TEXT = 0
 for _, c in ipairs(ALLFRAMES) do
     if c._text == 'x' then GM_RED_TEXT = GM_RED_TEXT + 1 end
-    if c._normal ~= nil and tostring(c._normal):find('Close.blp', 1, true) then GM_WHITE = GM_WHITE + 1 end
+    if c.icon ~= nil and c.icon._texture ~= nil and tostring(c.icon._texture):find('Close.blp', 1, true) then GM_WHITE = GM_WHITE + 1 end
 end
 """)
 check(rt.eval("GM_RED_TEXT") == 0, "no red 'x' text buttons remain in the suite")
@@ -3136,8 +3136,8 @@ rt.execute("TB_P1 = TB._points[1] or {}; TB_P2 = TB._points[2] or {}")
 check(bool(rt.eval("TB_P1[1] == 'BOTTOMLEFT' and TB_P1[3] == 'TOPLEFT' and TB_P2[1] == 'BOTTOMRIGHT' and TB_P2[3] == 'TOPRIGHT'")), "title bar spans the full main-bar width (anchored to both top corners)")
 check(rt.eval("TB_P1[5]") == 2 and rt.eval("TB_P2[5]") == 2, "title bar is DETACHED (2px gap above the main bar)")
 check(bool(rt.eval("TB.title ~= nil and TB.title:GetText() == 'RLS'")), "title shows 'RLS' on the left")
-check(bool(rt.eval("TB.arrowBtn ~= nil and tostring(TB.arrowBtn._normal):find('Arrowup.blp', 1, true)")), "arrowup.tga button present on the right")
-check(bool(rt.eval("TB.closeBtn ~= nil and tostring(TB.closeBtn._normal):find('Close.blp', 1, true)")), "Close.blp button present on the right")
+check(bool(rt.eval("TB.arrowBtn ~= nil and TB.arrowBtn.icon ~= nil and tostring(TB.arrowBtn.icon._texture):find('Arrowup.blp', 1, true)")), "arrowup.blp button present on the right (ARTWORK texture, renders in 3.3.5)")
+check(bool(rt.eval("TB.closeBtn ~= nil and TB.closeBtn.icon ~= nil and tostring(TB.closeBtn.icon._texture):find('Close.blp', 1, true)")), "Close.blp button present on the right (ARTWORK texture, renders in 3.3.5)")
 
 # -- Barretta: arrow = solo pannello; close = tutto chiuso
 rt.execute("""
@@ -3183,8 +3183,8 @@ import re
 for _f in ("MSManager.lua", "GroupMaking.lua", "RaidProfile.lua"):
     _src = open(_f, encoding="utf-8").read()
     check("RaidLeadSuite\\\\media" not in _src, _f + ": no hardcoded addon-folder texture paths (AddonTexture only)")
-check('AddonTexture("media\\\\Close.blp")' in open("MSManager.lua", encoding="utf-8").read(), "MS changes X uses AddonTexture media Close.blp")
-check('AddonTexture("media\\\\Arrowup.blp")' in open("RaidProfile.lua", encoding="utf-8").read(), "title bar arrow uses AddonTexture media Arrowup.blp")
+check('ApplyIcon(delBtn, "media\\\\Close.blp")' in open("MSManager.lua", encoding="utf-8").read(), "MS changes X uses ApplyIcon media Close.blp (AddonTexture inside)")
+check('ApplyIcon(arrBtn, "media\\\\Arrowup.blp")' in open("RaidProfile.lua", encoding="utf-8").read(), "title bar arrow uses ApplyIcon media Arrowup.blp (AddonTexture inside)")
 
 # -- PH slot e' un bottone del KEYPAD: i tasti sotto (Pull/Ready/Break), stesso parent
 rt.execute("MBPS = RLSuite.macrobar.phaseSlot")
@@ -3227,7 +3227,7 @@ CLOSE_OK = 0
 CLOSE_BAD = ''
 local function chk(btn)
     if btn ~= nil then
-        if btn._normal ~= nil and tostring(btn._normal):find('Close.blp', 1, true) and btn._w == 22 and btn._h == 22 then
+        if btn.icon ~= nil and btn.icon._texture ~= nil and tostring(btn.icon._texture):find('Close.blp', 1, true) and btn._w == 22 and btn._h == 22 then
             CLOSE_OK = CLOSE_OK + 1
         else
             CLOSE_BAD = CLOSE_BAD .. 'x'

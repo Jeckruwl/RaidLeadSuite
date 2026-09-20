@@ -8,19 +8,45 @@ local Utils = RLSuite.utils
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
--- X bianca (BLP nativo) per CHIUDERE le finestre, via AddonTexture
--- (risolve RLSuite|RaidLeadSuite). MAI path hardcoded col nome cartella.
--- Tutte le finestre dell'addon usano questo bottone: niente piu'
--- la X rossa di Blizzard (template di default del pannello).
-function Utils:MakeCloseX(parent, onclick)
-    local tx = RLSuite:AddonTexture("media\\Close.blp")
+-- Icone da file (BLP nativi) disegnate come TEXTURE esplicite su layer
+-- ARTWORK + HIGHLIGHT, identico al pattern dell'icona minimappa che RENDE
+-- SEMPRE in 3.3.5: niente SetNormalTexture/SetHighlightTexture sui bottoni
+-- (con texture custom da file non si disegnano in modo affidabile).
+-- Il path passa SEMPRE da AddonTexture (folder RLSuite|RaidLeadSuite):
+-- MAI path hardcoded col nome cartella.
+function Utils:ApplyIcon(btn, iconRel)
+    local tx = RLSuite:AddonTexture(iconRel)
+    local t = btn:CreateTexture(nil, "ARTWORK")
+    t:SetAllPoints(btn)
+    t:SetTexture(tx)
+    btn.icon = t
+    local hl = btn:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints(btn)
+    hl:SetTexture(tx)
+    hl:SetBlendMode("ADD")
+    btn.hl = hl
+    btn._iconPath = tx
+    return btn
+end
+
+-- Bottone icona da file, gia' completo: dimensione w x h, highlight glow.
+function Utils:MakeIconButton(parent, iconRel, w, h, onclick)
     local b = CreateFrame("Button", nil, parent)
-    b:SetSize(22, 22)
+    b:SetSize(w or 22, h or w or 22)
     b:SetBackdrop(nil)
-    b:SetNormalTexture(tx)
-    b:SetHighlightTexture(tx)
-    if onclick then b:SetScript("OnClick", onclick) end
+    Utils:ApplyIcon(b, iconRel)
+    if onclick then
+        b:EnableMouse(true)
+        b:RegisterForClicks("LeftButtonUp")
+        b:SetScript("OnClick", onclick)
+    end
     return b
+end
+
+-- X bianca (BLP nativo) per CHIUDERE le finestre: usata da tutte le
+-- finestre dell'addon. Niente piu' la X rossa di Blizzard.
+function Utils:MakeCloseX(parent, onclick)
+    return Utils:MakeIconButton(parent, "media\\Close.blp", 22, 22, onclick)
 end
 
 function Utils:Print(msg)

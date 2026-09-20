@@ -176,14 +176,12 @@ function MW:CreateFrame()
     tbTitle:SetTextColor(1, 0.82, 0)
     tb.title = tbTitle
 
-    -- BLP nativo + AddonTexture: MAI path hardcoded col nome cartella.
-    local CLOSE_TX = RLSuite:AddonTexture("media\\Close.blp")
-    local ARROW_TX = RLSuite:AddonTexture("media\\Arrowup.blp")
+    -- X bianca + freccia come TEXTURE ARTWORK (pattern minimappa, rende
+    -- sempre): AddonTexture risolve la folder RLSuite|RaidLeadSuite.
     local crashBtn = CreateFrame("Button", nil, tb)
     crashBtn:SetSize(22, 22)
     crashBtn:SetPoint("TOPRIGHT", tb, "TOPRIGHT", -4, -4)
-    crashBtn:SetNormalTexture(CLOSE_TX)
-    crashBtn:SetHighlightTexture(CLOSE_TX)
+    RLSuite.utils:ApplyIcon(crashBtn, "media\\Close.blp")
     crashBtn:SetScript("OnClick", function()
         MW:CloseTab()
         f:Hide()
@@ -194,8 +192,7 @@ function MW:CreateFrame()
     local arrBtn = CreateFrame("Button", nil, tb)
     arrBtn:SetSize(22, 22)
     arrBtn:SetPoint("RIGHT", crashBtn, "LEFT", -4, 0)
-    arrBtn:SetNormalTexture(ARROW_TX)
-    arrBtn:SetHighlightTexture(ARROW_TX)
+    RLSuite.utils:ApplyIcon(arrBtn, "media\\Arrowup.blp")
     arrBtn:SetScript("OnClick", function()
         -- pannellino: mostra/nasconde la main bar SOTTO la barretta
         if f:IsShown() then

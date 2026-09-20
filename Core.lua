@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.11.24"
+RLSuite.version = "1.11.25"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -745,6 +745,8 @@ function RLSuite:ChatCommand(input)
         if self.mainWindow then self.mainWindow:ShowTab("ms") end
     elseif msg == "loot" then
         if self.mainWindow then self.mainWindow:ShowTab("loot") end
+    elseif msg == "icondbg" then
+        self:DiagnoseIcons()
     elseif msg == "minimap" then
         self:DiagnoseMinimapIcon()
     elseif msg == "debugbuff" then
@@ -1514,6 +1516,33 @@ function RLSuite:DiagnoseMinimapIcon()
         p("  icon texture region size: " .. tostring(tex:GetWidth()) .. "x" .. tostring(tex:GetHeight()))
     end
     p("  expected path: " .. self:AddonTexture(self:IsHorde() and "media\\hordeicon.blp" or "media\\allianceicon.blp"))
+end
+
+-- Diagnostica icone da file (/rls icondbg): per OGNI texture custom stampa
+-- path risolto e se il client la carica davvero (GetTexture()==nil = file
+-- MANCANTE/non caricabile: in tal caso reinstallare la cartella media/).
+function RLSuite:DiagnoseIcons()
+    local p = function(t) if self.utils and self.utils.Print then self.utils:Print(t) end end
+    p("|cff00ccffRLSuite icons diagnostic:|r")
+    p("  baseName: " .. tostring(self.baseName))
+    p("  detected folder: " .. tostring(self:DetectAddonFolder()))
+    local probe = CreateFrame("Frame")
+    local function test(rel)
+        local path = self:AddonTexture(rel)
+        local t = probe:CreateTexture(nil, "ARTWORK")
+        t:SetTexture(path)
+        local loaded = t:GetTexture() ~= nil
+        if loaded then
+            p("  |cff00ff00LOADED|r  " .. rel .. "  ->  " .. tostring(path))
+        else
+            p("  |cffff0000NOT LOADED|r  " .. rel .. "  ->  " .. tostring(path))
+        end
+        t:Hide()
+    end
+    test("media\\Close.blp")
+    test("media\\Arrowup.blp")
+    test("media\\save.blp")
+    test(self:IsHorde() and "media\\hordeicon.blp" or "media\\allianceicon.blp")
 end
 
 function RLSuite:InRaid()
