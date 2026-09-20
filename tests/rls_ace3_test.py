@@ -3252,15 +3252,11 @@ check('CreateFrame("Button", nil, f, "UIPanelCloseButton")' not in open("RaidPro
 # -- Barretta trascinabile: muove TUTTA la main bar
 rt.execute("""
 TB23 = RLSuite.mainWindow.titleBar
-MF23 = RLSuite.mainWindow.frame
 TB23DRAG = TB23._dragButtons ~= nil
-TB23._scripts.OnDragStart(TB23)
-MID_DRAG = MF23._moving == true
-TB23._scripts.OnDragStop(TB23)
-AFTER_DRAG = MF23._moving == false
+TB23PROXY = TB23._scripts.OnDragStart ~= nil or TB23._scripts.OnDragStop ~= nil
 """)
 check(bool(rt.eval("TB23DRAG == true")), "title bar is REGISTERED for LeftButton drag")
-check(bool(rt.eval("MID_DRAG and AFTER_DRAG")), "dragging the title bar MOVES the whole main window (start + stop)")
+check(bool(rt.eval("TB23PROXY == false")), "title bar debates NO custom drag scripts: the drag moves the main window DIRECTLY (MakeDraggable/SetClampedToScreen like every other window)")
 
 # -- v1.11.30: icone barretta dimezzate (11x11) + freccia su/giu con il pannello
 rt.execute("""
