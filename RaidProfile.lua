@@ -13,13 +13,17 @@ function MW:Init()
 end
 
 function MW:Toggle()
-    if self.frame and self.frame:IsShown() then
+    -- La BARRA e' una finestra vera: Toggle apre/chiude la BARRRA (e con lei
+    -- il pannello). Il pannello si apre/chiude anche SOLO con la freccia
+    -- sulla barra; la barra resta come finestra autonoma.
+    if not self.frame then return end
+    if self.titleBar and self.titleBar:IsShown() then
         self:CloseTab()
         self.frame:Hide()
-        if self.titleBar then self.titleBar:Hide() end
-    elseif self.frame then
-        self.frame:Show()
+        self.titleBar:Hide()
+    else
         if self.titleBar then self.titleBar:Show() end
+        self.frame:Show()
         self:CloseTab()
         -- /rls mostra anche l'HUD MacroBar (se abilitata e non gia' visibile)
         self:ShowMacrobarHud()
@@ -138,11 +142,10 @@ function MW:CreateFrame()
     f:SetSize(240, 150)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
-    -- Trascinamento IDENTICO a tutte le altre finestre dell'addon
-    -- (pannelli, HUD, MS/Loot/...): Utils:MakeDraggable = SetMovable +
-    -- EnableMouse + SetClampedToScreen(true) + RegisterForDrag +
-    -- RaiseWindow + salvataggio posizione (layout key "main", mai ripristinato).
-    RLSuite.utils:MakeDraggable(f, "main")
+    -- Finestra UNIVERSALE come tutte le altre dell'addon: drag+clamp
+    -- (MakeDraggable), front layer, BORDO tematico. Layout key "main"
+    -- (mai ripristinato in base flow: la posizione viene dalla command).
+    RLSuite.utils:MakeUniversalWindow(f, "main")
     f:Hide()
     f._noOuterBorder = true
     self.frame = f
@@ -160,10 +163,15 @@ function MW:CreateFrame()
     tb:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 2)
     tb:SetFrameStrata(f:GetFrameStrata() or "HIGH")
     tb:EnableMouse(true)
-    tb._noOuterBorder = true
     tb:Hide()
     self.titleBar = tb
-    RLSuite.utils:SkinFrame(tb)
+    -- la barretta e' una finestra universale anche lei: drag+clamp e stesso
+    -- bordo tematico della main bar (e di ogni finestra dell'addon).
+    if RLSuite.utils.MakeUniversalWindow then
+        RLSuite.utils:MakeUniversalWindow(tb, "titlebar")
+    else
+        RLSuite.utils:SkinFrame(tb)
+    end
 
     -- La barretta TRASCINA tutta la main bar: clic sinistro + trascina.
     -- La barretta trascina la main bar (proxy), MA con lo stesso guard di

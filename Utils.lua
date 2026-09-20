@@ -883,6 +883,23 @@ function Utils:ClampWindow(frame)
     end
 end
 
+-- Finestra UNIVERSALE come tutte le altre: MakeDraggable + stesso layer
+-- finale + BORDO tematico (ricostruito da SkinFrame con _noOuterBorder
+-- OFF). Tutte le finestre dell'addon sono cosi': il riush non esce mai
+-- dallo schermo (SetClampedToScreen + guard) ed e' SARIAMO come le altre.
+function Utils:MakeUniversalWindow(frame, key)
+    self:MakeDraggable(frame, key)
+    self:MakeClickToFront(frame)
+    self:SkinFrameBordered(frame)
+    return frame
+end
+
+function Utils:SkinFrameBordered(frame)
+    if not frame then return end
+    frame._noOuterBorder = nil
+    self:SkinFrame(frame)
+end
+
 -- Rende un frame trascinabile e salva la posizione nel layout.
 -- NOTA: non sovrascrive script gia' presenti: si aggancia solo se il
 -- frame non ha gia' un comportamento di trascinamento registrato.

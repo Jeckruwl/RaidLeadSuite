@@ -3274,7 +3274,7 @@ check(rt.eval("TC_CLOSED30") == '0,1,1,0', "arrow FLIPPED VERTICALLY (points DOW
 check(rt.eval("TC_OPEN30") == '0,1,0,1', "arrow points UP when the panel is OPEN")
 # -- v1.11.31: la barra non esce mai dallo schermo
 _rp = open("RaidProfile.lua", encoding="utf-8").read()
-check('MakeDraggable(f, "main")' in _rp, "main window uses Utils:MakeDraggable (SAME drag+clamp as every other window)")
+check(('MakeDraggable(f, "main")' in _rp) or ('MakeUniversalWindow(f, "main")' in _rp), "main window is a universal window via Utils:MakeUniversalWindow (SAME drag+clamp as every other window)")
 check(bool(rt.eval("RLSuite.mainWindow.frame._rlsDraggable == true and RLSuite.mainWindow.frame._rlsDragGuard ~= nil")), "main window flagged _rlsDraggable AND guarded by MakeDraggable (same clamp guard as every other window)")
 _u35 = open("Utils.lua", encoding="utf-8").read()
 check('_rlsDragGuard' in _u35 and _u35.count("ClampWindowToScreen(frame)") >= 1 and _u35.count("ClampWindowToScreen(self2)") >= 1, "MakeDraggable clamps ALL windows during drag + on drop (the identical machinery everywhere)")
