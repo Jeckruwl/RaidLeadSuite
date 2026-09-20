@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.41 (questo branch, dopo 1.11.40) — layering normalizzato: stack finestre deterministico
+
+La riproduzione dell'utente (Loot Manager aperto mentre altre finestre sono aperte → righe senza mouse) inchioda la causa: `RaiseWindow` pompava un contatore GLOBALE (+50) e settava il livello SOLO alla finestra madre; i figli restavano a livello ~1, quindi sotto hit-test finivano sotto finestre vicine o sulla stessa finestra (`focus=RLSuiteLootManager`) — layering "a casaccio" confermato. Nuovo algoritmo: `RLSuite._windowStack` ordinato per recency; ogni raise ri-normalizza i livelli (slot da 40: 20,60,100...) e applica il DELTA a TUTTO il sotto-albero della finestra (figli, figli dei figli) — le finestre sono onde deterministiche, i figli sempre sopra. LM: ogni riga creata DOPO un raise riceve subito livello histContent+2. Cap +50 eliminato. Versione 1.11.41.
+
 ## Novità della sessione 1.11.40 (questo branch, dopo 1.11.39) — focus=RLSuiteLootManager (misura precisa degli hitbox)
 
 Il mousefocus dell'utente (focus=finestra LM, mouse=1, sparisce solo sopra figli diretti) prova che le righe della lista NON ricevono il mouse: hit-test cade sulla finestra. Spedito: revert del content:EnableMouse(false) (era inerte ma ridondante); nuovo `/rls lmdebug` che stampa i rect effettivi [sinistra..destra x bottom..top], livelli, visibilità, stato mouse di window/histBox/histScroll/histContent/prima riga + coordinate del cursore normalizzate sal scale effettiva — output atteso per distinguere bug rettangolo-offset (scala/resize) da bug z/hierarchy. Versione 1.11.40.

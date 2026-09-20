@@ -646,6 +646,12 @@ function LM:UpdateHistory()
             local row = CreateFrame("Button", nil, self.histContent)
             self.histRows[#self.histRows + 1] = row
             row:EnableMouse(true)
+            -- Livello esplicito SOPRA il content: se la finestra e' stata
+            -- raisata prima che la riga nascesse, la riga non resta sotto
+            -- (altrimenti l'hit-test finisce sulla finestra).
+            if self.histContent and self.histContent.GetFrameLevel and row.SetFrameLevel then
+                row:SetFrameLevel((self.histContent:GetFrameLevel() or 1) + 2)
+            end
             row:RegisterForClicks("LeftButtonUp")
             row.entry = entry
             RLSuite.utils:SkinRow(row, self.selectedItem == entry)

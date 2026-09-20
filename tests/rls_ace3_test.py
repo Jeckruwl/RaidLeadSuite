@@ -150,11 +150,11 @@ function methods:GetHighlightTexture() return nil end
 function methods:Disable() self._disabled=true; return self end
 function methods:Enable() self._disabled=false; return self end
 function methods:IsEnabled() return not self._disabled end
-function methods:GetFrameLevel() return 1 end
+function methods:GetFrameLevel() return self._level or 1 end
 function methods:GetEffectiveScale() return 1 end
 function methods:GetNumChildren() return 0 end
 function methods:GetRegions() return {} end
-function methods:GetChildren() return {} end
+function methods:GetChildren() local U = (table and table.unpack) or unpack; return U(self._children or {}) end
 function methods:SetFormattedText(...) return self end
 
 
@@ -215,6 +215,7 @@ function methods:SetIndentedWordWrap(...) return self end
 
 CreateFrame = function(typ, name, parent, template)
     local o = newFrame({ _type=typ, _name=name, _template=template, _parent = parent })
+    if parent then parent._children = parent._children or {}; parent._children[#parent._children + 1] = o end
     if name then _G[name] = o; FRAMES[name] = o end
     return o
 end
@@ -428,8 +429,9 @@ GetMacroIconInfo = function() return nil end
 UISpecialFrames = {}
 
 -- WoW returns children as varargs; AceGUI's fixlevels/fixstrata iterate
--- them with select(), so GetChildren must return no values, not a table.
-function methods:GetChildren() end
+-- them with select(), so GetChildren returns VARARGS of registered children
+-- (zero values for leaf frames), never a plain table.
+function methods:GetChildren() local U = (table and table.unpack) or unpack; return U(self._children or {}) end
 
 -- Region getters AceGUI widgets rely on.
 function methods:GetFontString()
@@ -3194,7 +3196,19 @@ check(bool(rt.eval("M38 ~= nil and C38 == true")), "dropdown opens menu + catche
 check(bool(rt.eval("C38A == false and AM38 == nil")), "hiding the menu BY ANY MEANS also hides the catcher (engine-level defense)")
 # -- v1.11.39: content scroll non mouse-eating + raise cap + mousefocus diag
 _u = open("Utils.lua", encoding="utf-8").read()
-check('cur < 1000' in _u, "RaiseWindow level capped (no +50-per-click inflation)")
+check('RLSuite._windowStack' in _u and 'ShiftSubtree' in _u, "RaiseWindow uses a normalized window stack + subtree shift (deterministic layering)")
+check("row:SetFrameLevel((self.histContent:GetFrameLevel()" in open("LootManager.lua", encoding='utf-8').read(), "fresh loot rows get an explicit above-content level")
+rt.execute("""
+RLSuite._windowStack = {}
+w1 = CreateFrame("Frame", nil, UIParent); w2 = CreateFrame("Frame", nil, UIParent)
+k1 = CreateFrame("Frame", nil, w1); c1 = CreateFrame("Frame", nil, k1)
+RLSuite.utils:RaiseWindow(w1)
+RLSuite.utils:RaiseWindow(w2)
+RLSuite.utils:RaiseWindow(w1)
+L41 = w1:GetFrameLevel(); L42 = w2:GetFrameLevel(); LK41 = k1:GetFrameLevel(); LC41 = c1:GetFrameLevel()
+""")
+check(bool(rt.eval("L41 > L42")), "window recursive raise: last-raised window is physically above the older one")
+check(bool(rt.eval("LK41 >= L41 and LC41 >= L41")), "whole subtree shifts with the window (children never buried under their own window) — deterministic layering")
 check('mousefocus' in open("Core.lua", encoding='utf-8').read(), "/rls mousefocus diagnostic command available")
 check('lmdebug' in open("Core.lua", encoding='utf-8').read(), "/rls lmdebug hitbox diagnostic command available")
 check('content:EnableMouse(false)' not in _u, "scroll contents untouched (no EnableMouse overrides)")

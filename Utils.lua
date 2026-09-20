@@ -880,19 +880,52 @@ end
 -- restano dentro la "fascia" della loro finestra e non sbucano sopra le
 -- finestre vicine, evitando le sovrapposizioni parziali (parti di una
 -- finestra sopra e parti sotto un'altra) quando si spostano le finestre.
+local function ShiftSubtree(node, delta, seen)
+    -- Sposta il frame E tutta la gerarchia dei figli dello stesso delta:
+    -- i livelli 3.3.5 NON ereditano, quindi senza questo shift i figli
+    -- restano sotto e l'hit-test finisce sulla finestra invece che sui
+    -- bottoni (il bug "le righe del loot manager non ricevono i click").
+    if type(node) ~= "table" or seen[node] then return end
+    seen[node] = true
+    if node.GetFrameLevel and node.SetFrameLevel then
+        local lvl = node:GetFrameLevel()
+        if lvl then node:SetFrameLevel(lvl + delta) end
+    end
+    if node.GetChildren then
+        local ok, kids = pcall(function() return { node:GetChildren() } end)
+        if ok and type(kids) == "table" then
+            for i = 1, #kids do ShiftSubtree(kids[i], delta, seen) end
+        end
+    end
+end
+
 function Utils:RaiseWindow(frame)
     if not frame then return end
-    -- Cap a 1000: con level illimitato ogni click spingeva la finestra
-    -- sempre piu' in alto (fstack mostrava i livelli saltare di +50) e
-    -- dopo una sessione di click i rubaclick alti si accavallano.
-    local cur = RLSuite.windowLevel or 10
-    if cur < 1000 then
-        cur = cur + 50
-        RLSuite.windowLevel = cur
+    -- Layering NORMALIZZATO: niente contatore globale +50 a click (livelli
+    -- a casaccio). Lo stack delle finestre RLSuite e' ordinato per recency
+    -- e a ogni raise i livelli vengono ri-normalizzati a valori piccoli e
+    -- stabili (slot da 40, abbastanza ampi per il sotto-albero).
+    RLSuite._windowStack = RLSuite._windowStack or {}
+    local stack = RLSuite._windowStack
+    local found = nil
+    for i = 1, #stack do
+        if stack[i] == frame then found = i break end
     end
-    frame:SetFrameStrata("HIGH")
-    if (frame:GetFrameLevel() or 0) ~= cur then
-        frame:SetFrameLevel(cur)
+    if found then table.remove(stack, found) end
+    stack[#stack + 1] = frame
+    local seen = {}
+    for idx = 1, #stack do
+        local w = stack[idx]
+        if type(w) == "table" and w.GetFrameLevel then
+            local target = 20 + 40 * idx
+            local prev = w._rlsLevelBase or 0
+            local delta = target - prev
+            w._rlsLevelBase = target
+            w:SetFrameStrata("HIGH")
+            if delta ~= 0 then
+                ShiftSubtree(w, delta, seen)
+            end
+        end
     end
 end
 
