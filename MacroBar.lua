@@ -51,10 +51,18 @@ function MB:Toggle()
 end
 
 function MB:KeypadSize()
-    local counts, maxPerRow = self:KeypadRowsForPhase()
-    local activeRows = 0
-    for _ in pairs(counts) do activeRows = activeRows + 1 end
-    local w = KEYPAD_PAD * 2 + maxPerRow * KEYPAD_BTN_W + (maxPerRow > 1 and (maxPerRow - 1) or 0) * KEYPAD_GAP
+    local counts = self:KeypadRowsForPhase()
+    local rows = {}
+    for r in pairs(counts) do table.insert(rows, r) end
+    table.sort(rows)
+    local activeRows = #rows
+    local maxCells = 0
+    for i, r in ipairs(rows) do
+        -- la prima riga attiva ha una cella in piu': il tassello PH
+        local cells = counts[r] + (i == 1 and 1 or 0)
+        if cells > maxCells then maxCells = cells end
+    end
+    local w = KEYPAD_PAD * 2 + maxCells * KEYPAD_BTN_W + (maxCells > 1 and (maxCells - 1) or 0) * KEYPAD_GAP
     local h = KEYPAD_PAD * 2 + activeRows * KEYPAD_BTN_H + (activeRows > 1 and (activeRows - 1) or 0) * KEYPAD_VGAP
     return w, h
 end
@@ -162,19 +170,8 @@ function MB:CreateFrame()
     self.macroHost = host
     self:AttachShiftDrag(host)
 
-    -- PH:<FASE> come TASSELLO DELLA MATRICE: un delle stesse celle dei
-    -- pulsanti macro, in prima cella. Bottone SENZA sfondo e SENZA bordo,
-    -- NON cliccabile (niente RegisterForClicks, mouse spento).
     local MB_PRETTY_PHASE = { preraid = "PRE-RAID", preboss = "PRE-BOSS", infight = "IN-FIGHT" }
     self.prettyPhaseLabels = MB_PRETTY_PHASE
-    local phaseSlot = CreateFrame("Button", nil, host)
-    phaseSlot:SetBackdrop(nil)
-    phaseSlot:EnableMouse(false)
-    self.phaseSlot = phaseSlot
-    self.phaseText = phaseSlot:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.phaseText:SetPoint("CENTER", phaseSlot, "CENTER", 0, 0)
-    self.phaseText:SetTextColor(1, 0.82, 0)
-    self.phaseText:SetText("PH:PRE-RAID")
 end
 
 -- FIX: Non usare ActionButtonTemplate, crea bottoni custom
@@ -317,12 +314,12 @@ function MB:ApplyLayout()
 
     local filled = self:FilledSlots()
     local n = #filled
-    -- la matrice ha UN posto in piu': il tassello PH occupa la cella 0
-    local nTotal = n + 1
     local cols = tonumber(p.columns) or 12
     if cols < 1 then cols = 1 end
-    if cols > nTotal then
-        cols = nTotal
+    if n == 0 then
+        cols = 1
+    elseif cols > n then
+        cols = n
     end
     local size = tonumber(p.buttonSize) or 32
     local sp = tonumber(p.spacing) or 2
@@ -331,7 +328,10 @@ function MB:ApplyLayout()
     local hm = tonumber(p.heightMult) or 1
     if wm < 1 then wm = 1 end
     if hm < 1 then hm = 1 end
-    local rows = math.ceil(nTotal / cols)
+    local rows = 1
+    if n > 0 then
+        rows = math.ceil(n / cols)
+    end
     local innerW = cols * size + (cols - 1) * sp
     local innerH = rows * size + (rows - 1) * sp
     local extraW = (wm - 1) * (size + sp)
@@ -365,15 +365,6 @@ function MB:ApplyLayout()
         self.macroHost:SetSize(hostW, hostH)
     end
 
-    -- tassello PH: prima cella della matrice, stesso livello dei bottoni
-    if self.phaseSlot then
-        self.phaseSlot:ClearAllPoints()
-        self.phaseSlot:SetSize(size, size)
-        self.phaseSlot:SetPoint("TOPLEFT", self.macroHost or self.frame, "TOPLEFT", pad, -pad)
-        self.phaseSlot:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 10)
-        self.phaseSlot:Show()
-    end
-
     for i = 1, 12 do
         local btn = self.buttons[i]
         if btn then btn:Hide() end
@@ -382,9 +373,8 @@ function MB:ApplyLayout()
         local btn = self.buttons[slot]
         if btn then
             btn:SetSize(size, size)
-            -- il bottone 'vis'-esimo va nella cella 'vis' (la cella 0 e' PH)
-            local col = vis % cols
-            local row = math.floor(vis / cols)
+            local col = (vis - 1) % cols
+            local row = math.floor((vis - 1) / cols)
             btn:ClearAllPoints()
             btn:SetPoint("TOPLEFT", self.macroHost or self.frame, "TOPLEFT", pad + col * (size + sp), -pad - row * (size + sp))
             if RLSuite.utils.SkinMacroButton then
@@ -415,6 +405,19 @@ function MB:ApplyLayout()
         local renderIdx = {}
         for i, r in ipairs(activeRows) do renderIdx[r] = i end
         local kpad = KEYPAD_PAD
+        -- tassello PH: stessa cella dei tasti del keypad (75x22), prima
+        -- posizione della prima riga attiva. Senza sfondo/bordo, non
+        -- cliccabile: fa solo da indicatore di fase dentro la griglia.
+        if self.phaseSlot then
+            if #activeRows > 0 then
+                self.phaseSlot:ClearAllPoints()
+                self.phaseSlot:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
+                self.phaseSlot:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", kpad, -kpad)
+                self.phaseSlot:Show()
+            else
+                self.phaseSlot:Hide()
+            end
+        end
         local colCount = {}
         for i, kbtn in ipairs(self.keypadButtons or {}) do
             if kbtn:IsShown() and kbtn.def then
@@ -423,9 +426,13 @@ function MB:ApplyLayout()
                     colCount[r] = (colCount[r] or 0) + 1
                     local col = colCount[r]
                     local y = -(kpad + (r - 1) * (KEYPAD_BTN_H + KEYPAD_VGAP))
+                    local x = kpad + (col - 1) * (KEYPAD_BTN_W + KEYPAD_GAP)
+                    if r == 1 then
+                        x = x + (KEYPAD_BTN_W + KEYPAD_GAP) -- la prima cella della prima riga e' il tassello PH
+                    end
                     kbtn:ClearAllPoints()
                     kbtn:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
-                    kbtn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", kpad + (col - 1) * (KEYPAD_BTN_W + KEYPAD_GAP), y)
+                    kbtn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", x, y)
                 end
             end
         end
@@ -577,6 +584,20 @@ function MB:CreateKeypad()
         btn:Hide()
         self.keypadButtons[i] = btn
     end
+
+    -- PH:<FASE> come tassello della matrice del keypad (i tasti sotto):
+    -- stesso tipo di cella dei bottoni, stesso parent, prima posizione.
+    -- Bottone SENZA sfondo e SENZA bordo, NON cliccabile (mouse spento e
+    -- niente RegisterForClicks): solo indicatore di fase dentro la griglia.
+    local phaseSlot = CreateFrame("Button", nil, self.keypadFrame)
+    phaseSlot:SetBackdrop(nil)
+    phaseSlot:EnableMouse(false)
+    phaseSlot:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
+    self.phaseSlot = phaseSlot
+    self.phaseText = phaseSlot:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.phaseText:SetPoint("CENTER", phaseSlot, "CENTER", 0, 0)
+    self.phaseText:SetTextColor(1, 0.82, 0)
+    self.phaseText:SetText("PH:PRE-RAID")
 
     RLSuite.utils:SkinFrame(self.keypadFrame)
     self.keypadFrame:Hide()

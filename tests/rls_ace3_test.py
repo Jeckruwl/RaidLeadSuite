@@ -3121,7 +3121,7 @@ check(bool(rt.eval("MBPS ~= nil and MBPS._enabledMouse == false")), "PH is a NON
 check(bool(rt.eval("MBPS._backdrop == nil")), "PH slot has NO backdrop and NO border")
 check(bool(rt.eval("MBPT._parent == MBPS")), "PH text lives ON the slot button")
 rt.execute("MBP = MBPS._points[1] or {}; MBPTN = MBPT.GetText and MBPT:GetText() or ''")
-check(bool(rt.eval("MBP[1] == 'TOPLEFT'")), "PH slot anchored at the first cell of the matrix (TOPLEFT inside host)")
+check(bool(rt.eval("MBP[1] == 'TOPLEFT' and MBP[2] == RLSuite.macrobar.keypadFrame")), "PH slot anchored at the first cell of the KEYPAD grid (the buttons below, not the macros)")
 check(bool(rt.eval("MBPTN:sub(1,3) == 'PH:'")), "phase text format is PH:<phase>")
 check(rt.eval("MBPTN") == "PH:PRE-RAID", "initial phase text is PH:PRE-RAID")
 rt.execute("RLSuite.context = 'preboss'; RLSuite.macrobar:UpdatePhase()")
@@ -3186,27 +3186,30 @@ for _f in ("MSManager.lua", "GroupMaking.lua", "RaidProfile.lua"):
 check('AddonTexture("media\\\\Close.blp")' in open("MSManager.lua", encoding="utf-8").read(), "MS changes X uses AddonTexture media Close.blp")
 check('AddonTexture("media\\\\Arrowup.blp")' in open("RaidProfile.lua", encoding="utf-8").read(), "title bar arrow uses AddonTexture media Arrowup.blp")
 
-# -- PH slot e' un bottone della matrice (stesso parent dei tasti macro)
+# -- PH slot e' un bottone del KEYPAD: i tasti sotto (Pull/Ready/Break), stesso parent
 rt.execute("MBPS = RLSuite.macrobar.phaseSlot")
-check(bool(rt.eval("MBPS ~= nil and MBPS._parent == RLSuite.macrobar.macroHost")), "PH slot is part of the macro button matrix (same parent)")
-# -- shift: il tasto macro segue il tassello PH nella cella successiva
+check(bool(rt.eval("MBPS ~= nil and MBPS._parent == RLSuite.macrobar.keypadFrame")), "PH slot is part of the KEYPAD button grid (same parent as the buttons below)")
+# -- tassello PH: prima cella della prima riga attiva del keypad, i tasti di quella riga scalano di una cella
 rt.execute("""
-RLSuite.db.profile.macrobar.macros = { preraid = { { icon = 1, text = 'hi' }, { icon = 2, text = 'yo' } } }
-RLSuite.context = 'preraid'
+MBKB = RLSuite.macrobar.keypadButtons
+KP  = RLSuite.macrobar.keypadFrame
+RLSuite.context = 'preboss'
+RLSuite.macrobar:UpdateKeypad('preboss')
 RLSuite.macrobar:UpdatePhase()
-FILLED = #(RLSuite.macrobar:FilledSlots())
-B1 = RLSuite.macrobar.buttons[1]
-B1SHOWN = B1 and B1:IsShown()
+KP_SHOWN = KP:IsShown()
 PS_P = RLSuite.macrobar.phaseSlot._points[1] or {}
-PS_X = PS_P[4]
-B1P = B1 and B1._points[1] or {}
-B1_X = B1P[4]; B1_Y = B1P[5]
-B2P = RLSuite.macrobar.buttons[2] and RLSuite.macrobar.buttons[2]._points[1] or {}
-B2_X = B2P[4]
+PS_X = PS_P[4]; PS_Y = PS_P[5]
+P15_P = MBKB[1]._points[1] or {}
+P15_X = P15_P[4]; P15_Y = P15_P[5]
+RDY_P = MBKB[4]._points[1] or {}
+RDY_X = RDY_P[4]; RDY_Y = RDY_P[5]
 """)
-check(bool(rt.eval("PS_X ~= nil and B1_X ~= nil")), "phase slot and first macro button both positioned")
-check(bool(rt.eval("FILLED == 2 and B1SHOWN == true")), "two seeded macros render in the matrix")
-check(bool(rt.eval("PS_X == 2 and B1_X == PS_X + 34 and B1_Y == -2 and B2_X == B1_X + 34")), "button matrix: macro buttons sit one cell AFTER the PH slot in the same row")
+check(bool(rt.eval("KP_SHOWN == true")), "keypad visible in preboss")
+check(bool(rt.eval("PS_X == 8 and PS_Y == -8")), "PH tassel sits in the FIRST CELL of the keypad grid (8,-8)")
+check(bool(rt.eval("RLSuite.macrobar.phaseSlot._w == 75 and RLSuite.macrobar.phaseSlot._h == 22")), "PH tassel has the same cell size as the key buttons (75x22)")
+check(bool(rt.eval("P15_X == 89 and P15_Y == -8")), "first key button of the top row starts one cell AFTER the PH tassel, same row")
+check(bool(rt.eval("RDY_X == 8 and RDY_Y == -34")), "second-row key buttons keep the first cell (only the top row holds the PH tassel)")
+rt.execute("RLSuite.context = 'preraid'; RLSuite.macrobar:UpdateKeypad('preraid'); RLSuite.macrobar:UpdatePhase()")
 
 
 # -- scroll clip util: registrazione nei moduli

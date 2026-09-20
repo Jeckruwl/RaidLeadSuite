@@ -7,7 +7,14 @@ Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdb
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.21**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.22**.
+
+## Novità della sessione 1.11.22 (questo branch, dopo 1.11.21) — PH dentro il KEYPAD
+
+- **Il tassello PH vive nella matrice dei TASTI SOTTO (keypad Pull/Ready/Break), NON nella matrice macro.** Bottone figlio di `keypadFrame` (stesso parent dei tasti), cella 75x22 identica ai tasti, senza sfondo e senza bordo, NON cliccabile (mouse off, niente RegisterForClicks), testo oro PH:<FASE> centrato.
+- Posizione: **prima cella della prima riga attiva** del keypad; i tasti di quella riga scalano di una cella a destra. `KeypadSize()` conta la cella extra (+1 sulla prima riga attiva) così la larghezza resta esatta.
+- La matrice MACRO è tornata identica a prima (n celle, col = (vis-1)%cols): nessuno shift.
+- In `infight` il keypad resta nascosto e col keypad anche il tassello PH.
 
 ## Novità della sessione 1.11.21 (questo branch, dopo 1.11.20) — texture BLP native + PH tassello matrice + barretta 30px
 
