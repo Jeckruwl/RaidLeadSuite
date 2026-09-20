@@ -218,8 +218,8 @@ function MSM:UpdateList()
         local delBtn = CreateFrame("Button", nil, row)
         delBtn:SetSize(20, 20)
         delBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-        -- X bianca = glyph del font del gioco: NESSUN file nuovo da copiare.
-        RLSuite.utils:ApplyWhiteX(delBtn, 15)
+        -- X bianca dal TGA in media/ (formato BCI: nel client rende sempre).
+        RLSuite.utils:ApplyIcon(delBtn, "media\\Close.tga")
         delBtn:EnableMouse(true)
         delBtn:RegisterForClicks("LeftButtonUp")
         delBtn:SetScript("OnClick", function()

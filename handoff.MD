@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.28 (questo branch, dopo 1.11.27) — ICONE IN TGA, formato BCI (quelli che rendono sempre)
+
+L'utente: "tutte le TGA che ho caricato si sono sempre viste". OK: **le icone tornano TGA**. `media/Close.tga` e `media/Arrowup.tga` ricreati **byte-identici in formato a `media/BUFFCATICONS/BCI_*.tga`** (type 2 non compresso, 32x32, 32 bpp BGRA, descriptor 0x28 top-origin, **4114 byte**) — stessi file che il client renderizza SEMPRE nel raid frame. Icone attaccate via `Utils:ApplyIcon(btn, "media\\Close.tga")` = texture ARTWORK + HIGHLIGHT (pattern minimappa/BCI) su TUTTI i punti (tutte le X finestra, MS changes, GM ×2, barretta X+freccia). BLP delle icone eliminati (solo font/BLP-built-in provati prima senza esito). `/rls icondbg` ora testa i TGA. X verificata anche renderizzando il TGA a PNG: X bianca e freccia bianca corrette. Versione 1.11.28.
+
 ## Novità della sessione 1.11.27 (questo branch, dopo 1.11.26) — icone IMPOSSIBILI da non vedere (zero file nuovi)
 
 VERDETTO FINALE sul "non si vedono": `save.blp` caricava perché era già nell'installazione originale dell'utente; Close/Arrowup erano file NUOVI che non arrivavano nella cartella media (qualsiasi metodo di update) → NOT LOADED per sempre, indipendentemente dall'encoding. Soluzione che non dipende da file nuovi MAI più: **la X è un glyph "X" bianco di Fonts\\FRIZQT__.TTF (presente in OGNI client)** via `Utils:ApplyWhiteX(btn, size)`; **la freccia usa la texture built-in `Interface\\Buttons\\Arrow-Up-Up`** via `Utils:ApplyArrowUp(btn)`. Convertiti: `MakeCloseX` (tutte le finestre), X MS changes, X GroupMaking ×2, X e freccia della barretta. I .blp restano nel repo ma non sono più usati. `/rls icondbg` resta come diagnostica. Versione 1.11.27.

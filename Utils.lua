@@ -8,51 +8,44 @@ local Utils = RLSuite.utils
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
--- ICONE SENZA FILE NUOVI: i file media/ nuovi (Close.blp / Arrowup.blp)
--- possono non arrivare mai nella cartella dell'utente -> nell'interfaccia
--- apparirebbero comunque invisibili. Quindi niente file custom: la X e'
--- un GLYPH BIANCO del font del gioco (Fonts\\FRIZQT__.TTF, presente in
--- OGNI installazione), la freccia e' la texture built-in del client
--- (Interface\\Buttons\\Arrow-Up-*, sempre caricabile). Risultato:
--- icone IMPOSSIBILI da non vedere.
-function Utils:ApplyWhiteX(btn, fontSize)
-    fontSize = fontSize or 18
-    local fs = btn:CreateFontString(nil, "OVERLAY")
-    fs:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
-    fs:SetPoint("CENTER", btn, "CENTER", 0, 0)
-    fs:SetTextColor(1, 1, 1, 1)
-    fs:SetText("X")
-    btn.icon = fs
-    btn._whiteX = true
-    return btn
-end
-
--- Freccia SU: texture built-in del client (nessun file da media/).
-function Utils:ApplyArrowUp(btn)
+-- ICONE DA FILE media/*.tga: i TGA dell'addon (BCI_*, save.tga, ecc.)
+-- hanno SEMPRE reso nel client — formato identico generato per le nostre
+-- X e freccia (32x32, 32bpp, type 2, descriptor 0x28, 4114 byte). Disegno
+-- via TEXTURE esplicite ARTWORK + HIGHLIGHT (pattern della minimappa/BCI,
+-- che RENDE SEMPRE): mai SetNormalTexture/SetHighlightTexture su bottoni.
+-- Path SEMPRE via AddonTexture (folder RLSuite|RaidLeadSuite).
+function Utils:ApplyIcon(btn, iconRel)
+    local tx = RLSuite:AddonTexture(iconRel)
     local t = btn:CreateTexture(nil, "ARTWORK")
     t:SetAllPoints(btn)
-    t:SetTexture("Interface\\Buttons\\Arrow-Up-Up")
+    t:SetTexture(tx)
     btn.icon = t
     local hl = btn:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints(btn)
-    hl:SetTexture("Interface\\Buttons\\Arrow-Up-Up")
+    hl:SetTexture(tx)
     hl:SetBlendMode("ADD")
     btn.hl = hl
+    btn._iconPath = tx
     return btn
 end
 
--- X bianca per CHIUDERE le finestre: usata da TUTTE le finestre dell'addon.
-function Utils:MakeCloseX(parent, onclick)
+-- Bottone icona da file, completo: dimensione w x h, highlight glow.
+function Utils:MakeIconButton(parent, iconRel, w, h, onclick)
     local b = CreateFrame("Button", nil, parent)
-    b:SetSize(22, 22)
+    b:SetSize(w or 22, h or w or 22)
     b:SetBackdrop(nil)
-    Utils:ApplyWhiteX(b, 18)
+    Utils:ApplyIcon(b, iconRel)
     if onclick then
         b:EnableMouse(true)
         b:RegisterForClicks("LeftButtonUp")
         b:SetScript("OnClick", onclick)
     end
     return b
+end
+
+-- X bianca (TGA) per CHIUDERE le finestre: usata da TUTTE le finestre.
+function Utils:MakeCloseX(parent, onclick)
+    return Utils:MakeIconButton(parent, "media\\Close.tga", 22, 22, onclick)
 end
 
 function Utils:Print(msg)
