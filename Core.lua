@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.11.28"
+RLSuite.version = "1.11.29"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -1539,8 +1539,8 @@ function RLSuite:DiagnoseIcons()
         end
         t:Hide()
     end
-    test("media\\Close.tga")
-    test("media\\Arrowup.tga")
+    test("media\\close.tga")
+    test("media\\arrowup.tga")
     test("media\\save.blp")
     test(self:IsHorde() and "media\\hordeicon.blp" or "media\\allianceicon.blp")
 end

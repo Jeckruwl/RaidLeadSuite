@@ -219,7 +219,7 @@ function MSM:UpdateList()
         delBtn:SetSize(20, 20)
         delBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
         -- X bianca dal TGA in media/ (formato BCI: nel client rende sempre).
-        RLSuite.utils:ApplyIcon(delBtn, "media\\Close.tga")
+        RLSuite.utils:ApplyIcon(delBtn, "media\\close.tga")
         delBtn:EnableMouse(true)
         delBtn:RegisterForClicks("LeftButtonUp")
         delBtn:SetScript("OnClick", function()

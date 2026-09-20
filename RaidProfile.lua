@@ -151,8 +151,8 @@ function MW:CreateFrame()
 
     -- === Barretta titolo 20px SOPRA la main bar ======================
     -- Eredita la larghezza della main bar (anchor a tutti e due gli
-    -- angoli). A sinistra: "RLS"; a destra: Arrowup.tga (mostra/nasconde
-    -- il pannello sotto alla barretta) e Close.tga (chiude la main bar).
+    -- angoli). A sinistra: "RLS"; a destra: arrowup.tga (mostra/nasconde
+    -- il pannello sotto alla barretta) e close.tga (chiude la main bar).
     local tb = CreateFrame("Frame", "RLSuiteMainTitleBar", UIParent)
     tb:SetHeight(30)
     -- gap 2px: barretta STACCATA dalla main bar (non incollata)
@@ -181,7 +181,7 @@ function MW:CreateFrame()
     local crashBtn = CreateFrame("Button", nil, tb)
     crashBtn:SetSize(22, 22)
     crashBtn:SetPoint("TOPRIGHT", tb, "TOPRIGHT", -4, -4)
-    RLSuite.utils:ApplyIcon(crashBtn, "media\\Close.tga")
+    RLSuite.utils:ApplyIcon(crashBtn, "media\\close.tga")
     crashBtn:SetScript("OnClick", function()
         MW:CloseTab()
         f:Hide()
@@ -192,7 +192,7 @@ function MW:CreateFrame()
     local arrBtn = CreateFrame("Button", nil, tb)
     arrBtn:SetSize(22, 22)
     arrBtn:SetPoint("RIGHT", crashBtn, "LEFT", -4, 0)
-    RLSuite.utils:ApplyIcon(arrBtn, "media\\Arrowup.tga")
+    RLSuite.utils:ApplyIcon(arrBtn, "media\\arrowup.tga")
     arrBtn:SetScript("OnClick", function()
         -- pannellino: mostra/nasconde la main bar SOTTO la barretta
         if f:IsShown() then

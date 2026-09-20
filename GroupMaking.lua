@@ -2802,7 +2802,7 @@ function GM:RenderAutoinviteMirrorInvites()
         xBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
         row.xBtn = xBtn
         -- X BIANCA dal TGA in media/ (formato BCI: rende sempre).
-        RLSuite.utils:ApplyIcon(xBtn, "media\\Close.tga")
+        RLSuite.utils:ApplyIcon(xBtn, "media\\close.tga")
         xBtn:SetScript("OnClick", function() self:CalendarRemoveInvitee(nm) end)
 
         local statusFS = FontStr(row, "OVERLAY", 11)
@@ -3060,7 +3060,7 @@ function GM:BuildAutoNameListUI()
         end)
         row.xBtn = xBtn
         -- X BIANCA dal TGA in media/ (formato BCI: rende sempre).
-        RLSuite.utils:ApplyIcon(xBtn, "media\\Close.tga")
+        RLSuite.utils:ApplyIcon(xBtn, "media\\close.tga")
 
         -- clic destro sull'intera riga = rimozione (compatibilita').
         row:SetScript("OnClick", function(s, button)

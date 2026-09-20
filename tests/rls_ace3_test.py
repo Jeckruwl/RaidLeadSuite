@@ -3068,26 +3068,25 @@ check(bool(rt.eval("#RLSuite.lootManager.tradeWindows == 0")), "Clear loot close
 rt.execute("RLSuite.db.profile.debug = false; RLSuite:ApplyDebugMode()")
 
 
-# === Scenario 1.11.19: X bianche Close.blp, PH:<fase> in matrice, barretta ==================
-print("\n== v1.11.19: white Close.blp X buttons, macrobar PH text, main title bar, fstack guard ==")
+# === Scenario 1.11.19: X bianche close.blp, PH:<fase> in matrice, barretta ==================
+print("\n== v1.11.19: white close.blp X buttons, macrobar PH text, main title bar, fstack guard ==")
 
 # -- media presenti e referenziate
 import os
-check(os.path.isfile("media/Close.tga") and os.path.isfile("media/Arrowup.tga"), "media/Close.tga + media/Arrowup.tga exist in the addon folder")
-for _p in ("media/Close.tga", "media/Arrowup.tga"):
+check(os.path.isfile("media/close.tga") and os.path.isfile("media/arrowup.tga"), "media/close.tga + media/arrowup.tga exist in the addon folder")
+# i file tga SONO quelli caricati dall'utente (type 2 o 10/RLE, 32 bpp):
+for _p in ("media/close.tga", "media/arrowup.tga"):
     _d = open(_p, "rb").read()
-    _ref = open("media/BUFFCATICONS/BCI_0.tga", "rb").read()
-    check(_d[:18] == _ref[:18] and len(_d) == len(_ref) == 4114, _p + ": EXACT same format as the BCI tga (type2/32x32/32bpp/desc 0x28, 4114B -- the TGAs that always render)")
-    _px = _d[18:]
-    check(any(_px[i*4+3] == 255 for i in range(1024)) and any(_px[i*4+3] == 0 for i in range(1024)), _p + ": has opaque white pixels AND transparent pixels")
+    _ok = len(_d) > 26 and _d[2] in (2, 10) and _d[16] == 32
+    check(_ok, _p + ": valid uncompressed/RLE 32bpp TGA uploaded by the user")
 
-# -- MS changes: X piu' grande (20x20) e bianca (Close.blp)
+# -- MS changes: X piu' grande (20x20) e bianca (close.blp)
 rt.execute("RLSuite.msManager:AddEntry('BigX', 'Frost'); MSROW = RLSuite.msManager.rows and RLSuite.msManager.rows[1]")
 rt.execute("RLSuite.msManager:UpdateList()")
 rt.execute("""
 MS_DEL = nil
 for _, c in ipairs(ALLFRAMES) do
-    if c._parent ~= nil and c._w == 20 and c._h == 20 and c._text == nil and c.icon and c.icon._texture and tostring(c.icon._texture):find('Close.tga') then
+    if c._parent ~= nil and c._w == 20 and c._h == 20 and c._text == nil and c.icon and c.icon._texture and tostring(c.icon._texture):find('close.tga') then
         MS_DEL = MS_DEL or c
     end
 end
@@ -3097,13 +3096,13 @@ if not found_ms:
     # fallback: cammina le righe del listato ms direttamente
     rt.execute("for _, r in ipairs(RLSuite.msManager.listContent and RLSuite.msManager.listContent._children or {}) do end; MS_DEL = nil")
 rt.execute("""
--- scansione robusta: cerca fra TUTTI i frame un button 20x20 con normal texture Close.blp
+-- scansione robusta: cerca fra TUTTI i frame un button 20x20 con normal texture close.blp
 MS_DEL = nil
 for _, c in ipairs(ALLFRAMES) do
-    if c.icon ~= nil and c.icon._texture ~= nil and tostring(c.icon._texture):find('Close.tga', 1, true) and c._w == 20 and c._h == 20 then MS_DEL = c end
+    if c.icon ~= nil and c.icon._texture ~= nil and tostring(c.icon._texture):find('close.tga', 1, true) and c._w == 20 and c._h == 20 then MS_DEL = c end
 end
 """)
-check(bool(rt.eval("MS_DEL ~= nil")), "MS changes list: red X is now a white Close.tga button (BCI format, renders)")
+check(bool(rt.eval("MS_DEL ~= nil")), "MS changes list: red X is now a white close.tga button (BCI format, renders)")
 check(bool(rt.eval("MS_DEL == nil or (MS_DEL._w == 20 and MS_DEL._h == 20)")), "MS changes X is bigger (20x20, was 14x14)")
 
 # -- GroupMaking: le x rosse testuali sono diventate tessere bianche
@@ -3111,11 +3110,11 @@ rt.execute("""
 GM_WHITE = 0; GM_RED_TEXT = 0
 for _, c in ipairs(ALLFRAMES) do
     if c._text == 'x' then GM_RED_TEXT = GM_RED_TEXT + 1 end
-    if c.icon ~= nil and c.icon._texture ~= nil and tostring(c.icon._texture):find('Close.tga', 1, true) then GM_WHITE = GM_WHITE + 1 end
+    if c.icon ~= nil and c.icon._texture ~= nil and tostring(c.icon._texture):find('close.tga', 1, true) then GM_WHITE = GM_WHITE + 1 end
 end
 """)
 check(rt.eval("GM_RED_TEXT") == 0, "no red 'x' text buttons remain in the suite")
-check(int(rt.eval("GM_WHITE") or 0) >= 2, "white Close.tga X buttons exist in GroupMaking rows (calendar + whisplist)")
+check(int(rt.eval("GM_WHITE") or 0) >= 2, "white close.tga X buttons exist in GroupMaking rows (calendar + whisplist)")
 
 # -- MacroBar: testo fase dentro la matrice, formato PH:<FASE>
 rt.execute("MBPT = RLSuite.macrobar.phaseText; MBPS = RLSuite.macrobar.phaseSlot")
@@ -3139,8 +3138,8 @@ rt.execute("TB_P1 = TB._points[1] or {}; TB_P2 = TB._points[2] or {}")
 check(bool(rt.eval("TB_P1[1] == 'BOTTOMLEFT' and TB_P1[3] == 'TOPLEFT' and TB_P2[1] == 'BOTTOMRIGHT' and TB_P2[3] == 'TOPRIGHT'")), "title bar spans the full main-bar width (anchored to both top corners)")
 check(rt.eval("TB_P1[5]") == 2 and rt.eval("TB_P2[5]") == 2, "title bar is DETACHED (2px gap above the main bar)")
 check(bool(rt.eval("TB.title ~= nil and TB.title:GetText() == 'RLS'")), "title shows 'RLS' on the left")
-check(bool(rt.eval("TB.arrowBtn ~= nil and TB.arrowBtn.icon ~= nil and tostring(TB.arrowBtn.icon._texture):find('Arrowup.tga', 1, true) ~= nil")), "arrowup.tga button present on the right (ARTWORK texture, renders)")
-check(bool(rt.eval("TB.closeBtn ~= nil and TB.closeBtn.icon ~= nil and tostring(TB.closeBtn.icon._texture):find('Close.tga', 1, true) ~= nil")), "Close.tga button present on the right (ARTWORK texture, renders)")
+check(bool(rt.eval("TB.arrowBtn ~= nil and TB.arrowBtn.icon ~= nil and tostring(TB.arrowBtn.icon._texture):find('arrowup.tga', 1, true) ~= nil")), "arrowup.tga button present on the right (ARTWORK texture, renders)")
+check(bool(rt.eval("TB.closeBtn ~= nil and TB.closeBtn.icon ~= nil and tostring(TB.closeBtn.icon._texture):find('close.tga', 1, true) ~= nil")), "close.tga button present on the right (ARTWORK texture, renders)")
 
 # -- Barretta: arrow = solo pannello; close = tutto chiuso
 rt.execute("""
@@ -3156,7 +3155,7 @@ C_F = f:IsShown(); C_TB = TB:IsShown()
 """)
 check(bool(rt.eval("A1 == false and A1TB == true")), "arrowup: hides ONLY the panel under the bar (bar stays)")
 check(bool(rt.eval("A2 == true")), "arrowup: shows the panel back under the bar")
-check(bool(rt.eval("C_F == false and C_TB == false")), "Close.blp: closes the main bar (panel + title bar)")
+check(bool(rt.eval("C_F == false and C_TB == false")), "close.blp: closes the main bar (panel + title bar)")
 
 # -- Toggle tab riallinea anche la barretta
 rt.execute("RLSuite.mainWindow:ShowTab('group')")
@@ -3186,8 +3185,8 @@ import re
 for _f in ("MSManager.lua", "GroupMaking.lua", "RaidProfile.lua"):
     _src = open(_f, encoding="utf-8").read()
     check("RaidLeadSuite\\\\media" not in _src, _f + ": no hardcoded addon-folder texture paths (AddonTexture only)")
-check('ApplyIcon(delBtn, "media\\\\Close.tga")' in open("MSManager.lua", encoding="utf-8").read(), "MS changes X uses ApplyIcon media Close.tga (AddonTexture)")
-check('ApplyIcon(arrBtn, "media\\\\Arrowup.tga")' in open("RaidProfile.lua", encoding="utf-8").read(), "title bar arrow uses ApplyIcon media Arrowup.tga (AddonTexture)")
+check('ApplyIcon(delBtn, "media\\\\close.tga")' in open("MSManager.lua", encoding="utf-8").read(), "MS changes X uses ApplyIcon media close.tga (AddonTexture)")
+check('ApplyIcon(arrBtn, "media\\\\arrowup.tga")' in open("RaidProfile.lua", encoding="utf-8").read(), "title bar arrow uses ApplyIcon media arrowup.tga (AddonTexture)")
 
 # -- PH slot e' un bottone del KEYPAD: i tasti sotto (Pull/Ready/Break), stesso parent
 rt.execute("MBPS = RLSuite.macrobar.phaseSlot")
@@ -3215,13 +3214,13 @@ check(bool(rt.eval("RDY_X == 8 and RDY_Y == -34")), "second-row key buttons keep
 rt.execute("RLSuite.context = 'preraid'; RLSuite.macrobar:UpdateKeypad('preraid'); RLSuite.macrobar:UpdatePhase()")
 
 # === Scenario 1.11.23: X bianche ovunque (MakeCloseX), no X rossa in main bar, barretta trascinabile =
-print("\n== v1.11.23: white Close.blp X on every window close, no red X inside main bar, draggable title bar ==")
+print("\n== v1.11.23: white close.blp X on every window close, no red X inside main bar, draggable title bar ==")
 import glob
 _red = []
 for _f in glob.glob("*.lua"):
     if "UIPanelCloseButton" in open(_f, encoding="utf-8").read():
         _red.append(_f)
-check(_red == [], "no UIPanelCloseButton remains in ANY addon module file (white Close.blp X everywhere)")
+check(_red == [], "no UIPanelCloseButton remains in ANY addon module file (white close.blp X everywhere)")
 check('function Utils:MakeCloseX' in open("Utils.lua", encoding="utf-8").read(), "Utils:MakeCloseX shared helper exists")
 check(bool(rt.eval("RLSuite.utils.MakeCloseX ~= nil")), "MakeCloseX live in the runtime")
 
@@ -3230,7 +3229,7 @@ CLOSE_OK = 0
 CLOSE_BAD = ''
 local function chk(btn)
     if btn ~= nil then
-        if btn.icon ~= nil and btn.icon._texture ~= nil and tostring(btn.icon._texture):find('Close.tga', 1, true) and btn._w == 22 and btn._h == 22 then
+        if btn.icon ~= nil and btn.icon._texture ~= nil and tostring(btn.icon._texture):find('close.tga', 1, true) and btn._w == 22 and btn._h == 22 then
             CLOSE_OK = CLOSE_OK + 1
         else
             CLOSE_BAD = CLOSE_BAD .. 'x'
@@ -3243,7 +3242,7 @@ chk(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame and RLSuite.group
 chk(RLSuite.lootManager and RLSuite.lootManager.frame and RLSuite.lootManager.frame.closeBtn)
 chk(RLSuite.msManager and RLSuite.msManager.frame and RLSuite.msManager.frame.closeBtn)
 """)
-check(int(rt.eval("CLOSE_OK") or 0) == 5, "all 5 built window-close buttons are the 22x22 white Close.tga X (CL/GM/GM-wl/LM/MS)")
+check(int(rt.eval("CLOSE_OK") or 0) == 5, "all 5 built window-close buttons are the 22x22 white close.tga X (CL/GM/GM-wl/LM/MS)")
 check(rt.eval("CLOSE_BAD") == '', "no close button kept the old red Blizzard artwork")
 
 # -- LA X ROSSA nella main bar: eliminata

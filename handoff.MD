@@ -9,9 +9,13 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.29 (questo branch, dopo 1.11.28) — case fix: tutto minuscolo
+
+I riferimenti puntavano a "Close.tga/Arrowup.tga" mentre i file reali sono **close.tga/arrowup.tga (tutto minuscolo)** — su filesystem case-sensitive il client non trovava nulla. File rinominati minuscoli + TUTTI i riferimenti (code, icondbg, test, handoff) allineati. I `media/close.tga` e `media/arrowup.tga` attuali SONO LAVORO DELL'UTENTE (upload diretto, type-10 RLE 32bpp): MAI rigenerarli né sostituirli. Vecchi .blp ormai inutilizzati rimossi dal repo. Versione 1.11.29.
+
 ## Novità della sessione 1.11.28 (questo branch, dopo 1.11.27) — ICONE IN TGA, formato BCI (quelli che rendono sempre)
 
-L'utente: "tutte le TGA che ho caricato si sono sempre viste". OK: **le icone tornano TGA**. `media/Close.tga` e `media/Arrowup.tga` ricreati **byte-identici in formato a `media/BUFFCATICONS/BCI_*.tga`** (type 2 non compresso, 32x32, 32 bpp BGRA, descriptor 0x28 top-origin, **4114 byte**) — stessi file che il client renderizza SEMPRE nel raid frame. Icone attaccate via `Utils:ApplyIcon(btn, "media\\Close.tga")` = texture ARTWORK + HIGHLIGHT (pattern minimappa/BCI) su TUTTI i punti (tutte le X finestra, MS changes, GM ×2, barretta X+freccia). BLP delle icone eliminati (solo font/BLP-built-in provati prima senza esito). `/rls icondbg` ora testa i TGA. X verificata anche renderizzando il TGA a PNG: X bianca e freccia bianca corrette. Versione 1.11.28.
+L'utente: "tutte le TGA che ho caricato si sono sempre viste". OK: **le icone tornano TGA**. `media/close.tga` e `media/arrowup.tga` ricreati **byte-identici in formato a `media/BUFFCATICONS/BCI_*.tga`** (type 2 non compresso, 32x32, 32 bpp BGRA, descriptor 0x28 top-origin, **4114 byte**) — stessi file che il client renderizza SEMPRE nel raid frame. Icone attaccate via `Utils:ApplyIcon(btn, "media\\close.tga")` = texture ARTWORK + HIGHLIGHT (pattern minimappa/BCI) su TUTTI i punti (tutte le X finestra, MS changes, GM ×2, barretta X+freccia). BLP delle icone eliminati (solo font/BLP-built-in provati prima senza esito). `/rls icondbg` ora testa i TGA. X verificata anche renderizzando il TGA a PNG: X bianca e freccia bianca corrette. Versione 1.11.28.
 
 ## Novità della sessione 1.11.27 (questo branch, dopo 1.11.26) — icone IMPOSSIBILI da non vedere (zero file nuovi)
 
@@ -37,7 +41,7 @@ REGOLA per sempre: un `.blp` nuovo va generato come DXT5+mips (comparabile a med
 
 ## Novità della sessione 1.11.23 (questo branch, dopo 1.11.22) — X bianche ovunque, X rossa eliminata, barretta trascinabile
 
-- **TUTTE le X di chiusura delle finestre usano la X bianca** `RLSuite.utils:MakeCloseX(parent, onclick)` (BLP nativo `media\\Close.blp` via AddonTexture, 22x22, no bordo): CombatLog, GroupMaking (main + whisplist), LootManager (main + finestra trade), MSManager, MacroBar (frame keybind), Config (picker icone macro). La barretta usava già Close.blp da 1.11.21.
+- **TUTTE le X di chiusura delle finestre usano la X bianca** `RLSuite.utils:MakeCloseX(parent, onclick)` (BLP nativo `media\\close.blp` via AddonTexture, 22x22, no bordo): CombatLog, GroupMaking (main + whisplist), LootManager (main + finestra trade), MSManager, MacroBar (frame keybind), Config (picker icone macro). La barretta usava già close.blp da 1.11.21.
 - **La X ROSSA dentro la main bar è stata ELIMINATA**: in `RaidProfile` la finestra principale non crea più `self.closeBtn` (col template rosso Blizzard). Resta SOLO la X bianca nella barretta sopra la main bar.
 - **La barretta ora TRASCINA tutta la main bar**: RegisterForDrag LeftButton → `f:StartMoving()`/`StopMovingOrSizing()` del frame principale.
 - Test: nessun `UIPanelCloseButton` resta in nessun file modulo; i 5 close delle finestre costruite sono la X bianca; `mainWindow.closeBtn == nil`; drag della barretta muove la finestra.
@@ -52,25 +56,25 @@ REGOLA per sempre: un `.blp` nuovo va generato come DXT5+mips (comparabile a med
 ## Novità della sessione 1.11.21 (questo branch, dopo 1.11.20) — texture BLP native + PH tassello matrice + barretta 30px
 
 - **Texture invisibili in game — CAUSA VERA**: path hardcodati `Interface\AddOns\RaidLeadSuite\media\...`. La cartella addon può chiamarsi `RLSuite` o `RaidLeadSuite` (per questo esiste `RLSuite:AddonTexture()`); col nome diverso i file non venivano trovati = icone invisibili ovunque. Ora TUTTE le texture addon passano da **AddonTexture()**.
-- **media/Close.blp + media/Arrowup.blp**: icone rigenerate in **BLP2 nativo 3.3.5** (palettizzato alpha-8, 32x32). I TGA rotti sono stati eliminati dal repo. Referenze in MS changes, GroupMaking (calendar + whisplist) e barretta main.
+- **media/close.blp + media/arrowup.blp**: icone rigenerate in **BLP2 nativo 3.3.5** (palettizzato alpha-8, 32x32). I TGA rotti sono stati eliminati dal repo. Referenze in MS changes, GroupMaking (calendar + whisplist) e barretta main.
 - **Barretta main**: altezza **30px** (era 20), icone 22x22.
 - **PH diventa un TASSELLO DELLA MATRICE**: bottone non cliccabile (mouse off), senza sfondo e senza bordo, stesso parent dei tasti macro e stesso frame level. Occupa la **cella 0** della matrice (i bottoni macro partono dalla cella 1, colonne/righe contano nTotale = n+1). Testo **PH:<FASE>** oro centrato sul tassello.
 - (Rimangono pile full di 1.11.20: clip-input degli scroll su tutti i moduli + dropdown guard/reuse.)
 
 ## Novità della sessione 1.11.20 (questo branch, dopo 1.11.19) — fix in-game (texture, label, barretta, scroll) (storico)
 
-- **media/Close.tga rigenerata**: la X della 1.11.19 era quasi vuota (gate margini invertito → solo 30px agli angoli). Ora X piena al centro (68% copertura). Anche Arrowup.tga ingrassata (78%).
+- **media/close.tga rigenerata**: la X della 1.11.19 era quasi vuota (gate margini invertito → solo 30px agli angoli). Ora X piena al centro (68% copertura). Anche arrowup.tga ingrassata (78%).
 - **MacroBar PH:<fase>**: la fontstring era una texture figlia del frame e i bottoni macro (frame level +10) la COPRIVANO. Ora vive in un holder a livello +50 (EnableMouse(false), i click sui tasti sotto restano vivi). Visibile davvero nella prima cella.
 - **Barretta main**: **staccata** (gap 2px sopra la main bar).
 - **Bug fstack LootManager — la vera causa**: in 3.3.5 lo scroll clippa solo la GRAFICA; le righe-Bottone fuori viewport restano INVISIBILI ma hit-testabili sopra TUTTA la finestra (con tanti loot coprono tutto: "a volte non posso cliccare nulla"). Fix generico `Utils:RegisterScrollClip / ClipScrollRow / RefreshScrollClip`: le righe fuori viewport vengono Nascoste (geometria contenuto invariata → scroll identico). Registrato in **LootManager, CombatLog (2 panelli), MS changes, Whisplist, autonames, mirror invitees**. Bonus: menu dropdown ora RIUSATO per dropdown (mai frame cadaveri nuovi a ogni toggle).
 
 ## Novità della sessione 1.11.19 (questo branch, dopo 1.11.18) — icone Close/Arrowup, barretta main, fstack guard (storico)
 
-- **media/Close.tga** (X bianca) e **media/Arrowup.tga** (freccia bianca): nuove texture (32x32 TGA) generate per l'addon.
-- **MS changes**: le X delle righe sono diventate **bianche** (Close.tga) e **più grandi**: 20x20 (erano 14x14).
-- **Tutte le “x” rosse dei moduli** (GroupMaking calendar invitees + whisplist auto) sostituite con bottoni testurizzati **Close.tga bianchi** (niente più fontstring rossi).
+- **media/close.tga** (X bianca) e **media/arrowup.tga** (freccia bianca): nuove texture (32x32 TGA) generate per l'addon.
+- **MS changes**: le X delle righe sono diventate **bianche** (close.tga) e **più grandi**: 20x20 (erano 14x14).
+- **Tutte le “x” rosse dei moduli** (GroupMaking calendar invitees + whisplist auto) sostituite con bottoni testurizzati **close.tga bianchi** (niente più fontstring rossi).
 - **MacroBar**: testo di fase ora **dentro la matrice** (prima cella in alto a sinistra), formato **PH:<FASE>** (PRE-RAID / PRE-BOSS / IN-FIGHT), oro.
-- **Main bar**: nuova **barretta titolo 20px** fissa sopra la finestra, larghezza ereditata dalla main bar (anchor ai due angoli). A sinistra **RLS** oro; a destra **Arrowup.tga** (mostra/nasconde SOLO il pannello sotto la barretta) e **Close.tga** (chiude main bar + barretta). /rls, minimappa e tab riallineano entrambi.
+- **Main bar**: nuova **barretta titolo 20px** fissa sopra la finestra, larghezza ereditata dalla main bar (anchor ai due angoli). A sinistra **RLS** oro; a destra **arrowup.tga** (mostra/nasconde SOLO il pannello sotto la barretta) e **close.tga** (chiude main bar + barretta). /rls, minimappa e tab riallineano entrambi.
 - **Bug fstack**: `CreateDropdown` ora aggancia OnHide al dropdown: se la finestra ospite si chiude/col menu ancora aperto, menu e **catcher full-screen invisibile** vengono forzatamente chiusi (era il pannello invisibile che rubava i click a tutta la UI). Vale per TUTTI i moduli (condividono lo stesso util). Aggiunto `Utils:AssertNoZombieCatcher` per i casi zombie residui.
 
 ## Novità della sessione 1.11.18 (questo branch, dopo 1.11.17) — channel # per canale + debug alleggerito (storico)
