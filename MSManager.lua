@@ -211,12 +211,12 @@ function MSM:UpdateList()
 
         local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         text:SetPoint("LEFT", row, "LEFT", 8, 0)
-        text:SetPoint("RIGHT", row, "RIGHT", -30, 0)
+        text:SetPoint("RIGHT", row, "RIGHT", -18, 0)
         text:SetJustifyH("LEFT")
         text:SetText((entry.name or "?") .. ": " .. (entry.spec or "?"))
 
         local delBtn = CreateFrame("Button", nil, row)
-        delBtn:SetSize(20, 20)
+        delBtn:SetSize(10, 10)
         delBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
         -- X bianca dal TGA in media/ (formato BCI: nel client rende sempre).
         RLSuite.utils:ApplyIcon(delBtn, "media\\close.tga")

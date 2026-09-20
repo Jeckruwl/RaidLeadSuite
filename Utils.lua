@@ -45,7 +45,7 @@ end
 
 -- X bianca (TGA) per CHIUDERE le finestre: usata da TUTTE le finestre.
 function Utils:MakeCloseX(parent, onclick)
-    return Utils:MakeIconButton(parent, "media\\close.tga", 22, 22, onclick)
+    return Utils:MakeIconButton(parent, "media\\close.tga", 11, 11, onclick)
 end
 
 function Utils:Print(msg)

@@ -176,11 +176,10 @@ function MW:CreateFrame()
     tbTitle:SetTextColor(1, 0.82, 0)
     tb.title = tbTitle
 
-    -- X bianca + freccia dai TGA in media/ (formato BCI: nel client rende
-    -- SEMPRE). Texture ARTWORK come la minimappa; path via AddonTexture.
+    -- X bianca + freccia dai TGA dell'utente in media/, DIMEZZATE (11px).
     local crashBtn = CreateFrame("Button", nil, tb)
-    crashBtn:SetSize(22, 22)
-    crashBtn:SetPoint("TOPRIGHT", tb, "TOPRIGHT", -4, -4)
+    crashBtn:SetSize(11, 11)
+    crashBtn:SetPoint("RIGHT", tb, "RIGHT", -4, 0)
     RLSuite.utils:ApplyIcon(crashBtn, "media\\close.tga")
     crashBtn:SetScript("OnClick", function()
         MW:CloseTab()
@@ -190,9 +189,25 @@ function MW:CreateFrame()
     tb.closeBtn = crashBtn
 
     local arrBtn = CreateFrame("Button", nil, tb)
-    arrBtn:SetSize(22, 22)
+    arrBtn:SetSize(11, 11)
     arrBtn:SetPoint("RIGHT", crashBtn, "LEFT", -4, 0)
     RLSuite.utils:ApplyIcon(arrBtn, "media\\arrowup.tga")
+
+    -- Freccia: punta IN SU col pannello APERTO; SPECCHIATA (in giu') col
+    -- pannello CHIUSO. Flip verticale via TexCoord.
+    local function MW_UpdateArrowDir()
+        local up = f:IsShown()
+        if arrBtn.icon and arrBtn.icon.SetTexCoord then
+            arrBtn.icon:SetTexCoord(0, 1, up and 0 or 1, up and 1 or 0)
+        end
+        if arrBtn.hl and arrBtn.hl.SetTexCoord then
+            arrBtn.hl:SetTexCoord(0, 1, up and 0 or 1, up and 1 or 0)
+        end
+    end
+    MW._updateArrowDir = MW_UpdateArrowDir
+    f:HookScript("OnShow", MW_UpdateArrowDir)
+    f:HookScript("OnHide", MW_UpdateArrowDir)
+
     arrBtn:SetScript("OnClick", function()
         -- pannellino: mostra/nasconde la main bar SOTTO la barretta
         if f:IsShown() then
@@ -201,8 +216,10 @@ function MW:CreateFrame()
         else
             f:Show()
         end
+        MW_UpdateArrowDir()
     end)
     tb.arrowBtn = arrBtn
+    MW_UpdateArrowDir()
 
     -- Niente titolo dentro la finestra: i bottoni restano (matrice + fase +
     -- X di chiusura e icona SaveRaid). La Config si apre dalla minimappa

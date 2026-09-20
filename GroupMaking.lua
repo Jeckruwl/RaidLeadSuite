@@ -2798,7 +2798,7 @@ function GM:RenderAutoinviteMirrorInvites()
 
         local nm = invite.name
         local xBtn = CreateFrame("Button", nil, row)
-        xBtn:SetSize(14, 14)
+        xBtn:SetSize(7, 7)
         xBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
         row.xBtn = xBtn
         -- X BIANCA dal TGA in media/ (formato BCI: rende sempre).
@@ -3053,7 +3053,7 @@ function GM:BuildAutoNameListUI()
 
         -- "x" in fondo alla barra: rimuove il giocatore dalla lista.
         local xBtn = CreateFrame("Button", nil, row)
-        xBtn:SetSize(16, 16)
+        xBtn:SetSize(8, 8)
         xBtn:SetPoint("RIGHT", row, "RIGHT", -2, 0)
         xBtn:SetScript("OnClick", function()
             self:RemoveAutoName(name)

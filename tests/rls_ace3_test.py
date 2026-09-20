@@ -129,7 +129,7 @@ function methods:StartSizing(...) return self end
 function methods:SetMinResize(...) return self end
 function methods:SetClampedToScreen(b) return self end
 function methods:SetAllPoints(...) return self end
-function methods:SetTexCoord(...) return self end
+function methods:SetTexCoord(...) self._texCoord = {...}; return self end
 function methods:SetTexture(a, b, c, d) self._texture = a; if b ~= nil then self._texRGBA = {a, b, c, d} else self._texRGBA = nil end; return self end
 function methods:SetBlendMode(...) return self end
 function methods:SetVertexColor(...) self._vertex = {...} return self end
@@ -3086,7 +3086,7 @@ rt.execute("RLSuite.msManager:UpdateList()")
 rt.execute("""
 MS_DEL = nil
 for _, c in ipairs(ALLFRAMES) do
-    if c._parent ~= nil and c._w == 20 and c._h == 20 and c._text == nil and c.icon and c.icon._texture and tostring(c.icon._texture):find('close.tga') then
+    if c._parent ~= nil and c._w == 10 and c._h == 10 and c._text == nil and c.icon and c.icon._texture and tostring(c.icon._texture):find('close.tga') then
         MS_DEL = MS_DEL or c
     end
 end
@@ -3099,11 +3099,11 @@ rt.execute("""
 -- scansione robusta: cerca fra TUTTI i frame un button 20x20 con normal texture close.blp
 MS_DEL = nil
 for _, c in ipairs(ALLFRAMES) do
-    if c.icon ~= nil and c.icon._texture ~= nil and tostring(c.icon._texture):find('close.tga', 1, true) and c._w == 20 and c._h == 20 then MS_DEL = c end
+    if c.icon ~= nil and c.icon._texture ~= nil and tostring(c.icon._texture):find('close.tga', 1, true) and c._w == 10 and c._h == 10 then MS_DEL = c end
 end
 """)
 check(bool(rt.eval("MS_DEL ~= nil")), "MS changes list: red X is now a white close.tga button (BCI format, renders)")
-check(bool(rt.eval("MS_DEL == nil or (MS_DEL._w == 20 and MS_DEL._h == 20)")), "MS changes X is bigger (20x20, was 14x14)")
+check(bool(rt.eval("MS_DEL == nil or (MS_DEL._w == 10 and MS_DEL._h == 10)")), "MS changes X is halved (10x10)")
 
 # -- GroupMaking: le x rosse testuali sono diventate tessere bianche
 rt.execute("""
@@ -3229,7 +3229,7 @@ CLOSE_OK = 0
 CLOSE_BAD = ''
 local function chk(btn)
     if btn ~= nil then
-        if btn.icon ~= nil and btn.icon._texture ~= nil and tostring(btn.icon._texture):find('close.tga', 1, true) and btn._w == 22 and btn._h == 22 then
+        if btn.icon ~= nil and btn.icon._texture ~= nil and tostring(btn.icon._texture):find('close.tga', 1, true) and btn._w == 11 and btn._h == 11 then
             CLOSE_OK = CLOSE_OK + 1
         else
             CLOSE_BAD = CLOSE_BAD .. 'x'
@@ -3242,7 +3242,7 @@ chk(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame and RLSuite.group
 chk(RLSuite.lootManager and RLSuite.lootManager.frame and RLSuite.lootManager.frame.closeBtn)
 chk(RLSuite.msManager and RLSuite.msManager.frame and RLSuite.msManager.frame.closeBtn)
 """)
-check(int(rt.eval("CLOSE_OK") or 0) == 5, "all 5 built window-close buttons are the 22x22 white close.tga X (CL/GM/GM-wl/LM/MS)")
+check(int(rt.eval("CLOSE_OK") or 0) == 5, "all 5 built window-close buttons are the 11x11 close.tga X, HALVED (CL/GM/GM-wl/LM/MS)")
 check(rt.eval("CLOSE_BAD") == '', "no close button kept the old red Blizzard artwork")
 
 # -- LA X ROSSA nella main bar: eliminata
@@ -3261,6 +3261,22 @@ AFTER_DRAG = MF23._moving == false
 """)
 check(bool(rt.eval("TB23DRAG == true")), "title bar is REGISTERED for LeftButton drag")
 check(bool(rt.eval("MID_DRAG and AFTER_DRAG")), "dragging the title bar MOVES the whole main window (start + stop)")
+
+# -- v1.11.30: icone barretta dimezzate (11x11) + freccia su/giu con il pannello
+rt.execute("""
+TB30C = RLSuite.mainWindow.titleBar.closeBtn
+TB30A = RLSuite.mainWindow.titleBar.arrowBtn
+MFW30 = RLSuite.mainWindow.frame
+MFW30:Hide(); RLSuite.mainWindow._updateArrowDir()
+TC_CLOSED30 = table.concat(TB30A.icon._texCoord or {}, ',')
+MFW30:Show(); RLSuite.mainWindow._updateArrowDir()
+TC_OPEN30 = table.concat(TB30A.icon._texCoord or {}, ',')
+MFW30:Hide(); RLSuite.mainWindow._updateArrowDir()
+""")
+check(bool(rt.eval("TB30C._w == 11 and TB30C._h == 11 and TB30A._w == 11 and TB30A._h == 11")), "title bar icons HALVED (11x11)")
+check(rt.eval("TC_CLOSED30") == '0,1,1,0', "arrow FLIPPED VERTICALLY (points DOWN) when the panel is CLOSED")
+check(rt.eval("TC_OPEN30") == '0,1,0,1', "arrow points UP when the panel is OPEN")
+
 
 
 

@@ -9,6 +9,11 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.30 (questo branch, dopo 1.11.29) — icone dimezzate + freccia direzionale
+
+- Tutte le icone close/arrow **dimezzate**: X finestre (MakeCloseX) 22→11, X barretta e freccia 22→11, X MS changes 20→10, X GroupMaking 14→7 e 16→8.
+- **Freccia barretta direzionale**: pannello APERTO → punta in su (tga com'è), pannello CHIUSO → **specchiata verticalmente** (punta in giù) tramite `SetTexCoord(0,1,1,0)` (flip reale, nessun secondo file). Aggiornata su OnClick + HookScript OnShow/OnHide del frame.
+
 ## Novità della sessione 1.11.29 (questo branch, dopo 1.11.28) — case fix: tutto minuscolo
 
 I riferimenti puntavano a "Close.tga/Arrowup.tga" mentre i file reali sono **close.tga/arrowup.tga (tutto minuscolo)** — su filesystem case-sensitive il client non trovava nulla. File rinominati minuscoli + TUTTI i riferimenti (code, icondbg, test, handoff) allineati. I `media/close.tga` e `media/arrowup.tga` attuali SONO LAVORO DELL'UTENTE (upload diretto, type-10 RLE 32bpp): MAI rigenerarli né sostituirli. Vecchi .blp ormai inutilizzati rimossi dal repo. Versione 1.11.29.
