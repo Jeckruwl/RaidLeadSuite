@@ -9,6 +9,16 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.24 (questo branch, dopo 1.11.23) — le icone ORA SI VEDONO (encoding BLP)
+
+Causa vera dell'invisibilità persistente: i Close/Arrowup .blp erano codificati
+**palettizzati non compressi, senza mipmaps** — il client 3.3.5 (Warmane) non li
+renderizza. Ora i due file sono **DXT5 con catena mip completa (32→1)**, byte a
+byte nella STESSA forma dei file che si vedono in game (save.blp/hordeicon.blp):
+fmt fields [2,4,1,1], offsets [1172,2196,2452,2516,2532,2548], sizes [1024,256,64,16,16,16], totale 2564 byte.
+
+REGOLA per sempre: un `.blp` nuovo va generato come DXT5+mips (comparabile a media/save.blp); se gli header non coincidono, l'icona non si vedrà.
+
 ## Novità della sessione 1.11.23 (questo branch, dopo 1.11.22) — X bianche ovunque, X rossa eliminata, barretta trascinabile
 
 - **TUTTE le X di chiusura delle finestre usano la X bianca** `RLSuite.utils:MakeCloseX(parent, onclick)` (BLP nativo `media\\Close.blp` via AddonTexture, 22x22, no bordo): CombatLog, GroupMaking (main + whisplist), LootManager (main + finestra trade), MSManager, MacroBar (frame keybind), Config (picker icone macro). La barretta usava già Close.blp da 1.11.21.
