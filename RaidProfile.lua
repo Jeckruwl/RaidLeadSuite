@@ -18,13 +18,11 @@ function MW:Toggle()
     -- sulla barra; la barra resta come finestra autonoma.
     if not self.frame then return end
     if self.titleBar and self.titleBar:IsShown() then
-        self:CloseTab()
         self.frame:Hide()
         self.titleBar:Hide()
     else
         if self.titleBar then self.titleBar:Show() end
         self.frame:Show()
-        self:CloseTab()
         -- /rls mostra anche l'HUD MacroBar (se abilitata e non gia' visibile)
         self:ShowMacrobarHud()
     end
@@ -86,7 +84,10 @@ function MW:OnTabClick(key)
 end
 
 function MW:CloseTab()
-    self:HideAllWindows()
+    -- SOLO reset dello stato tab: MAI nascondere le altre finestre.
+    -- La freccia sulla barra, la X e /rls aprono e chiudono la main window
+    -- senza toccare le finestre dei moduli (in fight si chiude il pannello
+    -- senza chiudere tutte le finestre).
     self.currentTab = nil
     self:RefreshTabHighlights()
 end
@@ -202,7 +203,8 @@ function MW:CreateFrame()
     crashBtn:SetPoint("RIGHT", tb, "RIGHT", -4, 0)
     RLSuite.utils:ApplyIcon(crashBtn, "media\\close.tga")
     crashBtn:SetScript("OnClick", function()
-        MW:CloseTab()
+        -- La X chiude SOLO la main window (barra+pannello): le finestre
+        -- dei moduli restano aperte (anche in fight).
         f:Hide()
         tb:Hide()
     end)
@@ -229,9 +231,9 @@ function MW:CreateFrame()
     f:HookScript("OnHide", MW_UpdateArrowDir)
 
     arrBtn:SetScript("OnClick", function()
-        -- pannellino: mostra/nasconde la main bar SOTTO la barretta
+        -- La freccia mostra/nasconde SOLO il pannello dei pulsanti sotto
+        -- la barretta. In ogni momento, anche in fight: mai altre finestre.
         if f:IsShown() then
-            MW:CloseTab()
             f:Hide()
         else
             f:Show()

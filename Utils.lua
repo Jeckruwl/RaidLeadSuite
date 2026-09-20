@@ -889,7 +889,11 @@ local function ShiftSubtree(node, delta, seen)
     seen[node] = true
     if node.GetFrameLevel and node.SetFrameLevel then
         local lvl = node:GetFrameLevel()
-        if lvl then node:SetFrameLevel(lvl + delta) end
+        if lvl then
+            local nl = lvl + delta
+            if nl < 0 then nl = 0 end
+            node:SetFrameLevel(nl)
+        end
     end
     if node.GetChildren then
         local ok, kids = pcall(function() return { node:GetChildren() } end)
@@ -918,7 +922,10 @@ function Utils:RaiseWindow(frame)
         local w = stack[idx]
         if type(w) == "table" and w.GetFrameLevel then
             local target = 20 + 40 * idx
-            local prev = w._rlsLevelBase or 0
+            -- Rebase LIVE dal livello reale della finestra (non dal valore
+            -- memorizzato): se i contenuti della finestra sono stati
+            -- ricostruiti nel frattempo, niente deriva negativa/divergente.
+            local prev = w._rlsLevelBase or (w.GetFrameLevel and w:GetFrameLevel()) or 0
             local delta = target - prev
             w._rlsLevelBase = target
             w:SetFrameStrata("HIGH")

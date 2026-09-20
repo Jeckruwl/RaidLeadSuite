@@ -47,6 +47,16 @@ end
 function LM:OnLootOpened()
     local t = self._containerUseT
     self._containerLoot = (t ~= nil and (GetTime() - t) < 2) or false
+    -- Nome del boss: quando si apre il loot del cadavere, il target e' il
+    -- boss appena ucciso. Salvato come contesto per i CHAT_MSG_LOOT.
+    if UnitExists and UnitName and UnitIsDead
+       and UnitExists("target") and UnitIsDead("target") then
+        local bn = UnitName("target")
+        if bn and bn ~= "" then
+            self._recentBoss = bn
+            self._recentBossT = GetTime()
+        end
+    end
 end
 
 function LM:OnLootClosed()
@@ -543,18 +553,39 @@ function LM:AddToHistory(itemLink, itemName, itemTexture, quality)
         local _, _, q = GetItemInfo(itemLink)
         quality = q
     end
+    -- Niente DUPLICATI: in raid vero lo stesso pezzo arriva due volte
+    -- (announce + ricezione). Entro 4s dallo stesso link = stesso evento.
+    local now = time()
+    for i = #self.history, math.max(#self.history - 5, 1), -1 do
+        local prev = self.history[i]
+        if prev.itemLink == itemLink and (now - (prev.time or 0)) < 4 then
+            return
+        end
+    end
+    -- Boss: dal target lootato di recente (OnLootOpened). Se troppo
+    -- vecchio, "Unknown" come prima.
+    local boss = "Unknown"
+    if self._recentBoss and self._recentBossT and (GetTime() - self._recentBossT) < 120 then
+        boss = self._recentBoss
+    end
     local entry = {
         id = #self.history + 1,
         itemLink = itemLink,
         itemName = itemName,
         itemTexture = itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark",
-        boss = "Unknown",
+        boss = boss,
         itemType = self:DetectItemType(itemLink, itemName),
         quality = quality,
-        time = time(),
+        time = now,
         assignedTo = nil,
     }
     table.insert(self.history, entry)
+    -- la storia cresce: restano gli ultimi 200 item (la tabella vive nei
+    -- SavedVariables e non deve gonfiarsi per sempre)
+    while #self.history > 200 do
+        table.remove(self.history, 1)
+        for i, e in ipairs(self.history) do e.id = i end
+    end
     self:UpdateHistory()
 end
 

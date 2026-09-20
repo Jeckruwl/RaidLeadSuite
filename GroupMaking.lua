@@ -3061,6 +3061,9 @@ function GM:BuildAutoNameListUI()
         row.xBtn = xBtn
         -- X BIANCA dal TGA in media/ (formato BCI: rende sempre).
         RLSuite.utils:ApplyIcon(xBtn, "media\\close.tga")
+        -- Livelli espliciti: la X resta SEMPRE cliccabile sopra la riga.
+        row:SetFrameLevel((row:GetFrameLevel() or 1) + 1)
+        xBtn:SetFrameLevel(row:GetFrameLevel() + 2)
 
         -- clic destro sull'intera riga = rimozione (compatibilita').
         row:SetScript("OnClick", function(s, button)

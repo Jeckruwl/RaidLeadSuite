@@ -3209,6 +3209,49 @@ L41 = w1:GetFrameLevel(); L42 = w2:GetFrameLevel(); LK41 = k1:GetFrameLevel(); L
 """)
 check(bool(rt.eval("L41 > L42")), "window recursive raise: last-raised window is physically above the older one")
 check(bool(rt.eval("LK41 >= L41 and LC41 >= L41")), "whole subtree shifts with the window (children never buried under their own window) — deterministic layering")
+# -- v1.11.42: main bar panel chiudibile sempre, mai chiudere altre finestre
+_rp42 = open("RaidProfile.lua", encoding="utf-8").read()
+import re as _re
+_ct = _rp42.split("function MW:CloseTab()", 1)[1].split("end", 1)[0]
+check('HideAllWindows' not in _ct, "CloseTab never hides other windows (in-fight panel close stays local)")
+check(_rp42.count('MW:CloseTab()') == 1, "only the CloseTab definition remains (no implicit calls from arrow/X/toggle)")
+_rt42 = _re.sub(r'--[^\n]*', '', _rp42)
+_rt42 = _re.sub(r'\s+', ' ', _rt42)
+check('arrBtn:SetScript("OnClick", function() if f:IsShown() then f:Hide() else f:Show() end' in _rt42, "the bar arrow toggles ONLY the button panel, at any time")
+# -- v1.11.42: loot dedupe + boss from looted corpse
+_l42 = open("LootManager.lua", encoding='utf-8').read()
+check('< 4 then' in _l42 and 'prev.itemLink == itemLink' in _l42, "loot dedupe: same itemLink within 4s is skipped (no duplicates)")
+check('UnitIsDead("target")' in _l42 and '_recentBoss' in _l42, "boss name taken from the freshly looted corpse target")
+check('#self.history > 200' in _l42, "loot history capped at 200 entries (SavedVariables-friendly)")
+# -- X levels
+check('delBtn:SetFrameLevel(row:GetFrameLevel() + 2)' in open("MSManager.lua", encoding='utf-8').read(), "MS list X always above the row")
+check('xBtn:SetFrameLevel(row:GetFrameLevel() + 2)' in open("GroupMaking.lua", encoding='utf-8').read(), "GM manual-list X always above the row")
+check('lootdiag' in open("Core.lua", encoding='utf-8').read(), "/rls lootdiag persistence check available")
+
+# -- comportamento live
+rt.execute("""
+RLSuite.mainWindow:ShowTab('ms')
+RLSuite.mainWindow:ShowTab('loot')
+local pms = RLSuite.mainWindow:PaneForTab('ms'); local pl = RLSuite.mainWindow:PaneForTab('loot')
+RLSuite.mainWindow.frame:Hide(); RLSuite.mainWindow.titleBar:Show()
+local arrS = RLSuite.mainWindow.titleBar and RLSuite.mainWindow.titleBar.arrowBtn
+arrS._scripts.OnClick(arrS)
+AF1 = pms:IsShown(); AL1 = pl:IsShown()
+UnitExists = function() return true end
+UnitIsDead = function() return true end
+UnitName = function() return "Onyxia" end
+RLSuite.lootManager._containerUseT = nil
+RLSuite.lootManager:OnLootOpened()
+G_LL = "item:2600:0:0:0:0:0:0:0"
+RLSuite.lootManager:AddToHistory(G_LL, "Talisman", nil, 4)
+RLSuite.lootManager:AddToHistory(G_LL, "Talisman", nil, 4)
+DUPC = #RLSuite.lootManager.history
+BOSV = RLSuite.lootManager.history[#RLSuite.lootManager.history].boss
+""")
+check(bool(rt.eval("AF1 == true and AL1 == true")), "arrow-click on the bar hides only the panel; module windows stay open")
+check(bool(rt.eval("DUPC >= 1 and BOSV == 'Onyxia'")), "looting a boss corpse names the boss; identical announce within 4s is deduped")
+check(bool(rt.eval("DUPC < 3")), "no duplicate entries for the same item announcement")
+
 check('mousefocus' in open("Core.lua", encoding='utf-8').read(), "/rls mousefocus diagnostic command available")
 check('lmdebug' in open("Core.lua", encoding='utf-8').read(), "/rls lmdebug hitbox diagnostic command available")
 check('content:EnableMouse(false)' not in _u, "scroll contents untouched (no EnableMouse overrides)")

@@ -9,6 +9,14 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.42 (questo branch, dopo 1.11.41) — pannello chiudibile sempre senza toccare le finestre; loot puliti; X funzionanti
+
+1. **Panel/main bar sempre chiudibile, anche in fight, senza chiudere altro**: `MW:CloseTab` chiamava `HideAllWindows()` (tutte le finestre modulo!): freccia, X e /rls ora toccano SOLO barra+pannello.
+2. **Loot Manager: niente duplicati e boss reali**: dedupe 4s sullo stesso itemLink; boss dal target del cadavere a LOOT_OPENED (120s); storia cap 200 (SavedVariables).
+3. **X MS / X lista manuale GM funzionanti**: livelli espliciti riga+1 / X=riga+2; ShiftSubtree rebase live con clamp ≥0.
+4. **`/rls lootdiag`** stampa count sessione vs SV.
+5. Suite estesa con guardie statiche + comportamentali. Versione 1.11.42.
+
 ## Novità della sessione 1.11.41 (questo branch, dopo 1.11.40) — layering normalizzato: stack finestre deterministico
 
 La riproduzione dell'utente (Loot Manager aperto mentre altre finestre sono aperte → righe senza mouse) inchioda la causa: `RaiseWindow` pompava un contatore GLOBALE (+50) e settava il livello SOLO alla finestra madre; i figli restavano a livello ~1, quindi sotto hit-test finivano sotto finestre vicine o sulla stessa finestra (`focus=RLSuiteLootManager`) — layering "a casaccio" confermato. Nuovo algoritmo: `RLSuite._windowStack` ordinato per recency; ogni raise ri-normalizza i livelli (slot da 40: 20,60,100...) e applica il DELTA a TUTTO il sotto-albero della finestra (figli, figli dei figli) — le finestre sono onde deterministiche, i figli sempre sopra. LM: ogni riga creata DOPO un raise riceve subito livello histContent+2. Cap +50 eliminato. Versione 1.11.41.

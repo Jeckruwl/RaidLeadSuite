@@ -220,6 +220,9 @@ function MSM:UpdateList()
         delBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
         -- X bianca dal TGA in media/ (formato BCI: nel client rende sempre).
         RLSuite.utils:ApplyIcon(delBtn, "media\\close.tga")
+        -- Livelli espliciti: la X resta SEMPRE cliccabile sopra la riga.
+        row:SetFrameLevel((row:GetFrameLevel() or 1) + 1)
+        delBtn:SetFrameLevel(row:GetFrameLevel() + 2)
         delBtn:EnableMouse(true)
         delBtn:RegisterForClicks("LeftButtonUp")
         delBtn:SetScript("OnClick", function()

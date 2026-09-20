@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.11.41"
+RLSuite.version = "1.11.42"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -769,6 +769,18 @@ function RLSuite:ChatCommand(input)
                 self:Print("row1 " .. fmt(row))
             end)
             if not ok then self:Print("lmdebug error: " .. tostring(res)) end
+        end
+    elseif msg == "lootdiag" then
+        -- Diagnostica persistenza loot: quanti item nel SV vs sessione.
+        local lm = self.lootManager
+        if lm and lm.db and lm.history then
+            local same = (lm.db.history == lm.history) and "SAME" or "WRONG"
+            local last = lm.history[#lm.history]
+            self:Print(string.format("loot history: session=%d, sv=%d, link=%s%s",
+                #lm.history, lm.db.history and #lm.db.history or -1, same,
+                last and (", last=" .. tostring(last.itemName)) or ""))
+        else
+            self:Print("lootdiag: Loot Manager non inizializzato")
         end
     elseif msg == "macrobar" then
         if self.macrobar then self.macrobar:Toggle() end
