@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.26 (questo branch, dopo 1.11.25) — Close/Arrowup RICCOSTRUITI sul contenitore di save.blp
+
+Prova in game `/rls icondbg`: save.blp/hordeicon.blp = **LOADED**, Close/Arrowup miei = NOT LOADED → il client rifiutava i miei FILE anche se "uguali" in header. Fix definitivo: i due .blp ora sono COSTRUITI PER SPLICE sopra `media/save.blp` — **primi 1172 byte (header+palette) copiati byte per byte dal file che carica**, payload DXT5 proprio (1024+256+64+16+16+16 = 1392B, totale 2564B come save.blp). Verifica a doppio controllo: decoder DXT5 INDIPENDENTE → PNG: X bianca e freccia corrette e centrate. Versione 1.11.26.
+
 ## Novità della sessione 1.11.25 (questo branch, dopo 1.11.24) — icone come texture ARTWORK (rendono davvero)
 
 Le icone custom NON si vedevano perché erano attaccate ai bottoni con `SetNormalTexture`/`SetHighlightTexture` (con file custom non si disegnano in modo affidabile su 3.3.5). Ora **tutte** le icone da file usano `Utils:ApplyIcon(btn, rel)` = textures esplicite su layer **ARTWORK + HIGHLIGHT** (blend ADD), IDENTICO al pattern dell'icona minimappa che renderizza sempre. Convertite: barretta (X + freccia), MS changes X, GroupMaking X x2, e `MakeCloseX` (= `MakeIconButton`) su tutte le finestre. Inoltre `/rls icondbg` stampa path risolto + LOADED/NOT LOADED per ogni file custom (usa `GetTexture()==nil` come test di caricamento, stesso criterio della minimappa). Versione 1.11.25.
