@@ -138,15 +138,11 @@ function MW:CreateFrame()
     f:SetSize(240, 150)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
-    f:SetMovable(true)
-    f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", function()
-        f:StopMovingOrSizing()
-        -- mai fuori schermo: la finestra rientra sempre nei bordi
-        RLSuite.utils:ClampWindowToScreen(f)
-    end)
+    -- Trascinamento IDENTICO a tutte le altre finestre dell'addon
+    -- (pannelli, HUD, MS/Loot/...): Utils:MakeDraggable = SetMovable +
+    -- EnableMouse + SetClampedToScreen(true) + RegisterForDrag +
+    -- RaiseWindow + salvataggio posizione (layout key "main", mai ripristinato).
+    RLSuite.utils:MakeDraggable(f, "main")
     f:Hide()
     f._noOuterBorder = true
     self.frame = f
@@ -170,12 +166,13 @@ function MW:CreateFrame()
     RLSuite.utils:SkinFrame(tb)
 
     -- La barretta TRASCINA tutta la main bar: clic sinistro + trascina.
+    -- come MakeDraggable delle altre finestre: sul drop la finestra rientra nei bordi
     tb:RegisterForDrag("LeftButton")
     tb:SetScript("OnDragStart", function() f:StartMoving() end)
     tb:SetScript("OnDragStop", function()
         f:StopMovingOrSizing()
-        -- mai fuori schermo: la finestra rientra sempre nei bordi
         RLSuite.utils:ClampWindowToScreen(f)
+        RLSuite.utils:PersistFramePos(f, "main")
     end)
 
     local tbTitle = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
