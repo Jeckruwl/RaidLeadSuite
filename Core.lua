@@ -3,7 +3,7 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.4.0"
+RLSuite.version = "1.11.48"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -60,6 +60,7 @@ local defaults = {
             otherReq = "",
             comp = {},
             spamChannels = {"General", "Trade"},
+            spamChannelNums = {},
             spamInterval = 60,
             showSpecsInMessage = false,
         },
@@ -82,9 +83,6 @@ local defaults = {
             showBuffs = true,
             showFlask = true,
             showFood = true,
-            showBuffBar = true,     -- pre-boss alert buff bar
-            showDebuffBar = true,   -- in-fight alert debuff bar
-            showAbilityBar = true,  -- vertical ability-check bar
             locked = true,
             scale = 1.0,
             width = 380,
@@ -93,13 +91,21 @@ local defaults = {
             relPoint = "LEFT",
             x = 10,
             y = 0,
+            alpha = 1.0,            -- overall HUD transparency
             appearance = {
-                barHeight = 20,
                 barWidth = 180,
                 iconSize = 16,
                 nameFontSize = 11,
-                abilityBarWidth = 110,
+                iconSpacing = 8,        -- gap tra le icone della matrice Raid Buffs
+                rowSpacing = 0,         -- gap tra le barre dentro i gruppi
+                groupSpacing = 8,       -- gap tra i gruppi
+                groupHeaderFontSize = 10,
+                matrixBackdrop = { r = 0.5, g = 0.5, b = 0.5, a = 0.35 },
+                fontColor = { r = 1, g = 1, b = 1, a = 1 },
                 border = true,
+                font = "Fonts\\FRIZQT__.TTF",
+                fontOutline = true,
+                barTexture = "Interface\\TargetingFrame\\UI-StatusBar",
             },
             alerts = {},
         },
@@ -110,6 +116,18 @@ local defaults = {
             rerollDuration = 5,
             rarityFilter = "all",
             tradeWindow = 7200,
+            filters = { recipes = false, boe = false, gems = false, shards = false },
+        },
+        combatlog = {
+            enabled = true,
+            saveFights = 15,
+            maxEvents = 3000,
+            filters = {
+                damage = true, heal = true, death = true, aura = true,
+                cast = true, interrupt = true, dispel = true, energize = true,
+            },
+            options = { showSpellIds = false, disableBuffs = false },
+            fights = {},
         },
         appearance = {
             theme = "default",
@@ -131,6 +149,7 @@ local defaults = {
             raidframe = { scale = 1 },
             ms = { scale = 1 },
             loot = { scale = 1 },
+            combatlog = { scale = 1 },
             config = { scale = 1 },
         },
     },
@@ -520,21 +539,93 @@ RLSuite.buffData = {
 -- Checks are locale-safe: spellIds resolve to names via GetSpellInfo and
 -- the aura's returned spellId is compared (see RaidFrame.lua).
 -- ============================================================
+
+-- ============================================================
+-- RAID BUFF MATRIX COLUMNS (pannello "Raid Buffs" a scomparsa del Raid Frame)
+-- 21 categorie di buff: colonne della tabella; le righe sono i giocatori.
+-- Per ogni cella si scansionano le aure del player (UnitBuff per indice) e
+-- si mostra l'icona della spell che copre la categoria. Campi:
+--   label          nome sintetico (header colonna)
+--   icon           icona di fallback (anche icona fissa per byNameSpell)
+--   spells         lista spellId che coprono la categoria (match per id)
+--   classes        classi che possono fornirla (solo informativa)
+--   byNameSpell    se presente: match per NOME aura (nome risolto via
+--                  GetSpellInfo(byNameSpell) => locale-safe, copre tutte le
+--                  varianti della stessa aura, es. "Well Fed" di ogni cibo)
+-- ============================================================
+RLSuite.raidBuffColumns = {
+        { key = "stats",       label = "%stat",   icon = "Interface\\Icons\\Spell_Magic_GreaterBlessingofKings",
+      classes = { "PALADIN" }, spells = { 20217, 25898, 20911 } },
+    { key = "mp5",         label = "MP5",     icon = "Interface\\Icons\\Spell_Holy_GreaterBlessingofWisdom",
+      classes = { "PALADIN", "SHAMAN" }, spells = { 48936, 48938, 58774 } },
+        { key = "atkpower",    label = "ATK",     icon = "Interface\\Icons\\Ability_Warrior_BattleShout",
+      classes = { "PALADIN", "WARRIOR", "HUNTER" }, spells = { 48932, 48934, 47436 } },
+    { key = "hp",          label = "HP",      icon = "Interface\\Icons\\Ability_Warrior_RallyingCry",
+      classes = { "WARRIOR", "WARLOCK" }, spells = { 47440, 27267, 47982 } },
+        { key = "spirit",      label = "Spirit",  icon = "Interface\\Icons\\Spell_Holy_DivineSpirit",
+      classes = { "PRIEST", "WARLOCK" }, spells = { 48073, 48075, 57567 } },
+    { key = "stamina",     label = "Stamina", icon = "Interface\\Icons\\Spell_Holy_WordFortitude",
+      classes = { "PRIEST" }, spells = { 48161, 48162 } },
+        { key = "intellect",   label = "Int",     icon = "Interface\\Icons\\Spell_Holy_MagicalSentry",
+      classes = { "MAGE", "WARLOCK" }, spells = { 42995, 43002, 61316, 57567 } },
+    { key = "armor",       label = "Armor",   icon = "Interface\\Icons\\Spell_Holy_DevotionAura",
+      classes = { "PALADIN", "DRUID" }, spells = { 48942, 48941, 48470 } },
+    { key = "wild",        label = "Gift",    icon = "Interface\\Icons\\Spell_Nature_Regeneration",
+      classes = { "DRUID" }, spells = { 21849, 21850, 48470 } },
+    { key = "strAgi",      label = "S+Agi",   icon = "Interface\\Icons\\Spell_Nature_Strength",
+      classes = { "DEATHKNIGHT", "SHAMAN" }, spells = { 57330, 58643 } },
+    { key = "focusMagic",  label = "FM",      icon = "Interface\\Icons\\Spell_Arcane_FocusedPower",
+      classes = { "MAGE" }, spells = { 54646 } },
+        { key = "haste",       label = "Haste",   icon = "Interface\\Icons\\Ability_Druid_ImprovedMoonkinForm",
+      classes = { "DRUID", "PALADIN" }, spells = { 24907, 53648 } },
+    { key = "spellCrit",   label = "SpC",     icon = "Interface\\Icons\\Spell_Nature_MoonGlow",
+      classes = { "DRUID", "SHAMAN" }, spells = { 24907, 51470 } },
+    { key = "shadow",      label = "ShProt",  icon = "Interface\\Icons\\Spell_Shadow_AntiShadow",
+      classes = { "PRIEST" }, spells = { 48169, 48170 } },
+    { key = "retAura",     label = "Ret",     icon = "Interface\\Icons\\Spell_Holy_AuraMastery",
+      classes = { "PALADIN" }, spells = { 54043, 54044 } },
+        { key = "meleeCrit",   label = "MCrit",   icon = "Interface\\Icons\\Ability_CriticalStrike",
+      classes = { "DRUID", "WARRIOR" }, spells = { 17007, 24932, 29801 } },
+        { key = "meleeHaste",  label = "MHaste",  icon = "Interface\\Icons\\Spell_Nature_Windfury",
+      classes = { "SHAMAN", "DEATHKNIGHT" }, spells = { 55610, 8512, 8515, 8516 } },
+        { key = "spellPower",  label = "SPow",    icon = "Interface\\Icons\\Spell_Fire_FlameBolt",
+      classes = { "WARLOCK", "SHAMAN" }, spells = { 47240, 30706, 58656 } },
+        { key = "damage",      label = "Dmg%",    icon = "Interface\\Icons\\Ability_Hunter_FerociousInspiration",
+      classes = { "HUNTER", "PALADIN", "MAGE" }, spells = { 31583, 34460, 31869 } },
+    -- Nuove categorie allineate a Icy Veins WotLK Raid Buffs guide:
+    { key = "apIncrease",  label = "AP%",     icon = "Interface\\Icons\\Ability_TrueShot",
+      classes = { "HUNTER", "SHAMAN", "DEATHKNIGHT" }, spells = { 19506, 30809, 53138 } },
+    { key = "dmgReduction", label = "DR%",    icon = "Interface\\Icons\\Spell_Nature_LightningShield",
+      classes = { "PALADIN", "PRIEST" }, spells = { 20911, 57472, 57479 } },
+    { key = "healReceived", label = "Heal+",  icon = "Interface\\Icons\\Ability_Druid_TreeofLife",
+      classes = { "DRUID", "PALADIN" }, spells = { 34123 } }, -- Tree of Life aura (Improved Devotion non lascia aura propria)
+    { key = "physReduction", label = "Armor+", icon = "Interface\\Icons\\Spell_Nature_UndyingStrength",
+      classes = { "SHAMAN", "PRIEST" }, spells = { 16240, 16239, 16236, 16235, 16176, 15363, 15359, 15358, 15277 } },
+    { key = "replen",      label = "Repl",    icon = "Interface\\Icons\\Ability_Warlock_ImprovedSoulLeech",
+      classes = { "MAGE", "HUNTER", "WARLOCK", "PALADIN", "PRIEST" }, spells = { 44561, 53292, 54118, 31878, 34914 } },
+    { key = "spellHaste",  label = "SpH",     icon = "Interface\\Icons\\Spell_Nature_SlowingTotem",
+      classes = { "SHAMAN" }, spells = { 3738 } },
+    { key = "flask",       label = "Flask",   icon = "Interface\\Icons\\INV_Alchemy_EndlessFlask_05",
+      classes = {}, spells = { 53755, 53760, 54212, 53758, 67016, 67017, 67018 } },
+    { key = "wellfed",     label = "Food",    icon = "Interface\\Icons\\Spell_Misc_Food",
+      classes = {}, byNameSpell = 57399 },
+}
+
 RLSuite.raidBuffChecks = {
-    { key = "stats",       label = "%stat",    icon = "Interface\\Icons\\Spell_Magic_GreaterBlessingofKings",
-      classes = { "PALADIN" }, spells = { 20217, 25898 } },
+        { key = "stats",       label = "%stat",   icon = "Interface\\Icons\\Spell_Magic_GreaterBlessingofKings",
+      classes = { "PALADIN" }, spells = { 20217, 25898, 20911 } },
     { key = "mp5",         label = "MP5",      icon = "Interface\\Icons\\Spell_Holy_GreaterBlessingofWisdom",
       classes = { "PALADIN", "SHAMAN" }, spells = { 48936, 48938, 58774 } },
-    { key = "atkpower",    label = "ATK",      icon = "Interface\\Icons\\Ability_Warrior_BattleShout",
-      classes = { "PALADIN", "WARRIOR", "HUNTER" }, spells = { 48932, 48934, 47436, 19506 } },
+        { key = "atkpower",    label = "ATK",     icon = "Interface\\Icons\\Ability_Warrior_BattleShout",
+      classes = { "PALADIN", "WARRIOR", "HUNTER" }, spells = { 48932, 48934, 47436 } },
     { key = "hp",          label = "HP",       icon = "Interface\\Icons\\Ability_Warrior_RallyingCry",
       classes = { "WARRIOR", "WARLOCK" }, spells = { 47440, 27267, 47982 } },
-    { key = "spirit",      label = "Spirit",   icon = "Interface\\Icons\\Spell_Holy_DivineSpirit",
-      classes = { "PRIEST" }, spells = { 14752, 14753, 14754, 25566, 27681, 48073, 48075 } },
+        { key = "spirit",      label = "Spirit",  icon = "Interface\\Icons\\Spell_Holy_DivineSpirit",
+      classes = { "PRIEST", "WARLOCK" }, spells = { 48073, 48075, 57567 } },
     { key = "stamina",     label = "Stamina",  icon = "Interface\\Icons\\Spell_Holy_WordFortitude",
       classes = { "PRIEST" }, spells = { 48161, 48162 } },
-    { key = "intellect",   label = "Intellect", icon = "Interface\\Icons\\Spell_Holy_MagicalSentry",
-      classes = { "MAGE" }, spells = { 42995, 43002, 61316 } },
+        { key = "intellect",   label = "Int",     icon = "Interface\\Icons\\Spell_Holy_MagicalSentry",
+      classes = { "MAGE", "WARLOCK" }, spells = { 42995, 43002, 61316, 57567 } },
     { key = "armor",       label = "Armor",    icon = "Interface\\Icons\\Spell_Holy_DevotionAura",
       classes = { "PALADIN", "DRUID" }, spells = { 48942, 48941, 48470 } },
     { key = "wild",        label = "Gift",     icon = "Interface\\Icons\\Spell_Nature_Regeneration",
@@ -544,14 +635,34 @@ RLSuite.raidBuffChecks = {
     { key = "focusMagic",  label = "Focus Magic", icon = "Interface\\Icons\\Spell_Arcane_FocusedPower",
       classes = { "MAGE" }, onlyWithClass = true, spells = { 54646 } },
     -- Beyond-request 3.3.5 additions -------------------------------------
-    { key = "haste",       label = "Haste",    icon = "Interface\\Icons\\Ability_Shaman_Heroism",
-      classes = { "SHAMAN" }, spells = { 2825, 32182 } },
+        { key = "haste",       label = "Haste",   icon = "Interface\\Icons\\Ability_Druid_ImprovedMoonkinForm",
+      classes = { "DRUID", "PALADIN" }, spells = { 24907, 53648 } },
     { key = "spellCrit",   label = "Spell crit", icon = "Interface\\Icons\\Spell_Nature_MoonGlow",
       classes = { "DRUID", "SHAMAN" }, spells = { 24907, 51470 } },
     { key = "shadow",      label = "Shadow Prot", icon = "Interface\\Icons\\Spell_Shadow_AntiShadow",
       classes = { "PRIEST" }, spells = { 48169, 48170 } },
     { key = "retAura",     label = "Ret Aura", icon = "Interface\\Icons\\Spell_Holy_AuraMastery",
       classes = { "PALADIN" }, spells = { 54043, 54044 } },
+    { key = "meleeCrit",   label = "Melee crit", icon = "Interface\\Icons\\Ability_CriticalStrike",
+      classes = { "DRUID", "WARRIOR" }, spells = { 17007, 24932, 29801 } },
+    { key = "meleeHaste",  label = "Melee haste", icon = "Interface\\Icons\\Spell_Nature_Windfury",
+      classes = { "SHAMAN", "DEATHKNIGHT" }, spells = { 55610, 8512, 8515, 8516 } },
+    { key = "spellPower",  label = "Spell power", icon = "Interface\\Icons\\Spell_Fire_FlameBolt",
+      classes = { "WARLOCK", "SHAMAN" }, spells = { 47240, 30706, 58656 } },
+    { key = "damage",      label = "Damage %", icon = "Interface\\Icons\\Ability_Hunter_FerociousInspiration",
+      classes = { "HUNTER", "PALADIN", "MAGE" }, spells = { 31583, 34460, 31869 } },
+    { key = "apIncrease",  label = "Atk power %", icon = "Interface\\Icons\\Ability_TrueShot",
+      classes = { "HUNTER", "SHAMAN", "DEATHKNIGHT" }, spells = { 19506, 30809, 53138 } },
+    { key = "dmgReduction", label = "Dmg reduction", icon = "Interface\\Icons\\Spell_Nature_LightningShield",
+      classes = { "PALADIN", "PRIEST" }, spells = { 20911, 57472, 57479 } },
+    { key = "healReceived", label = "Healing rec.", icon = "Interface\\Icons\\Ability_Druid_TreeofLife",
+      classes = { "DRUID", "PALADIN" }, spells = { 34123 } },
+    { key = "physReduction", label = "Phys red.", icon = "Interface\\Icons\\Spell_Nature_UndyingStrength",
+      classes = { "SHAMAN", "PRIEST" }, spells = { 16240, 16239, 16236, 16235, 16176, 15363, 15359, 15358, 15277 } },
+    { key = "replen",      label = "Replenishment", icon = "Interface\\Icons\\Ability_Warlock_ImprovedSoulLeech",
+      classes = { "MAGE", "HUNTER", "WARLOCK", "PALADIN", "PRIEST" }, spells = { 44561, 53292, 54118, 31878, 34914 } },
+    { key = "spellHaste",  label = "Spell haste", icon = "Interface\\Icons\\Spell_Nature_SlowingTotem",
+      classes = { "SHAMAN" }, spells = { 3738 } },
 }
 
 RLSuite.raidDebuffChecks = {
@@ -572,6 +683,19 @@ RLSuite.raidDebuffChecks = {
     -- Beyond-request 3.3.5 addition --------------------------------------
     { key = "spellHit",     label = "%spell hit", icon = "Interface\\Icons\\Spell_Shadow_MindRot",
       classes = { "PRIEST", "DRUID" }, spells = { 33191, 33192, 33193, 33600, 33601, 33602 } },
+    { key = "apReduction",  label = "AP red",   icon = "Interface\\Icons\\Ability_Warrior_WarCry",
+      classes = { "WARLOCK", "DRUID", "WARRIOR", "PALADIN" },
+      spells = { 50511, 47437, 48560, 26016 } },
+    { key = "attackSpeedReduction", label = "Spd red", icon = "Interface\\Icons\\Spell_Nature_ThunderClap",
+      classes = { "DEATHKNIGHT", "DRUID", "PALADIN", "WARRIOR" },
+      spells = { 47502, 49909, 51456, 48485, 53696 } },
+    { key = "castSpeedReduction", label = "Cast red", icon = "Interface\\Icons\\Spell_Shadow_CurseOfTounges",
+      classes = { "WARLOCK", "HUNTER", "ROGUE", "MAGE" },
+      spells = { 11719, 12891, 31589, 58611 } },
+    { key = "healingReduction", label = "Wound",    icon = "Interface\\Icons\\Ability_Warrior_SavageBlow",
+      classes = { "WARRIOR", "ROGUE", "HUNTER", "WARLOCK" },
+      spells = { 23132, 40599, 12294, 54680 } },
+
 }
 
 -- (Events, slash commands, database setup and module init are now handled
@@ -590,6 +714,7 @@ function RLSuite:PrintHelp()
     p(L["  /rls raidframe    Raid Frame HUD"])
     p(L["  /rls rfhud        Raid Frame HUD (alias)"])
     p(L["  /rls ms           MS Manager tab"])
+    p(L["  /rls debugbuff    Diagnose Raid Buffs header icons"])
     p(L["  /rls loot         Loot Manager tab"])
     p(L["  /rls config       Config window"])
 end
@@ -599,6 +724,18 @@ function RLSuite:ChatCommand(input)
     msg = string.lower(msg)
     if msg == "help" or msg == "?" then
         self:PrintHelp()
+    elseif msg == "lootdiag" then
+        -- Diagnostica persistenza loot: quanti item nel SV vs sessione.
+        local lm = self.lootManager
+        if lm and lm.db and lm.history then
+            local same = (lm.db.history == lm.history) and "SAME" or "WRONG"
+            local last = lm.history[#lm.history]
+            self:Print(string.format("loot history: session=%d, sv=%d, link=%s%s",
+                #lm.history, lm.db.history and #lm.db.history or -1, same,
+                last and (", last=" .. tostring(last.itemName)) or ""))
+        else
+            self:Print("lootdiag: Loot Manager non inizializzato")
+        end
     elseif msg == "macrobar" then
         if self.macrobar then self.macrobar:Toggle() end
     elseif msg == "rfhud" then
@@ -620,8 +757,16 @@ function RLSuite:ChatCommand(input)
         if self.mainWindow then self.mainWindow:ShowTab("ms") end
     elseif msg == "loot" then
         if self.mainWindow then self.mainWindow:ShowTab("loot") end
+    elseif msg == "icondbg" then
+        self:DiagnoseIcons()
     elseif msg == "minimap" then
         self:DiagnoseMinimapIcon()
+    elseif msg == "debugbuff" then
+        if self.raidFrame and self.raidFrame.DiagnoseBuffCatIcons then
+            self.raidFrame:DiagnoseBuffCatIcons()
+        else
+            self.utils:Print(L["Raid frame not initialized yet."])
+        end
     elseif msg == "config" then
         if self.config then self.config:Toggle() end
     elseif msg == "" then
@@ -762,6 +907,234 @@ function RLSuite:DebugRebalanceGroups(ngroups)
         self.debugRaid.slots[i] = m
     end
     self:DebugSyncSubgroups()
+end
+
+-- Nomi/classi fittizi per "Fill Group": copertura di tutte le classi con
+-- spec diverse, cosi' Raid Group e Raid Frame mostrano una comp varia.
+local DEBUG_FILL_POOL = {
+    {name="Drakbot", class="WARRIOR", spec="prot"},
+    {name="Ironclad", class="WARRIOR", spec="fury"},
+    {name="Holymoon", class="PALADIN", spec="holy"},
+    {name="Retalia", class="PALADIN", spec="retri"},
+    {name="Zapdora", class="MAGE", spec="arcane"},
+    {name="Frostnova", class="MAGE", spec="fire"},
+    {name="Stabbitha", class="ROGUE", spec="combat"},
+    {name="Shivv", class="ROGUE", spec="assassin"},
+    {name="Moowrath", class="DRUID", spec="feral"},
+    {name="Leafsong", class="DRUID", spec="resto"},
+    {name="Holylite", class="PRIEST", spec="holy"},
+    {name="Shadowmel", class="PRIEST", spec="shadow"},
+    {name="Totemly", class="SHAMAN", spec="resto"},
+    {name="Stormcall", class="SHAMAN", spec="ele"},
+    {name="Frostbite", class="DEATHKNIGHT", spec="frost"},
+    {name="Bloodlord", class="DEATHKNIGHT", spec="blood"},
+    {name="Warlocky", class="WARLOCK", spec="destro"},
+    {name="Demoness", class="WARLOCK", spec="demo"},
+    {name="Arrowz", class="HUNTER", spec="marks"},
+    {name="Beastlord", class="HUNTER", spec="bm"},
+}
+
+local function debugShuffle(list)
+    for i = #list, 2, -1 do
+        local j = math.random(1, i)
+        list[i], list[j] = list[j], list[i]
+    end
+    return list
+end
+
+-- Pannello DEBUG: "Fill Group" — riempie il raid simulato con fittizi
+-- di classi/spec diverse fino a riempire gli slot (25-man size).
+function RLSuite:DebugFillGroup()
+    if not self:DebugMode() then
+        self.utils:Print(L["Debug mode is OFF."])
+        return
+    end
+    local pool = {}
+    for _, f in ipairs(DEBUG_FILL_POOL) do pool[#pool + 1] = f end
+    debugShuffle(pool)
+    local added = 0
+    for _, f in ipairs(pool) do
+        local m = self:DebugInviteAccept(f.name, f.class)
+        if m then
+            m.spec = f.spec
+            added = added + 1
+        end
+    end
+    self.utils:Print(string.format(L["Debug: raid filled with %d fake players."], added))
+end
+
+-- Pannello DEBUG: "Fill Loot" — pezzi casuali pescati dal pool di un RAID
+-- A CASO (non necessariamente quello selezionato in Groupmaking).
+function RLSuite:DebugFillLoot()
+    if not self:DebugMode() then
+        self.utils:Print(L["Debug mode is OFF."])
+        return
+    end
+    if not (self.lootManager and self.lootManager.SpawnDebugLoot) then return end
+    local raids = {}
+    for raid in pairs(self.debugLoot or {}) do raids[#raids + 1] = raid end
+    if #raids == 0 then return end
+    local raid = raids[math.random(1, #raids)]
+    self.lootManager:SpawnDebugLoot(raid)
+    self.utils:Print(string.format(L["Debug: loot spawned from %s."], raid))
+end
+
+-- Pannello DEBUG: "Test MS" — da usare DOPO aver chiesto gli MS changes
+-- (MS Manager in ascolto): simula i whisper "ms <spec>" di alcuni fittizi.
+function RLSuite:DebugTestMS()
+    if not self:DebugMode() then
+        self.utils:Print(L["Debug mode is OFF."])
+        return
+    end
+    local msm = RLSuite.msManager
+    if not msm then return end
+    if msm.listening ~= true then
+        self.utils:Print(L["Ask MS changes first (MS Manager), then click Test MS."])
+        return
+    end
+    local specs = { "fury", "retri", "fire", "shadow", "balance", "resto", "frost", "destro" }
+    local cands = {}
+    for _, m in ipairs(self:DebugRoster()) do
+        if not m.isPlayer then cands[#cands + 1] = m end
+    end
+    debugShuffle(cands)
+    local n = math.min(6, #cands)
+    for i = 1, n do
+        msm:ParseMSMessage(cands[i].name, "ms " .. specs[((i - 1) % #specs) + 1])
+    end
+    self.utils:Print(string.format(L["Debug: %d fake MS whispers sent."], n))
+end
+
+-- Pannello DEBUG: "Log Test" — riempie il Combat Log con pull fittizi
+-- completi (Marrowgar KILL, Lady Deathwhisper WIPE, Putricide KILL),
+-- passando dal percorso reale OnCLEU/Regen: tab e grafici si popolano
+-- esattamente come da combattimenti veri.
+function RLSuite:DebugLogTest()
+    if not self:DebugMode() then
+        self.utils:Print(L["Debug mode is OFF."])
+        return
+    end
+    local cl = RLSuite.combatLog
+    if not cl then return end
+    local P = 1024 + 16 + 1     -- player, friendly, affiliato a me
+    local N = 2048 + 64         -- npc, hostile
+    -- entry id nello stesso slot esadecimale dei GUID reali (chars 9-12)
+    local G_MG = "0xF130008F040000AA"   -- Lord Marrowgar (36612 = 0x8F04)
+    local G_LD = "0xF130008FF70000BB"   -- Lady Deathwhisper (36855 = 0x8FF7)
+    local G_PP = "0xF130008F460000CC"   -- Professor Putricide (36678 = 0x8F46)
+    local ts = GetTime()
+    local feed = function(dt, ...)
+        ts = ts + dt
+        cl:OnCLEU(nil, ts, ...)
+        if cl.SampleTick then cl:SampleTick() end
+    end
+
+    -- ---- Pull 1: Lord Marrowgar (KILL) ----
+    cl:OnRegenDisabled()
+    feed(0.1, "SWING_DAMAGE", "0x0p1", "Ironclad", P, G_MG, "Lord Marrowgar", N, 1450, 0, 0)
+    feed(1.0, "SPELL_DAMAGE", "0x0p2", "Zapdora", P, G_MG, "Lord Marrowgar", N, 100, "Fireball", 4, 2900, 0, 0, 0, 0, 0, 1)
+    feed(1.5, "SPELL_DAMAGE", "0x0p3", "Stabbitha", P, G_MG, "Lord Marrowgar", N, 101, "Sinister Strike", 1, 1800, 0)
+    feed(0.8, "SWING_DAMAGE", G_MG, "Lord Marrowgar", N, "0x0p1", "Ironclad", P, 8200, 0, 0)
+    feed(1.0, "SPELL_HEAL", "0x0p4", "Holylite", P, "0x0p1", "Ironclad", P, 200, "Flash Heal", 2, 5600, 400, 0, 0)
+    feed(2.0, "SPELL_AURA_APPLIED", G_MG, "Lord Marrowgar", N, "0x0p3", "Stabbitha", P, 300, "Bone Spike", 6, "DEBUFF")
+    feed(3.0, "SPELL_DAMAGE", "0x0p5", "Shadowmel", P, G_MG, "Lord Marrowgar", N, 102, "Mind Blast", 32, 2400, 0)
+    feed(4.0, "SPELL_AURA_REMOVED", G_MG, "Lord Marrowgar", N, "0x0p3", "Stabbitha", P, 300, "Bone Spike", 6, "DEBUFF")
+    feed(2.0, "SPELL_INTERRUPT", "0x0p3", "Stabbitha", P, G_MG, "Lord Marrowgar", N, 400, "Kick", 1, 500, "Frost Bolt", 4)
+    feed(2.5, "SPELL_ENERGIZE", "0x0p4", "Holylite", P, "0x0p2", "Zapdora", P, 900, "Replenishment", 4, 450, 0)
+    feed(3.0, "SPELL_DAMAGE", "0x0p2", "Zapdora", P, G_MG, "Lord Marrowgar", N, 100, "Fireball", 4, 3100, 0, 0, 0, 0, 0, 1)
+    feed(2.0, "UNIT_DIED", "0x0p0", "", 0, "0x0p3", "Stabbitha", P)
+    feed(2.0, "SPELL_HEAL", "0x0p6", "Totemly", P, "0x0p1", "Ironclad", P, 201, "Chain Heal", 8, 4800, 900, 0, 0)
+    feed(2.0, "SPELL_DAMAGE", "0x0p1", "Ironclad", P, G_MG, "Lord Marrowgar", N, 103, "Bloodthirst", 1, 3400, 0)
+    feed(1.5, "UNIT_DIED", "0x0p0", "", 0, G_MG, "Lord Marrowgar", N)
+    cl:OnRegenEnabled()
+
+    -- ---- Pull 2: Lady Deathwhisper (WIPE) ----
+    cl:OnRegenDisabled()
+    feed(0.1, "SWING_DAMAGE", "0x0p1", "Ironclad", P, G_LD, "Lady Deathwhisper", N, 1300, 0, 0)
+    feed(1.0, "SPELL_DAMAGE", "0x0p2", "Zapdora", P, G_LD, "Lady Deathwhisper", N, 100, "Frostbolt", 16, 2200, 0)
+    feed(1.4, "SPELL_DAMAGE", "0x0p5", "Shadowmel", P, G_LD, "Lady Deathwhisper", N, 102, "Shadow Word: Pain", 32, 900, 0)
+    feed(2.0, "SPELL_DAMAGE", G_LD, "Lady Deathwhisper", N, "0x0p1", "Ironclad", P, 110, "Frostbolt Volley", 16, 7100, 0)
+    feed(1.6, "SPELL_HEAL", "0x0p4", "Holylite", P, "0x0p1", "Ironclad", P, 200, "Flash Heal", 2, 5200, 300, 0, 0)
+    feed(2.0, "SPELL_DAMAGE", "0x0p2", "Zapdora", P, G_LD, "Lady Deathwhisper", N, 100, "Fireball", 4, 2600, 0)
+    feed(3.0, "UNIT_DIED", "0x0p0", "", 0, "0x0p4", "Holylite", P)
+    feed(4.0, "UNIT_DIED", "0x0p0", "", 0, "0x0p1", "Ironclad", P)
+    cl:OnRegenEnabled()
+
+    -- ---- Pull 3: Professor Putricide (KILL) ----
+    cl:OnRegenDisabled()
+    feed(0.1, "SWING_DAMAGE", "0x0p1", "Ironclad", P, G_PP, "Professor Putricide", N, 1500, 0, 0)
+    feed(1.0, "SPELL_DAMAGE", "0x0p3", "Stabbitha", P, G_PP, "Professor Putricide", N, 101, "Eviscerate", 1, 4200, 0, 0, 0, 0, 0, 1)
+    feed(1.2, "SPELL_DAMAGE", "0x0p2", "Zapdora", P, G_PP, "Professor Putricide", N, 100, "Fireball", 4, 3200, 0)
+    feed(2.0, "SPELL_AURA_APPLIED", G_PP, "Professor Putricide", N, "0x0p1", "Ironclad", P, 310, "Malleable Goo", 8, "DEBUFF")
+    feed(2.5, "SPELL_HEAL", "0x0p6", "Totemly", P, "0x0p1", "Ironclad", P, 201, "Chain Heal", 8, 6100, 0, 0, 1)
+    feed(3.0, "SPELL_INTERRUPT", "0x0p1", "Ironclad", P, G_PP, "Professor Putricide", N, 410, "Pummel", 1, 510, "Slime Spray", 8)
+    feed(2.0, "SPELL_AURA_REMOVED", G_PP, "Professor Putricide", N, "0x0p1", "Ironclad", P, 310, "Malleable Goo", 8, "DEBUFF")
+    feed(2.5, "SPELL_DAMAGE", "0x0p5", "Shadowmel", P, G_PP, "Professor Putricide", N, 102, "Mind Blast", 32, 2900, 0)
+    feed(2.0, "UNIT_DIED", "0x0p0", "", 0, G_PP, "Professor Putricide", N)
+    cl:OnRegenEnabled()
+
+    if cl.RefreshUI then cl:RefreshUI() end
+    self.utils:Print(string.format(L["Debug: combat log filled with %d fights."], #cl.db.fights))
+end
+
+-- Pannello DEBUG: "Clear loot" — svuota la storia del Loot Manager e-- Pannello DEBUG: "Clear loot" — svuota la storia del Loot Manager e
+-- chiude le finestre pickup (non richiede lo stop del debug).
+function RLSuite:DebugClearLoot()
+    if not (self.lootManager and self.lootManager.ClearHistory) then return end
+    self.lootManager:ClearHistory()
+    self.utils:Print(L["Debug: loot history cleared."])
+end
+
+-- Pannello DEBUG stile main bar: appare solo in debug mode, accanto alla
+-- barra principale. Raccoglie i comandi di simulazione.
+function RLSuite:EnsureDebugPanel()
+    if self.debugPanel then return end
+    -- Colonna singola, NON spostabile e ancorata alla main bar: dove va la
+    -- barra va anche il pannello (punto relativo alla barra, mai salvato).
+    local f = CreateFrame("Frame", "RLSuiteDebugPanel", UIParent)
+    f:SetSize(126, 26 + 6 * 24 + 10)
+    f:SetFrameStrata("HIGH")
+    f:SetMovable(false)
+    f:EnableMouse(true)
+    local bar = self.mainWindow and self.mainWindow.frame
+    if bar then
+        f:SetPoint("TOPLEFT", bar, "TOPRIGHT", 8, 0)
+    else
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
+    end
+    -- Borderless come la main bar (_noOuterBorder = fill tenuto, bordo via).
+    f._noOuterBorder = true
+    self.utils:SkinFrame(f)
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
+    title:SetText("|cffff9900RLS DEBUG|r")
+    local defs = {
+        { text = L["Fill Raid"], i = 0, fn = function() RLSuite:DebugFillGroup() end },
+        { text = L["Test Loot"],  i = 1, fn = function() RLSuite:DebugFillLoot() end },
+        { text = L["Empty Loot"], i = 2, fn = function() RLSuite:DebugClearLoot() end },
+        { text = L["Test Whisplist"], i = 3, fn = function()
+            -- SOLO questo tasto manda i whisper finti: arrivano subito,
+            -- anche senza spammer attivo (GM:DebugWhisperBurst).
+            if RLSuite.groupmaking and RLSuite.groupmaking.DebugWhisperBurst then
+                RLSuite.groupmaking:DebugWhisperBurst()
+            end
+        end },
+        { text = L["Test MS"], i = 4, fn = function() RLSuite:DebugTestMS() end },
+        { text = L["Log Test"], i = 5, fn = function() RLSuite:DebugLogTest() end },
+    }
+    f.debugButtons = {}
+    for _, d in ipairs(defs) do
+        local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        b:SetSize(106, 20)
+        -- colonna unica: tutti i tasti uno sotto l'altro
+        b:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -26 - d.i * 24)
+        self.utils:SkinButton(b)
+        b:SetText(d.text)
+        b:SetScript("OnClick", d.fn)
+        f.debugButtons[#f.debugButtons + 1] = b
+    end
+    f:Hide()
+    self.debugPanel = f
 end
 
 -- Called whenever the simulated roster changes (invite accepted, debug
@@ -1157,6 +1530,33 @@ function RLSuite:DiagnoseMinimapIcon()
     p("  expected path: " .. self:AddonTexture(self:IsHorde() and "media\\hordeicon.blp" or "media\\allianceicon.blp"))
 end
 
+-- Diagnostica icone da file (/rls icondbg): per OGNI texture custom stampa
+-- path risolto e se il client la carica davvero (GetTexture()==nil = file
+-- MANCANTE/non caricabile: in tal caso reinstallare la cartella media/).
+function RLSuite:DiagnoseIcons()
+    local p = function(t) if self.utils and self.utils.Print then self.utils:Print(t) end end
+    p("|cff00ccffRLSuite icons diagnostic:|r")
+    p("  baseName: " .. tostring(self.baseName))
+    p("  detected folder: " .. tostring(self:DetectAddonFolder()))
+    local probe = CreateFrame("Frame")
+    local function test(rel)
+        local path = self:AddonTexture(rel)
+        local t = probe:CreateTexture(nil, "ARTWORK")
+        t:SetTexture(path)
+        local loaded = t:GetTexture() ~= nil
+        if loaded then
+            p("  |cff00ff00LOADED|r  " .. rel .. "  ->  " .. tostring(path))
+        else
+            p("  |cffff0000NOT LOADED|r  " .. rel .. "  ->  " .. tostring(path))
+        end
+        t:Hide()
+    end
+    test("media\\close.tga")
+    test("media\\arrowup.tga")
+    test("media\\save.blp")
+    test(self:IsHorde() and "media\\hordeicon.blp" or "media\\allianceicon.blp")
+end
+
 function RLSuite:InRaid()
     if self:DebugMode() then return true end
     return GetNumRaidMembers() > 0
@@ -1167,18 +1567,51 @@ function RLSuite:IsOfficer()
     return (IsRaidLeader and IsRaidLeader()) or (IsRaidOfficer and IsRaidOfficer())
 end
 
+-- ============================================================
+-- MAIN TANK / MAIN ASSIST (tasti MT / OT della barra principale)
+-- SetPartyAssignment(role, unit) e' una TOGGLE nel client 3.3.5: se
+-- l'unita' ha gia' l'assegnazione viene tolta, altrimenti impostata.
+-- Richiede RL/organizzatore nel raid (in debug sempre consentito).
+-- ============================================================
+function RLSuite:AssignPartyRole(role)
+    local label = (role == "MAINTANK") and "Main Tank" or "Main Assist"
+    if type(SetPartyAssignment) ~= "function" then
+        self.utils:Print(string.format(L["%s assignment is not available on this client."], label))
+        return false
+    end
+    if not (UnitExists and UnitExists("target")) then
+        self.utils:Print(string.format(L["Target a raid member first to assign %s."], label))
+        return false
+    end
+    if not self:IsOfficer() then
+        self.utils:Print(L["Only the raid leader or an assist can assign Main Tank / Main Assist."])
+        return false
+    end
+    SetPartyAssignment(role, "target")
+    local name = UnitName("target") or "?"
+    self.utils:Print(string.format(L["%s toggled as %s."], name, label))
+    return true
+end
+
 function RLSuite:ApplyDebugMode()
     self:UpdateRaidContext()
     -- The simulated roster always restarts from just the player when debug
     -- mode is toggled, so stale fake members never leak between sessions.
     self.debugRaid = nil
+    self.debugTanks = nil   -- assegnazioni MT/OT simulate (debug)
+    self.debugBuffs = nil   -- aure simulati dei fake (debug)
     if self:DebugMode() then
         self.utils:Print("|cffff9900" .. L["DEBUG MODE ON"] .. "|r - " .. L["Simulated raid, messages are whispered to you."])
-        if self.lootManager and self.lootManager.SpawnDebugLoot then
-            self.lootManager:SpawnDebugLoot()
-        end
+        -- NIENTE auto-loot: il loot finto arriva SOLO dal tasto "Fill Loot"
+        -- della debug bar ("Fill Loot", RLSuite:DebugFillLoot).
     else
         self.utils:Print("Debug mode OFF.")
+        -- Il Loot Manager si SVUOTA uscendo dalla debug mode: storico,
+        -- roll in corso e finestre "click to pick up" contenevano solo
+        -- dati finti e non devono restare aperti nella UI reale.
+        if self.lootManager and self.lootManager.ClearHistory then
+            self.lootManager:ClearHistory()
+        end
     end
     -- Rinfresca TUTTE le UI che leggono il roster (Raid Group + Raid Frame):
     -- in debug si parte dal solo giocatore, fuori dal debug si torna al
@@ -1186,6 +1619,13 @@ function RLSuite:ApplyDebugMode()
     -- restava vuoto finche' non arrivava il primo invito.
     self:DebugRosterChanged()
     self:UpdatePhaseUI()
+    -- Pannello debug: compare vicino alla main bar solo in debug mode.
+    if self:DebugMode() then
+        self:EnsureDebugPanel()
+        if self.debugPanel then self.debugPanel:Show() end
+    elseif self.debugPanel then
+        self.debugPanel:Hide()
+    end
 end
 
 function RLSuite:UpdateRaidContext()
@@ -1463,6 +1903,7 @@ function RLSuite:InitModules()
     if self.raidFrame and self.raidFrame.Init then self.raidFrame:Init() end
     if self.msManager and self.msManager.Init then self.msManager:Init() end
     if self.lootManager and self.lootManager.Init then self.lootManager:Init() end
+    if self.combatLog and self.combatLog.Init then self.combatLog:Init() end
     if self.config and self.config.Init then self.config:Init() end
     if self.mainWindow and self.mainWindow.Init then self.mainWindow:Init() end
     if self.config and self.config.ApplyTheme then

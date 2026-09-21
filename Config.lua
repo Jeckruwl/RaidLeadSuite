@@ -57,46 +57,44 @@ local function textarea(name, desc, order, get, set)
              multiline = 2, get = get, set = set }
 end
 
+-- Piccolo campo numerico a meta' larghezza (es. numero canale chat).
+local function numinput(name, desc, order, get, set)
+    return { type = "input", name = name, desc = desc, order = order,
+             width = "half", get = get, set = set }
+end
+
 -- ------------------------------------------------------------------
 -- Category tree (AceGUI TreeGroup) + node -> options path map.
 -- Leaves map to an AceConfig path; the Macro Editor is a leaf whose
 -- content is the bespoke in-window editor, not an AceConfig group.
 -- ------------------------------------------------------------------
 local CATEGORIES = {
-    { value = "general", text = "General", children = {
-        { value = "look",   text = "Appearance" },
-        { value = "font",   text = "Font" },
-        { value = "window", text = "Window" },
-        { value = "debug",  text = "Debug" },
-    } },
-    { value = "savedraids", text = "Saved Raids" },
+    { value = "general", text = "General" },
+    { value = "modulemenu", text = "Module Menu" },
     { value = "groupmaking", text = "Groupmaking" },
     { value = "macros", text = "Macros", children = {
         { value = "layout", text = "Bar Layout" },
         { value = "editor", text = "Macro Editor" },
     } },
     { value = "raidframe", text = "Raid Frame" },
-    { value = "ms", text = "MS" },
-    { value = "loot", text = "Loot" },
+    { value = "savedraids", text = "Saved Raids" },
+    { value = "debug", text = "Debug" },
 }
 
 local EDITOR_NODE = "macros\001editor"
 
 local NODES = {
-    ["general\001look"]    = { "general", "look" },
-    ["general\001font"]    = { "general", "font" },
-    ["general\001window"]  = { "general", "window" },
-    ["general\001debug"]   = { "general", "debug" },
-    ["savedraids"]         = { "savedraids" },
+    -- General e' flat: Opzioni font + Scale, senza sotto-voci.
+    ["general"]            = { "general" },
+    ["modulemenu"]         = { "modulemenu" },
     ["groupmaking"]        = { "groupmaking" },
     ["macros\001layout"]   = { "macros", "layout" },
     [EDITOR_NODE]          = "__editor__",
-    -- Raid Frame e' un nodo singolo: le sotto-voci (Layout/Checks/Alerts/
-    -- Position) vengono mostrate come TAB nel pannello di destra
-    -- (childGroups = "tab" nel gruppo raidframe di BuildOptionsTable).
+    -- Raid Frame e' un nodo singolo: solo il contenuto Layout (checks,
+    -- positions e alerts sono stati eliminati dal pannello).
     ["raidframe"]          = { "raidframe" },
-    ["ms"]                 = { "ms" },
-    ["loot"]               = { "loot" },
+    ["savedraids"]         = { "savedraids" },
+    ["debug"]              = { "debug" },
 }
 
 -- ------------------------------------------------------------------
@@ -109,7 +107,7 @@ function CFG:Init()
         return self:BuildOptionsTable()
     end)
     self:CreateWindow()
-    self:SelectNode("general\001look")
+    self:SelectNode("general")
 end
 
 function CFG:Toggle()
@@ -281,43 +279,6 @@ function CFG:BuildOptionsTable()
         ["BOTTOMLEFT"] = "BOTTOMLEFT", ["BOTTOM"] = "BOTTOM", ["BOTTOMRIGHT"] = "BOTTOMRIGHT",
     }
 
-    -- --- General / Appearance ------------------------------------
-    local look = {
-        theme = select(L["Theme:"], L["Presets and background/border colors. Does not change functionality."], 1, themeValues,
-            function() return a.theme or "default" end,
-            function(_, v) self:ApplyTheme(v) end),
-        fill = { type = "color", name = L["Background:"], desc = L["Window fill color."], order = 2,
-            hasAlpha = true,
-            get = function() return a.fill.r, a.fill.g, a.fill.b, a.fill.a or 1 end,
-            set = function(_, r, g, b, alpha)
-                a.fill = { r = r, g = g, b = b, a = alpha or 1 }
-                a.theme = "custom"
-                self:ApplyAll()
-                self:NotifyChange()
-            end },
-        bg = { type = "color", name = L["Panel background:"], desc = L["Inner panel color."], order = 3,
-            hasAlpha = true,
-            get = function() return a.bg.r, a.bg.g, a.bg.b, a.bg.a or 1 end,
-            set = function(_, r, g, b, alpha)
-                a.bg = { r = r, g = g, b = b, a = alpha or 1 }
-                a.theme = "custom"
-                self:ApplyAll()
-                self:NotifyChange()
-            end },
-        border = { type = "color", name = L["Borders:"], desc = L["Window border color."], order = 4,
-            hasAlpha = true,
-            get = function() return a.border.r, a.border.g, a.border.b, a.border.a or 1 end,
-            set = function(_, r, g, b, alpha)
-                a.border = { r = r, g = g, b = b, a = alpha or 1 }
-                a.theme = "custom"
-                self:ApplyAll()
-                self:NotifyChange()
-            end },
-        edgeSize = slider(L["Border thickness"], nil, 5, 8, 48, 2,
-            function() return a.edgeSize or 32 end,
-            function(_, v) a.edgeSize = v; self:ApplyAll() end),
-    }
-
     -- --- General / Font ------------------------------------------
     local font = {
         font = select(L["Font:"], nil, 1, fontValues,
@@ -328,32 +289,24 @@ function CFG:BuildOptionsTable()
             function(_, v) a.fontSize = v; self:ApplyAll() end),
     }
 
-    -- --- General / Window ----------------------------------------
+    -- --- Module Menu (ex General/Window): voce top-level a se' -------
     local main = self:Layout("main")
-    main.height = main.height or 700
     main.matrixCols = main.matrixCols or 2
     main.matrixRows = main.matrixRows or 4
 
-    local window = {
-        height = slider(L["Default window height"], nil, 1, 400, 900, 20,
-            function() return main.height end,
-            function(_, v) main.height = v end),
-        barScale = slider(L["Bar scale"], nil, 2, 0.70, 1.30, 0.05,
+    local moduleMenu = {
+        -- Le tre opzioni della barra moduli (scala, colonne, righe)
+        -- applicano il layout SUBITO: ApplyAll rilancia
+        -- RLSuite.mainWindow:ApplyLayout() ad ogni cambio dello slider.
+        barScale = slider(L["Bar scale"], nil, 1, 0.70, 1.30, 0.05,
             function() return main.scale or 1 end,
-            function(_, v) main.scale = v end),
-        matrixCols = slider(L["Columns"], L["Columns in the bar button matrix."], 3, 1, 8, 1,
+            function(_, v) main.scale = v; self:ApplyAll() end),
+        matrixCols = slider(L["Columns"], L["Columns in the bar button matrix."], 2, 1, 8, 1,
             function() return main.matrixCols end,
-            function(_, v) main.matrixCols = v end),
-        matrixRows = slider(L["Buttons per column"], nil, 4, 1, 8, 1,
+            function(_, v) main.matrixCols = v; self:ApplyAll() end),
+        matrixRows = slider(L["Buttons per column"], nil, 3, 1, 8, 1,
             function() return main.matrixRows end,
-            function(_, v) main.matrixRows = v end),
-        anchors = toggle(L["Toggle Anchors"], L["Unlocks the Raid Frame and MacroBar HUDs as movable placeholders."], 5,
-            function() return prof().anchorMode == true end,
-            function(_, v)
-                if RLSuite.ApplyAnchorMode then
-                    RLSuite:ApplyAnchorMode(v and true or false)
-                end
-            end),
+            function(_, v) main.matrixRows = v; self:ApplyAll() end),
     }
 
     -- --- General / Debug -----------------------------------------
@@ -366,18 +319,15 @@ function CFG:BuildOptionsTable()
                     RLSuite:ApplyDebugMode()
                 end
             end),
-        fakeLoot = execute(L["Fill fake loot"], nil, 2, function()
-            if RLSuite.lootManager and RLSuite.lootManager.SpawnDebugLoot then
-                RLSuite.lootManager:SpawnDebugLoot()
-            end
-        end),
     }
 
+    -- General: SOLO opzioni font + slider Scale globale (tutti i moduli).
     local general = {
-        look = { type = "group", name = L["Appearance"], order = 1, args = look },
-        font = { type = "group", name = L["Font"], order = 2, args = font },
-        window = { type = "group", name = L["Window"], order = 3, args = window },
-        debug = { type = "group", name = L["Debug"], order = 4, args = debug },
+        font = font.font,
+        fontSize = font.fontSize,
+        scale = slider(L["Scale"], L["Global scale for every module window (they all follow this slider)."], 3, 0.70, 1.30, 0.05,
+            function() return a.scale or 1 end,
+            function(_, v) a.scale = v; self:ApplyAll() end),
     }
 
     -- --- Saved Raids (dynamic) -----------------------------------
@@ -402,14 +352,63 @@ function CFG:BuildOptionsTable()
         end
     end
 
-    local savedraids = { type = "group", name = L["Saved Raids"], order = 2, args = savedArgs }
+    local savedraids = { type = "group", name = L["Saved Raids"], order = 6, args = savedArgs }
 
     -- --- Groupmaking ---------------------------------------------
+    -- Canali per lo spam LFM (General/Trade/LFG/World e il custom "global")
+    local function gmSpamGet(chan)
+        return function()
+            local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+            if not d then return false end
+            for _, c in ipairs(d.spamChannels or {}) do
+                if strlower(c) == strlower(chan) then return true end
+            end
+            return false
+        end
+    end
+    local function gmSpamSet(chan)
+        return function(_, v)
+            local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+            if not d then return end
+            d.spamChannels = d.spamChannels or {}
+            local found = false
+            for i = #d.spamChannels, 1, -1 do
+                if strlower(d.spamChannels[i]) == strlower(chan) then
+                    found = true
+                    if not v then table.remove(d.spamChannels, i) end
+                    break
+                end
+            end
+            if v and not found then table.insert(d.spamChannels, chan) end
+        end
+    end
+    -- (lo slider Scale per-modulo e' eliminato: tutti i moduli seguono lo
+    -- snapshot Scale in General)
     local groupmaking = {
-        scale = slider(L["Scale"], nil, 1, 0.70, 1.30, 0.05,
-            function() return self:Layout("groupmaking").scale end,
-            function(_, v) self:Layout("groupmaking").scale = v; self:ApplyAll() end),
+        spamDesc = { type = "description", name = L["Spam channels"] .. ":", order = 1, fontSize = "medium" },
     }
+    -- Ogni canale: checkbox + campo numero canale affiancato. Numero 0 o
+    -- vuoto = risoluzione automatica da GetChannelName(nome); un numero
+    -- esplicito > 0 ha la precedenza sul nome.
+    local _gmChans = { "General", "Trade", "LookingForGroup", "World", "global" }
+    for i, ch in ipairs(_gmChans) do
+        local tgl = toggle(L[ch], nil, 1 + i, gmSpamGet(ch), gmSpamSet(ch))
+        tgl.width = "half"
+        groupmaking["spam_" .. ch] = tgl
+        groupmaking["spamNum_" .. ch] = numinput(L["Channel #"], L["Explicit channel number; leave empty (or 0) to auto-detect by name."], 1 + i + 0.01,
+            (function(c) return function()
+                local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+                local n = d and d.spamChannelNums and tonumber(d.spamChannelNums[c])
+                return (n and n > 0) and tostring(n) or ""
+            end end)(ch),
+            (function(c) return function(_, v)
+                local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+                if not d then return end
+                d.spamChannelNums = d.spamChannelNums or {}
+                local n = tonumber(v)
+                d.spamChannelNums[c] = (n and n > 0) and n or nil
+            end end)(ch))
+    end
 
     -- --- Macros / Bar Layout -------------------------------------
     if RLSuite.macrobar and RLSuite.macrobar.EnsurePhases then
@@ -427,9 +426,8 @@ function CFG:BuildOptionsTable()
     mb.scale = mb.scale or 1
 
     local macroLayout = {
-        enable = toggle(L["Enable"], nil, 1,
-            function() return mb.enabled ~= false end,
-            function(_, v) mb.enabled = v; self:ApplyAll() end),
+        -- (checkbox "Enable" eliminata: la barra si governa dai comandi
+        -- della sua HUD/keybind, non da qui)
         lock = toggle(L["Lock"], nil, 2,
             function() return mb.locked end,
             function(_, v) mb.locked = v; self:ApplyAll() end),
@@ -466,9 +464,6 @@ function CFG:BuildOptionsTable()
         alpha = slider(L["Alpha"], nil, 13, 0, 100, 1,
             function() return math.floor((mb.alpha or 1) * 100 + 0.5) end,
             function(_, v) mb.alpha = v / 100; self:ApplyAll() end),
-        scale = slider(L["Scale"], nil, 14, 0.50, 2.00, 0.05,
-            function() return mb.scale or 1 end,
-            function(_, v) mb.scale = v; self:ApplyAll() end),
         actionPaging = textarea(L["Action Paging"], nil, 15,
             function() return mb.actionPaging end,
             function(_, v) mb.actionPaging = v; self:ApplyAll() end),
@@ -501,105 +496,93 @@ function CFG:BuildOptionsTable()
         iconSize = slider(L["Icon size"], nil, 1, 10, 24, 1,
             function() return rf.appearance.iconSize or 16 end,
             function(_, v) rf.appearance.iconSize = v; self:ApplyAll() end),
-        barHeight = slider(L["Player bar height"], nil, 2, 12, 32, 1,
-            function() return rf.appearance.barHeight or 20 end,
-            function(_, v) rf.appearance.barHeight = v; self:ApplyAll() end),
         barWidth = slider(L["Player bar width"], nil, 3, 100, 300, 5,
             function() return rf.appearance.barWidth or 180 end,
             function(_, v) rf.appearance.barWidth = v; self:ApplyAll() end),
         nameFontSize = slider(L["Name font size"], nil, 4, 8, 16, 1,
             function() return rf.appearance.nameFontSize or 11 end,
             function(_, v) rf.appearance.nameFontSize = v; self:ApplyAll() end),
-        abilityBarWidth = slider(L["Ability bar width"], nil, 5, 80, 160, 5,
-            function() return rf.appearance.abilityBarWidth or 110 end,
-            function(_, v) rf.appearance.abilityBarWidth = v; self:ApplyAll() end),
-        scale = slider(L["Scale"], nil, 6, 0.70, 1.50, 0.05,
-            function() return rf.scale end,
-            function(_, v) rf.scale = v; self:ApplyAll() end),
-    }
-
-    local raidBehavior = {
-        enabled = toggle(L["Enabled"], L["Show or hide the Raid Frame HUD."], 1,
-            function() return rf.enabled ~= false end,
-            function(_, v) rf.enabled = v; self:ApplyAll() end),
-        showFlask = toggle(L["Check flasks"], L["Alert players missing a flask (left icons)."], 2,
-            function() return rf.showFlask ~= false end,
-            function(_, v) rf.showFlask = v; self:ApplyAll() end),
-        showFood = toggle(L["Check food"], L["Alert players missing Well Fed (left icons)."], 3,
-            function() return rf.showFood ~= false end,
-            function(_, v) rf.showFood = v; self:ApplyAll() end),
-        showBuffBar = toggle(L["Pre-boss buff bar"], L["Show the pre-boss alert buff bar."], 4,
-            function() return rf.showBuffBar ~= false end,
-            function(_, v) rf.showBuffBar = v; self:ApplyAll() end),
-        showDebuffBar = toggle(L["In-fight debuff bar"], L["Show the in-fight alert debuff bar."], 5,
-            function() return rf.showDebuffBar ~= false end,
-            function(_, v) rf.showDebuffBar = v; self:ApplyAll() end),
-        showAbilityBar = toggle(L["Ability bar"], L["Show the vertical ability-check bar."], 6,
-            function() return rf.showAbilityBar ~= false end,
-            function(_, v) rf.showAbilityBar = v; self:ApplyAll() end),
-    }
-
-    local function alertField(key, label, order)
-        return textarea(L[label], nil, order,
-            function()
-                local alerts = rf.alerts or {}
-                return alerts[key] or ""
+        font = select(L["Font"], L["Font used for the player name on the bars."], 7, {
+            ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata (default)",
+            ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
+            ["Fonts\\SKURRI.TTF"] = "Skurri",
+            ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
+        },
+            function() return rf.appearance.font or "Fonts\\FRIZQT__.TTF" end,
+            function(_, v) rf.appearance.font = v; self:ApplyAll() end),
+        fontOutline = toggle(L["Font outline"], L["Draw the player name with an outline."], 8,
+            function() return rf.appearance.fontOutline ~= false end,
+            function(_, v) rf.appearance.fontOutline = v; self:ApplyAll() end),
+        barTexture = select(L["Bar texture"], L["Texture of the player HP bars."], 9, {
+            ["Interface\\TargetingFrame\\UI-StatusBar"] = "Blizzard (default)",
+            ["Interface\\PAPERDOLLINFOFRAME\\UI-Character-Skills-Bar"] = "Skill bar",
+            ["Interface\\Buttons\\WHITE8x8"] = "Flat",
+        },
+            function() return rf.appearance.barTexture or "Interface\\TargetingFrame\\UI-StatusBar" end,
+            function(_, v) rf.appearance.barTexture = v; self:ApplyAll() end),
+        alpha = slider(L["Opacity"], L["Overall transparency of the Raid Frame HUD."], 10, 0.30, 1.00, 0.05,
+            function() return rf.alpha or 1 end,
+            function(_, v) rf.alpha = v; self:ApplyAll() end),
+        iconSpacing = slider(L["Icon spacing"], L["Gap between the Raid Buffs matrix icons."], 12, 0, 16, 1,
+            function() return rf.appearance.iconSpacing or 8 end,
+            function(_, v) rf.appearance.iconSpacing = v; self:ApplyAll() end),
+        rowSpacing = slider(L["Row spacing"], L["Gap between the player bars inside each group."], 13, -10, 12, 1,
+            function() return rf.appearance.rowSpacing or 0 end,
+            function(_, v) rf.appearance.rowSpacing = v; self:ApplyAll() end),
+        groupSpacing = slider(L["Group spacing"], L["Gap between the groups (Tanks, G1..G6)."], 14, 0, 24, 1,
+            function() return rf.appearance.groupSpacing or 8 end,
+            function(_, v) rf.appearance.groupSpacing = v; self:ApplyAll() end),
+        groupHeaderFontSize = slider(L["Group header font size"], L["Font size of the group labels (Tanks, G1..G6)."], 15, 8, 16, 1,
+            function() return rf.appearance.groupHeaderFontSize or 10 end,
+            function(_, v) rf.appearance.groupHeaderFontSize = v; self:ApplyAll() end),
+        matrixBackdrop = {
+            name = L["Buff check backdrop"],
+            desc = L["Backdrop color and transparency of the Raid Buffs matrix rows."],
+            type = "color",
+            hasAlpha = true,
+            order = 16,
+            get = function()
+                local c = rf.appearance.matrixBackdrop or { r = 0.5, g = 0.5, b = 0.5, a = 0.35 }
+                return c.r or 0.5, c.g or 0.5, c.b or 0.5, c.a or 0.35
             end,
-            function(_, v)
-                rf.alerts = rf.alerts or {}
-                rf.alerts[key] = v
-            end)
-    end
-
-    local raidAlerts = {
-        flask = alertField("flask", "Flask whisper", 1),
-        food = alertField("food", "Food whisper", 2),
-        buff = alertField("buff", "Raid buffs whisper", 3),
+            set = function(_, r, g, b, a)
+                rf.appearance.matrixBackdrop = { r = r, g = g, b = b, a = a }
+                self:ApplyAll()
+            end,
+        },
+        fontColor = {
+            name = L["Font color"],
+            desc = L["Color of the player name on the bars."],
+            type = "color",
+            hasAlpha = false,
+            order = 11,
+            get = function()
+                local c = rf.appearance.fontColor or { r = 1, g = 1, b = 1 }
+                return c.r or 1, c.g or 1, c.b or 1
+            end,
+            set = function(_, r, g, b)
+                rf.appearance.fontColor = { r = r, g = g, b = b, a = 1 }
+                self:ApplyAll()
+            end,
+        },
     }
 
-    local raidPos = {
-        locked = toggle(L["Lock position"], nil, 1,
-            function() return rf.locked end,
-            function(_, v) rf.locked = v end),
-        reset = execute(L["Reset position"], nil, 2, function()
-            rf.point, rf.relPoint, rf.x, rf.y = "LEFT", "LEFT", 10, 0
-            if RLSuite.raidFrame and RLSuite.raidFrame.frame then
-                RLSuite.raidFrame.frame:ClearAllPoints()
-                RLSuite.raidFrame.frame:SetPoint("LEFT", UIParent, "LEFT", 10, 0)
-            end
-        end),
-    }
+    -- Checks, Alert Messages e Position: eliminati dal pannello (solo
+    -- Layout resta configurabile per il Raid Frame).
 
-    local raidframe = {
-        layout = { type = "group", name = L["Layout"], order = 1, args = raidLayout },
-        behavior = { type = "group", name = L["Checks"], order = 2, args = raidBehavior },
-        alerts = { type = "group", name = L["Alert Messages"], order = 3, args = raidAlerts },
-        pos = { type = "group", name = L["Position"], order = 4, args = raidPos },
-    }
-
-    -- --- MS / Loot scales ----------------------------------------
-    local ms = {
-        scale = slider(L["Scale"], nil, 1, 0.70, 1.30, 0.05,
-            function() return self:Layout("ms").scale end,
-            function(_, v) self:Layout("ms").scale = v; self:ApplyAll() end),
-    }
-    local loot = {
-        scale = slider(L["Scale"], nil, 1, 0.70, 1.30, 0.05,
-            function() return self:Layout("loot").scale end,
-            function(_, v) self:Layout("loot").scale = v; self:ApplyAll() end),
-    }
+    local raidframe = raidLayout
 
     return {
         type = "group",
         name = "RLSuite",
         args = {
             general = { type = "group", name = L["General"], order = 1, args = general },
-            savedraids = savedraids,
+            modulemenu = { type = "group", name = L["Module Menu"], order = 2, args = moduleMenu },
             groupmaking = { type = "group", name = L["Groupmaking"], order = 3, args = groupmaking },
             macros = { type = "group", name = L["Macros"], order = 4, args = macros },
-            raidframe = { type = "group", name = L["Raid Frame"], order = 5, childGroups = "tab", args = raidframe },
-            ms = { type = "group", name = L["MS Manager"], order = 6, args = ms },
-            loot = { type = "group", name = L["Loot Manager"], order = 7, args = loot },
+            raidframe = { type = "group", name = L["Raid Frame"], order = 5, args = raidframe },
+            savedraids = savedraids,
+            debug = { type = "group", name = L["Debug"], order = 7, args = debug },
         },
     }
 end
@@ -656,7 +639,7 @@ function CFG:CreateMacroEditor(parent)
     self.macroEditIndex = nil
     self.macroEditIcon = nil
 
-    -- riga 1: selezione fase + toggle HUD
+    -- riga 1: selezione fase
     local phaseLabel = ed:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     phaseLabel:SetPoint("TOPLEFT", ed, "TOPLEFT", 10, -8)
     phaseLabel:SetText(L["Phase:"])
@@ -668,6 +651,7 @@ function CFG:CreateMacroEditor(parent)
     }
     for i, pdata in ipairs(phases) do
         local btn = CreateFrame("Button", nil, ed, "UIPanelButtonTemplate")
+        RLSuite.utils:SkinButton(btn)
         btn:SetSize(70, 20)
         btn:SetPoint("LEFT", phaseLabel, "RIGHT", 6 + (i - 1) * 76, 0)
         btn:SetText(pdata.label)
@@ -677,16 +661,6 @@ function CFG:CreateMacroEditor(parent)
         end)
         self.macroPhaseBtns[pdata.key] = btn
     end
-
-    local hudBtn = CreateFrame("Button", nil, ed, "UIPanelButtonTemplate")
-    hudBtn:SetSize(120, 20)
-    hudBtn:SetPoint("TOPRIGHT", ed, "TOPRIGHT", -8, -6)
-    hudBtn:SetText("HUD on/off")
-    hudBtn:SetScript("OnClick", function()
-        if RLSuite.macrobar and RLSuite.macrobar.Toggle then
-            RLSuite.macrobar:Toggle()
-        end
-    end)
 
     -- riga 2: anteprima 12 slot (2 righe x 6)
     local preview = CreateFrame("Frame", nil, ed)
@@ -860,6 +834,7 @@ function CFG:CreateMacroEditor(parent)
     end
 
     local capsBtn = CreateFrame("Button", nil, util, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(capsBtn)
     capsBtn:SetSize(56, 18)
     capsBtn:SetPoint("LEFT", util, "LEFT", 8 * 22 + 6, 0)
     capsBtn:SetText("CAPS")
@@ -893,9 +868,8 @@ function CFG:CreateMacroIconPicker(parent)
     title:SetPoint("TOPLEFT", picker, "TOPLEFT", 10, -8)
     title:SetText(L["Macro icon"])
 
-    local close = CreateFrame("Button", nil, picker, "UIPanelCloseButton")
+    local close = RLSuite.utils:MakeCloseX(picker, function() picker:Hide() end)
     close:SetPoint("TOPRIGHT", picker, "TOPRIGHT", -2, -2)
-    close:SetScript("OnClick", function() picker:Hide() end)
 
     local scroll = CreateFrame("ScrollFrame", "RLSuiteCfgMacroIconScroll", picker, "FauxScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", picker, "TOPLEFT", 8, -28)
@@ -1222,6 +1196,11 @@ end
 
 function CFG:ApplyAll()
     self.db = RLSuite.db.profile
+    -- scale globale propagata ai moduli con layout proprio (Raid Frame
+    -- HUD e MacroBar leggono la scala dal loro db)
+    local gscale0 = ((self:EnsureAppearance() or {}).scale) or 1
+    if self.db.raidframe then self.db.raidframe.scale = gscale0 end
+    if self.db.macrobar then self.db.macrobar.scale = gscale0 end
     if RLSuite.macrobar then
         RLSuite.macrobar.db = RLSuite.db and RLSuite.db.profile.macrobar
         if RLSuite.macrobar.ApplyLayout then
@@ -1238,19 +1217,22 @@ function CFG:ApplyAll()
     if RLSuite.mainWindow and RLSuite.mainWindow.ApplyLayout then
         RLSuite.mainWindow:ApplyLayout()
     end
-    local lay = self.db.layout or {}
-    local function scale(fr, key)
-        if not fr or not lay[key] or not lay[key].scale then return end
+    -- Scala GLOBALE: lo slider Scale di General governa TUTTI i moduli
+    -- (i cursori per-modulo sono stati rimossi dal pannello).
+    local gscale = ((self:EnsureAppearance() or {}).scale) or 1
+    local function scale(fr)
+        if not fr then return end
         local parent = fr.GetParent and fr:GetParent()
         if RLSuite.mainWindow and RLSuite.mainWindow.frame and parent == RLSuite.mainWindow.frame then
             fr:SetScale(1)
             return
         end
-        fr:SetScale(lay[key].scale)
+        fr:SetScale(gscale)
     end
-    scale(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame, "groupmaking")
-    scale(RLSuite.msManager and RLSuite.msManager.frame, "ms")
-    scale(RLSuite.lootManager and RLSuite.lootManager.frame, "loot")
+    scale(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame)
+    scale(RLSuite.msManager and RLSuite.msManager.frame)
+    scale(RLSuite.lootManager and RLSuite.lootManager.frame)
+    scale(RLSuite.combatLog and RLSuite.combatLog.frame)
 end
 
 function CFG:ApplyTheme(theme)

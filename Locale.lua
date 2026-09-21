@@ -71,6 +71,8 @@ do
     L["AtlasLoot is not loaded."] = true
     L["Spammer started."] = true
     L["Spammer stopped."] = true
+    L["Channel #"] = true
+    L["Explicit channel number; leave empty (or 0) to auto-detect by name."] = true
     L["Whisper from %s received."] = true
     L["Received whispers"] = true
     L["Raid Group"] = true
@@ -151,6 +153,60 @@ do
     L["No MS changes recorded."] = true
     L["Requesting MS changes - type in raid: ms <spec> you have only 40s"] = true
 
+    L["Open the trade with the winner first, then click the item icon."] = true
+
+    -- CombatLog
+    L["Spam channels"] = "Canali spam"
+    L["Channel #"] = "N° canale"
+    L["Explicit channel number; leave empty (or 0) to auto-detect by name."] = "Numero canale esplicito; lascia vuoto (o 0) per rilevarlo dal nome."
+L["General"] = "Generale"
+L["Trade"] = "Commercio"
+L["LookingForGroup"] = "Ricerca Gruppo"
+L["World"] = "Mondo"
+L["global"] = "globale"
+
+L["Debug: loot history cleared."] = "Debug: storico loot svuotato."
+L["Test MS"] = "Test MS"
+L["Debug mode is OFF."] = "Modalita' debug OFF."
+L["Debug: raid filled with %d fake players."] = "Debug: raid riempito con %d giocatori fittizi."
+L["Debug: loot spawned from %s."] = "Debug: loot generato da %s."
+L["Log Test"] = "Test log"
+L["Debug: combat log filled with %d fights."] = "Debug: combat log riempito con %d pull."
+L["Debug: %d fake whispers sent."] = "Debug: %d whisper fittizi inviati."
+L["Debug: %d fake MS whispers sent."] = "Debug: %d whisper MS fittizi inviati."
+L["Ask MS changes first (MS Manager), then click Test MS."] = "Chiedi prima gli MS change (MS Manager), poi clicca Test MS."
+L["Start the spammer first, then Whisp test sends the fake whispers."] = "Avvia prima lo spammer, poi Whisper di test invia i whisper fittizi."
+
+L["Combat log"] = true
+    L["Select fight"] = true
+    L["Send report"] = true
+    L["Shift+click to wipe the saved fights."] = true
+    L["No fights recorded"] = true
+    L["[LIVE]"] = true
+    L["Live"] = true
+    L["Events"] = true
+    L["dropped"] = true
+    L["Total"] = true
+    L["By cast"] = true
+    L["By target"] = true
+    L["Spells list"] = true
+    L["Select player"] = true
+    L["Uptime"] = true
+    L["Interrupts"] = true
+    L["Dispels"] = true
+    L["Damage"] = true
+    L["Healing"] = true
+    L["Enemies"] = true
+    L["Auras"] = true
+    L["Players spells"] = true
+    L["Power"] = true
+    L["Graphs"] = true
+    L["DPS"] = true
+    L["Health"] = true
+    L["Total DPS"] = true
+    L["Step, sec."] = true
+    L["drag: zoom, click: reset"] = true
+
     -- MacroBar
     L["Macrobar is disabled in Config."] = true
     L["Phase: %s"] = true
@@ -169,8 +225,39 @@ do
 
     -- RaidFrame
     L["Hey $name, you're missing a flask!"] = true
+    L["Missing flask"] = true
+    L["Missing food buff"] = true
+    L["Tanks"] = true
+    L["Raid Buffs"] = true
+    L["Font color"] = true
+    L["Icon spacing"] = true
+    L["Gap between the Raid Buffs matrix icons."] = true
+    L["Row spacing"] = true
+    L["Gap between the player bars inside each group."] = true
+    L["Group spacing"] = true
+    L["Gap between the groups (Tanks, G1..G6)."] = true
+    L["Group header font size"] = true
+    L["Font size of the group labels (Tanks, G1..G6)."] = true
+    L["Buff check backdrop"] = true
+    L["Backdrop color and transparency of the Raid Buffs matrix rows."] = true
+    L["Buff check: %s - OK on everyone"] = true
+    L["Buff check: %s - missing: %s"] = true
+    L["  /rls debugbuff    Diagnose Raid Buffs header icons"] = true
+    L["Buff headers: media/BUFFCATICONS/BCI_<0..24>.tga"] = true
+    L["Raid frame not initialized yet."] = true
+    L["Color of the player name on the bars."] = true
+    L["Open the raid buffs matrix panel."] = true
+    L["Main tank"] = true
+    L["Main assist"] = true
+    L["Cannot assign Main Tank / Main Assist while in combat."] = true
+    L["Main assist"] = true
     L["Hey $name, you're missing food buff!"] = true
     L["Hey $name, you're missing some raid buffs!"] = true
+    L["Left click: whisper"] = true
+    L["Right click: raid warning"] = true
+    L["Right click: raid warning (everyone missing)"] = true
+    L["Shift + left drag on a row: move player"] = true
+    L["Shift + right drag: move window"] = true
     L["Pull in %d seconds!"] = true
     L["Pull in %d..."] = true
     L["PULL NOW!"] = true
@@ -185,6 +272,15 @@ do
     L["Show/Hide HUD"] = true
     L["SaveRaid title:"] = true
     L["SaveRaid cancelled: no title entered."] = true
+    -- MT / OT buttons (Main Tank / Main Assist assignment)
+    L["Main Tank (MT)"] = true
+    L["Main Assist (OT)"] = true
+    L["Assign/remove your current target as Main Tank."] = true
+    L["Assign/remove your current target as Main Assist."] = true
+    L["%s assignment is not available on this client."] = true
+    L["Target a raid member first to assign %s."] = true
+    L["Only the raid leader or an assist can assign Main Tank / Main Assist."] = true
+    L["%s toggled as %s."] = true
 
     -- Minimap icon
     L["Left click: open RLS"] = true

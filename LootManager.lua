@@ -26,9 +26,42 @@ function LM:Init()
     self.db = RLSuite.db.profile.loot
     self.history = self.db.history or {}
     self.db.history = self.history
+    self.db.filters = self.db.filters or {}
     self.currentRoll = nil
     self.preMessage = ""
     self:CreateFrame()
+    -- Loot da item in borsa (Sack of Frosty Treasures & co.): viene sempre
+    -- IGNORATO. Unica provenienza di quel loot e' una loot window aperta
+    -- da UseContainerItem: marcata a LOOT_OPENED (entro 2s dall'uso),
+    -- smarcata a LOOT_CLOSED. Le loot window dei boss NON seguono mai un
+    -- UseContainerItem, quindi il flag non tocca il loot dei boss.
+    self._containerUseT = nil
+    self._containerLoot = false
+    self:RegisterEvent("LOOT_OPENED", "OnLootOpened")
+    self:RegisterEvent("LOOT_CLOSED", "OnLootClosed")
+    hooksecurefunc("UseContainerItem", function()
+        LM._containerUseT = GetTime()
+    end)
+end
+
+function LM:OnLootOpened()
+    local t = self._containerUseT
+    self._containerLoot = (t ~= nil and (GetTime() - t) < 2) or false
+    -- Nome del boss: quando si apre il loot del cadavere, il target e' il
+    -- boss appena ucciso. Salvato come contesto per i CHAT_MSG_LOOT.
+    if UnitExists and UnitName and UnitIsDead
+       and UnitExists("target") and UnitIsDead("target") then
+        local bn = UnitName("target")
+        if bn and bn ~= "" then
+            self._recentBoss = bn
+            self._recentBossT = GetTime()
+        end
+    end
+end
+
+function LM:OnLootClosed()
+    self._containerLoot = false
+    self._containerUseT = nil
 end
 
 function LM:Toggle()
@@ -49,12 +82,12 @@ function LM:CreateFrame()
     f:SetSize(500, 500)
     f:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
     f:SetFrameStrata("HIGH")
-    f:SetMovable(true)
+    -- NON trascinabile: il Loot Manager si comporta come una finestra
+    -- nativa (pannello equip), posizione fissa decisa da SelectTab.
+    f:SetMovable(false)
     f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
     f:Hide()
+    f._noOuterBorder = true
     self.frame = f
     RLSuite.utils:SkinFrame(f)
     RLSuite.utils:ClampWindow(f)
@@ -96,9 +129,41 @@ function LM:CreateFrame()
         LM:UpdateHistory()
     end)
 
+    -- Checkbox "ignore loots": escludono intere categorie sia in cattura
+    -- (mai registrate) sia a video (le righe gia' in storico spariscono).
+    local ignoreLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ignoreLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -78)
+    ignoreLabel:SetText("ignore loots:")
+    self.ignoreChecks = {}
+    local ignoreDefs = {
+        { key = "recipes", label = "recipes" },
+        { key = "boe",     label = "BOE" },
+        { key = "gems",    label = "gems" },
+        { key = "shards",  label = "shards" },
+    }
+    local ix = 96
+    for _, def in ipairs(ignoreDefs) do
+        local cb = CreateFrame("CheckButton", "RLSuiteLootIgnore_" .. def.key, f, "UICheckButtonTemplate")
+        cb:SetSize(20, 20)
+        cb:SetPoint("TOPLEFT", f, "TOPLEFT", ix, -72)
+        cb:SetChecked(self.db and self.db.filters and self.db.filters[def.key] and true or false)
+        cb:SetScript("OnClick", function(btn)
+            if LM.db and LM.db.filters then
+                LM.db.filters[def.key] = btn:GetChecked() and true or false
+            end
+            LM:UpdateHistory()
+        end)
+        local lbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        lbl:SetPoint("LEFT", cb, "RIGHT", 2, 0)
+        lbl:SetText(def.label)
+        self.ignoreChecks[def.key] = cb
+        ix = ix + 20 + (#def.label * 7) + 18
+    end
+
+    -- Header spostato sotto la riga delle checkbox (-74 -> -100).
     local header = CreateFrame("Frame", nil, f)
-    header:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -74)
-    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -74)
+    header:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -100)
+    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -100)
     header:SetHeight(18)
     self.histHeader = header
     self:PaintHeader(header)
@@ -116,6 +181,7 @@ function LM:CreateFrame()
     self.histContent:SetWidth(420)
     self.histContent:SetHeight(1)
     self.histScroll:SetScrollChild(self.histContent)
+    RLSuite.utils:RegisterScrollClip(self.histScroll, self.histContent)
     self.histScroll:SetScript("OnSizeChanged", function(s, w, h)
         if LM.histContent and w and w > 50 then
             LM.histContent:SetWidth(w)
@@ -142,35 +208,83 @@ function LM:CreateFrame()
     self.selectedItemText:SetText(L["No item selected"])
 
     self.rollMSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.rollMSBtn)
     self.rollMSBtn:SetSize(80, 24)
     self.rollMSBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 10)
     self.rollMSBtn:SetText("Roll MS")
     self.rollMSBtn:SetScript("OnClick", function() self:StartRoll("MS") end)
 
     self.rollOSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.rollOSBtn)
     self.rollOSBtn:SetSize(80, 24)
     self.rollOSBtn:SetPoint("LEFT", self.rollMSBtn, "RIGHT", 6, 0)
     self.rollOSBtn:SetText("Roll OS")
     self.rollOSBtn:SetScript("OnClick", function() self:StartRoll("OS") end)
 
     self.rollOtherBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.rollOtherBtn)
     self.rollOtherBtn:SetSize(80, 24)
     self.rollOtherBtn:SetPoint("LEFT", self.rollOSBtn, "RIGHT", 6, 0)
     self.rollOtherBtn:SetText("Roll FFA")
     self.rollOtherBtn:SetScript("OnClick", function() self:StartRoll("FFA") end)
 
     self.rerollBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.rerollBtn)
     self.rerollBtn:SetSize(80, 24)
     self.rerollBtn:SetPoint("LEFT", self.rollOtherBtn, "RIGHT", 6, 0)
     self.rerollBtn:SetText("Reroll")
     self.rerollBtn:Disable()
     self.rerollBtn:SetScript("OnClick", function() self:DoReroll() end)
 
-    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
+    -- Stesso tasto dell'MS Manager: annuncia le MS changes in raid (e le
+    -- pre-pone al messaggio di roll come preMessage). Utile mentre si lootano.
+    self.announceMSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.announceMSBtn)
+    self.announceMSBtn:SetSize(124, 24)
+    self.announceMSBtn:SetPoint("LEFT", self.rerollBtn, "RIGHT", 6, 0)
+    self.announceMSBtn:SetText("Announce Changes")
+    self.announceMSBtn:SetScript("OnClick", function()
+        RLSuite.msManager:GenerateMessage()
+    end)
 
+    f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
+    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+
+    self:HookTradePanel()
     self:EnsureTicker()
+end
+
+-- Ancoraggio "finestra nativa": normalmente in alto a sinistra (16, -116),
+-- ma se il trade e' aperto il Loot Manager cede la sinistra al trade e si
+-- sposta SUBITO a destra di esso (come fanno equip/talenti/spellbook con
+-- gli altri pannelli Blizzard).
+function LM:AnchorDefault()
+    if not self.frame then return end
+    self.frame:ClearAllPoints()
+    local x = 16
+    if self.tradeOpen and TradeFrame and TradeFrame.IsShown and TradeFrame:IsShown() then
+        x = (TradeFrame.GetRight and TradeFrame:GetRight() or 0) + 10
+    end
+    if x < 16 then x = 16 end
+    self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", x, -116)
+end
+
+-- Gancio una tantum al TradeFrame di Blizzard (OnShow/OnHide): il pannello
+-- "sa" cosa c'e' aperto e reagisce nell'istante in cui il trade appare
+-- ("quando aprono una trade si sposta a destra lasciando il trade a
+-- sinistra"). Registrabile anche a runtime se il TradeFrame esiste gia'.
+function LM:HookTradePanel()
+    if self._tradeHooked then return end
+    if not (TradeFrame and TradeFrame.HookScript) then return end
+    self._tradeHooked = true
+    TradeFrame:HookScript("OnShow", function()
+        LM.tradeOpen = true
+        LM:AnchorDefault()
+    end)
+    TradeFrame:HookScript("OnHide", function()
+        LM.tradeOpen = false
+        LM:AnchorDefault()
+    end)
 end
 
 function LM:SkinBox(box)
@@ -268,8 +382,10 @@ function LM:SetPreMessage(msg)
     end
 end
 
-function LM:SpawnDebugLoot()
-    local raid = (RLSuite.db.profile.groupmaking and RLSuite.db.profile.groupmaking.raid) or "Icecrown Citadel"
+-- raidName opzionale: nil = usa il raid selezionato in Groupmaking (debug
+-- standard), altrimenti il pool del raid indicato (Debug panel "Fill Loot").
+function LM:SpawnDebugLoot(raidName)
+    local raid = raidName or (RLSuite.db.profile.groupmaking and RLSuite.db.profile.groupmaking.raid) or "Icecrown Citadel"
     local pool = (RLSuite.debugLoot and RLSuite.debugLoot[raid]) or {49623, 49908, 52025}
     local bosses = (RLSuite.raidDB[raid] and RLSuite.raidDB[raid].bosses) or {"Unknown"}
     local ids = {}
@@ -306,6 +422,7 @@ function LM:SpawnDebugLoot()
 end
 
 function LM:OnLootMessage(msg)
+    if self._containerLoot then return end -- loot da item in borsa: MAI tracciato
     local itemLink = RLSuite.utils:GetItemLinkFromChat(msg or "")
     if not itemLink then return end
     local itemName, _, quality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemLink)
@@ -351,23 +468,124 @@ function LM:ProcessPendingLoot()
     end
 end
 
+-- Emblemi WotLK: MAI tracciati (regola fissa, senza checkbox).
+local LM_EMBLEM_IDS = { [40752] = true, [40753] = true, [45624] = true, [47241] = true, [49426] = true }
+-- Shard da incantamento: Dream Shard / Small Dream Shard / Abyss Crystal
+-- (WotLK) + i corrispettivi TBC e vanilla.
+local LM_SHARD_IDS = {
+    [34052] = true, [34053] = true, [34057] = true,
+    [22448] = true, [22449] = true, [22450] = true, [20725] = true,
+    [14343] = true, [14344] = true,
+}
+local LM_GEM_CLASSES = { Gem = true, Gemma = true }
+local LM_RECIPE_CLASSES = { Recipe = true, Ricetta = true }
+
+-- BOE detection: la riga di vincolo nel tooltip usa la globale localizzata
+-- ITEM_BIND_ON_EQUIP (e ITEM_BIND_ON_PICKUP per i BoP, che chiude il giro).
+function LM:IsBindOnEquip(itemLink)
+    GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+    pcall(function() GameTooltip:SetHyperlink(itemLink) end)
+    local lines = (GameTooltip.NumLines and GameTooltip:NumLines()) or 0
+    for i = 2, lines do
+        local fs = _G["GameTooltipTextLeft" .. i]
+        local txt = fs and fs.GetText and fs:GetText()
+        if txt and txt == ITEM_BIND_ON_PICKUP then
+            GameTooltip:Hide()
+            return false
+        end
+        if txt and txt == ITEM_BIND_ON_EQUIP then
+            GameTooltip:Hide()
+            return true
+        end
+    end
+    GameTooltip:Hide()
+    return false
+end
+
+-- Categoria speciale del pezzo (governano le checkbox "ignore loots" e
+-- l'esclusione fissa degli emblemi). nil = loot normale.
+function LM:LootCategory(itemLink, itemName)
+    if not itemLink then return nil end
+    local id = tonumber(string.match(itemLink, "Hitem:(%d+)"))
+    if id then
+        if LM_EMBLEM_IDS[id] then return "EMBLEM" end
+        if LM_SHARD_IDS[id] then return "SHARD" end
+    end
+    local itemClass = select(6, GetItemInfo(itemLink))
+    if itemClass then
+        if LM_GEM_CLASSES[itemClass] then return "GEM" end
+        if LM_RECIPE_CLASSES[itemClass] then return "RECIPE" end
+    end
+    if self:DetectItemType(itemLink, itemName) == "PATTERN" then
+        return "RECIPE"
+    end
+    if self:IsBindOnEquip(itemLink) then
+        return "BOE"
+    end
+    return nil
+end
+
+function LM:EntryCategory(entry)
+    if entry._cat == nil then
+        entry._cat = self:LootCategory(entry.itemLink, entry.itemName) or false
+    end
+    if entry._cat == false then return nil end
+    return entry._cat
+end
+
+-- Le categorie attive nelle checkbox "ignore loots" (e gli emblemi, sempre):
+-- usato sia in cattura (AddToHistory) sia a video (MatchesFilter).
+function LM:IsCategoryIgnored(cat)
+    if cat == nil then return false end
+    if cat == "EMBLEM" then return true end
+    local f = (self.db and self.db.filters) or {}
+    if cat == "RECIPE" then return f.recipes == true end
+    if cat == "BOE" then return f.boe == true end
+    if cat == "GEM" then return f.gems == true end
+    if cat == "SHARD" then return f.shards == true end
+    return false
+end
+
 function LM:AddToHistory(itemLink, itemName, itemTexture, quality)
+    -- Filtro in cattura: categorie ignorate MAI registrate.
+    if self:IsCategoryIgnored(self:LootCategory(itemLink, itemName)) then return end
     if quality == nil and itemLink then
         local _, _, q = GetItemInfo(itemLink)
         quality = q
+    end
+    -- Niente DUPLICATI: in raid vero lo stesso pezzo arriva due volte
+    -- (announce + ricezione). Entro 4s dallo stesso link = stesso evento.
+    local now = time()
+    for i = #self.history, math.max(#self.history - 5, 1), -1 do
+        local prev = self.history[i]
+        if prev.itemLink == itemLink and (now - (prev.time or 0)) < 4 then
+            return
+        end
+    end
+    -- Boss: dal target lootato di recente (OnLootOpened). Se troppo
+    -- vecchio, "Unknown" come prima.
+    local boss = "Unknown"
+    if self._recentBoss and self._recentBossT and (GetTime() - self._recentBossT) < 120 then
+        boss = self._recentBoss
     end
     local entry = {
         id = #self.history + 1,
         itemLink = itemLink,
         itemName = itemName,
         itemTexture = itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark",
-        boss = "Unknown",
+        boss = boss,
         itemType = self:DetectItemType(itemLink, itemName),
         quality = quality,
-        time = time(),
+        time = now,
         assignedTo = nil,
     }
     table.insert(self.history, entry)
+    -- la storia cresce: restano gli ultimi 200 item (la tabella vive nei
+    -- SavedVariables e non deve gonfiarsi per sempre)
+    while #self.history > 200 do
+        table.remove(self.history, 1)
+        for i, e in ipairs(self.history) do e.id = i end
+    end
     self:UpdateHistory()
 end
 
@@ -403,6 +621,7 @@ function LM:MatchesFilter(entry)
     if self.db and self.db.rarityFilter ~= nil then
         f = self.db.rarityFilter
     end
+    if self:IsCategoryIgnored(self:EntryCategory(entry)) then return false end
     if f == nil or f == "all" then return true end
     local q = self:EntryQuality(entry)
     return q >= tonumber(f)
@@ -458,6 +677,12 @@ function LM:UpdateHistory()
             local row = CreateFrame("Button", nil, self.histContent)
             self.histRows[#self.histRows + 1] = row
             row:EnableMouse(true)
+            -- Livello esplicito SOPRA il content: se la finestra e' stata
+            -- raisata prima che la riga nascesse, la riga non resta sotto
+            -- (altrimenti l'hit-test finisce sulla finestra).
+            if self.histContent and self.histContent.GetFrameLevel and row.SetFrameLevel then
+                row:SetFrameLevel((self.histContent:GetFrameLevel() or 1) + 2)
+            end
             row:RegisterForClicks("LeftButtonUp")
             row.entry = entry
             RLSuite.utils:SkinRow(row, self.selectedItem == entry)
@@ -513,6 +738,21 @@ function LM:UpdateHistory()
             assigned:SetText(entry.assignedTo or "-")
             table.insert(self.remainTexts, { fs = remain, entry = entry })
 
+            -- Pezzo gia' rollato e vinto: riga ingrigita nel listato (il
+            -- vincitore resta in oro, l'icona desaturata). Visibile ma
+            -- chiaramente "chiuso": il prossimo pezzo da rollare salta
+            -- all'occhio.
+            if entry.assignedTo then
+                local GR = 0.45
+                num:SetTextColor(GR, GR, GR, 1)
+                name:SetTextColor(GR, GR, GR, 1)
+                boss:SetTextColor(GR, GR, GR, 1)
+                itype:SetTextColor(GR, GR, GR, 1)
+                remain:SetTextColor(GR, GR, GR, 1)
+                assigned:SetTextColor(1, 0.82, 0, 1) -- chi ha vinto, in oro
+                if icon.SetDesaturated then icon:SetDesaturated(true) end
+            end
+
             -- riferimenti ai figli per il secondo passaggio (posizionamento)
             row.num = num
             row.icon = icon
@@ -544,11 +784,13 @@ function LM:UpdateHistory()
     -- Pass 2: altezza unica per tutte le righe (quella della voce piu' alta)
     -- e posizionamento verticale con contenuto allineato in alto.
     local rowH = math.max(LM_ROW_MIN_H, 2 * LM_ROW_TOP + maxLines * lineH)
+    RLSuite.utils:ClearScrollClip(self.histContent)
     y = 0
     for _, row in ipairs(self.histRows) do
         row:SetHeight(rowH)
         row:SetPoint("TOPLEFT", self.histContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.histContent, "TOPRIGHT", 0, -y)
+        RLSuite.utils:ClipScrollRow(self.histContent, row, y, rowH)
 
         -- Riposiziona i figli (num, icon, name, boss, itype, remain,
         -- assigned) allineandoli in alto, dentro la riga.
@@ -566,6 +808,8 @@ function LM:UpdateHistory()
         y = y + rowH + LM_ROW_GAP
     end
     self.histContent:SetHeight(math.max(y, 1))
+    RLSuite.utils:RepinFrameOrder(self.histContent)
+    RLSuite.utils:RefreshScrollClip(self.histContent)
     self:EnsureTicker()
 end
 
@@ -576,6 +820,18 @@ function LM:SelectItem(entry)
     end
     if self.selectedItemText then
         self.selectedItemText:SetText(entry.itemName or "Unknown")
+    end
+end
+
+-- Svuota la riga "selected item": chiamata dopo ogni vincita, cosi' le
+-- finestre pickup aperte non bloccano la preparazione del roll seguente.
+function LM:ClearSelection()
+    self.selectedItem = nil
+    if self.selectedItemIcon then
+        self.selectedItemIcon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    end
+    if self.selectedItemText then
+        self.selectedItemText:SetText(L["No item selected"])
     end
 end
 
@@ -608,7 +864,9 @@ function LM:StartRoll(rollType)
     if self.preMessage and self.preMessage ~= "" then
         msg = self.preMessage .. " " .. msg
     end
-    RLSuite.utils:SendChat(msg, "RAID")
+    -- I messaggi dei tasti di roll vanno in RAID WARNING
+    -- (Utils:SendChat torna a RAID se non leader/assistant).
+    RLSuite.utils:SendChat(msg, "RAID_WARNING")
     -- barra-timer in DBM/BigWigs se installati (durata del roll)
     RLSuite.utils:StartDbmTimer(self.db.rollDuration or 10, "Roll " .. (self.selectedItem.itemName or "Unknown"),
         self.selectedItem.itemTexture)
@@ -732,6 +990,9 @@ function LM:AnnounceWinner()
         RLSuite.utils:SendChat((winner.name or "?") .. " wins " .. (self.currentRoll.item.itemName or "Unknown") .. " with " .. (winner.roll or 0) .. "! Please trade.", "RAID")
         self.currentRoll.item.assignedTo = winner.name
         self:ShowTradeWindow(self.currentRoll.item)
+        -- La riga "selected item" torna vuota: con la finestra pickup aperta
+        -- si puo' subito selezionare e rollare un altro pezzo.
+        self:ClearSelection()
         self:UpdateHistory()
     end
 
@@ -746,7 +1007,7 @@ function LM:DoReroll()
     local names = {}
     for _, w in ipairs(winners) do table.insert(names, w.name or "?") end
 
-    RLSuite.utils:SendChat("Reroll! Only " .. table.concat(names, ", ") .. " can roll for " .. (self.currentRoll.item.itemName or "Unknown"), "RAID")
+    RLSuite.utils:SendChat("Reroll! Only " .. table.concat(names, ", ") .. " can roll for " .. (self.currentRoll.item.itemName or "Unknown"), "RAID_WARNING")
     -- barra-timer in DBM/BigWigs se installati (durata del reroll)
     RLSuite.utils:StartDbmTimer(self.db.rerollDuration or 5, "Reroll " .. (self.currentRoll.item.itemName or "Unknown"),
         self.currentRoll.item.itemTexture)
@@ -754,6 +1015,17 @@ function LM:DoReroll()
     self.currentRoll.rolls = {}
     self.currentRoll.active = true
     if self.rerollBtn then self.rerollBtn:Disable() end
+
+    -- In debug i fittizi rerollano anche loro (come nello StartRoll),
+    -- altrimenti il pareggio di test si fermava a "No valid rerolls!".
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        local template = self:GetRollTemplate()
+        -- a differenza dello StartRoll (80% di presenza), nel reroll TUTTI
+        -- i pareggiati fittizi rispondono: il pareggio si risolve sempre.
+        for _, w in ipairs(winners) do
+            self:OnSystemRoll(string.format(template, w.name, math.random(1, 100), 1, 100))
+        end
+    end
 
     -- Non-overlapping: cancel any previous reroll/roll countdown.
     self:CancelRollTimers()
@@ -796,6 +1068,7 @@ function LM:ProcessReroll()
     RLSuite.utils:SendChat((winner.name or "?") .. " wins the reroll for " .. (self.currentRoll.item.itemName or "Unknown") .. " with " .. (winner.roll or 0) .. "! Please trade.", "RAID")
     self.currentRoll.item.assignedTo = winner.name
     self:ShowTradeWindow(self.currentRoll.item)
+    self:ClearSelection()
     self:UpdateHistory()
 end
 
@@ -803,41 +1076,172 @@ function LM:ResetButtons()
     if self.rollMSBtn then self.rollMSBtn:Enable() end
     if self.rollOSBtn then self.rollOSBtn:Enable() end
     if self.rollOtherBtn then self.rollOtherBtn:Enable() end
-    if self.rerollBtn then self.rerollBtn:Disable() end
+    if self.rerollBtn then
+        -- MAI disabilitare un reroll pendente: in caso di pareggio il
+        -- ResetButtons() finale di AnnounceWinner cancellava subito il
+        -- tasto appena abilitato (il bug "pari e il reroll non parte").
+        local pending = self.currentRoll and self.currentRoll.rerollWinners
+        if pending and #pending > 1 then
+            self.rerollBtn:Enable()
+        else
+            self.rerollBtn:Disable()
+        end
+    end
 end
+
+-- Finestre "click to pick up": si IMPILANO una sotto l'altra (mai
+-- sovrapposte) partendo dal centro-alto dello schermo. Ogni finestra e'
+-- alta quanto l'icona del pezzo (+padding) e il testo sta a DESTRA
+-- dell'icona cliccabile. tradeWindows tiene traccia delle finestre aperte
+-- cosi' chiudendone una le altre risalgo a riempire il buco.
+local LM_TRADE_ICON = 32     -- lato dell'icona cliccabile
+local LM_TRADE_PAD = 6       -- padding sopra/sotto l'icona
+local LM_TRADE_GAP = 6       -- spazio verticale tra una finestra e l'altra
 
 function LM:ShowTradeWindow(item)
     if not item then return end
-    local f = CreateFrame("Frame", "RLSuiteTradeWindow", UIParent)
-    f:SetSize(200, 100)
-    f:SetPoint("CENTER")
+    self.tradeWindows = self.tradeWindows or {}
+    -- nome globale univoco (le finestre possono convivere, una per vincita)
+    local n = #self.tradeWindows + 1
+    local name = "RLSuiteTradeWindow" .. n
+    while _G[name] do
+        n = n + 1
+        name = "RLSuiteTradeWindow" .. n
+    end
+
+    local f = CreateFrame("Frame", name, UIParent)
+    f:SetSize(230, LM_TRADE_ICON + 2 * LM_TRADE_PAD)
     f:SetFrameStrata("DIALOG")
     RLSuite.utils:SkinFrame(f)
+    -- Il frame NON cattura MAI i click (passano alla lista loot dietro):
+    -- catturano solo l'icona cliccabile e la X di chiusura.
+    f:EnableMouse(false)
+    table.insert(self.tradeWindows, f)
 
+    -- icona cliccabile a sinistra, alta quanto la finestra
     local icon = f:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(40, 40)
-    icon:SetPoint("TOP", f, "TOP", 0, -15)
+    icon:SetSize(LM_TRADE_ICON, LM_TRADE_ICON)
+    icon:SetPoint("LEFT", f, "LEFT", LM_TRADE_PAD + 2, 0)
     icon:SetTexture(item.itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
+    f.icon = icon
 
+    -- "Click to pick up item" a DESTRA dell'icona; sotto, la riga
+    -- "give to: <nome del vincitore>" che indica a chi va consegnato.
     local text = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    text:SetPoint("TOP", icon, "BOTTOM", 0, -5)
+    text:SetPoint("LEFT", icon, "RIGHT", 8, 7)
+    text:SetPoint("RIGHT", f, "RIGHT", -34, 0) -- lascia spazio alla X
+    text:SetJustifyH("LEFT")
+    text:SetWordWrap(true)
     text:SetText("Click to pick up item")
+    f.text = text
+
+    local giveTo = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    giveTo:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -2)
+    giveTo:SetPoint("RIGHT", text, "RIGHT", 0, 0)
+    giveTo:SetJustifyH("LEFT")
+    giveTo:SetText("give to: " .. (item.assignedTo or "?"))
+    giveTo:SetTextColor(1, 0.82, 0) -- oro, in evidenza
+    f.giveTo = giveTo
 
     local btn = CreateFrame("Button", nil, f)
     btn:SetAllPoints(icon)
     btn:EnableMouse(true)
     btn:RegisterForClicks("LeftButtonUp")
+    f.pickBtn = btn
     btn:SetScript("OnClick", function()
-        if item.itemLink then
-            PickupItem(item.itemLink)
-        end
         if TradeFrame and TradeFrame:IsShown() then
+            if item.itemLink then
+                PickupItem(item.itemLink)
+            end
             ClickTradeButton(1)
+            self:CloseTradeWindow(f)
+        else
+            -- NIENTE pickup senza trade aperto: un item sul cursore trasforma
+            -- OGNI click dell'interfaccia in un'azione del cursore e la lista
+            -- loot smette di rispondere (il bug "finestra pickup = lista
+            -- bloccata"). Il pezzo si prende solo quando il trade e' aperto.
+            RLSuite.utils:Print(L["Open the trade with the winner first, then click the item icon."])
         end
-        f:Hide()
     end)
 
-    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -5, -5)
-    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
+    f.closeBtn = RLSuite.utils:MakeCloseX(f, function() self:CloseTradeWindow(f) end)
+    f.closeBtn:SetPoint("RIGHT", f, "RIGHT", 0, 0)
+
+    self:StackTradeWindows()
+end
+
+-- Chiude una finestra di pickup e risistema la pila (le altre risalgono).
+function LM:CloseTradeWindow(f)
+    if not f then return end
+    if f.Hide then f:Hide() end
+    for i, w in ipairs(self.tradeWindows or {}) do
+        if w == f then
+            table.remove(self.tradeWindows, i)
+            break
+        end
+    end
+    self:StackTradeWindows()
+end
+
+function LM:CloseAllTradeWindows()
+    for _, w in ipairs(self.tradeWindows or {}) do
+        if w and w.Hide then w:Hide() end
+    end
+    self.tradeWindows = {}
+end
+
+-- Impila le finestre aperte UNA SOTTO L'ALTRA, affiancate alla finestra
+-- del Loot Manager (lato con piu' spazio libero: destra o sinistra).
+-- MAI piu' al centro dello schermo: stavano SOPRA il listato e, dopo un
+-- paio di roll, i loro bottoni catturavano i click destinati alle righe
+-- (il bug "dopo due roll non clicco piu' i pezzi"). Solo se la finestra
+-- del Loot Manager non e' visibile ripiombano al centro-alto, come prima.
+function LM:StackTradeWindows()
+    local prev = nil
+    for _, w in ipairs(self.tradeWindows or {}) do
+        if w and w.IsShown and w:IsShown() then
+            w:ClearAllPoints()
+            if prev then
+                w:SetPoint("TOP", prev, "BOTTOM", 0, -LM_TRADE_GAP)
+            else
+                local lm = self.frame
+                if lm and lm.IsShown and lm:IsShown() then
+                    local left = (lm.GetLeft and lm:GetLeft()) or 0
+                    local sw = (GetScreenWidth and GetScreenWidth()) or 1024
+                    if left < sw / 2 then
+                        w:SetPoint("TOPLEFT", lm, "TOPRIGHT", 8, 0)
+                    else
+                        w:SetPoint("TOPRIGHT", lm, "TOPLEFT", -8, 0)
+                    end
+                else
+                    w:SetPoint("TOP", UIParent, "TOP", 0, -80)
+                end
+            end
+            prev = w
+        end
+    end
+end
+
+-- Svuota il Loot Manager: uscendo dalla debug mode lo storico (loot finto),
+-- il roll in corso e le finestre pickup non devono sopravvivere.
+function LM:ClearHistory()
+    if self.db and self.db.history then
+        for k in pairs(self.db.history) do self.db.history[k] = nil end
+    end
+    self.history = (self.db and self.db.history) or {}
+    self.selectedItem = nil
+    self:CancelRollTimers()
+    if self.UnregisterEvent then
+        self:UnregisterEvent("CHAT_MSG_SYSTEM")
+    end
+    self.currentRoll = nil
+    self:CloseAllTradeWindows()
+    if self.selectedItemIcon then
+        self.selectedItemIcon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    end
+    if self.selectedItemText then
+        self.selectedItemText:SetText(L["No item selected"])
+    end
+    self:ResetButtons()
+    self:UpdateHistory()
 end

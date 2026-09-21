@@ -13,12 +13,16 @@ function MW:Init()
 end
 
 function MW:Toggle()
-    if self.frame and self.frame:IsShown() then
-        self:CloseTab()
+    -- La BARRA e' una finestra vera: Toggle apre/chiude la BARRRA (e con lei
+    -- il pannello). Il pannello si apre/chiude anche SOLO con la freccia
+    -- sulla barra; la barra resta come finestra autonoma.
+    if not self.frame then return end
+    if self.titleBar and self.titleBar:IsShown() then
         self.frame:Hide()
-    elseif self.frame then
+        self.titleBar:Hide()
+    else
+        if self.titleBar then self.titleBar:Show() end
         self.frame:Show()
-        self:CloseTab()
         -- /rls mostra anche l'HUD MacroBar (se abilitata e non gia' visibile)
         self:ShowMacrobarHud()
     end
@@ -48,6 +52,7 @@ function MW:ShowTab(key)
     end
     if not self.frame then return end
     self.frame:Show()
+    if self.titleBar then self.titleBar:Show() end
     self:SelectTab(key)
 end
 
@@ -79,7 +84,10 @@ function MW:OnTabClick(key)
 end
 
 function MW:CloseTab()
-    self:HideAllWindows()
+    -- SOLO reset dello stato tab: MAI nascondere le altre finestre.
+    -- La freccia sulla barra, la X e /rls aprono e chiudono la main window
+    -- senza toccare le finestre dei moduli (in fight si chiude il pannello
+    -- senza chiudere tutte le finestre).
     self.currentTab = nil
     self:RefreshTabHighlights()
 end
@@ -119,7 +127,7 @@ end
 -- Offset a cascata per le finestre senza posizione salvata: cosi'
 -- aprendone piu' d'una non si sovrappongono tutte nello stesso punto.
 function MW:DefaultCascadeOffset(ignoreKey)
-    local ALL_KEYS = { "group", "raidframe", "ms", "loot" }
+    local ALL_KEYS = { "group", "raidframe", "ms", "loot", "log" }
     local n = 0
     for _, k in ipairs(ALL_KEYS) do
         if k ~= ignoreKey and self:IsTabOpen(k) then
@@ -135,17 +143,107 @@ function MW:CreateFrame()
     f:SetSize(240, 150)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
-    f:SetMovable(true)
-    f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    -- Finestra UNIVERSALE come tutte le altre dell'addon: drag+clamp
+    -- (MakeDraggable), front layer, BORDO tematico. Layout key "main"
+    -- (mai ripristinato in base flow: la posizione viene dalla command).
+    RLSuite.utils:MakeUniversalWindow(f, "main")
     f:Hide()
+    f._noOuterBorder = true
     self.frame = f
     RLSuite.utils:SkinFrame(f)
     RLSuite.utils:ClampWindow(f)
 
-    -- Niente titolo: la barra contiene solo i bottoni (matrice + fase +
+    -- === Barretta titolo 20px SOPRA la main bar ======================
+    -- Eredita la larghezza della main bar (anchor a tutti e due gli
+    -- angoli). A sinistra: "RLS"; a destra: arrowup.tga (mostra/nasconde
+    -- il pannello sotto alla barretta) e close.tga (chiude la main bar).
+    local tb = CreateFrame("Frame", "RLSuiteMainTitleBar", UIParent)
+    tb:SetHeight(30)
+    -- gap 2px: barretta STACCATA dalla main bar (non incollata)
+    tb:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 2)
+    tb:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 2)
+    tb:SetFrameStrata(f:GetFrameStrata() or "HIGH")
+    tb:EnableMouse(true)
+    tb:Hide()
+    self.titleBar = tb
+    -- la barretta e' una finestra universale anche lei: drag+clamp e stesso
+    -- bordo tematico della main bar (e di ogni finestra dell'addon).
+    if RLSuite.utils.MakeUniversalWindow then
+        RLSuite.utils:MakeUniversalWindow(tb, "titlebar")
+    else
+        RLSuite.utils:SkinFrame(tb)
+    end
+
+    -- La barretta TRASCINA tutta la main bar: clic sinistro + trascina.
+    -- La barretta trascina la main bar (proxy), MA con lo stesso guard di
+    -- clamp usato da MakeDraggable: durante il drag la finestra non esce
+    -- MAI dai bordi (workaround del bug SetClampedToScreen+scala).
+    tb:RegisterForDrag("LeftButton")
+    tb:EnableMouse(true)
+    tb:SetScript("OnDragStart", function()
+        f:StartMoving()
+        if f._rlsDragGuard then f._rlsDragGuard:Show() end
+    end)
+    tb:SetScript("OnDragStop", function()
+        f:StopMovingOrSizing()
+        if f._rlsDragGuard then f._rlsDragGuard:Hide() end
+        RLSuite.utils:ClampWindowToScreen(f)
+        RLSuite.utils:PersistFramePos(f, "main")
+    end)
+
+    local tbTitle = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    tbTitle:SetPoint("LEFT", tb, "LEFT", 8, 0)
+    tbTitle:SetText("RLS")
+    tbTitle:SetTextColor(1, 0.82, 0)
+    tb.title = tbTitle
+
+    -- X bianca + freccia dai TGA dell'utente in media/, DIMEZZATE (11px).
+    local crashBtn = CreateFrame("Button", nil, tb)
+    crashBtn:SetSize(11, 11)
+    crashBtn:SetPoint("RIGHT", tb, "RIGHT", -4, 0)
+    RLSuite.utils:ApplyIcon(crashBtn, "media\\close.tga")
+    crashBtn:SetScript("OnClick", function()
+        -- La X chiude SOLO la main window (barra+pannello): le finestre
+        -- dei moduli restano aperte (anche in fight).
+        f:Hide()
+        tb:Hide()
+    end)
+    tb.closeBtn = crashBtn
+
+    local arrBtn = CreateFrame("Button", nil, tb)
+    arrBtn:SetSize(11, 11)
+    arrBtn:SetPoint("RIGHT", crashBtn, "LEFT", -4, 0)
+    RLSuite.utils:ApplyIcon(arrBtn, "media\\arrowup.tga")
+
+    -- Freccia: punta IN SU col pannello APERTO; SPECCHIATA (in giu') col
+    -- pannello CHIUSO. Flip verticale via TexCoord.
+    local function MW_UpdateArrowDir()
+        local up = f:IsShown()
+        if arrBtn.icon and arrBtn.icon.SetTexCoord then
+            arrBtn.icon:SetTexCoord(0, 1, up and 0 or 1, up and 1 or 0)
+        end
+        if arrBtn.hl and arrBtn.hl.SetTexCoord then
+            arrBtn.hl:SetTexCoord(0, 1, up and 0 or 1, up and 1 or 0)
+        end
+    end
+    MW._updateArrowDir = MW_UpdateArrowDir
+    f:HookScript("OnShow", MW_UpdateArrowDir)
+    f:HookScript("OnHide", MW_UpdateArrowDir)
+
+    arrBtn:SetScript("OnClick", function()
+        -- La freccia mostra/nasconde SOLO il pannello dei pulsanti sotto
+        -- la barretta. In ogni momento, anche in fight: mai altre finestre.
+        if f:IsShown() then
+            f:Hide()
+        else
+            f:Show()
+        end
+        MW_UpdateArrowDir()
+    end)
+    tb.arrowBtn = arrBtn
+    MW_UpdateArrowDir()
+
+    -- Niente titolo dentro la finestra: i bottoni restano (matrice + fase +
     -- X di chiusura e icona SaveRaid). La Config si apre dalla minimappa
     -- (clic destro) o da /rls config.
 
@@ -155,6 +253,7 @@ function MW:CreateFrame()
         { key = "raidframe", label = "Raid Frame" },
         { key = "ms",        label = "MS" },
         { key = "loot",      label = "Loot" },
+        { key = "log",       label = "Log" },
     }
     self.tabs = {}
     self.currentTab = nil
@@ -163,6 +262,7 @@ function MW:CreateFrame()
     self.matrixButtons = {}
     for i, def in ipairs(self.tabDefs) do
         local tab = CreateFrame("Button", "RLSuiteTab" .. def.key, f, "UIPanelButtonTemplate")
+        RLSuite.utils:SkinButton(tab)
         tab:SetSize(90, 22)
         tab:SetText(def.label)
         tab.tabKey = def.key
@@ -170,6 +270,81 @@ function MW:CreateFrame()
         self.tabs[def.key] = tab
         table.insert(self.matrixButtons, tab)
     end
+
+    -- MT / OT: due mezzi tasti che occupano UNA sola cella della matrice.
+    -- Assegnano (o rimuovono, se gia' assegnato) il target corrente come
+    -- Main Tank / Main Assist via SetPartyAssignment (solo RL/assist,
+    -- RLSuite:AssignPartyRole fa i controlli e avvisa in chat).
+    -- SetPartyAssignment e' PROTETTA su 3.3.5 (forbidden da codice addon):
+    -- l'assegnazione passa da un bottone SECURE che esegue lo slash macro
+    -- ("/maintank Nome" / "/mainassist Nome"), identico a una macro fatta a mano.
+    -- Il macrotext viene compilato in PreClick (SOLO fuori combattimento: gli
+    -- attributi protetti non si toccano in combat) e svuotato in PostClick.
+    local function MakeRoleSecBtn(name, text, roleCmd)
+        local b = CreateFrame("Button", name, f, "SecureActionButtonTemplate, UIPanelButtonTemplate")
+        RLSuite.utils:SkinButton(b)
+        b:SetText(text)
+        b:RegisterForClicks("LeftButtonDown")
+        b:SetAttribute("type", "macro")
+        b:SetAttribute("macrotext", "")
+        b:SetScript("PreClick", function(s)
+            s:SetAttribute("macrotext", "")
+            if InCombatLockdown and InCombatLockdown() then
+                RLSuite.utils:Print(L["Cannot assign Main Tank / Main Assist while in combat."])
+                return
+            end
+            if not (UnitExists and UnitExists("target")) then
+                RLSuite.utils:Print(L["Target a raid member first to assign %s."]:format(
+                    roleCmd == "maintank" and "Main Tank" or "Main Assist"))
+                return
+            end
+            local name = UnitName and UnitName("target")
+            -- DEBUG: invece della macro (fallirebbe su player fittizi), i
+            -- tasti MT/OT toccano lo store simulato debugTanks -> le barre
+            -- Tanks del Raid Frame si riempiono anche coi fake.
+            if RLSuite.DebugMode and RLSuite:DebugMode() then
+                if name and name ~= "" then
+                    RLSuite.debugTanks = RLSuite.debugTanks or {}
+                    local key = (roleCmd == "maintank") and "mt" or "ot"
+                    local cur = RLSuite.debugTanks[key]
+                    if cur == name then
+                        RLSuite.debugTanks[key] = false -- svuotato intenzionalmente: niente auto-refill
+                    else
+                        RLSuite.debugTanks[key] = name
+                    end
+                    RLSuite.utils:Print(string.format(L["%s toggled as %s."], name,
+                        roleCmd == "maintank" and L["Main tank"] or L["Main assist"]))
+                    local rf = RLSuite.raidFrame
+                    if rf and rf.Rebuild then rf:Rebuild() end
+                end
+                return
+            end
+            if RLSuite.IsOfficer and not RLSuite:IsOfficer() then
+                RLSuite.utils:Print(L["Only the raid leader or an assist can assign Main Tank / Main Assist."])
+                return
+            end
+            if name and name ~= "" then
+                s:SetAttribute("macrotext", "/" .. roleCmd .. " " .. name)
+            end
+        end)
+        b:SetScript("PostClick", function(s)
+            s:SetAttribute("macrotext", "")
+        end)
+        return b
+    end
+    self.mtBtn = MakeRoleSecBtn("RLSuiteMTBtn", "MT", "maintank")
+    self.otBtn = MakeRoleSecBtn("RLSuiteOTBtn", "OT", "mainassist")
+    local function mtPairTooltip(btn, titleKey, lineKey)
+        btn:SetScript("OnEnter", function(s)
+            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L[titleKey])
+            GameTooltip:AddLine(L[lineKey], 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    mtPairTooltip(self.mtBtn, "Main Tank (MT)", "Assign/remove your current target as Main Tank.")
+    mtPairTooltip(self.otBtn, "Main Assist (OT)", "Assign/remove your current target as Main Assist.")
 
     -- Icona fase singola: accanto all'icona SaveRaid, cambia in base alla
     -- fase (occhio LFG animato / clessidra / spade da combattimento).
@@ -218,12 +393,6 @@ function MW:CreateFrame()
     self.phaseText:SetJustifyH("LEFT")
     self.phaseText:Hide()
 
-    self.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    self.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    self.closeBtn:SetScript("OnClick", function()
-        self:CloseTab()
-        f:Hide()
-    end)
 
     -- Config: accessibile dal clic destro sull'icona della minimappa e da
     -- /rls config (niente piu' icona rotellina nella barra principale).
@@ -255,11 +424,13 @@ function MW:ApplyLayout()
     L = L or {}
     local cols = math.max(1, math.min(8, tonumber(L.matrixCols) or 2))
     local rows = math.max(1, math.min(8, tonumber(L.matrixRows) or 4))
-    -- la matrice deve sempre contenere tutti i bottoni (6 tab):
-    -- se le colonne sono poche, le righe minime crescono per non sforare
+    -- la matrice deve sempre contenere tutti i bottoni (6 tab): la coppia
+    -- MT/OT occupa UNA cella extra; se le colonne sono poche, le righe
+    -- minime crescono per non sforare
     local nButtons = #(self.matrixButtons or {})
-    if nButtons > 0 then
-        rows = math.max(rows, math.ceil(nButtons / cols))
+    local extraCells = (self.mtBtn and self.otBtn) and 1 or 0
+    if nButtons + extraCells > 0 then
+        rows = math.max(rows, math.ceil((nButtons + extraCells) / cols))
     end
 
     -- Bottoni matrice: colonne x righe configurabili dalla Config.
@@ -287,15 +458,52 @@ function MW:ApplyLayout()
     self.frame:SetSize(w, h)
     self.frame:SetScale(L.scale or 1)
 
-    -- matrice (sotto la riga icone, allineata a sinistra)
+    -- Bottoni matrice: colonne x righe configurabili dalla Config.
+    -- La coppia MT/OT sta SOTTO il tasto "Raid Frame" (cella
+    -- i_raidframe + colonne) se quella cella e' dentro la matrice: i
+    -- tasti seguenti scalano di una cella per lasciare il posto libero.
+    -- Altrimenti (colonne troppe larghe) la coppia finisce nella cella
+    -- subito dopo l'ultimo tasto, come prima.
     local x0 = PAD
     local topY = -PAD - iconRowH - rowGap
+    local totalCells = nButtons + extraCells
+    local rfIdx = nil
     for i, btn in ipairs(self.matrixButtons or {}) do
-        local col = (i - 1) % cols
-        local row = math.floor((i - 1) / cols)
+        if btn.tabKey == "raidframe" then rfIdx = i break end
+    end
+    local pinnedIdx = nil
+    if rfIdx and extraCells > 0 then
+        local p = rfIdx + cols
+        if p <= totalCells then pinnedIdx = p end
+    end
+    local pairCell = pinnedIdx or totalCells
+    local cell = 0
+    for i, btn in ipairs(self.matrixButtons or {}) do
+        cell = cell + 1
+        if pinnedIdx and cell == pinnedIdx then cell = cell + 1 end
+        local col = (cell - 1) % cols
+        local row = math.floor((cell - 1) / cols)
         btn:ClearAllPoints()
         btn:SetSize(bw, bh)
         btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", x0 + col * (bw + gapX), topY - row * (bh + gapY))
+    end
+
+    -- Coppia MT / OT nella cella scelta sopra: due mezzi tasti affiancati
+    -- (insieme occupano lo spazio di un tasto solo).
+    if self.mtBtn and self.otBtn then
+        local idx = pairCell
+        local col = (idx - 1) % cols
+        local row = math.floor((idx - 1) / cols)
+        local halfGap = 4
+        local halfW = (bw - halfGap) / 2
+        local cellX = x0 + col * (bw + gapX)
+        local cellY = topY - row * (bh + gapY)
+        self.mtBtn:ClearAllPoints()
+        self.mtBtn:SetSize(halfW, bh)
+        self.mtBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX, cellY)
+        self.otBtn:ClearAllPoints()
+        self.otBtn:SetSize(bw - halfW - halfGap, bh)
+        self.otBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX + halfW + halfGap, cellY)
     end
 
     -- riga icone in alto: save -> fase a sinistra, X a destra
@@ -346,6 +554,8 @@ function MW:PaneForTab(key)
         return RLSuite.msManager and RLSuite.msManager.frame
     elseif key == "loot" then
         return RLSuite.lootManager and RLSuite.lootManager.frame
+    elseif key == "log" then
+        return RLSuite.combatLog and RLSuite.combatLog.frame
     end
     return nil
 end
@@ -354,12 +564,13 @@ end
 function MW:LayoutKeyForTab(key)
     if key == "group" then return "groupmaking" end
     if key == "raidframe" then return "raidframe" end
+    if key == "log" then return "combatlog" end
     return key -- ms / loot
 end
 
 function MW:HideAllWindows()
     if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
-    local keys = { "group", "raidframe", "ms", "loot" }
+    local keys = { "group", "raidframe", "ms", "loot", "log" }
     for _, k in ipairs(keys) do
         local pane = self:PaneForTab(k)
         if pane then pane:Hide() end
@@ -378,27 +589,40 @@ function MW:RegisterAllWindows()
     -- i loro layout interni non cambiano con la difficolta'.
     RLSuite.windowMins = RLSuite.windowMins or {}
     RLSuite.windowMins.groupmaking = function()
-        -- Larghezza minima: fila di controlli in basso (Start Spam,
-        -- Preview Msg, checkbox "Show specs in message" e bottone
-        -- InviteEngine) e le due colonne comp/class.
+        -- Larghezza minima: larghezza complessiva della fila di controlli
+        -- in basso (Start Spam, Preview Msg, checkbox + "Show specs in
+        -- message", InviteEngine) calcolata da Groupmaking:MinWidth().
         -- Altezza: pila verticale title+dropdowns, gruppo slot (topRow),
         -- box "richieste" e blocco basso anteprima+bottoni.
         local gm = RLSuite.groupmaking
+        local minW = 560
+        if gm and gm.MinWidth then minW = gm:MinWidth() end
         if gm and gm.MinHeight then
-            return 560, gm:MinHeight()
+            return minW, gm:MinHeight()
         end
         local topH = 156
         if gm and gm.topRow then
             local th = gm.topRow:GetHeight()
             if th and th > 60 then topH = th end
         end
-        return 560, topH + 336
+        return minW, topH + 328
     end
     RLSuite.windowMins.ms = function()
         return 350, 280
     end
     RLSuite.windowMins.loot = function()
-        return 480, 340
+        -- larghezza minima = spazio reale dei bottoni di roll
+        -- (16 + Roll MS/OS/FFA/Reroll 4x80 + Announce Changes 124 + margini):
+        -- sotto i 506 il tasto MS "Announce Changes" sborda fuori finestra.
+        return 510, 340
+    end
+    RLSuite.windowMins.log = function()
+        -- min width = riga dei tab in alto (16 + 8 tab da 86px + gap da 2),
+        -- sotto i 724px i tasti sbordano fuori finestra.
+        -- min height = stack reale: 78 (dropdown+tab+header) + 398 (liste)
+        -- + ~30 (barra report/clear/live) + margini: sotto i 540 la barra
+        -- inferiore clippa le liste.
+        return 730, 540
     end
 
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
@@ -406,12 +630,17 @@ function MW:RegisterAllWindows()
         group = "groupmaking",
         ms = "ms",
         loot = "loot",
+        log = "combatlog",
     }
     for key, lkey in pairs(layoutKeys) do
         local pane = self:PaneForTab(key)
         if pane and not pane._rlsWindow then
             pane._rlsWindow = true
-            RLSuite.utils:MakeDraggable(pane, lkey)
+            -- Loot Manager: NON spostabile, si comporta come una finestra
+            -- nativa (es. pannello equip): posizione fissa, mai trascinabile.
+            if key ~= "loot" then
+                RLSuite.utils:MakeDraggable(pane, lkey)
+            end
             RLSuite.utils:MakeClickToFront(pane)
             -- la X della finestra chiude anche lo stato del tab nella barra
             if pane.closeBtn then
@@ -433,6 +662,7 @@ function MW:RegisterAllWindows()
         group = { "groupmaking", 420, 380, "groupmaking" },
         ms = { "ms", 320, 260, "ms" },
         loot = { "loot", 440, 300, "loot" },
+        log = { "combatlog", 730, 540, "combatlog" },
     }
     for key, cfg in pairs(resizable) do
         local pane = self:PaneForTab(key)
@@ -461,7 +691,7 @@ function MW:SelectTab(key)
         key = def and def.key or "group"
     end
     if key ~= "group" and key ~= "raidframe"
-        and key ~= "ms" and key ~= "loot" then
+        and key ~= "ms" and key ~= "loot" and key ~= "log" then
         key = "group"
     end
     self.currentTab = key
@@ -487,10 +717,30 @@ function MW:SelectTab(key)
             pw = math.max(pw, mw)
             ph = math.max(ph, mh)
         end
+        -- auto-sanazione di salvataggi rovinati: la dimensione salvata
+        -- non puo' superare lo schermo (ereditato dal vecchio bug resize)
+        local swn, shn = (GetScreenWidth and GetScreenWidth()) or 0, (GetScreenHeight and GetScreenHeight()) or 0
+        if swn > 0 and pw > swn then pw = swn if L.width and L.width > swn then L.width = swn end end
+        if shn > 0 and ph > shn then ph = shn if L.height and L.height > shn then L.height = shn end end
         pane:SetSize(pw, ph)
-        RLSuite.utils:ApplySavedPos(pane, lkey, function()
-            return self:DefaultCascadeOffset(key)
-        end)
+        if key == "loot" then
+            -- finestra tipo equip: posizione fissa nativa (in alto a
+            -- sinistra; a DESTRA del trade quando e' aperto), decisa da
+            -- LM:AnchorDefault; ignora posizioni salvate storiche.
+            if RLSuite.lootManager and RLSuite.lootManager.AnchorDefault then
+                RLSuite.lootManager:AnchorDefault()
+            else
+                pane:ClearAllPoints()
+                pane:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 16, -116)
+            end
+        else
+            RLSuite.utils:ApplySavedPos(pane, lkey, function()
+                return self:DefaultCascadeOffset(key)
+            end)
+        end
+        if RLSuite.utils.ClampWindowToScreen then
+            RLSuite.utils:ClampWindowToScreen(pane)
+        end
         -- porta la finestra in primo piano sopra le altre (strata HIGH +
         -- frame level distanziato: niente sovrapposizioni parziali)
         RLSuite.utils:RaiseWindow(pane)
@@ -626,6 +876,7 @@ function MW:AskRaidTitle(callback)
     f.edit = edit
 
     local ok = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(ok)
     ok:SetSize(90, 22)
     ok:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
     ok:SetText(L["Save"])
@@ -636,6 +887,7 @@ function MW:AskRaidTitle(callback)
     end)
 
     local cancel = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(cancel)
     cancel:SetSize(90, 22)
     cancel:SetPoint("RIGHT", ok, "LEFT", -8, 0)
     cancel:SetText(L["Cancel"])

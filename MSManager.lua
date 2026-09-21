@@ -41,6 +41,7 @@ function MSM:CreateFrame()
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     f:Hide()
+    f._noOuterBorder = true
     self.frame = f
     RLSuite.utils:SkinFrame(f)
     RLSuite.utils:ClampWindow(f)
@@ -67,6 +68,7 @@ function MSM:CreateFrame()
     self.listContent:SetWidth(200)
     self.listContent:SetHeight(1)
     self.listScroll:SetScrollChild(self.listContent)
+    RLSuite.utils:RegisterScrollClip(self.listScroll, self.listContent)
     self.listScroll:SetScript("OnSizeChanged", function(s, w, h)
         if MSM.listContent and w and w > 40 then
             MSM.listContent:SetWidth(w)
@@ -97,26 +99,28 @@ function MSM:CreateFrame()
     self.addSpec:SetText(L["Spec"])
 
     local addBtn = CreateFrame("Button", nil, self.addBox, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(addBtn)
     addBtn:SetSize(60, 22)
     addBtn:SetPoint("LEFT", self.addSpec, "RIGHT", 8, 0)
     addBtn:SetText("Add")
     addBtn:SetScript("OnClick", function() self:AddManual() end)
 
     self.requestBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.requestBtn)
     self.requestBtn:SetSize(150, 24)
     self.requestBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 10)
     self.requestBtn:SetText("Request MS Change")
     self.requestBtn:SetScript("OnClick", function() self:RequestChanges() end)
 
     self.genMsgBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.genMsgBtn)
     self.genMsgBtn:SetSize(150, 24)
     self.genMsgBtn:SetPoint("LEFT", self.requestBtn, "RIGHT", 8, 0)
     self.genMsgBtn:SetText("Announce Changes")
     self.genMsgBtn:SetScript("OnClick", function() self:GenerateMessage() end)
 
-    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 end
 
 function MSM:SkinInner()
@@ -189,6 +193,7 @@ function MSM:UpdateList()
         child:SetParent(nil)
     end
     self.listRows = {}
+    RLSuite.utils:ClearScrollClip(self.listContent)
     if self.listScroll then
         local w = self.listScroll:GetWidth()
         if w and w > 40 then self.listContent:SetWidth(w) end
@@ -202,17 +207,22 @@ function MSM:UpdateList()
         row:SetPoint("TOPLEFT", self.listContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.listContent, "TOPRIGHT", 0, -y)
         RLSuite.utils:SkinRow(row, false)
+        RLSuite.utils:ClipScrollRow(self.listContent, row, y, 24)
 
         local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         text:SetPoint("LEFT", row, "LEFT", 8, 0)
-        text:SetPoint("RIGHT", row, "RIGHT", -22, 0)
+        text:SetPoint("RIGHT", row, "RIGHT", -18, 0)
         text:SetJustifyH("LEFT")
         text:SetText((entry.name or "?") .. ": " .. (entry.spec or "?"))
 
         local delBtn = CreateFrame("Button", nil, row)
-        delBtn:SetSize(14, 14)
-        delBtn:SetPoint("RIGHT", row, "RIGHT", -6, 0)
-        delBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
+        delBtn:SetSize(10, 10)
+        delBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+        -- X bianca dal TGA in media/ (formato BCI: nel client rende sempre).
+        RLSuite.utils:ApplyIcon(delBtn, "media\\close.tga")
+        -- Livelli espliciti: la X resta SEMPRE cliccabile sopra la riga.
+        row:SetFrameLevel((row:GetFrameLevel() or 1) + 1)
+        delBtn:SetFrameLevel(row:GetFrameLevel() + 2)
         delBtn:EnableMouse(true)
         delBtn:RegisterForClicks("LeftButtonUp")
         delBtn:SetScript("OnClick", function()
@@ -222,6 +232,8 @@ function MSM:UpdateList()
         y = y + 26
     end
     self.listContent:SetHeight(math.max(y, 1))
+    RLSuite.utils:RepinFrameOrder(self.listContent)
+    RLSuite.utils:RefreshScrollClip(self.listContent)
 end
 
 function MSM:RequestChanges()

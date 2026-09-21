@@ -19,10 +19,16 @@ local WL_BAR_GAP = 2
 local WL_COL_GAP = 4
 local WL_GROUP_LABEL_H = 14
 
--- Extra vertical room the InviteEngine rib needs for the tabbed panel
--- below the fixed Raid Group box (AceGUI-3.0 TabGroup: tab strip + border).
--- The rib keeps following Groupmaking's minimum resize height.
-local IE_TAB_EXTRA = 53
+-- Spessore dei bordi: icone "comp" e "select a spec" (RLS_BORDER, overlay
+-- sopra l'icona e sotto l'icona di ruolo) e, un po' piu' spesse ma senza
+-- che le caselle si clippino tra loro, quelle del Raid Group (WL_BORDER:
+-- barre da 16px alte, 18 faceva tagliare le caselle adiacenti).
+local RLS_BORDER = 16
+local WL_BORDER = 14
+
+-- Bordo dorato dello slot-drop durante il drag nel pannello Raid Group
+-- (bordino che evidenzia il riquadro in cui il player sta per essere rilasciato).
+local WL_GOLD_R, WL_GOLD_G, WL_GOLD_B = 1, 0.82, 0
 
 -- All Groupmaking window fonts are +2pt over the default game fonts
 -- (window titles keep their large size).
@@ -172,6 +178,7 @@ function GM:CreateMainWindow()
         insets = {left=4, right=4, top=4, bottom=4}
     })
     f:Hide()
+    f._noOuterBorder = true
     self.mainFrame = f
     RLSuite.utils:SkinFrame(f)
     RLSuite.utils:ClampWindow(f)
@@ -198,12 +205,14 @@ function GM:CreateMainWindow()
 
     -- Due tasti al posto del dropdown: il tasto attivo resta evidenziato.
     self.diffBtn10 = CreateFrame("Button", "RLSuiteDiffBtn10", f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.diffBtn10)
     self.diffBtn10:SetSize(30, 22)
     self.diffBtn10:SetPoint("LEFT", diffLabel, "RIGHT", 8, 0)
     self.diffBtn10:SetText("10")
     self.diffBtn10:SetScript("OnClick", function() self:SetDifficulty("10") end)
 
     self.diffBtn25 = CreateFrame("Button", "RLSuiteDiffBtn25", f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.diffBtn25)
     self.diffBtn25:SetSize(30, 22)
     self.diffBtn25:SetPoint("LEFT", self.diffBtn10, "RIGHT", 4, 0)
     self.diffBtn25:SetText("25")
@@ -270,7 +279,10 @@ function GM:CreateMainWindow()
     self.reqBox = CreateFrame("Frame", nil, f)
     self.reqBox:SetPoint("TOPLEFT", self.topRow, "BOTTOMLEFT", 0, -8)
     self.reqBox:SetPoint("TOPRIGHT", self.topRow, "BOTTOMRIGHT", 0, -8)
-    self.reqBox:SetHeight(150)
+    -- L'altezza NON e' fissa: il bordo inferiore viene ancorato sopra la
+    -- fila di bottoni (vedi sotto, dopo spamBtn), cosi' tra la fine del
+    -- riquadro delle caselle di testo e i tasti non resta spazio morto a
+    -- nessuna dimensione della finestra.
     RLSuite.utils:SkinBox(self.reqBox)
 
     -- Campo "Aim": nota libera del raid leader, sopra a Reserved items.
@@ -308,6 +320,7 @@ function GM:CreateMainWindow()
     end)
 
     self.atlasBtn = CreateFrame("Button", nil, self.reqBox, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.atlasBtn)
     self.atlasBtn:SetSize(80, 20)
     self.atlasBtn:SetPoint("RIGHT", self.reqBox, "RIGHT", -10, 0)
     self.atlasBtn:SetPoint("TOP", self.reservedEdit, "TOP", 0, 0)
@@ -350,12 +363,20 @@ function GM:CreateMainWindow()
     self.previewText:SetText(L["Message preview..."])
 
     self.spamBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.spamBtn)
     self.spamBtn:SetSize(100, 24)
     self.spamBtn:SetPoint("BOTTOMLEFT", self.previewBox, "TOPLEFT", 0, 8)
     self.spamBtn:SetText("Start Spam")
     self.spamBtn:SetScript("OnClick", function() self:ToggleSpam() end)
 
+    -- Il riquadro delle richieste (Aim/Reserved/Other) si estende in basso
+    -- fino a 8px sopra la fila di bottoni: spamBtn parte dallo stesso
+    -- margine sinistro del contenuto (16), quindi BOTTOMLEFT non sposta la
+    -- geometria orizzontale; gli edit restano ancorati in alto dentro il box.
+    self.reqBox:SetPoint("BOTTOMLEFT", self.spamBtn, "TOPLEFT", 0, 8)
+
     self.previewBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.previewBtn)
     self.previewBtn:SetSize(100, 24)
     self.previewBtn:SetPoint("LEFT", self.spamBtn, "RIGHT", 8, 0)
     self.previewBtn:SetText("Preview Msg")
@@ -375,18 +396,19 @@ function GM:CreateMainWindow()
     specsLbl:SetPoint("LEFT", self.showSpecsCheck, "RIGHT", 0, 0)
     specsLbl:SetText("Show specs in message")
     specsLbl:SetTextColor(1, 0.82, 0)
+    self.specsLbl = specsLbl -- usata da MinWidth() per la fila di bottoni
 
     -- InviteEngine (ex-Whisplist): il bottone sta a DESTRA della checkbox
     -- "Show specs in message", come richiesto.
     self.whisplistBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.whisplistBtn)
     self.whisplistBtn:SetSize(100, 24)
     self.whisplistBtn:SetPoint("LEFT", specsLbl, "RIGHT", 10, 0)
     self.whisplistBtn:SetText("InviteEngine")
     self.whisplistBtn:SetScript("OnClick", function() self:ToggleWhisplist() end)
 
-    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 
     -- ORA posso chiamare BuildCompSlots e BuildClassBar (previewText esiste)
     self:BuildCompSlots()
@@ -418,17 +440,15 @@ function GM:BuildCompSlots()
         local row = math.floor((i - 1) / 5)
         local y = -(row * self:GroupRowHeight() + GROUP_LABEL_H)
         slot:SetPoint("TOPLEFT", self.compFrame, "TOPLEFT", col * (SLOT_SIZE + SLOT_SPACING), y)
-        -- Slot background + thin border (the class color is applied to the
-        -- border on fill). No oversized overlay texture: it used to cover the
-        -- spec icon and poke into the "Group N" labels.
+        -- Sfondo dello slot (il COLORE DEL BORDO class-color va sull'overlay
+        -- borderFrame, vedi sotto). Nessun bordo qui: sarebbe nascosto
+        -- dall'icona della spec che e' disegnata sopra.
         slot:SetBackdrop({
             bgFile = "Interface\\Buttons\\UI-Quickslot",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = false, tileSize = 32, edgeSize = 8,
+            tile = false, tileSize = 32,
             insets = {left=2, right=2, top=2, bottom=2}
         })
         slot:SetBackdropColor(0.2, 0.2, 0.2, 0.9)
-        slot:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
         slot:Show()
         slot:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         slot:SetScript("OnClick", function(s, button)
@@ -443,16 +463,32 @@ function GM:BuildCompSlots()
         slot.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         slot.icon:Hide()
 
+        -- BORDO come overlay: frame figlio con il solo edge, creato DOPO
+        -- l'icona della spec (il suo backdrop si disegna sopra le texture
+        -- dello slot padre) e PRIMA delle icone di ruolo, che gli nascono
+        -- sopra come sue texture. Risultato: bordo SOPRA l'icona della spec
+        -- ma SOTTO backdrop e icona del ruolo.
+        local border = CreateFrame("Frame", "RLSuiteCompSlotBorder" .. i, slot)
+        border:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, 0)
+        border:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", 0, 0)
+        border:SetFrameLevel((slot.GetFrameLevel and slot:GetFrameLevel() or 1) + 1)
+        border:SetBackdrop({
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = false, tileSize = 16, edgeSize = RLS_BORDER,
+            insets = {left=2, right=2, top=2, bottom=2}
+        })
+        border:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
+        slot.borderFrame = border
+
         -- Semi-transparent backing so the role glyph stays readable on bright
-        -- spec icons. It lives on ARTWORK (above the spec icon, below the
-        -- OVERLAY glyph) so it can never cover the role icon.
-        slot.roleIconBg = slot:CreateTexture(nil, "ARTWORK")
+        -- spec icons: texture di border (sta sopra il bordo) sotto OVERLAY.
+        slot.roleIconBg = border:CreateTexture(nil, "ARTWORK")
         slot.roleIconBg:SetSize(20, 20)
         slot.roleIconBg:SetPoint("TOPRIGHT", slot, "TOPRIGHT", -1, -1)
         slot.roleIconBg:SetTexture(0, 0, 0, 0.6)
         slot.roleIconBg:Hide()
 
-        slot.roleIcon = slot:CreateTexture(nil, "OVERLAY")
+        slot.roleIcon = border:CreateTexture(nil, "OVERLAY")
         slot.roleIcon:SetSize(18, 18)
         slot.roleIcon:SetPoint("TOPRIGHT", slot, "TOPRIGHT", -2, -2)
         slot.roleIcon:SetTexture(ROLE_ICON_TEXTURE)
@@ -540,17 +576,50 @@ function GM:LayoutGroupPanels(rowW)
     self:SyncWhisplistHeight()
 end
 
--- Altezza minima di resize di Groupmaking: topRow (dipende da 10/25) piu'
--- la pila fissa di title+dropdown, box richieste e blocco anteprima+bottoni.
--- IE_TAB_EXTRA copre la striscia a tab che l'InviteEngine aggiunge sotto
--- Raid Group: cosi' lista e dettaglio restano alti come prima.
+-- Altezza minima di resize di Groupmaking, SOMMATA dal layout reale cosi'
+-- da non lasciare spazio morto tra il box richieste e la fila di bottoni:
+--   66  intestazione (title + riga raid/diff/hc)
+--    8  gap
+-- topRow (topH: comp + class/spec bar, dipende da 10/25 e dal resize)
+--    8  gap
+--  140  box richieste (3 label + 3 edit + padding interno: misura del contenuto)
+--    8  gap
+--   24  fila bottoni (Start Spam / Preview / specs / InviteEngine)
+--    8  gap
+--   58  box anteprima messaggio
+--   16  margine inferiore
+-- Totale fisso = 66+8+8+140+8+24+8+58+16 = 328 + topH.
+-- IE_TAB_EXTRA (striscia tab della costola InviteEngine) non e' piu' sommato:
+-- il minimo calcolato copre comunque il contenuto dei tab del pannello.
 function GM:MinHeight()
     local topH = 156
     if self.topRow then
         local th = self.topRow:GetHeight()
         if th and th > 60 then topH = th end
     end
-    return topH + 336 + IE_TAB_EXTRA
+    return topH + 328
+end
+
+-- Larghezza minima della finestra: la fila di controllo in basso deve
+-- restare interamente visibile. Somma dei pezzi reali della fila:
+--   16   margine sinistro (previewBox/spamBtn partono a x=16)
+--  100   Start Spam
+--    8
+--  100   Preview Msg
+--    6
+--   24   checkbox
+--    w   label "Show specs in message" (misurata via GetStringWidth)
+--   10
+--  100   InviteEngine
+--   16   margine destro (simmetrico al sinistro)
+-- Fisso = 16+100+8+100+6+24+10+100+16 = 380 + larghezza del testo.
+function GM:MinWidth()
+    local labelW = 0
+    if self.specsLbl and self.specsLbl.GetStringWidth then
+        labelW = math.ceil(self.specsLbl:GetStringWidth() or 0)
+    end
+    if labelW <= 0 then labelW = 140 end -- fallback per "Show specs in message"
+    return 380 + labelW
 end
 
 -- L'InviteEngine e' una costola di Groupmaking: la sua altezza segue sempre
@@ -570,7 +639,9 @@ function GM:ClearSlot(index)
     slot.filled = false
     slot.playerName = nil
     if slot.icon then slot.icon:Hide() end
-    slot:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
+    if slot.borderFrame then
+        slot.borderFrame:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
+    end
     if slot.roleIconBg then slot.roleIconBg:Hide() end
     if slot.roleIcon then slot.roleIcon:Hide() end
     self:UpdateMessagePreview()
@@ -591,7 +662,9 @@ function GM:FillSlot(index, class, role, playerName, spec)
         slot.icon:Show()
     end
     local r, g, b = RLSuite.utils:GetClassColor(class)
-    slot:SetBackdropBorderColor(r, g, b, 1)
+    if slot.borderFrame then
+        slot.borderFrame:SetBackdropBorderColor(r, g, b, 1)
+    end
     if slot.roleIconBg then slot.roleIconBg:Show() end
     if slot.roleIcon then
         local coords = RoleIconCoords(slot.role)
@@ -625,7 +698,12 @@ end
 -- CLASS BAR - FIX: non usare GetNormalTexture()
 -- ============================================================
 function GM:BuildClassBar()
-    local classes = {"WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "DEATHKNIGHT", "SHAMAN", "MAGE", "WARLOCK", "DRUID"}
+    -- Classi su DUE colonne (LayoutClassBar riempie riga per riga a coppie):
+    --   col 1: Warrior, Rogue, Shaman, DK, Hunter
+    --   col 2: Paladin, Priest, Mage, Warlock, Druid
+    -- (Warlock sotto Mage, Druid sotto Warlock in col. 2, DK e Hunter
+    --  sotto Shaman in col. 1.)
+    local classes = {"WARRIOR", "PALADIN", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "DEATHKNIGHT", "WARLOCK", "HUNTER", "DRUID"}
     self.specCells = {}
     for _, class in ipairs(classes) do
         local data = RLSuite.classData[class]
@@ -644,7 +722,7 @@ function GM:BuildClassBar()
                 btn:SetBackdrop({
                     bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
                     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-                    tile = true, tileSize = 16, edgeSize = 8,
+                    tile = true, tileSize = 16, edgeSize = RLS_BORDER,
                     insets = {left = 1, right = 1, top = 1, bottom = 1},
                 })
                 btn:SetBackdropColor(0, 0, 0, 0.8)
@@ -691,7 +769,8 @@ function GM:LayoutClassBar()
     if not self.classBar or not self.specCells then return end
     local w = self.classBar:GetWidth() or 0
     if w < 40 then return end
-    local COLS = 3
+    -- Due colonne di classi: celle larghe e icone piu' grandi.
+    local COLS = 2
     local ICON_COLS = 3
     local GAP = 2
     local ROW_GAP = 0
@@ -858,12 +937,30 @@ function GM:BuildSpamMessage()
         if n > 5 then return "rest" end
         return tostring(n)
     end
+    -- Spec duplicate nella comp ideale: nome UNA sola volta + numero
+    -- ("holy x2" invece di "holy, holy"), ordine di prima comparsa.
+    local function fmtSpecList(list)
+        local seen, order = {}, {}
+        for _, s in ipairs(list) do
+            if not seen[s] then
+                seen[s] = 0
+                table.insert(order, s)
+            end
+            seen[s] = seen[s] + 1
+        end
+        local parts = {}
+        for _, s in ipairs(order) do
+            local n = seen[s]
+            table.insert(parts, n > 1 and (s .. " x" .. n) or s)
+        end
+        return table.concat(parts, ", ")
+    end
     local roles = {}
     local showSpecs = self.db and self.db.showSpecsInMessage
     if showSpecs then
         for _, def in ipairs(roleOrder) do
             if needed[def.key] and needed[def.key] > 0 then
-                table.insert(roles, def.label .. "(" .. table.concat(specLists[def.key], ", ") .. ")")
+                table.insert(roles, def.label .. "(" .. fmtSpecList(specLists[def.key]) .. ")")
             end
         end
     else
@@ -943,10 +1040,8 @@ function GM:StartSpam()
     local interval = self.db.spamInterval or 60
     if self.spamTimer then self:CancelTimer(self.spamTimer) end
     self.spamTimer = self:ScheduleRepeatingTimer("DoSpam", interval)
-    -- Debug mode: simuliamo 10 whisper fittizi per testare la Whisplist.
-    if RLSuite.DebugMode and RLSuite:DebugMode() then
-        self:StartDebugWhispers()
-    end
+    -- NIENTE whisper fittizi automatici: li invia SOLO il tasto "Whisp
+    -- test" della debug bar (GM:DebugWhisperBurst).
     RLSuite.utils:Print(L["Spammer started."])
 end
 
@@ -957,7 +1052,6 @@ function GM:StopSpam()
         self:CancelTimer(self.spamTimer)
         self.spamTimer = nil
     end
-    self:StopDebugWhispers()
     RLSuite.utils:Print(L["Spammer stopped."])
 end
 
@@ -969,8 +1063,14 @@ function GM:DoSpam()
         return
     end
     local channels = self.db.spamChannels or {"General", "Trade"}
+    -- Numero canale: esplicito (Config > Groupmaking > Channel #) ha la
+    -- precedenza; altrimenti risoluzione automatica dal nome.
+    local nums = self.db.spamChannelNums or {}
     for _, ch in ipairs(channels) do
-        local chNum = GetChannelName(ch)
+        local chNum = tonumber(nums[ch])
+        if not chNum or chNum <= 0 then
+            chNum = GetChannelName(ch)
+        end
         if chNum and chNum > 0 then
             SendChatMessage(RLSuite.utils:SanitizeChat(msg), "CHANNEL", nil, chNum)
         end
@@ -995,41 +1095,26 @@ local DEBUG_WHISPER_POOL = {
     { name = "Arrowz",    class = "HUNTER",      role = "dps",    spec = "marks", gs = 5900 },
 }
 
-function GM:StartDebugWhispers()
-    self:StopDebugWhispers()
-    self.debugWhisperIndex = 0
-    self.debugWhisperTimer = self:ScheduleRepeatingTimer("DebugWhisperTick", 0.5)
-end
-
-function GM:StopDebugWhispers()
-    if self.debugWhisperTimer and self.CancelTimer then
-        self:CancelTimer(self.debugWhisperTimer)
-    end
-    self.debugWhisperTimer = nil
-    self.debugWhisperIndex = nil
-end
-
--- Emette il prossimo whisper fittizio e si ferma dopo il 10o.
-function GM:DebugWhisperTick()
+-- Invia IMMEDIATAMENTE tutti i 10 whisper fittizi del pool, passando dal
+-- percorso reale GM:OnWhisper (quindi la Whisplist si popola esattamente
+-- come con giocatori veri, spammer attivo o no). Unica sorgente dei
+-- whisper di test: il tasto "Whisp test" della debug bar.
+function GM:DebugWhisperBurst()
     if not (RLSuite.DebugMode and RLSuite:DebugMode()) then
-        self:StopDebugWhispers()
+        RLSuite.utils:Print(L["Debug mode is OFF."])
         return
     end
-    if not self.spamActive then
-        self:StopDebugWhispers()
-        return
+    -- Il percorso reale dei whisper (OnWhisper) registra SOLO a spammer
+    -- attivo: per il test simuliamo quello stato solo durante il burst,
+    -- senza cambiare il comportamento reale dello spammer.
+    local savedSpamActive = self.spamActive
+    self.spamActive = true
+    for _, fake in ipairs(DEBUG_WHISPER_POOL) do
+        local msg = string.lower(fake.class) .. " " .. fake.role .. " spec " .. fake.spec .. " " .. fake.gs .. " gs"
+        self:OnWhisper(fake.name, msg)
     end
-    self.debugWhisperIndex = (self.debugWhisperIndex or 0) + 1
-    local fake = DEBUG_WHISPER_POOL[self.debugWhisperIndex]
-    if not fake then
-        self:StopDebugWhispers()
-        return
-    end
-    local msg = string.lower(fake.class) .. " " .. fake.role .. " spec " .. fake.spec .. " " .. fake.gs .. " gs"
-    self:OnWhisper(fake.name, msg)
-    if self.debugWhisperIndex >= #DEBUG_WHISPER_POOL then
-        self:StopDebugWhispers()
-    end
+    self.spamActive = savedSpamActive
+    RLSuite.utils:Print(string.format(L["Debug: %d fake whispers sent."], #DEBUG_WHISPER_POOL))
 end
 
 -- ============================================================
@@ -1203,6 +1288,7 @@ function GM:CreateWhisplistWindow()
     -- Aperto a destra della finestra Groupmaking e ancorato ad essa: si
     -- sposta con lei e non e' trascinabile da solo.
     local f = CreateFrame("Frame", "RLSuiteInviteEngine", self.mainFrame)
+    f._noOuterBorder = true
     f:SetPoint("TOPLEFT", self.mainFrame, "TOPRIGHT", 6, 0)
     -- 6 colonne di gruppi (G1..G6) richiedono piu' larghezza della vecchia
     -- costola a 5 colonne.
@@ -1249,9 +1335,8 @@ function GM:CreateWhisplistWindow()
         self:SetInviteEngineTab("whisper")
     end
 
-    f.closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    f.closeBtn:SetScript("OnClick", function() f:Hide() end)
 end
 
 -- Crea la barra a tab con AceGUI-3.0 (widget TabGroup) e posiziona il suo
@@ -1260,37 +1345,107 @@ function GM:CreateInviteEngineTabs()
     local f = self.whisplistFrame
     if not f then return end
 
-    local AceGUI = LibStub and LibStub("AceGUI-3.0", true)
-    if not AceGUI or not AceGUI.Create then return end
-
-    local tg = AceGUI:Create("TabGroup")
-    if not tg then return end
+    -- Tab-strip NOSTRA (niente widget AceGUI: il widget ri-disponava i
+    -- layer interni e il testo degli header finiva coperto). Tutta la
+    -- catena dei livelli qui e' dentro la nostra finestra.
+    local tg = {}
     self.ieTabGroup = tg
 
-    -- Disabilita l'altezza automatica del TabGroup. Senza figli AceGUI il
-    -- widget si "collasserebbe" all'altezza minima (striscia tab + bordo)
-    -- in LayoutFinished, sovrascrivendo la nostra SetHeight: le pagine
-    -- Whisplist/Autoinviter sono frame normali, non figli AceGUI.
-    if tg.SetAutoAdjustHeight then
-        tg:SetAutoAdjustHeight(false)
-    else
-        tg.noAutoHeight = true
+    local host = CreateFrame("Frame", nil, f)
+    host:SetPoint("TOPLEFT", self.wlGroupBox, "BOTTOMLEFT", 0, -4)
+    host:SetWidth(280)
+    host:SetHeight(200)
+    tg.frame = host
+
+    -- Striscia dei tab: una riga in cima al host, SEMPRE sopra il border.
+    local strip = CreateFrame("Frame", nil, host)
+    strip:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
+    strip:SetPoint("TOPRIGHT", host, "TOPRIGHT", 0, 0)
+    strip:SetHeight(24)
+    tg.strip = strip
+    strip:SetFrameLevel((host:GetFrameLevel() or 1) + 50)
+
+    -- Il "border" e' il contenitore delle pagine (API compat: tg.border).
+    local border = CreateFrame("Frame", nil, host)
+    border:SetPoint("TOPLEFT", strip, "BOTTOMLEFT", 0, -2)
+    border:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, 2)
+    RLSuite.utils:SkinBox(border)
+    tg.border = border
+
+    tg.tabs = {}
+    local defs = {
+        { key = "whisper", text = L["Whisplist"] },
+        { key = "manual", text = L["Manual list"] },
+        { key = "calendar", text = L["Calendar event"] },
+    }
+    local prev = nil
+    for i, d in ipairs(defs) do
+        local btn = CreateFrame("Button", "RLSuiteIETab" .. i, strip)
+        RLSuite.utils:SkinButton(btn)
+        btn:SetWidth(90)
+        btn:SetHeight(22)
+        local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetJustifyH("CENTER")
+        label:SetAllPoints(btn)
+        label:SetText(d.text)
+        btn._tabLabel = label
+        btn._tabValue = d.key
+        if prev then
+            btn:SetPoint("TOPLEFT", prev, "TOPRIGHT", 2, 0)
+        else
+            btn:SetPoint("TOPLEFT", strip, "TOPLEFT", 2, -1)
+        end
+        btn:SetScript("OnClick", function() self:SetInviteEngineTab(d.key) end)
+        tg.tabs[i] = btn
+        prev = btn
     end
 
-    tg:SetTabs({
-        { text = L["Whisplist"], value = "whisper" },
-        { text = L["Manual list"], value = "manual" },
-        { text = L["Calendar event"], value = "calendar" },
-    })
-    tg:SetCallback("OnGroupSelected", function(widget, event, value)
-        self:SetInviteEngineTab(value)
-    end)
-
-    -- Il frame del widget vive dentro la costola, sotto Raid Group.
-    tg.frame:SetParent(f)
-    tg.frame:SetFrameStrata("HIGH")
-    tg.frame:SetPoint("TOPLEFT", self.wlGroupBox, "BOTTOMLEFT", 0, -4)
+    tg.SelectTab = function(_, value) self:SetInviteEngineTab(value) end
+    self:PinTabStrip()
     self:LayoutInviteEngineTabs()
+end
+
+-- Larghezze dei tab equidistribuite nella striscia (ri-calcolo al resize).
+function GM:LayoutInviteEngineTabButtons()
+    local tg = self.ieTabGroup
+    if not (tg and tg.strip and tg.tabs and #tg.tabs > 0) then return end
+    local avail = (tg.strip:GetWidth() or 0) - (#tg.tabs + 1) * 2
+    avail = math.max(avail, 20 * #tg.tabs)
+    local per = math.floor(avail / #tg.tabs)
+    for i = 1, #tg.tabs do
+        tg.tabs[i]:SetWidth(per)
+    end
+end
+
+-- Visual della selezione tab: attiva in oro, inattiva in grigio.
+function GM:ApplyInviteEngineTabStyles(value)
+    local tg = self.ieTabGroup
+    if not (tg and tg.tabs) then return end
+    for i = 1, #tg.tabs do
+        local btn = tg.tabs[i]
+        if btn._tabValue == value then
+            btn._tabLabel:SetTextColor(1, 0.82, 0)
+        else
+            btn._tabLabel:SetTextColor(0.6, 0.6, 0.6)
+        end
+    end
+end
+
+function GM:PinTabStrip()
+    local tg = self.ieTabGroup
+    if not tg then return end
+    local base = 0
+    if tg.border and tg.border.GetFrameLevel then
+        base = tg.border:GetFrameLevel() or 0
+    end
+    local tabs = tg.tabs
+    if not tabs then return end
+    for i = 1, #tabs do
+        local tb = tabs[i]
+        if tb and tb.SetFrameLevel then
+            tb:SetFrameLevel(base + 50 + i)
+        end
+    end
 end
 
 -- Ridimensiona il TabGroup alla costola corrente e ricalcola l'area di
@@ -1308,8 +1463,10 @@ function GM:LayoutInviteEngineTabs()
     local h = (f:GetHeight() or 0) - topOffset - 8
     if h < 120 then h = 120 end
 
-    if tg.SetWidth then tg:SetWidth(w) end
-    if tg.SetHeight then tg:SetHeight(h) end
+    tg.frame:SetWidth(w)
+    tg.frame:SetHeight(h)
+    self:LayoutInviteEngineTabButtons()
+    self:PinTabStrip()
 end
 
 -- Pagina "Whisplist": la lista dei whisper ricevuti e il dettaglio del
@@ -1345,6 +1502,7 @@ function GM:BuildWhisplistPage()
     self.wlContent:SetWidth(200)
     self.wlContent:SetHeight(1)
     self.wlScroll:SetScrollChild(self.wlContent)
+    RLSuite.utils:RegisterScrollClip(self.wlScroll, self.wlContent)
     self.wlScroll:SetScript("OnSizeChanged", function(s, w, h)
         if GM.wlContent and w and w > 40 then
             GM.wlContent:SetWidth(w)
@@ -1405,24 +1563,28 @@ function GM:BuildWhisplistPage()
     end)
 
     self.wlInviteBtn = CreateFrame("Button", nil, self.wlDetailBox, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.wlInviteBtn)
     self.wlInviteBtn:SetSize(66, 22)
     self.wlInviteBtn:SetPoint("BOTTOMLEFT", self.wlDetailBox, "BOTTOMLEFT", 10, 36)
     self.wlInviteBtn:SetText("Invite")
     self.wlInviteBtn:SetScript("OnClick", function() self:InviteSelected() end)
 
     self.wlAskGusBtn = CreateFrame("Button", nil, self.wlDetailBox, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.wlAskGusBtn)
     self.wlAskGusBtn:SetSize(66, 22)
     self.wlAskGusBtn:SetPoint("LEFT", self.wlInviteBtn, "RIGHT", 4, 0)
     self.wlAskGusBtn:SetText("Ask GS")
     self.wlAskGusBtn:SetScript("OnClick", function() self:AskGS() end)
 
     self.wlAskAchiBtn = CreateFrame("Button", nil, self.wlDetailBox, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.wlAskAchiBtn)
     self.wlAskAchiBtn:SetSize(66, 22)
     self.wlAskAchiBtn:SetPoint("LEFT", self.wlAskGusBtn, "RIGHT", 4, 0)
     self.wlAskAchiBtn:SetText("Ask Achi")
     self.wlAskAchiBtn:SetScript("OnClick", function() self:AskAchi() end)
 
     self.wlDeclineBtn = CreateFrame("Button", nil, self.wlDetailBox, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.wlDeclineBtn)
     self.wlDeclineBtn:SetSize(66, 22)
     self.wlDeclineBtn:SetPoint("LEFT", self.wlAskAchiBtn, "RIGHT", 4, 0)
     self.wlDeclineBtn:SetText("Decline")
@@ -1454,11 +1616,18 @@ function GM:SetInviteEngineTab(value)
         if value == "whisper" then self.wlPage:Show() else self.wlPage:Hide() end
     end
     if self.ieManualPage then
-        if value == "manual" then self.ieManualPage:Show() else self.ieManualPage:Hide() end
+        if value == "manual" then
+            self.ieManualPage:Show()
+            self:RepinManualPage()
+        else
+            self.ieManualPage:Hide()
+        end
     end
     if self.ieCalPage then
         if value == "calendar" then self.ieCalPage:Show() else self.ieCalPage:Hide() end
     end
+    self:PinTabStrip()
+    self:ApplyInviteEngineTabStyles(value)
     if value == "whisper" then
         self:UpdateWhisplist()
         self:UpdateWLGroups()
@@ -1649,12 +1818,14 @@ function GM:BuildManualPage()
     self.ieAutoStatus:SetTextColor(1, 0.82, 0)
 
     self.ieAutoArmBtn = CreateFrame("Button", nil, self.ieManualFooter, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.ieAutoArmBtn)
     self.ieAutoArmBtn:SetSize(130, 24)
     self.ieAutoArmBtn:SetPoint("BOTTOMLEFT", self.ieManualFooter, "BOTTOMLEFT", 8, 22)
     self.ieAutoArmBtn:SetText(L["Start Autoinviter"])
     self.ieAutoArmBtn:SetScript("OnClick", function() self:ToggleAutoinviter() end)
 
     self.ieAutoNowBtn = CreateFrame("Button", nil, self.ieManualFooter, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.ieAutoNowBtn)
     self.ieAutoNowBtn:SetSize(130, 24)
     self.ieAutoNowBtn:SetPoint("LEFT", self.ieAutoArmBtn, "RIGHT", 8, 0)
     self.ieAutoNowBtn:SetText(L["Auto invite now"])
@@ -1694,7 +1865,6 @@ function GM:BuildManualPage()
 
     -- ============================================================
     -- Pannello lista manuale.
-    -- ============================================================
     self.ieAutoManualBox = CreateFrame("Frame", nil, page)
     self.ieAutoManualBox:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -8)
     self.ieAutoManualBox:SetPoint("TOPRIGHT", page, "TOPRIGHT", -8, -8)
@@ -1728,7 +1898,10 @@ function GM:BuildManualPage()
     self.ieAutoNamesList = CreateFrame("Frame", nil, self.ieAutoManualBox)
     self.ieAutoNamesList:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", 0, -2)
     self.ieAutoNamesList:SetPoint("BOTTOMRIGHT", self.ieAutoManualBox, "BOTTOMRIGHT", -8, 4)
-    self.ieAutoNamesList:EnableMouse(true)
+    -- IL BUG DELLE X SPENTE: questo contenitore, grande quanto tutta l'area,
+    -- era mouse-enabled e mangiava OGNI click destinato alle righe/X della
+    -- lista (in 3.3.5 l'hit va al frame mouse-enabled piu' alto). Container
+    -- = mai mouse; le righe/X restano cliccabili al loro livello.
 
     self.ieAutoNamesScroll = CreateFrame("ScrollFrame", "RLSuiteIEAutoNamesScroll", self.ieAutoNamesList, "UIPanelScrollFrameTemplate")
     self.ieAutoNamesScroll:SetPoint("TOPLEFT", self.ieAutoNamesList, "TOPLEFT", 0, 0)
@@ -1742,6 +1915,8 @@ function GM:BuildManualPage()
     self.ieAutoNamesContent = CreateFrame("Frame", nil, self.ieAutoNamesScroll)
     self.ieAutoNamesContent:SetSize(200, 10)
     self.ieAutoNamesScroll:SetScrollChild(self.ieAutoNamesContent)
+    RLSuite.utils:RegisterScrollClip(self.ieAutoNamesScroll, self.ieAutoNamesContent)
+    self:RepinManualPage()
 end
 
 function GM:BuildCalendarPage()
@@ -1770,18 +1945,21 @@ function GM:BuildCalendarPage()
     self.ieCalStatus:SetTextColor(1, 0.82, 0)
 
     self.ieCalAtBtn = CreateFrame("Button", nil, self.ieCalFooter, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.ieCalAtBtn)
     self.ieCalAtBtn:SetSize(150, 24)
     self.ieCalAtBtn:SetPoint("BOTTOMLEFT", self.ieCalFooter, "BOTTOMLEFT", 8, 24)
     self.ieCalAtBtn:SetText(L["Autoinvite at set time"])
     self.ieCalAtBtn:SetScript("OnClick", function() self:ToggleAutoinviterCalendar() end)
 
     self.ieCalNowBtn = CreateFrame("Button", nil, self.ieCalFooter, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.ieCalNowBtn)
     self.ieCalNowBtn:SetSize(116, 24)
     self.ieCalNowBtn:SetPoint("LEFT", self.ieCalAtBtn, "RIGHT", 6, 0)
     self.ieCalNowBtn:SetText(L["Auto invite now"])
     self.ieCalNowBtn:SetScript("OnClick", function() self:AutoInviteNow("calendar") end)
 
     self.ieCalUpdateBtn = CreateFrame("Button", nil, self.ieCalFooter, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.ieCalUpdateBtn)
     self.ieCalUpdateBtn:SetSize(104, 24)
     self.ieCalUpdateBtn:SetPoint("LEFT", self.ieCalNowBtn, "RIGHT", 6, 0)
     self.ieCalUpdateBtn:SetText(L["Create/Update"])
@@ -1977,6 +2155,7 @@ function GM:BuildCalendarPage()
     self.ieCalInviteEdit:SetScript("OnEscapePressed", function(s) s:SetText(""); s:ClearFocus() end)
 
     self.ieCalInviteBtn = CreateFrame("Button", nil, self.ieAutoMirrorInviteBox, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.ieCalInviteBtn)
     self.ieCalInviteBtn:SetSize(112, 20)
     self.ieCalInviteBtn:SetPoint("BOTTOMRIGHT", self.ieAutoMirrorInviteBox, "BOTTOMRIGHT", -8, 6)
     self.ieCalInviteBtn:SetText(L["Invite new member"])
@@ -1995,6 +2174,7 @@ function GM:BuildCalendarPage()
     self.ieAutoMirrorInviteContent = CreateFrame("Frame", nil, self.ieAutoMirrorInviteList)
     self.ieAutoMirrorInviteContent:SetSize(200, 10)
     self.ieAutoMirrorInviteList:SetScrollChild(self.ieAutoMirrorInviteContent)
+    RLSuite.utils:RegisterScrollClip(self.ieAutoMirrorInviteList, self.ieAutoMirrorInviteContent)
 end
 
 -- ============================================================
@@ -2661,11 +2841,13 @@ function GM:RenderAutoinviteMirrorInvites()
     if not self.ieAutoMirrorInviteContent then return end
     local content = self.ieAutoMirrorInviteContent
     local invites = self:CalendarWorkingInvitees()
+    RLSuite.utils:ClearScrollClip(content)
     local y = 0
     for _, invite in ipairs(invites) do
         local row = CreateFrame("Frame", nil, content)
         row:SetHeight(16)
         row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+        RLSuite.utils:ClipScrollRow(content, row, -y, 16)
         row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
 
         local modIcon = row:CreateTexture(nil, "OVERLAY")
@@ -2698,13 +2880,11 @@ function GM:RenderAutoinviteMirrorInvites()
 
         local nm = invite.name
         local xBtn = CreateFrame("Button", nil, row)
-        xBtn:SetSize(14, 14)
+        xBtn:SetSize(7, 7)
         xBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
         row.xBtn = xBtn
-        local xText = FontStr(xBtn, "OVERLAY", 11)
-        xText:SetPoint("CENTER", xBtn, "CENTER", 0, 0)
-        xText:SetText("x")
-        xText:SetTextColor(0.8, 0.2, 0.2)
+        -- X BIANCA dal TGA in media/ (formato BCI: rende sempre).
+        RLSuite.utils:ApplyIcon(xBtn, "media\\close.tga")
         xBtn:SetScript("OnClick", function() self:CalendarRemoveInvitee(nm) end)
 
         local statusFS = FontStr(row, "OVERLAY", 11)
@@ -2717,6 +2897,7 @@ function GM:RenderAutoinviteMirrorInvites()
         y = y - 17
     end
     content:SetHeight(math.max(-y + 2, 10))
+    RLSuite.utils:RefreshScrollClip(content)
     if self.ieAutoMirrorInviteList and self.ieAutoMirrorInviteList.UpdateScrollChildRect then
         self.ieAutoMirrorInviteList:UpdateScrollChildRect()
     end
@@ -2926,6 +3107,7 @@ end
 function GM:BuildAutoNameListUI()
     if not self.ieAutoNamesContent then return end
     local content = self.ieAutoNamesContent
+    RLSuite.utils:ClearScrollClip(content)
     for _, row in ipairs(self._autoNameRows or {}) do
         row:Hide()
         row:SetParent(nil)
@@ -2953,18 +3135,17 @@ function GM:BuildAutoNameListUI()
 
         -- "x" in fondo alla barra: rimuove il giocatore dalla lista.
         local xBtn = CreateFrame("Button", nil, row)
-        xBtn:SetSize(16, 16)
+        xBtn:SetSize(8, 8)
         xBtn:SetPoint("RIGHT", row, "RIGHT", -2, 0)
         xBtn:SetScript("OnClick", function()
             self:RemoveAutoName(name)
         end)
         row.xBtn = xBtn
-        local xText = FontStr(xBtn, "OVERLAY", 12)
-        xText:SetPoint("CENTER", xBtn, "CENTER", 0, 0)
-        xText:SetText("x")
-        xText:SetTextColor(0.8, 0.2, 0.2)
-        xBtn:SetScript("OnEnter", function() xText:SetTextColor(1, 0.3, 0.3) end)
-        xBtn:SetScript("OnLeave", function() xText:SetTextColor(0.8, 0.2, 0.2) end)
+        -- X BIANCA dal TGA in media/ (formato BCI: rende sempre).
+        RLSuite.utils:ApplyIcon(xBtn, "media\\close.tga")
+        -- Livelli espliciti: la X resta SEMPRE cliccabile sopra la riga.
+        row:SetFrameLevel((row:GetFrameLevel() or 1) + 1)
+        xBtn:SetFrameLevel(row:GetFrameLevel() + 2)
 
         -- clic destro sull'intera riga = rimozione (compatibilita').
         row:SetScript("OnClick", function(s, button)
@@ -2979,13 +3160,24 @@ function GM:BuildAutoNameListUI()
             s.text:SetTextColor(1, 1, 1)
         end)
 
+        RLSuite.utils:ClipScrollRow(content, row, -y, 16)
         table.insert(self._autoNameRows, row)
         y = y - 17
     end
 
     content:SetHeight(math.max(-y + 2, 10))
+    RLSuite.utils:RepinFrameOrder(content)
+    RLSuite.utils:RefreshScrollClip(content)
     if self.ieAutoNamesScroll and self.ieAutoNamesScroll.UpdateScrollChildRect then
         self.ieAutoNamesScroll:UpdateScrollChildRect()
+    end
+end
+
+-- Riposiziona deterministicamente i livelli della pagina: DOPO
+-- che manualBox, header e tutti i contenuti esistono (mai meta').
+function GM:RepinManualPage()
+    if self.ieManualPage and RLSuite.utils and RLSuite.utils.RepinFrameOrder then
+        RLSuite.utils:RepinFrameOrder(self.ieManualPage)
     end
 end
 
@@ -3058,7 +3250,7 @@ function GM:BuildWLGroupColumns()
             bar:SetBackdrop({
                 bgFile = "Interface\\Buttons\\UI-Quickslot",
                 edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-                tile = false, tileSize = 32, edgeSize = 8,
+                tile = false, tileSize = 32, edgeSize = WL_BORDER,
                 insets = {left=2, right=2, top=2, bottom=2},
             })
             bar:SetBackdropColor(0.15, 0.15, 0.17, 0.95)
@@ -3075,19 +3267,25 @@ function GM:BuildWLGroupColumns()
             -- OnReceiveDrag resta come percorso parallelo: qualunque dei due
             -- scatti per primo consuma GM._wlDragSource, quindi non c'e'
             -- mai un doppio spostamento/scambio.
+            -- Mentre il drag e' attivo, lo slot sotto il cursore viene
+            -- evidenziato con un BORDINO DORATO (StartWLDragTracking).
             bar:RegisterForDrag("LeftButton")
             bar:SetScript("OnDragStart", function(self2)
                 GM._wlDragSource = (self2.playerName and self2) or nil
+                if GM._wlDragSource then
+                    GM:StartWLDragTracking()
+                end
             end)
             bar:SetScript("OnDragStop", function()
                 local src = GM._wlDragSource
-                GM._wlDragSource = nil
                 if src and src.playerName then
                     local target = GM:WlSlotAtCursor()
+                    GM._wlDragSource = nil
                     if target and target ~= src then
                         GM:MoveWLSlot(src, target)
                     end
                 end
+                GM:StopWLDragTracking()
             end)
             bar:SetScript("OnReceiveDrag", function(self2)
                 local src = GM._wlDragSource
@@ -3095,6 +3293,7 @@ function GM:BuildWLGroupColumns()
                 if src and src ~= self2 and src.playerName then
                     GM:MoveWLSlot(src, self2)
                 end
+                GM:StopWLDragTracking()
             end)
 
             -- Nome in colore di classe su slot scuro (come il Raid Frame):
@@ -3145,8 +3344,12 @@ function GM:UpdateWLGroups()
                 end
             end
         end
-    elseif IsInRaid and IsInRaid() and GetNumRaidMembers then
-        num = GetNumRaidMembers()
+    elseif GetNumRaidMembers then
+        -- In un client 3.3.5 reale la globale IsInRaid() NON esiste (arriva
+        -- solo dal 4.0): usare GetNumRaidMembers() come fonte di verita'.
+        -- Prima il gate su IsInRaid bloccava il popolamento quando si
+        -- ENTRAVA in un gruppo raid gia' formato (es. meta' pieno).
+        num = GetNumRaidMembers() or 0
     end
     if not debugMode then
         local groupCount = { 0, 0, 0, 0, 0, 0 }
@@ -3187,7 +3390,7 @@ function GM:UpdateWLGroups()
                     -- Slot pieno: bordo in colore di classe e nome in colore
                     -- di classe su fondo scuro (leggibile su qualsiasi colore).
                     bar:SetBackdropColor(0.16, 0.16, 0.18, 0.95)
-                    bar:SetBackdropBorderColor(r, gg, b, 1)
+                    bar._nbR, bar._nbG, bar._nbB = r, gg, b
                     if bar.nameFS then
                         bar.nameFS:SetText(member.name)
                         bar.nameFS:SetTextColor(r, gg, b)
@@ -3196,8 +3399,15 @@ function GM:UpdateWLGroups()
                 else
                     -- Slot vuoto: fondo scuro + bordo grigio (comunque visibile).
                     bar:SetBackdropColor(0.12, 0.12, 0.14, 0.95)
-                    bar:SetBackdropBorderColor(0.30, 0.30, 0.32, 1)
+                    bar._nbR, bar._nbG, bar._nbB = 0.30, 0.30, 0.32
                     if bar.nameFS then bar.nameFS:SetText("") end
+                end
+                -- Il colore "normale" e' salvato in _nbR/_nbG/_nbB: durante
+                -- un drag lo slot-destinazione resta con il bordino dorato.
+                if bar._wlDropHl then
+                    bar:SetBackdropBorderColor(WL_GOLD_R, WL_GOLD_G, WL_GOLD_B, 1)
+                else
+                    bar:SetBackdropBorderColor(bar._nbR, bar._nbG, bar._nbB, 1)
                 end
             end
         end
@@ -3275,24 +3485,99 @@ function GM:WlSlotAtCursor()
     if not GetCursorPosition then return nil end
     local x, y = GetCursorPosition()
     if not x or not y then return nil end
-    local scale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-    if scale and scale > 0 then
-        x = x / scale
-        y = y / scale
-    end
     for i, bar in ipairs(self.wlGroupSlots or {}) do
         if bar and bar.IsShown and bar:IsShown() then
+            -- Scala EFFETTIVA DELLA BARRA (il pannello Group Making puo'
+            -- avere scala propria): normalizzare per UIParent disallinea
+            -- l'hit-test di una frazione proporzionale alla distanza.
+            local scale = (bar.GetEffectiveScale and bar:GetEffectiveScale()) or 1
+            if not (scale and scale > 0) then scale = 1 end
+            local cx, cy = x / scale, y / scale
             local left = bar:GetLeft()
             local right = bar:GetRight()
             local bottom = bar:GetBottom()
             local top = bar:GetTop()
             if left and right and bottom and top
-                and x >= left and x <= right and y >= bottom and y <= top then
+                and cx >= left and cx <= right and cy >= bottom and cy <= top then
                 return bar
             end
         end
     end
     return nil
+end
+
+-- ============================================================
+-- BORDINO DORATO durante il drag (pannello Raid Group)
+-- Mentre si trascina un player, un tracker nascosto segue il cursore e
+-- accende il bordo oro sullo slot che riceverebbe il drop ("il riquadro
+-- in cui sto drappando"). Alla fine del drag tutti i bordi tornano ai
+-- colori normali (pieno = classe, vuoto = grigio).
+-- ============================================================
+function GM:EnsureWLDragTracker()
+    if self.wlDragTracker or not self.wlGroupBox then return end
+    local t = CreateFrame("Frame", "RLSuiteWLDragTracker", self.wlGroupBox)
+    t:SetSize(1, 1)
+    t:EnableMouse(false)
+    t._throttle = 0
+    t:SetScript("OnUpdate", function(s, elapsed)
+        s._throttle = (s._throttle or 0) + (elapsed or 0)
+        if s._throttle < 0.03 then return end
+        s._throttle = 0
+        GM:WlDragTick()
+    end)
+    t:Hide()
+    self.wlDragTracker = t
+end
+
+-- Avvio tracking (chiamata dall'OnDragStart degli slot occupati).
+function GM:StartWLDragTracking()
+    self:EnsureWLDragTracker()
+    self._wlDragTarget = nil
+    if self.wlDragTracker then self.wlDragTracker:Show() end
+end
+
+-- Fine drag: spegne il tracker e toglie ogni bordino dorato.
+function GM:StopWLDragTracking()
+    if self.wlDragTracker then self.wlDragTracker:Hide() end
+    self._wlDragSource = nil
+    self._wlDragTarget = nil
+    for _, bar in ipairs(self.wlGroupSlots or {}) do
+        if bar and bar._wlDropHl then
+            bar._wlDropHl = nil
+            if bar._nbR then
+                bar:SetBackdropBorderColor(bar._nbR, bar._nbG, bar._nbB, 1)
+            end
+        end
+    end
+end
+
+-- Un singolo passo di highlight: colora d'oro lo slot sotto il cursore e
+-- ripristina gli altri. Chiamata dal tracker (o direttamente dai test).
+function GM:WlDragTick()
+    if not self._wlDragSource then
+        self:StopWLDragTracking()
+        return
+    end
+    local target = self:WlSlotAtCursor()
+    if target == self._wlDragSource then target = nil end
+    if target == self._wlDragTarget then return end
+    self._wlDragTarget = target
+    for _, bar in ipairs(self.wlGroupSlots or {}) do
+        if bar then
+            local want = (bar == target)
+            if (bar._wlDropHl == true) ~= want then
+                if want then
+                    bar._wlDropHl = true
+                    bar:SetBackdropBorderColor(WL_GOLD_R, WL_GOLD_G, WL_GOLD_B, 1)
+                else
+                    bar._wlDropHl = nil
+                    if bar._nbR then
+                        bar:SetBackdropBorderColor(bar._nbR, bar._nbG, bar._nbB, 1)
+                    end
+                end
+            end
+        end
+    end
 end
 
 -- Riorganizza i gruppi trascinando un giocatore tra gli slot del pannello
@@ -3450,6 +3735,7 @@ function GM:UpdateWhisplist()
     end
     self.selectedEntryIndex = selectedIndex
 
+    RLSuite.utils:ClearScrollClip(self.wlContent)
     local y = 0
     for i, entry in ipairs(entries) do
         local row = pool[i] or self:CreateWhisperRow()
@@ -3458,6 +3744,7 @@ function GM:UpdateWhisplist()
         row:SetHeight(24)
         row:SetPoint("TOPLEFT", self.wlContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.wlContent, "TOPRIGHT", 0, -y)
+        RLSuite.utils:ClipScrollRow(self.wlContent, row, y, 24)
         row.entry = entry
 
         local info = entry.name or "Unknown"
@@ -3485,6 +3772,7 @@ function GM:UpdateWhisplist()
 
     self.wlRows = active
     self.wlContent:SetHeight(math.max(y, 1))
+    RLSuite.utils:RefreshScrollClip(self.wlContent)
     self:StyleWhisperRows()
 end
 

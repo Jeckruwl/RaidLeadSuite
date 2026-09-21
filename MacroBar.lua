@@ -51,10 +51,18 @@ function MB:Toggle()
 end
 
 function MB:KeypadSize()
-    local counts, maxPerRow = self:KeypadRowsForPhase()
-    local activeRows = 0
-    for _ in pairs(counts) do activeRows = activeRows + 1 end
-    local w = KEYPAD_PAD * 2 + maxPerRow * KEYPAD_BTN_W + (maxPerRow > 1 and (maxPerRow - 1) or 0) * KEYPAD_GAP
+    local counts = self:KeypadRowsForPhase()
+    local rows = {}
+    for r in pairs(counts) do table.insert(rows, r) end
+    table.sort(rows)
+    local activeRows = #rows
+    local maxCells = 0
+    for i, r in ipairs(rows) do
+        -- la prima riga attiva ha una cella in piu': il tassello PH
+        local cells = counts[r] + (i == 1 and 1 or 0)
+        if cells > maxCells then maxCells = cells end
+    end
+    local w = KEYPAD_PAD * 2 + maxCells * KEYPAD_BTN_W + (maxCells > 1 and (maxCells - 1) or 0) * KEYPAD_GAP
     local h = KEYPAD_PAD * 2 + activeRows * KEYPAD_BTN_H + (activeRows > 1 and (activeRows - 1) or 0) * KEYPAD_VGAP
     return w, h
 end
@@ -75,6 +83,8 @@ function MB:EndShiftDrag()
     if not self._shiftDrag then return end
     if self.frame then
         self.frame:StopMovingOrSizing()
+        -- come tutte le finestre: non puo' restare fuori schermo
+        RLSuite.utils:ClampWindowToScreen(self.frame)
     end
     self:SaveHolderPosition()
     self._shiftDrag = false
@@ -115,6 +125,8 @@ function MB:SetAnchorMode(on)
     end
     local function stop(self2)
         self2:StopMovingOrSizing()
+        -- come tutte le finestre: non puo' restare fuori schermo
+        RLSuite.utils:ClampWindowToScreen(self2)
         MB:SaveHolderPosition()
     end
     if on then
@@ -162,9 +174,8 @@ function MB:CreateFrame()
     self.macroHost = host
     self:AttachShiftDrag(host)
 
-    self.phaseText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.phaseText:SetPoint("BOTTOM", host, "TOP", 0, 2)
-    self.phaseText:SetText("MacroBar")
+    local MB_PRETTY_PHASE = { preraid = "PRE-RAID", preboss = "PRE-BOSS", infight = "IN-FIGHT" }
+    self.prettyPhaseLabels = MB_PRETTY_PHASE
 end
 
 -- FIX: Non usare ActionButtonTemplate, crea bottoni custom
@@ -219,11 +230,6 @@ function MB:CreateButtons()
         btn.hotkey:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -2, -2)
         btn.hotkey:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
         btn.hotkey:SetText("")
-
-        btn.numText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        btn.numText:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 2, 2)
-        btn.numText:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
-        btn.numText:SetText(i)
 
         RLSuite.utils:SkinMacroButton(btn)
         self.buttons[i] = btn
@@ -363,11 +369,6 @@ function MB:ApplyLayout()
         self.macroHost:SetSize(hostW, hostH)
     end
 
-    if self.phaseText then
-        self.phaseText:ClearAllPoints()
-        self.phaseText:SetPoint("BOTTOM", self.macroHost or self.frame, "TOP", 0, 2)
-    end
-
     for i = 1, 12 do
         local btn = self.buttons[i]
         if btn then btn:Hide() end
@@ -408,6 +409,19 @@ function MB:ApplyLayout()
         local renderIdx = {}
         for i, r in ipairs(activeRows) do renderIdx[r] = i end
         local kpad = KEYPAD_PAD
+        -- tassello PH: stessa cella dei tasti del keypad (75x22), prima
+        -- posizione della prima riga attiva. Senza sfondo/bordo, non
+        -- cliccabile: fa solo da indicatore di fase dentro la griglia.
+        if self.phaseSlot then
+            if #activeRows > 0 then
+                self.phaseSlot:ClearAllPoints()
+                self.phaseSlot:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
+                self.phaseSlot:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", kpad, -kpad)
+                self.phaseSlot:Show()
+            else
+                self.phaseSlot:Hide()
+            end
+        end
         local colCount = {}
         for i, kbtn in ipairs(self.keypadButtons or {}) do
             if kbtn:IsShown() and kbtn.def then
@@ -416,9 +430,13 @@ function MB:ApplyLayout()
                     colCount[r] = (colCount[r] or 0) + 1
                     local col = colCount[r]
                     local y = -(kpad + (r - 1) * (KEYPAD_BTN_H + KEYPAD_VGAP))
+                    local x = kpad + (col - 1) * (KEYPAD_BTN_W + KEYPAD_GAP)
+                    if r == 1 then
+                        x = x + (KEYPAD_BTN_W + KEYPAD_GAP) -- la prima cella della prima riga e' il tassello PH
+                    end
                     kbtn:ClearAllPoints()
                     kbtn:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
-                    kbtn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", kpad + (col - 1) * (KEYPAD_BTN_W + KEYPAD_GAP), y)
+                    kbtn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", x, y)
                 end
             end
         end
@@ -544,11 +562,15 @@ function MB:CreateKeypad()
     self.keypadFrame = CreateFrame("Frame", "RLSuiteMacroKeypad", self.frame)
     self.keypadFrame:SetSize(kw, kh)
     self.keypadFrame:SetPoint("TOP", self.macroHost or self.frame, "BOTTOM", 0, -4)
+    -- Niente bordo sulla sezione tasti: riempimento a tema, Tooltip-Border
+    -- invisibile (stesso trattamento _noOuterBorder di main/GM/MS/LM).
+    self.keypadFrame._noOuterBorder = true
     self:AttachShiftDrag(self.keypadFrame)
 
     self.keypadButtons = {}
     for i, def in ipairs(MB.KeypadDefs) do
         local btn = CreateFrame("Button", nil, self.keypadFrame, "UIPanelButtonTemplate")
+        RLSuite.utils:SkinButton(btn)
         btn:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
         local r = def.row or 1
         btn:SetPoint("TOPLEFT", self.keypadFrame, "TOPLEFT", KEYPAD_PAD, -(KEYPAD_PAD + (r - 1) * (KEYPAD_BTN_H + KEYPAD_VGAP)))
@@ -566,6 +588,20 @@ function MB:CreateKeypad()
         btn:Hide()
         self.keypadButtons[i] = btn
     end
+
+    -- PH:<FASE> come tassello della matrice del keypad (i tasti sotto):
+    -- stesso tipo di cella dei bottoni, stesso parent, prima posizione.
+    -- Bottone SENZA sfondo e SENZA bordo, NON cliccabile (mouse spento e
+    -- niente RegisterForClicks): solo indicatore di fase dentro la griglia.
+    local phaseSlot = CreateFrame("Button", nil, self.keypadFrame)
+    phaseSlot:SetBackdrop(nil)
+    phaseSlot:EnableMouse(false)
+    phaseSlot:SetSize(KEYPAD_BTN_W, KEYPAD_BTN_H)
+    self.phaseSlot = phaseSlot
+    self.phaseText = phaseSlot:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.phaseText:SetPoint("CENTER", phaseSlot, "CENTER", 0, 0)
+    self.phaseText:SetTextColor(1, 0.82, 0)
+    self.phaseText:SetText("PH:PRE-RAID")
 
     RLSuite.utils:SkinFrame(self.keypadFrame)
     self.keypadFrame:Hide()
@@ -603,7 +639,8 @@ end
 function MB:UpdatePhase()
     local phase = RLSuite.context or "preraid"
     if self.phaseText then
-        self.phaseText:SetText(string.format(L["Phase: %s"], string.upper(phase)))
+        local pretty = (self.prettyPhaseLabels and self.prettyPhaseLabels[phase]) or string.upper(phase)
+        self.phaseText:SetText("PH:" .. pretty)
     end
     self:LoadMacrosForPhase(phase)
     self:LoadKeybinds(phase)
@@ -768,6 +805,7 @@ function MB:OpenMacroEdit(index)
     edit:SetText(current.text or "")
 
     local saveBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(saveBtn)
     saveBtn:SetSize(80, 22)
     saveBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 20, 15)
     saveBtn:SetText(L["Save"])
@@ -786,6 +824,7 @@ function MB:OpenMacroEdit(index)
     end)
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(closeBtn)
     closeBtn:SetSize(80, 22)
     closeBtn:SetPoint("LEFT", saveBtn, "RIGHT", 10, 0)
     closeBtn:SetText(L["Cancel"])
@@ -949,12 +988,11 @@ function MB:OpenKeybindUI(phase)
     title:SetText("Macrobar Keybinds")
     self.bindTitle = title
 
-    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-    close:SetScript("OnClick", function()
+    local close = RLSuite.utils:MakeCloseX(f, function()
         self.bindingIndex = nil
         f:Hide()
     end)
+    close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
 
     local hint = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hint:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -28)

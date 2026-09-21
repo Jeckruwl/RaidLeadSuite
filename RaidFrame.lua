@@ -21,18 +21,85 @@ local RF = RLSuite.raidFrame
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
+-- Diagnostica click icone (solo debug): ogni passaggio del click lascia una
+-- riga in chat, cosi' un eventuale punto morto e' VISIBILE subito in game.
+local function rfDbg(fmt, ...)
+    if RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.debug then
+        local ok, txt = pcall(string.format, fmt, ...)
+        RLSuite.utils:Print("RF " .. (ok and txt or tostring(fmt)))
+    end
+end
+
+-- Poller di riserva per il CLICK NUDO SINISTRO sulla BARRA del player
+-- (= target!). Le righe hanno RegisterForDrag("LeftButton") in pre-boss:
+-- su client dove OnMouseUp-left viene digerito, il release viene rilevato
+-- qui via IsMouseButtonDown. Cursore mosso > 6px = drag → cancello; 4s
+-- tenuto giu' = cancello. La dedup di RF:TargetRow evita doppioni con
+-- OnMouseUp. Si AUTODISARMA e viene riarmato a ogni down sinistro.
+local function RowBodyPoller(s, elapsed)
+    if not s._pendingRowClick then
+        s:SetScript("OnUpdate", nil)
+        return
+    end
+    if s._manualDrag then
+        s._pendingRowClick = nil
+        s:SetScript("OnUpdate", nil)
+        return -- era un drag player: il poller NON targetta
+    end
+    if GetTime and (GetTime() - (s._rowPollT0 or 0)) > 4 then
+        s._pendingRowClick = nil
+        s:SetScript("OnUpdate", nil)
+        return
+    end
+    if s._pressX and GetCursorPosition then
+        local x, y = GetCursorPosition()
+        if x then
+            local dx, dy = x - s._pressX, (y or 0) - (s._pressY or 0)
+            if dx > 6 or dx < -6 or dy > 6 or dy < -6 then
+                s._pendingRowClick = nil
+                s:SetScript("OnUpdate", nil)
+                return
+            end
+        end
+    end
+    if not (IsMouseButtonDown and IsMouseButtonDown("LeftButton")) then
+        s._pendingRowClick = nil
+        s:SetScript("OnUpdate", nil)
+        RF:RowPlainClick(s, "LeftButton")
+    end
+end
+
 local RF_GROUPS = 6
 local RF_PER_GROUP = 5
 local RF_MAX_CDS = 4
 local RF_HEADER_H = 14
 local RF_GROUP_GAP = 8
+local RF_TANK_COUNT = 2     -- Tanks group sopra G1: barra MT + barra OT
+-- Geometria del pannello "Raid Buffs" (matrice categorie x giocatori):
+local RF_BP_NAME_W = 84     -- colonna nome (class color)
+local RF_BP_CELL_W = 24      -- passo colonne DEFAULT (iconSize + iconSpacing)
+local RF_BP_HEADER_H = 16  -- non piu' usato: l'header 45° usa RF_MATRIX_HDR_H
+local RF_MATRIX_HDR_H = 80 -- DEPRECATA (era la strip dei testi a 45°): ora l'altezza della testata-icone = cellW + 4
+-- Ordine di IMPORTANZA delle colonne della matrice (i buff piu' importanti
+-- a sinistra): benedizioni/stats e stamina prima, utility e % danno dopo.
+local RF_BP_PRIORITY = {
+    stats = 1, stamina = 2, wild = 3, intellect = 4, spirit = 5, shadow = 6,
+    armor = 7, mp5 = 8, atkpower = 9, apIncrease = 10, hp = 11, strAgi = 12,
+    spellPower = 13, spellHaste = 14, meleeHaste = 15, meleeCrit = 16,
+    spellCrit = 17, focusMagic = 18, damage = 19, haste = 20,
+    dmgReduction = 21, healReceived = 22, physReduction = 23, replen = 24,
+    retAura = 25,
+}
+local RF_BP_BTN_W = 72
 
--- Drop-target outline for empty slots (pre-boss only). Transparent fill,
--- subtle border: it is a placeholder, not a HUD backdrop.
-local RF_EMPTY_BACKDROP = {
+-- Bordino DORATO di drop: indica lo slot in cui il player trascinato
+-- atterrerebbe se rilasciassi ADESSO (blocco pieno = swap, vuoto = move).
+-- Decorazione pura: bordo su frame figlio (MAI toccare il backdrop dello
+-- slot, che in pre-boss e' gia' occupato dai placeholder dei vuoti).
+local RF_DROP_GLOW_BACKDROP = {
     bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile = true, tileSize = 16, edgeSize = 8,
+    tile = true, tileSize = 16, edgeSize = 10,
     insets = { left = 2, right = 2, top = 2, bottom = 2 },
 }
 
@@ -47,11 +114,13 @@ function RF:Init()
     self.slots = {}         -- 30 slot frames (6 groups x 5 players)
     self.groupHeaders = {}  -- 6 group labels (G1..G6)
     self.cdTracker = {}
-    self.abilityButtons = {}
     self:CreateFrame()
     self:RegisterEvents()
     self:ApplyLayout()
     self:UpdatePhase()
+    -- Version fingerprint (solo debug): cosi' verifichi SUBITO quale codice
+    -- sta girando nel client, senza fraintendimenti di pull stale.
+    rfDbg("RaidFrame %s click-module attivo (secure overlay + press-target)", tostring(RLSuite.version))
 end
 
 function RF:Toggle()
@@ -68,28 +137,50 @@ function RF:Toggle()
     end
 end
 
+-- Salvataggio posizione finestra dopo lo spostamento con Shift+destro.
+function RF:PersistAnchor(fr, db)
+    if not (fr and fr.GetPoint and db) then return end
+    local point, _, relPoint, x, y = fr:GetPoint()
+    if point then
+        db.point = point
+        db.relPoint = relPoint
+        db.x = x
+        db.y = y
+    end
+end
+
 function RF:CreateFrame()
     local db = self.db or {}
     local f = CreateFrame("Frame", "RLSuiteRaidFrame", UIParent)
     f:SetSize(db.width or 380, 300)
     f:SetPoint(db.point or "LEFT", UIParent, db.relPoint or "LEFT", db.x or 10, db.y or 0)
-    f:SetFrameStrata("LOW")
+    -- Strata MEDIUM (non LOW): l'HUD e' trasparente, ma in LOW le righe e le
+    -- icone finivano SOTTO il chrome default della UI nell'hit-test e alcuni
+    -- click venivano divorati da pannelli invisibili soprastanti.
+    f:SetFrameStrata("MEDIUM")
     f:SetMovable(true)
     f:EnableMouse(true)
     RLSuite.utils:ClampWindow(f)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", function(self2)
-        if not db.locked or (RLSuite.db.profile.anchorMode == true) then
-            self2:StartMoving()
+    -- Move della finestra: SOLO Shift+Tasto DESTRO, via StartMoving MANUALE.
+    -- NESSUN RegisterForDrag qui: in 3.3.5 la registrazione-drag di un
+    -- antenato fa digerire al drag manager i rilasci di quel tasto in TUTTO
+    -- l'albero (per 4 release i click sinistri sulle icone risultavano morti
+    -- proprio per questo). Shift separa i gesti: click nudi = messaggi,
+    -- shift+gesti = drag.
+    f:SetScript("OnMouseDown", function(self2, button)
+        if button == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() then
+            if (not db.locked) or (RLSuite.db.profile.anchorMode == true) then
+                self2._rlsMoving = true
+                self2:StartMoving()
+            end
         end
     end)
-    f:SetScript("OnDragStop", function(self2)
-        self2:StopMovingOrSizing()
-        local point, _, relPoint, x, y = self2:GetPoint()
-        db.point = point
-        db.relPoint = relPoint
-        db.x = x
-        db.y = y
+    f:SetScript("OnMouseUp", function(self2, button)
+        if button == "RightButton" and self2._rlsMoving then
+            self2._rlsMoving = false
+            self2:StopMovingOrSizing()
+            RF:PersistAnchor(self2, db)
+        end
     end)
     f:Hide()
     self.frame = f
@@ -98,21 +189,7 @@ function RF:CreateFrame()
     self.content = CreateFrame("Frame", nil, f)
     self.content:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
 
-    -- Vertical ability-check bar (right side of the whole frame).
-    self.abilityBar = CreateFrame("Frame", nil, f)
-    self.abilityBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-    self.abilityBar:Hide()
 
-    -- Alert bars (pre-boss buffs / in-fight debuffs), below the rows.
-    self.buffBar = self:CreateAlertBar()
-    self.debuffBar = self:CreateAlertBar()
-end
-
-function RF:CreateAlertBar()
-    local bar = CreateFrame("Frame", nil, self.frame)
-    bar.items = {}
-    bar:Hide()
-    return bar
 end
 
 function RF:RegisterEvents()
@@ -120,6 +197,7 @@ function RF:RegisterEvents()
     self:RegisterEvent("UNIT_HEALTH", "OnUnitEvent")
     self:RegisterEvent("UNIT_MANA", "OnUnitEvent")
     self:RegisterEvent("UNIT_AURA", "OnUnitEvent")
+    self:RegisterEvent("UNIT_TARGET", function() RF:UpdateTankTargets() end)
     self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", "OnCombatLog")
     -- refresh periodico (prima un frame OnUpdate con accumulo a 0.5s)
     self:ScheduleRepeatingTimer("UpdateAll", 0.5)
@@ -223,15 +301,23 @@ end
 -- ------------------------------------------------------------------
 function RF:LayoutMetrics()
     local db = self.db or {}
-    local iconSize = (db.appearance and db.appearance.iconSize) or 16
-    local barHeight = (db.appearance and db.appearance.barHeight) or 20
-    local barWidth = (db.appearance and db.appearance.barWidth) or 180
-    local nameFontSize = (db.appearance and db.appearance.nameFontSize) or 11
-    local abw = 0
-    if db.showAbilityBar ~= false and (self.abilityCount or 0) > 0 then
-        abw = (db.appearance and db.appearance.abilityBarWidth) or 110
-    end
-    local gap = (abw > 0) and 8 or 0
+    local app = db.appearance or {}
+    local iconSize = app.iconSize or 16
+    local barHeight = iconSize -- barre: altezza AUTOMATICA = icon size (non piu' configurabile)
+    local barWidth = app.barWidth or 180
+    local nameFontSize = app.nameFontSize or 11
+    -- Spacing configurabili (Config -> Raid Frame -> Layout)
+    local iconSpacing = app.iconSpacing or 8            -- gap tra le icone della matrice
+    local rowSpacing = app.rowSpacing or 0              -- gap tra le barre nei gruppi
+    local groupSpacing = app.groupSpacing or 8          -- gap tra i gruppi
+    local groupHeaderH = (app.groupHeaderFontSize or 10) + 4
+    local cellW = math.max(12, iconSize + iconSpacing)  -- passo colonne matrice
+    local abw = 0 -- buff bar / ability bar rimosse (redesign in corso)
+    local gap = 0
+    -- L'AREA DELLE COLONNE MATRICE NON E' COPERTA DALLA FINESTRA: la window
+    -- finisce al bordo destro delle barre e TUTTA la grafica matrice (icone,
+    -- strip, backdrop) viene disegnata OLTRE il bordo destro. Cosi' la zona
+    -- buff e' COMPLETAMENTE CLICK-THROUGH, a matrice aperta o chiusa.
     -- Layout per row: [flask][food] ... [HP bar = barWidth] ... [up to 4 CDs]
     local leftArea = 4 + 2 * iconSize + 4
     local cdReserve = 4 * iconSize + 3 * 2 + 4
@@ -243,6 +329,9 @@ function RF:LayoutMetrics()
         barWidth = barWidth, barHeight = barHeight,
         iconSize = iconSize, nameFontSize = nameFontSize,
         rowHeight = rowHeight,
+        iconSpacing = iconSpacing, rowSpacing = rowSpacing,
+        groupSpacing = groupSpacing, groupHeaderH = groupHeaderH,
+        cellW = cellW,
     }
 end
 
@@ -267,18 +356,169 @@ function RF:EnsureSlots()
             end
         end
     end
+    self:EnsureTanks()
 end
 
-function RF:CreateSlotFrame(slotIndex, group)
+-- Gruppo "Tanks" (sopra G1): header dorato + 2 barre MT/OT. Le barre sono
+-- slot normali SENZA icone consumabili (al loro posto il tag MT/OT) e non
+-- fanno parte di self.slots: niente drag player su di esse.
+function RF:EnsureTanks()
+    if self.tankHeader then return end
+    local hdr = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hdr:SetText(L["Tanks"])
+    hdr:SetTextColor(1, 0.82, 0)
+    hdr:SetJustifyH("LEFT")
+    hdr:Hide()
+    self.tankHeader = hdr
+    self.tankSlots = {}
+    self.tankSlots[1] = self:CreateSlotFrame("MT", 0, "MT")
+    self.tankSlots[2] = self:CreateSlotFrame("OT", 0, "OT")
+    for _, t in ipairs(self.tankSlots) do
+        t.slot = nil   -- fuori dalla geometria di drop dei gruppi
+    end
+    -- Bottone "Raid Buffs": A DESTRA DELLA BARRA OT (secondo slot tank).
+    -- Apre/chiude la matrice E la riga d'intestazione delle icone.
+    local btn = CreateFrame("Button", "RLSuiteRaidBuffsBtn", self.content)
+    btn:SetSize(RF_BP_BTN_W, RF_HEADER_H)
+    btn:EnableMouse(true)
+    RLSuite.utils:SkinButton(btn)
+    local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    lbl:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    lbl:SetText(L["Raid Buffs"])
+    lbl:SetTextColor(1, 0.82, 0)
+    btn.label = lbl
+    btn:SetScript("OnClick", function() RF:ToggleBuffMatrix() end)
+    btn:Hide()
+    self.buffPanelBtn = btn
+end
+
+-- HANDLER CONDIVISI fra la riga-Button e l'overlay SECURE (la zona
+-- coperta dal secure overlay non consegna piu' input alla riga sotto: per
+-- questo aggiungi un misero correlate handler anche li').
+local function RowBodyOnMouseDown(self2, button)
+        if button == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() then
+            local f = RF.frame
+            if f and (not RF.db.locked or RLSuite.db.profile.anchorMode == true) then
+                f._rlsMoving = true
+                f:StartMoving()
+            end
+            self2._pressBtn = nil
+            return -- gesto con shift: mai trattato come click-icona
+        end
+        if IsShiftKeyDown and IsShiftKeyDown() then
+            self2._pressBtn = nil
+            if button == "LeftButton" and RF:IsDragEnabled() and self2.member and not self2.isTank then
+                -- SHIFT+sinistro = drag player MANUALE: source + mostra vuoti.
+                RF._rfDragSource = self2
+                self2._manualDrag = true
+                RF:RefreshDropTargets()
+                RF:_ArmManualDragWatchdog()
+            end
+            return -- gesti con shift: mai click/icone/target
+        end
+        self2._manualDrag = nil -- click nuovo: reset di un eventuale drag appeso
+        self2._pressBtn = button
+        self2._pressX, self2._pressY = nil, nil
+        if GetCursorPosition then
+            local x, y = GetCursorPosition()
+            self2._pressX, self2._pressY = x, y
+        end
+        if button == "LeftButton" then
+            -- TARGET ALLA PRESSIONE: il mouse-down e' l'evento che in client
+            -- arriva SEMPRE (il bonk/click del widget lo dimostra), come fanno
+            -- Grid/VuhDo/HealBot. Release/poller deduppano via row._targetT.
+            RF:TargetRow(self2)
+            -- Poller di riserva (stessa forma delle icone): senza drag
+            -- registrati l'OnMouseUp ora arriva, ma se qualche client lo
+            -- mangiasse comunque il release viene rilevato qui comunque.
+            self2._rowPollT0 = (GetTime and GetTime()) or 0
+            self2._pendingRowClick = true
+            self2:SetScript("OnUpdate", RowBodyPoller)
+        end
+end
+
+local function RowBodyOnMouseUp(self2, button)
+        if button == "RightButton" then
+            local f = RF.frame
+            if f and f._rlsMoving then
+                f._rlsMoving = false
+                f:StopMovingOrSizing()
+                RF:PersistAnchor(f, RF.db)
+            end
+        end
+        -- Completamento drag player MANUALE: al release, slot sotto il
+        -- cursore → move/swap. Serve anche se lo shift e' gia' rilasciato.
+        if button == "LeftButton" and RF._rfDragSource then
+            local src = RF._rfDragSource
+            RF._rfDragSource = nil
+            if src then src._manualDrag = nil end
+            if src and src.member then
+                local t = RF:SlotAtCursor()
+                if t and t ~= src then
+                    RF:MoveSlot(src, t)
+                end
+            end
+            RF:RefreshDropTargets()
+            return -- era un drag: NON un click-icona, NON un target
+        end
+        if IsShiftKeyDown and IsShiftKeyDown() then return end -- gesti con shift: NO messaggi
+        local pressed = self2._pressBtn
+        self2._pressBtn = nil
+        if pressed ~= button then return end
+        if button ~= "LeftButton" and button ~= "RightButton" then return end
+        if RF._rfDragSource then return end -- era un drag, non un click
+        if self2._pressX and GetCursorPosition then
+            local x, y = GetCursorPosition()
+            if x and (math.abs(x - self2._pressX) > 5 or math.abs((y or 0) - (self2._pressY or 0)) > 5) then
+                return -- il cursore si e' mosso: era un drag
+            end
+        end
+        self2._pressX, self2._pressY = nil, nil
+        RF:RowPlainClick(self2, button)
+end
+
+function RF:CreateSlotFrame(slotIndex, group, tankTag)
     local row = CreateFrame("Button", "RLSuiteRaidRow" .. slotIndex, self.content)
     row.slot = slotIndex
     row.group = group
     row.member = nil
-    row.fakeHP = 70 + ((slotIndex * 13) % 31)
+    if tankTag then row.isTank = true end
+    -- slotIndex puo' essere "MT"/"OT" (barre Tanks): fakeHP comunque numerico.
+    local hpSeed = tonumber(slotIndex) or (tankTag == "MT" and 61 or 62)
+    row.fakeHP = 70 + ((hpSeed * 13) % 31)
+    -- MAI disabilitare il mouse sullo slot (vedi UpdateDragState): in 3.3.5
+    -- EnableMouse(false) sul genitore blocca la hit-region ANCHE dei figli,
+    -- quindi le icone consumabili diventavano non cliccabili fuori pre-boss.
+    row:EnableMouse(true)
 
     -- Left: flask / Well Fed missing-consumable icons.
-    row.flaskIcon = self:MakeConsumableIcon(row, "flask")
-    row.foodIcon = self:MakeConsumableIcon(row, "food")
+    -- Le barre TANK non li hanno: al loro posto il tag MT/OT dorato.
+    if row.isTank then
+        local tag = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        -- Posizionato in LayoutSlotGeometry: ATTACCATO a sinistra della barra.
+        tag:SetText(tankTag)
+        tag:SetTextColor(1, 0.82, 0)
+        row.tankTag = tag
+        -- Barra TARGET del tank: al posto dei CD del player, a destra della
+        -- barra HP. Mostra nome + HP% del bersaglio attuale del tank.
+        local tbar = CreateFrame("StatusBar", nil, row)
+        tbar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        tbar:SetMinMaxValues(0, 100)
+        tbar:SetValue(0)
+        local tbg = tbar:CreateTexture(nil, "BACKGROUND")
+        tbg:SetAllPoints(tbar)
+        tbg:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        tbg:SetVertexColor(0, 0, 0, 0.45)
+        tbar.bg = tbg
+        local tfs = tbar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        tfs:SetPoint("LEFT", tbar, "LEFT", 3, 0)
+        tfs:SetTextColor(1, 1, 1)
+        tbar.nameText = tfs
+        row.targetBar = tbar
+    else
+        row.flaskIcon = self:MakeConsumableIcon(row, "flask")
+        row.foodIcon = self:MakeConsumableIcon(row, "food")
+    end
 
     -- HP bar (name + % inside), fill = HP%, color = class color.
     local bar = CreateFrame("StatusBar", nil, row)
@@ -301,11 +541,7 @@ function RF:CreateSlotFrame(slotIndex, group)
     nameFS:SetTextColor(1, 1, 1)
     bar.nameText = nameFS
 
-    local pctFS = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    pctFS:SetPoint("RIGHT", bar, "RIGHT", -3, 0)
-    pctFS:SetText("")
-    pctFS:SetTextColor(1, 1, 1)
-    bar.hpText = pctFS
+    -- Niente percentuale HP: la barra mostra solo il nome del player.
 
     -- Class key cooldowns (up to 4, pooled; filled per class in ApplySlotCDs).
     row.cdIcons = {}
@@ -321,42 +557,152 @@ function RF:CreateSlotFrame(slotIndex, group)
     end
     row._cdClass = nil
 
-    -- Drag & drop (active only in pre-boss, enabled via UpdateDragState).
-    row:SetScript("OnDragStart", function(self2)
-        if not RF:IsDragEnabled() then return end
-        RF._rfDragSource = (self2.member and self2) or nil
-    end)
-    row:SetScript("OnDragStop", function()
-        local src = RF._rfDragSource
-        RF._rfDragSource = nil
-        if src and src.member then
-            local target = RF:SlotAtCursor()
-            if target and target ~= src then
-                RF:MoveSlot(src, target)
-            end
-        end
-    end)
-    row:SetScript("OnReceiveDrag", function(self2)
-        local src = RF._rfDragSource
-        RF._rfDragSource = nil
-        if src and src ~= self2 and src.member then
-            RF:MoveSlot(src, self2)
-        end
-    end)
+    -- Drag player SHIFT+SINISTRO = gestito INTERAMENTE A MANO
+    -- (OnMouseDown/Up + watchdog su frame dedicato), come il move HUD.
+    -- MAI piu' RegisterForDrag sulle righe: in 3.3.5 la registrazione-drag
+    -- fa digerire al drag manager GLI SCRIPT di pressione/rilascio di quel
+    -- tasto (i widget Button suonano comunque il click: per questo si
+    -- sentiva "il rumore" ma non partiva mai nulla, nemmeno con unit
+    -- valida). Senza registrazione, i click nudi sulle barre arrivano
+    -- sempre agli script.
+
+    -- Fallback SICURO per il click sulle icone + proxy dei gesti con SHIFT:
+    --   * Shift+destro sulla riga: le righe coprono il piano della finestra,
+    --     il "sposta HUD" parte da qui.
+    --   * Click nudo (nessuno shift): se il cursore e' su un'icona, hit-test
+    --     e messaggio; sulla BARRA = target del player.
+    row:SetScript("OnMouseDown", RowBodyOnMouseDown)
+    row:SetScript("OnMouseUp", RowBodyOnMouseUp)
+
+    -- LAYERS SICURO ANTIFALLIMENTO: il "clicco il nome → target" lo fa
+    -- l'ENGINE stessa, come Grid/VuhDo/Clique: SecureActionButtonTemplate
+    -- type1="target" + unit=..., ALLA PRESSIONE (LeftButtonDown). Zero
+    -- scripting Lua per il target → nulla può mangiare l'evento: è la via
+    -- standard e immutabile degli unit frame. Livello: sopra la riga (+5),
+    -- SOTTO le icone consumabili (content+30) → le icone mantengono le loro
+    -- zone. Gli handler Lua condivisi coprono TUTTO il resto (Shift+destro
+    -- sposta HUD, Shift+sinistro drag player, hit-test icone, tracce di debug).
+    local sec = CreateFrame("Button", nil, self.content, "SecureActionButtonTemplate")
+    sec:SetAllPoints(row)
+    sec:SetFrameLevel((self.content.GetFrameLevel and self.content:GetFrameLevel() or 1) + 5)
+    sec:RegisterForClicks("LeftButtonDown")
+    sec:SetAttribute("type1", "target")
+    sec:Hide() -- mostrato quando la riga ha un'unit reale (vedi FillSlot)
+    row.secTarget = sec
+    sec:SetScript("OnMouseDown", function(s, button) RowBodyOnMouseDown(row, button) end)
+    sec:SetScript("OnMouseUp", function(s, button) RowBodyOnMouseUp(row, button) end)
+
+    -- Indicatore di DROP puro-visuale: bordino dorato su frame figlio.
+    -- EnableMouse(false) qui e' SICURO (decorazione, NON lo slot): non
+    -- ruba click, non tocca la hit-region della riga — mostra solo dove
+    -- atterra il player durante il drag manuale.
+    local glow = CreateFrame("Frame", nil, row)
+    glow:SetAllPoints(row)
+    glow:SetFrameLevel((row.GetFrameLevel and row:GetFrameLevel() or 1) + 2)
+    glow:EnableMouse(false)
+    glow:SetBackdrop(RF_DROP_GLOW_BACKDROP)
+    glow:SetBackdropColor(0, 0, 0, 0)
+    glow:SetBackdropBorderColor(1, 0.82, 0, 1) -- dorato
+    glow:Hide()
+    row.dropGlow = glow
 
     row:Hide()
     return row
 end
 
 function RF:MakeConsumableIcon(row, atype)
-    local btn = CreateFrame("Button", nil, row)
+    -- Figlie di CONTENT (sorelle delle righe), NON delle righe-Button:
+    -- dentro un Button con drag attivo il mouse-down viene intercettato
+    -- dal drag del genitore e il click del figlio non si chiude mai (in
+    -- gioco gli alert non partivano proprio per questo). L'ancora resta
+    -- alla riga in LayoutSlotGeometry, quindi posizione e show/hide non
+    -- cambiano.
+    local btn = CreateFrame("Button", nil, self.content)
     btn.consType = atype
+    btn:EnableMouse(true)
+    btn:SetFrameLevel((self.content.GetFrameLevel and self.content:GetFrameLevel() or 1) + 30)
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints(btn)
     icon:SetTexture(self:GetAlertIcon(atype))
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
-    btn:SetScript("OnClick", function() self:OnAlertClick(row, atype) end)
+    -- CANALE DI RISERVA per il click sinistro (sudo storico: con la finestra
+    -- draggabile, l'antenato con RegisterForDrag("LeftButton") divorava il
+    -- release nell'albero - oggi il drag del frame e' manuale Shift+destro e
+    -- quella causa e' sparita, ma il pollo resta come rete di sicurezza).
+    -- Funziona cosi': OnUpdate poll di IsMouseButtonDown - quando il tasto
+    -- risulta rilasciato e il cursore non si e' mosso (> 6px = drag →
+    -- cancello; >= 4s tenuto fermo = non click → cancello) e' un CLICK
+    -- sinistro → whisper. La TTL in OnAlertClick evita doppioni se arriva
+    -- anche OnMouseUp. NB: il poller si AUTODISARMA (SetScript nil) dopo
+    -- uso; ogni mouse-down sinistro (senza shift) lo RIARMA esplicitamente.
+    local function Poller(s, elapsed)
+        if not s._pendingLeft then
+            s:SetScript("OnUpdate", nil)
+            return
+        end
+        -- Tenuto giu' troppo a lungo immobile: non lo tratto come click.
+        if GetTime and (GetTime() - (s._t0 or 0)) > 4 then
+            s._pendingLeft = nil
+            s:SetScript("OnUpdate", nil)
+            return
+        end
+        -- Cursore mosso oltre soglia => e' un drag: cancello il click.
+        if s._px and GetCursorPosition then
+            local x, y = GetCursorPosition()
+            if x then
+                local dx, dy = x - s._px, (y or 0) - (s._py or 0)
+                if dx > 6 or dx < -6 or dy > 6 or dy < -6 then
+                    s._pendingLeft = nil
+                    s:SetScript("OnUpdate", nil)
+                    return
+                end
+            end
+        end
+        -- Rilascio rilevato dal poll: e' un CLICK sinistro.
+        if not (IsMouseButtonDown and IsMouseButtonDown("LeftButton")) then
+            s._pendingLeft = nil
+            rfDbg("poll fire: %s", tostring(atype))
+            s:SetScript("OnUpdate", nil)
+            if self:OnAlertClick(row, atype, "LeftButton") then
+                return
+            end
+        end
+    end
+    -- CLICK NUDI (nessuno Shift) sulle icone = messaggi missing buff.
+    -- Shift+click = gesti di drag (player/HUD): qui NON deve partire nulla.
+    -- Il rilascio ora arriva col normale OnMouseUp (nessun antenato ha piu'
+    -- RegisterForDrag, lo shift separa i gesti); il POLLLING di riserva
+    -- (IsMouseButtonDown) resta armato solo senza shift: se qualche client
+    -- mangiasse comunque l'OnMouseUp-sinistro, il pollo salva il click e
+    -- la TTL di OnAlertClick ammazza l'eventuale doppione.
+    btn:SetScript("OnMouseDown", function(s, button)
+        s._pressed = button
+        s._shiftedAtDown = (IsShiftKeyDown and IsShiftKeyDown()) and true or nil
+        -- Diagnostica in-game (solo debug): prova che l'input arriva.
+        if RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.debug then
+            RLSuite.utils:Print("RF icon down: " .. tostring(button) .. " " .. tostring(atype))
+        end
+        if button == "LeftButton" and not s._shiftedAtDown then
+            if GetCursorPosition then
+                s._px, s._py = GetCursorPosition()
+            else
+                s._px, s._py = nil, nil
+            end
+            s._t0 = (GetTime and GetTime()) or 0
+            s._pendingLeft = true
+            s:SetScript("OnUpdate", Poller) -- riserva: si disarma da solo
+        end
+    end)
+    btn:SetScript("OnMouseUp", function(s, button)
+        rfDbg("icon up: %s %s", tostring(button), tostring(atype))
+        local pressed, shifted = s._pressed, s._shiftedAtDown
+        s._pressed, s._shiftedAtDown = nil, nil
+        if shifted then return end -- gesto con shift: mai un messaggio
+        if pressed == button and (button == "LeftButton" or button == "RightButton") then
+            self:OnAlertClick(row, atype, button)
+        end
+    end)
     btn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
         if atype == "flask" then
@@ -365,6 +711,9 @@ function RF:MakeConsumableIcon(row, atype)
             GameTooltip:SetText(L["Missing food buff"])
         end
         GameTooltip:AddLine(L["Left click: whisper"], 1, 1, 1)
+        GameTooltip:AddLine(L["Right click: raid warning (everyone missing)"], 1, 1, 1)
+        GameTooltip:AddLine(L["Shift + left drag on a row: move player"], 0.8, 0.8, 0.8)
+        GameTooltip:AddLine(L["Shift + right drag: move window"], 0.8, 0.8, 0.8)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -393,21 +742,62 @@ function RF:LayoutSlotGeometry(slot, m)
         slot.bar:ClearAllPoints()
         slot.bar:SetSize(m.barWidth, m.barHeight)
         slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", leftX, 0)
-        if slot.bar.nameText then
-            slot.bar.nameText:SetFont(RLSuite.utils:GetUIFont(), m.nameFontSize, "OUTLINE")
+        -- Tag MT/OT: ATTACCATO al bordo sinistro della barra (non fluttuante
+        -- nello spazio consumabili).
+        if slot.tankTag then
+            slot.tankTag:ClearAllPoints()
+            slot.tankTag:SetPoint("RIGHT", slot.bar, "LEFT", -3, 0)
         end
-        if slot.bar.hpText then
-            slot.bar.hpText:SetFont(RLSuite.utils:GetUIFont(), m.nameFontSize, "OUTLINE")
+        -- Barra TARGET dove prima c'erano i CD (solo tank).
+        if slot.targetBar then
+            slot.targetBar:ClearAllPoints()
+            slot.targetBar:SetSize(m.rowWidth - leftX - m.barWidth - 4, m.barHeight)
+            slot.targetBar:SetPoint("TOPLEFT", slot.bar, "TOPRIGHT", 4, 0)
+            local tex = self.db and self.db.appearance and self.db.appearance.barTexture
+                or "Interface\\TargetingFrame\\UI-StatusBar"
+            slot.targetBar:SetStatusBarTexture(tex)
+            if slot.targetBar.bg then slot.targetBar.bg:SetTexture(tex) end
+            local fontFile = (self.db and self.db.appearance and self.db.appearance.font) or RLSuite.utils:GetUIFont()
+            local tflags = (self.db and self.db.appearance and self.db.appearance.fontOutline == false) and "" or "OUTLINE"
+            if slot.targetBar.nameText then
+                slot.targetBar.nameText:SetFont(fontFile, m.nameFontSize, tflags)
+            end
+        end
+        -- Texture della barra (fill + track), configurabile.
+        local app = self.db and self.db.appearance or {}
+        local tex = app.barTexture or "Interface\\TargetingFrame\\UI-StatusBar"
+        slot.bar:SetStatusBarTexture(tex)
+        if slot.bar.bg then slot.bar.bg:SetTexture(tex) end
+        -- Font del nome: tipo, dimensione e outline configurabili.
+        local fontFile = app.font or RLSuite.utils:GetUIFont()
+        local flags = (app.fontOutline == false) and "" or "OUTLINE"
+        if slot.bar.nameText then
+            slot.bar.nameText:SetFont(fontFile, m.nameFontSize, flags)
+        end
+        for j, cd in ipairs(slot.cdIcons or {}) do
+            if cd and cd.timer then
+                cd.timer:SetFont(fontFile, 8, flags)
+            end
         end
     end
     for j, cd in ipairs(slot.cdIcons or {}) do
-        cd:ClearAllPoints()
-        cd:SetSize(iconSize, iconSize)
-        cd:SetPoint("LEFT", slot.bar, "RIGHT", 4 + (j - 1) * (iconSize + 2), 0)
+        if slot.isTank then
+            -- Barre tank: MAI i CD del player a destra; al loro posto la
+            -- barra target del tank (slot.targetBar).
+            cd:Hide()
+        else
+            cd:ClearAllPoints()
+            cd:SetSize(iconSize, iconSize)
+            cd:SetPoint("LEFT", slot.bar, "RIGHT", 4 + (j - 1) * (iconSize + 2), 0)
+        end
     end
 end
 
 function RF:ApplySlotCDs(slot, class)
+    if slot.isTank then
+        for _, cd in ipairs(slot.cdIcons or {}) do cd:Hide() end
+        return
+    end
     slot._cdClass = class
     local abilities = RLSuite.keyAbilities[class] or {}
     for j = 1, RF_MAX_CDS do
@@ -437,13 +827,26 @@ function RF:FillSlot(slot, member)
     slot:SetBackdrop(nil)
     slot:Show()
 
+    -- Overlay sicuro per il target: gli attributi secure si toccano SOLO
+    -- fuori combattimento. Se c'e' una unit reale → l'engine targetta alla
+    -- pressione; in debug/fake (unit nil) → nascosto: via Lua con le guardie.
+    if slot.secTarget then
+        if not (InCombatLockdown and InCombatLockdown()) then
+            if member.unit and not member.fake then
+                slot.secTarget:SetAttribute("unit", member.unit)
+                slot.secTarget:Show()
+            else
+                slot.secTarget:Hide()
+            end
+        end
+    end
+
     if slot.bar then
         local r, g, b = RLSuite.utils:GetClassColor(member.class)
         slot.bar:SetStatusBarColor(r, g, b)
         slot.bar:SetMinMaxValues(0, 100)
         slot.bar:SetValue(100)
         if slot.bar.nameText then slot.bar.nameText:SetText(member.name) end
-        if slot.bar.hpText then slot.bar.hpText:SetText("100%") end
         slot.bar:Show()
     end
 
@@ -461,11 +864,13 @@ function RF:ClearSlot(slot)
     slot.class = nil
     slot.fake = false
     slot.raidIndex = nil
+    if slot.secTarget and not (InCombatLockdown and InCombatLockdown()) then
+        slot.secTarget:Hide()
+    end
 
     if slot.bar then
         slot.bar:SetValue(0)
         if slot.bar.nameText then slot.bar.nameText:SetText("") end
-        if slot.bar.hpText then slot.bar.hpText:SetText("") end
     end
     self:SetConsumable(slot.flaskIcon, "off")
     self:SetConsumable(slot.foodIcon, "off")
@@ -473,15 +878,153 @@ function RF:ClearSlot(slot)
         cd:Hide()
     end
 
-    if self:IsDragEnabled() then
-        -- Empty drop target (pre-boss): subtle outline, no fill.
-        slot:SetBackdrop(RF_EMPTY_BACKDROP)
-        slot:SetBackdropColor(0, 0, 0, 0)
-        slot:SetBackdropBorderColor(0.32, 0.32, 0.36, 0.9)
-        slot:Show()
+    -- Slot vuoto = invisibile (in QUALSIASI fase). Riemerge come drop
+    -- target SOLO mentre un player e' in trascinamento (RefreshDropTargets,
+    -- chiamata da OnDragStart/OnDragStop/OnReceiveDrag).
+    slot:SetBackdrop(nil)
+    slot:Hide()
+end
+
+-- Bordino dorato sullo slot di destinazione del drag: la fonte di verità
+-- e' il CURSORE (SlotAtCursor), non gli hover dei frame (inaffidabili
+-- durante il drag manuale, dove il bottone resta premuto e i frame non
+-- risollevano Enter/Leave). Fuori drag → tutto nascosto.
+function RF:UpdateDropGlow()
+    local target = nil
+    local src = self._rfDragSource
+    if src and self:IsDragEnabled() then
+        target = self:SlotAtCursor()
+        if target == src then target = nil end
+    end
+    for _, slot in ipairs(self.slots or {}) do
+        if slot.dropGlow then
+            if slot == target then
+                slot.dropGlow:Show()
+            else
+                slot.dropGlow:Hide()
+            end
+        end
+    end
+    return target
+end
+
+-- Mostra/nasconde i blocchi vuoti dei gruppi e gli header dei gruppi
+-- vuoti: visibili SOLO in pre-boss mentre un drag e' attivo (servono come
+-- drop target); altrimenti l'HUD resta denso (solo player + header pieni).
+function RF:RefreshDropTargets()
+    local dragging = self:IsDragEnabled() and self._rfDragSource ~= nil
+    for g = 1, RF_GROUPS do
+        local anyMember = false
+        for s = 1, RF_PER_GROUP do
+            local slot = self.slots and self.slots[(g - 1) * RF_PER_GROUP + s]
+            if slot then
+                if slot.member then
+                    anyMember = true
+                elseif dragging then
+                    -- NIENTE bordo "dialog": lo slot vuoto resta invisibile
+                    -- ma continua a ricevere il drop (il bordino DORATO del
+                    -- dropGlow segna comunque la destinazione sotto il cursore).
+                    slot:SetBackdrop(nil)
+                    slot:Show()
+                else
+                    slot:SetBackdrop(nil)
+                    slot:Hide()
+                end
+            end
+        end
+        local hdr = self.groupHeaders and self.groupHeaders[g]
+        if hdr then
+            if anyMember or dragging then
+                hdr:Show()
+            else
+                hdr:Hide()
+            end
+        end
+    end
+    self:ApplyLayout()
+    -- Bordino dorato: segue il cursore durante il drag, sparisce tutto fuori.
+    self:UpdateDropGlow()
+end
+
+-- Riempie le barre Tanks dalle assegnazioni Blizzard del raid
+-- (GetPartyAssignment: MT = primo Main Tank, OT = primo Main Assist).
+-- Chiave = unit o nome (i fake del debug hanno solo nome). Il gruppo e'
+-- visibile solo quando c'e' almeno una riga di gruppo renderizzata.
+function RF:RebuildTanks()
+    if not self.tankHeader then return end
+    local active = self.rows and self.rows[1] ~= nil
+    local mtInfo, otInfo
+    if active and RLSuite.DebugMode and RLSuite:DebugMode() then
+        -- DEBUG: MT/OT devono funzionare anche coi player FITTIZI (le
+        -- assegnazioni Blizzard non esistono per i fake). Store RLSuite.debugTanks:
+        --   nil   => mai toccato: auto-fill (MT = primo del roster, OT = primo diverso)
+        --   nome  => assegnato manualmente (tasti MT/OT) o auto-fill mantenuto
+        --   false => svuotato intenzionalmente dall'utente (NESSUN auto-refill)
+        local roster = self:GetRoster()
+        local exists = {}
+        for _, info in ipairs(roster) do
+            exists[info.name or "?"] = info
+        end
+        local dt = RLSuite.debugTanks
+        if not dt then
+            dt = {}
+            RLSuite.debugTanks = dt
+        end
+        for _, k in ipairs({ "mt", "ot" }) do
+            -- un assegnato sparito dal roster torna ad auto-fill (nil)
+            if type(dt[k]) == "string" and not exists[dt[k]] then dt[k] = nil end
+        end
+        if dt.mt == nil and roster[1] then dt.mt = roster[1].name end
+        if dt.ot == nil then
+            for _, info in ipairs(roster) do
+                if info.name ~= dt.mt then
+                    dt.ot = info.name
+                    break
+                end
+            end
+        end
+        mtInfo = (type(dt.mt) == "string") and exists[dt.mt] or nil
+        otInfo = (type(dt.ot) == "string") and exists[dt.ot] or nil
+    elseif active and GetPartyAssignment then
+        for _, info in ipairs(self:GetRoster()) do
+            local key = info.unit or info.name
+            if key then
+                if not mtInfo and GetPartyAssignment("MAINTANK", key) then mtInfo = info end
+                if not otInfo and GetPartyAssignment("MAINASSIST", key) then otInfo = info end
+            end
+        end
+    end
+    self:_SetupTankSlot(self.tankSlots[1], mtInfo, active)
+    self:_SetupTankSlot(self.tankSlots[2], otInfo, active)
+    if active then
+        self.tankHeader:Show()
+        if self.buffPanelBtn then self.buffPanelBtn:Show() end
     else
-        slot:SetBackdrop(nil)
-        slot:Hide()
+        self.tankHeader:Hide()
+        if self.buffPanelBtn then self.buffPanelBtn:Hide() end
+        -- la matrice buff si spegne da sola: righe assenti => nessuna cella/header
+        self:RefreshBuffMatrix()
+    end
+end
+
+-- Barra Tanks: riempita se c'e' un assegnato, altrimenti placeholder
+-- visibile (il gruppo Tanks mostra SEMPRE le 2 barre MT/OT).
+function RF:_SetupTankSlot(slot, member, active)
+    if not slot then return end
+    if not active then
+        self:ClearSlot(slot)
+        slot._tankFilled = false
+        return
+    end
+    if member then
+        self:FillSlot(slot, member)
+        slot._tankFilled = true
+    else
+        -- Slot tank senza assegnazione: nessun bordo "dialog", NIENTE
+        -- placeholder: invisibile come gli slot vuoti dei gruppi (non e'
+        -- un drop target: MT/OT arrivano da GetPartyAssignment del raid).
+        self:ClearSlot(slot)
+        slot._tankFilled = false
     end
 end
 
@@ -492,33 +1035,25 @@ function RF:Rebuild()
     self:EnsureSlots()
     local m = self:LayoutMetrics()
     local groups = self:GetGroupedRoster()
-    local preboss = self:IsDragEnabled()
 
     self.rows = {}
     for g = 1, RF_GROUPS do
-        local anyMember = false
         for s = 1, RF_PER_GROUP do
             local slot = self.slots[(g - 1) * RF_PER_GROUP + s]
             local member = groups[g][s]
             if member then
                 self:FillSlot(slot, member)
                 self.rows[#self.rows + 1] = slot
-                anyMember = true
             else
                 self:ClearSlot(slot)
             end
         end
-        local hdr = self.groupHeaders[g]
-        if anyMember or preboss then
-            hdr:Show()
-        else
-            hdr:Hide()
-        end
     end
 
-    self:BuildAbilityBar()
-    self:RefreshAlertBars()
+    self:RebuildTanks()
     self:UpdateDragState()
+    -- Header e blocchi vuoti: gestiti insieme (blocchi solo durante il drag).
+    self:RefreshDropTargets()
 end
 
 -- ------------------------------------------------------------------
@@ -531,14 +1066,54 @@ function RF:UpdateUnit(unit)
             return
         end
     end
+    for _, t in ipairs(self.tankSlots or {}) do
+        if t.unit == unit then
+            self:UpdateRow(t)
+            return
+        end
+    end
 end
 
 function RF:UpdateAll()
     for _, row in ipairs(self.rows) do
         self:UpdateRow(row)
     end
-    self:UpdateAbilityButtons()
-    self:UpdateAlertItems()
+    for _, t in ipairs(self.tankSlots or {}) do
+        self:UpdateRow(t)
+    end
+    self:UpdateTankTargets()
+    self:RefreshBuffMatrix()
+end
+
+-- Barre TARGET dei tank: nome + HP% del bersaglio attuale di MT e OT.
+-- Solo unit reali (mai lookup su player fittizi di debug, regola v1.5.3).
+function RF:UpdateTankTargets()
+    for ti = 1, RF_TANK_COUNT do
+        local slot = self.tankSlots and self.tankSlots[ti]
+        local tb = slot and slot.targetBar
+        if tb then
+            local name, pct, r, g, b = "", 0, 0.75, 0.15, 0.15 -- ostile di default
+            if slot.unit and not slot.fake and UnitExists and UnitExists(slot.unit) then
+                local tu = slot.unit .. "target"
+                if UnitExists(tu) then
+                    name = UnitName(tu) or ""
+                    local maxhp = UnitHealthMax and UnitHealthMax(tu) or 0
+                    pct = maxhp > 0 and (UnitHealth(tu) / maxhp * 100) or 0
+                    if UnitIsPlayer and UnitIsPlayer(tu) and UnitClass then
+                        local _, cls = UnitClass(tu)
+                        local cc = RAID_CLASS_COLORS and cls and RAID_CLASS_COLORS[cls]
+                        if cc then r, g, b = cc.r, cc.g, cc.b end
+                    elseif UnitIsFriend and UnitIsFriend("player", tu) then
+                        r, g, b = 0.2, 0.6, 0.2
+                    end
+                end
+            end
+            tb:SetMinMaxValues(0, 100)
+            tb:SetValue(pct)
+            if tb.SetStatusBarColor then tb:SetStatusBarColor(r, g, b) end
+            if tb.nameText then tb.nameText:SetText(name) end
+        end
+    end
 end
 
 function RF:UpdateRow(row)
@@ -548,7 +1123,6 @@ function RF:UpdateRow(row)
         local pct = row.fakeHP or 100
         bar:SetMinMaxValues(0, 100)
         bar:SetValue(pct)
-        bar.hpText:SetText(pct .. "%")
         self:UpdateConsumables(row)
         return
     end
@@ -562,7 +1136,6 @@ function RF:UpdateRow(row)
     local pct = math.floor((hp / hpMax) * 100)
     bar:SetMinMaxValues(0, hpMax)
     bar:SetValue(hp)
-    bar.hpText:SetText(pct .. "%")
 
     self:UpdateConsumables(row)
 
@@ -584,6 +1157,7 @@ end
 
 function RF:UpdateConsumables(row)
     if not row then return end
+    if row.isTank then return end -- niente icone consumabili sulle barre Tanks
     local showFlask = self.db.showFlask ~= false
     local showFood = self.db.showFood ~= false
 
@@ -608,7 +1182,12 @@ function RF:UpdateConsumables(row)
     end
 
     if showFood then
-        local has = self:HasAnySpellBuff(unit, RLSuite.buffData and RLSuite.buffData.food)
+        -- Well Fed per NOME DELL'AURA (scan per indice): la vecchia whitelist
+        -- di spellId copriva solo alcuni cibi -> "missing" su tutte le altre
+        -- varianti (feast, spezie, ...). Nome derivato da GetSpellInfo di un
+        -- ID Well Fed noto -> resta locale-safe su client non-EN.
+        local wfName = (GetSpellInfo and GetSpellInfo(57399)) or "Well Fed"
+        local has = self:UnitHasBuffName(unit, wfName)
         self:SetConsumable(row.foodIcon, has and "off" or "missing")
     else
         self:SetConsumable(row.foodIcon, "off")
@@ -619,8 +1198,10 @@ function RF:SetConsumable(btn, state)
     if not btn then return end
     if state == "off" then
         btn:Hide()
+        btn._missing = false
     else
         btn:Show()
+        btn._missing = true -- origine della lista "chi manca" per il destro
         if btn.icon then
             btn.icon:SetVertexColor(1, 1, 1)
         end
@@ -673,14 +1254,17 @@ function RF:UnitHasSpellBuff(unit, spellId)
     return true
 end
 
-function RF:UnitHasSpellDebuff(unit, spellId)
-    if not unit or not spellId then return false end
-    local name = GetSpellInfo(spellId)
-    if not name then return false end
-    local debuffName, _, _, _, _, _, _, _, _, _, debuffSpellId = UnitDebuff(unit, name)
-    if not debuffName then return false end
-    if debuffSpellId and debuffSpellId ~= spellId then return false end
-    return true
+-- Scansione aure per NOME (qualsiasi spellId): serve per i buff generici
+-- con decine di varianti (Well Fed di ogni cibo). UnitBuff per indice
+-- (1..40) e' immune ai mismatch di spellId delle whitelist.
+function RF:UnitHasBuffName(unit, wantName)
+    if not (unit and wantName and UnitBuff) then return false end
+    for i = 1, 40 do
+        local bname = UnitBuff(unit, i)
+        if not bname then return false end
+        if bname == wantName then return true end
+    end
+    return false
 end
 
 function RF:HasAnySpellBuff(unit, spellIds)
@@ -699,15 +1283,135 @@ function RF:GetAlertIcon(alertType)
     return icons[alertType] or "Interface\\Icons\\INV_Misc_QuestionMark"
 end
 
-function RF:OnAlertClick(row, atype)
-    if not row or not atype then return end
-    local name = row.name
-    local alerts = self.db.alerts or {}
-    local msg = alerts[atype] or self:GetDefaultAlertMessage(atype)
-    if msg and name then
-        msg = string.gsub(msg, "%$name", name)
-        RLSuite.utils:Whisper(name, msg)
+function RF:OnAlertClick(row, atype, button)
+    if not row or not atype then return false end
+    rfDbg("alert: %s %s", tostring(atype), tostring(button))
+    -- Dedup: icona e riga possono INSEGNARE lo stesso click (icona figlia di
+    -- content ABOVE row, entrambe ricevono down/up). Nello stesso click
+    -- (stesso tasto, < 0.3s) mando UN SOL messaggio.
+    row._lastAlert = row._lastAlert or {}
+    local key = atype .. "|" .. tostring(button)
+    local now = (GetTime and GetTime()) or 0
+    if row._lastAlert[key] and (now - row._lastAlert[key]) < 0.3 then
+        rfDbg("dedup: stesso click ignorato")
+        return true
     end
+    row._lastAlert[key] = now
+
+    if button == "RightButton" then
+        -- DESTRO su QUALSIASI icona consumabile: avviso a TUTTO il raid con
+        -- TUTTI i player a cui manca quel consumabile.
+        return self:SendMissingConsumableAlert(atype)
+    end
+
+    -- SINISTRO: whisper al player singolo (in debug: whisper a se stessi
+    -- col messaggio che verrebbe mandato al player - vedi Utils:Whisper).
+    -- Dati presi dalle stesse fonti del ramo destro (che in game funziona):
+    -- nome da member con fallback row; msg vuoto = torna al default.
+    local name = row.name or (row.member and row.member.name)
+    if not name or name == "" then
+        rfDbg("abort: nessun nome sulla riga")
+        return false
+    end
+    local alerts = self.db.alerts or {}
+    local msg = alerts[atype]
+    if not msg or msg == "" then
+        msg = self:GetDefaultAlertMessage(atype)
+    end
+    if not msg or msg == "" then
+        rfDbg("abort: nessun messaggio per %s", tostring(atype))
+        return false
+    end
+    msg = string.gsub(msg, "%$name", name)
+    rfDbg("whisper -> %s: %s", tostring(name), tostring(msg))
+    RLSuite.utils:Whisper(name, msg)
+    return true
+end
+
+-- Raid warning elenco di TUTTI i player a cui manca il consumabile, letto
+-- dai flag _missing mostrati attualmente sulle righe (cioe' esattamente le
+-- icone che il leader vede). In debug SendChat whispera a se stessi col tag
+-- [RAID_WARNING].
+function RF:SendMissingConsumableAlert(atype)
+    local missing = {}
+    for _, r in ipairs(self.rows or {}) do
+        local btn = (atype == "flask") and r.flaskIcon or r.foodIcon
+        if btn and btn._missing and r.member and r.member.name then
+            missing[#missing + 1] = r.member.name
+        end
+    end
+    if #missing == 0 then return false end
+    local label = (atype == "flask") and "flask" or "food buff"
+    RLSuite.utils:SendChat("Missing " .. label .. ": " .. table.concat(missing, ", "), "RAID_WARNING")
+    return true
+end
+
+-- Fallback di click a livello di RIGA (canale che in client riceve sicuro
+-- input, vedi drag pre-boss): hit-test col cursore su TUTTE le icone della
+-- riga, come i drop-target del Raid Group.
+function RF:FireConsumableFromCursor(row, button)
+    if not (GetCursorPosition and UIParent and UIParent.GetEffectiveScale) then return false end
+    if not (row and row.member and row.member.name) then return false end
+    local x, y = GetCursorPosition()
+    if not (x and y) then return false end
+    local pair = { flask = row.flaskIcon, food = row.foodIcon }
+    for atype, btn in pairs(pair) do
+        if btn and btn.IsShown and btn:IsShown() and btn._missing then
+            -- Scala EFFETTIVA DELL'ICONA (la finestra RF puo' avere scala
+            -- propria): normalizzare per UIParent disallinea l'hit-test.
+            local scale = (btn.GetEffectiveScale and btn:GetEffectiveScale()) or 1
+            if not (scale and scale > 0) then scale = 1 end
+            local cx, cy = x / scale, y / scale
+            local l, r, b, t = btn:GetLeft(), btn:GetRight(), btn:GetBottom(), btn:GetTop()
+            if l and r and b and t and cx >= l and cx <= r and cy >= b and cy <= t then
+                return self:OnAlertClick(row, atype, button)
+            end
+        end
+    end
+    return false
+end
+
+-- Click nudo (qualsiasi tasto) sulla BARRA di una riga: prima prova il
+-- hit-test sulle icone (messaggi missing buff); se nessuna icona, un click
+-- SINISTRO sulla barra = target del player.
+function RF:RowPlainClick(row, button)
+    local fired = self:FireConsumableFromCursor(row, button)
+    if not fired and button == "LeftButton" then
+        self:TargetRow(row)
+    end
+end
+
+-- Target del player della riga. ALLA PRESSIONE di un click sinistro nudo
+-- sulla barra (comportamento standard degli unit frame: Grid/VuhDo/HealBot
+-- targettano al mouse-down). Dedup TTL 0.3s: press + release + poller
+-- possono convergere nello stesso click.
+-- Condizione IRROGABILE dell'utente: "clicco il nome → target il player
+-- con QUEL nome": prima prova la via unit (TargetUnit su unit valida),
+-- altrimenti TargetByName(nome esatto). Mai su fake/debug: l'entita' non
+-- esiste nel gioco → nessun bonk di errore Blizzard, solo traccia rfDbg.
+function RF:TargetRow(row)
+    if not row then return false end
+    local now = (GetTime and GetTime()) or 0
+    if row._targetT and (now - row._targetT) < 0.3 then return true end
+    row._targetT = now
+    local name = row.name or (row.member and row.member.name)
+    -- TargetUnit() e' PROTETTA: il client la rifiuta da qualsiasi codice
+    -- addon ("tainted execution path") -> MAI chiamarla. Il target con unit
+    -- reale lo fa l'overlay SecureActionButtonTemplate (engine, alla
+    -- pressione). Chiamata Lua solo come fallback PER NOME, quando l'overlay
+    -- non e' visibile (es. attributi congelati in combat durante un FillSlot).
+    if row.secTarget and row.secTarget:IsShown() then
+        rfDbg("target overlay-engine -> %s", tostring(name))
+        return true
+    end
+    if name and name ~= "" and TargetByName and not row.fake then
+        rfDbg("target by name -> %s", tostring(name))
+        TargetByName(name)
+        return true
+    end
+    -- roster finto/nessuna unit reale: solo traccia, nessun bonk
+    rfDbg("target (solo traccia, unita' non reale) -> %s", tostring(name))
+    return false
 end
 
 function RF:GetDefaultAlertMessage(alertType)
@@ -717,196 +1421,6 @@ function RF:GetDefaultAlertMessage(alertType)
         buff = L["Hey $name, you're missing some raid buffs!"],
     }
     return msgs[alertType]
-end
-
--- ------------------------------------------------------------------
--- Coverage checks (pre-boss buffs / in-fight debuffs)
--- ------------------------------------------------------------------
-function RF:AllChecks()
-    local list = {}
-    for _, c in ipairs(RLSuite.raidBuffChecks or {}) do
-        c.kind = "buff"
-        table.insert(list, c)
-    end
-    for _, c in ipairs(RLSuite.raidDebuffChecks or {}) do
-        c.kind = "debuff"
-        table.insert(list, c)
-    end
-    return list
-end
-
-function RF:GetCompClasses()
-    local set = {}
-    for _, info in ipairs(self:GetRoster()) do
-        set[(info.class or "WARRIOR"):upper()] = true
-    end
-    return set
-end
-
-function RF:CheckCoverage(check)
-    if not check then return false end
-    if RLSuite.DebugMode and RLSuite:DebugMode() then
-        -- No real auras in the simulated environment: everything reads as
-        -- "missing" so the alert UI still renders (and never errors).
-        return false
-    end
-    if check.kind == "debuff" then
-        return self:CheckDebuffCoverage(check)
-    end
-    return self:CheckBuffCoverage(check)
-end
-
-function RF:CheckBuffCoverage(check)
-    local spells = check.spells or {}
-    for _, info in ipairs(self:GetRoster()) do
-        local unit = info.unit
-        if unit and UnitExists(unit) then
-            for _, spellId in ipairs(spells) do
-                if self:UnitHasSpellBuff(unit, spellId) then return true end
-            end
-        end
-    end
-    return false
-end
-
-function RF:CheckDebuffCoverage(check)
-    local spells = check.spells or {}
-    local units = { "target", "focus", "boss1", "boss2", "boss3", "boss4" }
-    for _, unit in ipairs(units) do
-        if UnitExists(unit) then
-            for _, spellId in ipairs(spells) do
-                if self:UnitHasSpellDebuff(unit, spellId) then return true end
-            end
-        end
-    end
-    return false
-end
-
--- ------------------------------------------------------------------
--- Vertical ability-check bar
--- ------------------------------------------------------------------
-function RF:BuildAbilityBar()
-    if not self.abilityBar then return end
-    for _, btn in ipairs(self.abilityButtons) do
-        btn:Hide()
-    end
-    self.abilityButtons = {}
-
-    local show = self.db.showAbilityBar ~= false
-    if not show then
-        self.abilityBar:Hide()
-        self.abilityCount = 0
-        self:ApplyLayout()
-        return
-    end
-
-    local comp = self:GetCompClasses()
-    local checks = self:AllChecks()
-    local m = self:LayoutMetrics()
-    local idx = 0
-    for _, check in ipairs(checks) do
-        local relevant = false
-        for _, cls in ipairs(check.classes or {}) do
-            if comp[cls] then
-                relevant = true
-                break
-            end
-        end
-        if relevant then
-            idx = idx + 1
-            local btn = self:GetAbilityButton(idx)
-            self:FillAbilityButton(btn, check)
-            btn:ClearAllPoints()
-            btn:SetPoint("TOPLEFT", self.abilityBar, "TOPLEFT", 2, -(idx - 1) * 20)
-            btn:SetSize(math.max(10, m.abw - 4), 18)
-        end
-    end
-
-    self.abilityCount = idx
-    if idx == 0 then
-        self.abilityBar:Hide()
-    else
-        self.abilityBar:Show()
-    end
-    self:ApplyLayout()
-    self:UpdateAbilityButtons()
-end
-
-function RF:GetAbilityButton(idx)
-    if self.abilityButtons[idx] then return self.abilityButtons[idx] end
-    local btn = CreateFrame("Button", "RLSuiteRaidAbility" .. idx, self.abilityBar)
-    btn:SetHeight(18)
-    btn:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 8,
-        insets = { left = 1, right = 1, top = 1, bottom = 1 },
-    })
-    btn:SetBackdropColor(0, 0, 0, 0.35)
-
-    local icon = btn:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(16, 16)
-    icon:SetPoint("LEFT", btn, "LEFT", 1, 0)
-    btn.icon = icon
-
-    local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("LEFT", icon, "RIGHT", 3, 0)
-    label:SetPoint("RIGHT", btn, "RIGHT", -1, 0)
-    label:SetJustifyH("LEFT")
-    btn.label = label
-
-    self.abilityButtons[idx] = btn
-    return btn
-end
-
-function RF:FillAbilityButton(btn, check)
-    btn.check = check
-    btn.icon:SetTexture(check.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-    btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    btn.label:SetText(check.label or check.key)
-    btn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(self.check and (self.check.label or self.check.key) or "")
-        local prov = table.concat(self.check and self.check.classes or {}, ", ")
-        GameTooltip:AddLine(L["Provided by: "] .. prov, 0.8, 0.8, 0.8)
-        GameTooltip:Show()
-    end)
-    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    btn:Show()
-end
-
-function RF:UpdateAbilityButtons()
-    for _, btn in ipairs(self.abilityButtons) do
-        local check = btn.check
-        if check then
-            self:SetAbilityButtonState(btn, self:CheckCoverage(check))
-        end
-    end
-end
-
-function RF:SetAbilityButtonState(btn, present)
-    if present then
-        -- Covered: greyed out, no glow.
-        btn:SetScript("OnUpdate", nil)
-        btn.icon:SetVertexColor(0.35, 0.35, 0.35)
-        btn.label:SetTextColor(0.5, 0.5, 0.5)
-        btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
-    else
-        -- Missing: full color + flashing bright border.
-        btn.icon:SetVertexColor(1, 1, 1)
-        btn.label:SetTextColor(1, 1, 1)
-        btn:SetBackdropBorderColor(1, 0.55, 0, 1)
-        btn._flash = 0
-        btn._flashOn = false
-        btn:SetScript("OnUpdate", function(self, elapsed)
-            self._flash = (self._flash or 0) + elapsed
-            if self._flash >= 0.5 then
-                self._flash = 0
-                self._flashOn = not self._flashOn
-                self:SetBackdropBorderColor(1, 0.55, 0, self._flashOn and 0.2 or 1)
-            end
-        end)
-    end
 end
 
 -- ------------------------------------------------------------------
@@ -924,16 +1438,50 @@ function RF:IsDragEnabled()
 end
 
 function RF:UpdateDragState()
-    local enabled = self:IsDragEnabled()
+    -- Drag delle righe = MANUALE (nessun RegisterForDrag, manco per fase):
+    -- le righe restano SEMPRE con mouse attivo e click liberi; il drag del
+    -- player parte su Shift+down in pre-boss (OnMouseDown → _rfDragSource).
+    -- EnableMouse(false) / RegisterForDrag qui in passato rendevano mute le
+    -- righe: il tasto premuto veniva divorato dal drag manager di 3.3.5.
     for _, slot in ipairs(self.slots or {}) do
-        if enabled then
-            slot:EnableMouse(true)
-            slot:RegisterForDrag("LeftButton")
-        else
-            slot:EnableMouse(false)
-            slot:RegisterForDrag()
-        end
+        slot:RegisterForDrag() -- sì: svuota esplicitamente qualunque set ereditato
     end
+end
+
+-- Watchdog del drag player MANUALE: se il release avviene FUORI dalle righe
+-- (cursore uscito dall'HUD), i singoli OnMouseUp non lo vedono. Pollo su
+-- frame dedicato: tasto rilasciato mentre _rfDragSource → drop/cancel.
+function RF:_ArmManualDragWatchdog()
+    if self._dragWatchArmed then return end
+    if not self.frame then return end
+    if not self._dragWatch then
+        self._dragWatch = CreateFrame("Frame", nil, self.frame)
+        self._dragWatch:SetSize(1, 1)
+        self._dragWatch:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, 0)
+    end
+    self._dragWatch:Show()
+    self._dragWatchArmed = true
+    self._dragWatch:SetScript("OnUpdate", function()
+        if not RF._rfDragSource then
+            RF._dragWatchArmed = false
+            RF._dragWatch:Hide()
+            RF:UpdateDropGlow() -- sicurezza: nessun bordino residuo appeso
+            return
+        end
+        RF:UpdateDropGlow() -- il bordino dorato insegue il cursore
+        if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+            local src = RF._rfDragSource
+            RF._rfDragSource = nil
+            if src then src._manualDrag = nil end
+            if src and src.member then
+                local t = RF:SlotAtCursor()
+                if t and t ~= src then
+                    RF:MoveSlot(src, t)
+                end
+            end
+            RF:RefreshDropTargets()
+        end
+    end)
 end
 
 -- Slot under the mouse cursor (nil if none). Mirrors GroupMaking's
@@ -943,19 +1491,24 @@ function RF:SlotAtCursor()
     if not GetCursorPosition then return nil end
     local x, y = GetCursorPosition()
     if not x or not y then return nil end
-    local scale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-    if scale and scale > 0 then
-        x = x / scale
-        y = y / scale
-    end
     for _, slot in ipairs(self.slots or {}) do
         if slot and slot.IsShown and slot:IsShown() then
+            -- SCALA: GetLeft/GetBottom/... sono nello spazio della scala
+            -- EFFETTIVA DELLO SLOT, non di UIParent. Se la finestra RF ha
+            -- una scala propria (config "Scale"), il cursore va riportato in
+            -- QUELLA scala: normalizzare per UIParent sposta l'hit-test di
+            -- una frazione proporzionale alla distanza dall'ancora (bug
+            -- osservato: bordino di drop evidenziato ~un gruppo piu' in
+            -- alto del cursore).
+            local scale = (slot.GetEffectiveScale and slot:GetEffectiveScale()) or 1
+            if not (scale and scale > 0) then scale = 1 end
+            local cx, cy = x / scale, y / scale
             local left = slot:GetLeft()
             local right = slot:GetRight()
             local bottom = slot:GetBottom()
             local top = slot:GetTop()
             if left and right and bottom and top
-                and x >= left and x <= right and y >= bottom and y <= top then
+                and cx >= left and cx <= right and cy >= bottom and cy <= top then
                 return slot
             end
         end
@@ -1012,116 +1565,6 @@ function RF:MoveSlotDebug(src, dst)
 end
 
 -- ------------------------------------------------------------------
--- Pre-boss / in-fight alert bars
--- ------------------------------------------------------------------
-function RF:RefreshAlertBars()
-    local phase = RLSuite.context or "preraid"
-
-    local showBuff = phase == "preboss" and self.db.showBuffBar ~= false
-    local showDebuff = phase == "infight" and self.db.showDebuffBar ~= false
-
-    if self.buffBar then
-        if showBuff then self.buffBar:Show() else self.buffBar:Hide() end
-    end
-    if self.debuffBar then
-        if showDebuff then self.debuffBar:Show() else self.debuffBar:Hide() end
-    end
-
-    self:PopulateAlertBar(self.buffBar, RLSuite.raidBuffChecks, showBuff)
-    self:PopulateAlertBar(self.debuffBar, RLSuite.raidDebuffChecks, showDebuff)
-    self:ApplyLayout()
-    self:UpdateAlertItems()
-end
-
-function RF:PopulateAlertBar(bar, checks, active)
-    if not bar then return end
-    for _, it in ipairs(bar.items) do
-        it:Hide()
-    end
-    bar.items = {}
-    bar.count = 0
-    if not active then return end
-
-    local comp = self:GetCompClasses()
-    local idx = 0
-    for _, check in ipairs(checks or {}) do
-        local relevant = true
-        if check.onlyWithClass then
-            relevant = false
-            for _, cls in ipairs(check.classes or {}) do
-                if comp[cls] then
-                    relevant = true
-                    break
-                end
-            end
-        end
-        if relevant then
-            idx = idx + 1
-            local it = self:GetAlertItem(bar, idx)
-            self:FillAlertItem(it, check)
-            it:ClearAllPoints()
-            it:SetPoint("TOPLEFT", bar, "TOPLEFT", 2, -(idx - 1) * 14)
-            it:SetWidth(math.max(60, self.frame:GetWidth() - 4))
-        end
-    end
-    bar.count = idx
-end
-
-function RF:GetAlertItem(bar, idx)
-    if bar.items[idx] then return bar.items[idx] end
-    local it = CreateFrame("Button", nil, bar)
-    it:SetHeight(14)
-
-    local icon = it:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(12, 12)
-    icon:SetPoint("LEFT", it, "LEFT", 0, 0)
-    it.icon = icon
-
-    local label = it:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("LEFT", icon, "RIGHT", 3, 0)
-    label:SetPoint("RIGHT", it, "RIGHT", 0, 0)
-    label:SetJustifyH("LEFT")
-    it.label = label
-
-    it:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(self.check and (self.check.label or self.check.key) or "")
-        GameTooltip:Show()
-    end)
-    it:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    bar.items[idx] = it
-    return it
-end
-
-function RF:FillAlertItem(it, check)
-    it.check = check
-    it.icon:SetTexture(check.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-    it.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    it.label:SetText(check.label or check.key)
-    it:Show()
-end
-
-function RF:UpdateAlertItems()
-    for _, bar in ipairs({ self.buffBar, self.debuffBar }) do
-        if bar and bar:IsShown() then
-            for _, it in ipairs(bar.items) do
-                if it.check then
-                    local present = self:CheckCoverage(it.check)
-                    if present then
-                        it.icon:SetVertexColor(0.4, 0.75, 0.4)
-                        it.label:SetTextColor(0.4, 0.8, 0.4)
-                    else
-                        it.icon:SetVertexColor(1, 0.5, 0.15)
-                        it.label:SetTextColor(1, 0.55, 0.15)
-                    end
-                end
-            end
-        end
-    end
-end
-
--- ------------------------------------------------------------------
 -- Layout / update entry points
 -- ------------------------------------------------------------------
 function RF:ApplyLayout()
@@ -1130,19 +1573,138 @@ function RF:ApplyLayout()
     local m = self:LayoutMetrics()
     self.frame:SetWidth(m.W)
     self.frame:SetScale(db.scale or 1)
+    -- Trasparenza complessiva dell'HUD (Config -> Raid Frame -> Layout).
+    self.frame:SetAlpha(db.alpha or 1)
 
-    -- Pack group headers + visible slots vertically (G1..G6).
+    -- Pack group headers + visible slots vertically (Tanks, G1..G6).
     local y = 0
     local shown = false
+    -- MATRICE "Raid Buffs" attiva? Riga d'intestazione IN CIMA con i nomi
+    -- sintetici delle categorie, poi il resto (Tanks compreso) scende.
+    local matrixOn = self.buffMatrixOn and self.rows and self.rows[1] ~= nil
+    -- La RIGA D'INTESTAZIONE e' PERMANENTE: fuori dal pannello toggle,
+    -- visibile INDIPENDENTEMENTE dal tasto "Raid Buffs" finche' c'e' un
+    -- roster. Il tasto accende/spegne SOLO le icone dei player.
+    local headersOn = self.rows and self.rows[1] ~= nil
+    local mCols = headersOn and self:_MatrixCols() or nil
+    if headersOn then
+        -- Testata a ICONE CUSTOM (BCI_<c-1>.tga): creazione/refresh qui; la
+        -- POSIZIONE vera viene fatta nel loop dei gruppi, ALL'ALTEZZA DELL'
+        -- HEADER G1 (vedi sotto). UNA SetTexture diretta sui tga dell'utente:
+        -- niente blp, niente fallback, niente detection.
+        for c, col in ipairs(mCols) do
+            local btn = self:_MatrixHeaderBtn(c)
+            btn._col = col
+            btn._icon:SetTexture(self:_BuffCatIconPath(c))
+            btn._icon:ClearAllPoints()
+            btn._icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+            btn._icon:SetSize(m.cellW, m.cellW) -- size = iconSize + iconSpacing, FISSO
+            -- NIENTE Show qui: la riga d'intestazione nasceva permanente, ora
+            -- si mostra/nasconde col tasto "Raid Buffs" (RefreshBuffMatrix).
+        end
+    end
+    -- Se la matrice e' spenta, anche lo sfondo della strip si nasconde.
+    if self._buffHdrBg and not matrixOn then self._buffHdrBg:Hide() end
+
+    -- Font size configurabile delle intestazioni di gruppo (G1..G6, Tanks).
+    local ghApp = (self.db and self.db.appearance) or {}
+    local ghFont = ghApp.font or "Fonts\\FRIZQT__.TTF"
+    local ghSize = ghApp.groupHeaderFontSize or 10
+    local ghFlags = (ghApp.fontOutline ~= false) and "OUTLINE" or ""
+    if self.tankHeader and self.tankHeader.SetFont then
+        self.tankHeader:SetFont(ghFont, ghSize, ghFlags)
+    end
+    for g = 1, RF_GROUPS do
+        local gh = self.groupHeaders and self.groupHeaders[g]
+        if gh and gh.SetFont then gh:SetFont(ghFont, ghSize, ghFlags) end
+    end
+    -- GRUPPO TANKS sopra G1: header + barre MT/OT (sempre 2, piene o vuote).
+    if self.tankHeader and self.tankHeader:IsShown() then
+        self.tankHeader:ClearAllPoints()
+        self.tankHeader:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
+        self.tankHeader:SetWidth(m.rowWidth)
+        y = y - m.groupHeaderH
+        local otSlot = nil
+        for ti = 1, RF_TANK_COUNT do
+            local t = self.tankSlots and self.tankSlots[ti]
+            if t then
+                t:ClearAllPoints()
+                t:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
+                self:LayoutSlotGeometry(t, m)
+                y = y - m.rowHeight - m.rowSpacing
+                if ti == 2 then otSlot = t end -- OT = seconda barra tank
+            end
+        end
+        -- Lo spazio tra Tanks e G1 = SEMPRE la zona strip (cellW+4 = la
+        -- dimensione delle icone d'intestazione): niente groupSpacing extra
+        -- quando c'e' il roster, cosi' accendere/spegnere i buff non sposta
+        -- MAI nulla.
+        if not headersOn then y = y - m.groupSpacing end
+        shown = true
+        -- Bottone "Raid Buffs": sotto le barre target dei tank, mA ALLINEATO
+        -- COME L'HEADER G1: il suo bordo INFERIORE = fondo della zona strip
+        -- (stessa linea del testo "Gruppo 1"), bordo DESTRO = fine barra.
+        if self.buffPanelBtn and otSlot and otSlot.targetBar then
+            self.buffPanelBtn:ClearAllPoints()
+            if headersOn then
+                self.buffPanelBtn:SetPoint("BOTTOMRIGHT", self.content, "TOPLEFT",
+                    m.rowWidth, y - (m.cellW + 4))
+            else
+                self.buffPanelBtn:SetPoint("TOPRIGHT", otSlot.targetBar, "BOTTOMRIGHT", 0, 0)
+            end
+            self.buffPanelBtn:Show()
+        end
+    elseif self.buffPanelBtn then
+        self.buffPanelBtn:Hide()
+    end
     for g = 1, RF_GROUPS do
         local hdr = self.groupHeaders and self.groupHeaders[g]
         local hdrShown = hdr ~= nil and hdr:IsShown()
         if hdrShown then
-            hdr:ClearAllPoints()
-            hdr:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
-            hdr:SetWidth(m.rowWidth)
-            y = y - RF_HEADER_H
             shown = true
+            if g == 1 and headersOn and mCols then
+                -- ZONA STRIP SEMPRE RISERVATA (cellW+4 = dimensione delle icone
+                -- d'intestazione) tra Tanks e G1, a matrice accesa o spenta:
+                -- le icone compaiono/scompaiono DENTRO la zona senza spostare
+                -- niente sotto. Header G1: ATTACCATO IN BASSO alla sua riga.
+                local stripH = m.cellW + 4
+                hdr:ClearAllPoints()
+                hdr:SetPoint("BOTTOMLEFT", self.content, "TOPLEFT", 2, y - stripH)
+                hdr:SetWidth(m.rowWidth)
+                if matrixOn then
+                    for c = 1, #mCols do
+                        local btn = self._buffHdrBtns and self._buffHdrBtns[c]
+                        if btn then
+                            btn:ClearAllPoints()
+                            btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
+                                m.rowWidth + 4 + (c - 1) * m.cellW, y)
+                            btn:SetSize(m.cellW, stripH)
+                        end
+                    end
+                    -- Backdrop UNICO della strip: valore del backdrop barre
+                    -- (appearance.matrixBackdrop, Config -> Raid Frame).
+                    local bg = self._buffHdrBg
+                    if not bg then
+                        bg = self.frame:CreateTexture(nil, "BACKGROUND")
+                        self._buffHdrBg = bg
+                    end
+                    local bc = (self.db and self.db.appearance and self.db.appearance.matrixBackdrop) or {}
+                    bg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
+                    bg:ClearAllPoints()
+                    bg:SetPoint("TOPLEFT", self.frame, "TOPLEFT", m.rowWidth + 2, y)
+                    bg:SetSize(#mCols * m.cellW + 6, stripH)
+                    bg:Show()
+                elseif self._buffHdrBg then
+                    self._buffHdrBg:Hide()
+                end
+                y = y - stripH
+            else
+                if g == 1 and self._buffHdrBg then self._buffHdrBg:Hide() end
+                hdr:ClearAllPoints()
+                hdr:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
+                hdr:SetWidth(m.rowWidth)
+                y = y - m.groupHeaderH
+            end
         end
         local anySlot = false
         for s = 1, RF_PER_GROUP do
@@ -1151,13 +1713,16 @@ function RF:ApplyLayout()
                 slot:ClearAllPoints()
                 slot:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
                 self:LayoutSlotGeometry(slot, m)
-                y = y - m.rowHeight
+                if matrixOn and slot.member then
+                    self:_LayoutMatrixRow(slot, m, y, mCols)
+                end
+                y = y - m.rowHeight - m.rowSpacing
                 anySlot = true
                 shown = true
             end
         end
         if g < RF_GROUPS and (hdrShown or anySlot) then
-            y = y - RF_GROUP_GAP
+            y = y - m.groupSpacing
         end
     end
     local rowsH = shown and -y or 0
@@ -1166,40 +1731,320 @@ function RF:ApplyLayout()
     self.content:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, 0)
     self.content:SetSize(m.rowWidth, rowsH)
 
-    if self.abilityBar then
-        self.abilityBar:ClearAllPoints()
-        if db.showAbilityBar ~= false and (self.abilityCount or 0) > 0 then
-            self.abilityBar:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", 0, 0)
-            self.abilityBar:SetSize(m.abw, rowsH)
-        else
-            self.abilityBar:SetSize(0, 0)
+    self.frame:SetHeight(math.max(20, rowsH))
+
+    -- Colore del font dei nomi (Config -> Raid Frame -> Layout -> Font color).
+    local fc = db.appearance and db.appearance.fontColor
+    local fr, fg, fb = (fc and fc.r) or 1, (fc and fc.g) or 1, (fc and fc.b) or 1
+    for _, slot in ipairs(self.slots or {}) do
+        if slot.bar and slot.bar.nameText then
+            slot.bar.nameText:SetTextColor(fr, fg, fb, 1)
         end
     end
-
-    local alertTop = -(rowsH + 4)
-    for _, bar in ipairs({ self.buffBar, self.debuffBar }) do
-        if bar then
-            bar:ClearAllPoints()
-            bar:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, alertTop)
-            bar:SetSize(m.W, (bar.count or 0) * 14)
+    for _, t in ipairs(self.tankSlots or {}) do
+        if t.bar and t.bar.nameText then
+            t.bar.nameText:SetTextColor(fr, fg, fb, 1)
         end
     end
-
-    local alertH = 0
-    if self.buffBar and self.buffBar:IsShown() then
-        alertH = alertH + (self.buffBar.count or 0) * 14 + 4
-    end
-    if self.debuffBar and self.debuffBar:IsShown() then
-        alertH = alertH + (self.debuffBar.count or 0) * 14 + 4
-    end
-    self.frame:SetHeight(math.max(20, rowsH + alertH))
+    self:RefreshBuffMatrix()
 
     if (RLSuite.InRaid and RLSuite:InRaid()) or (GetNumRaidMembers and GetNumRaidMembers() > 0) then
         self:UpdateAll()
     end
+
 end
 
 function RF:Update()
     self:Rebuild()
     self:UpdateAll()
 end
+
+-- ------------------------------------------------------------------
+-- MATRICE "Raid Buffs" (stile Method Raid Tools) INTEGRATA nel Raid
+-- Frame: si attiva col tasto "Raid Buffs" (Riga header Tanks). Le icone
+-- di ogni categoria stanno LUNGO LA RIGA del player nei gruppi; una riga
+-- di intestazione coi nomi sintetici delle categorie appare in cima.
+-- Niente pannello separato, niente colonne Flask/Well Fed (le icone
+-- consumabili per-riga le controllano gia').
+-- ------------------------------------------------------------------
+-- Colonne MATRICE visibili: le 21 categorie MENO Flask e Well Fed
+-- (gia' controllate dalle icone consumabili per-riga nel Raid Frame).
+function RF:_MatrixCols()
+    if self._matrixColsCache then return self._matrixColsCache end
+    local out = {}
+    for _, col in ipairs(RLSuite.raidBuffColumns or {}) do
+        if col.key ~= "flask" and col.key ~= "wellfed" then
+            out[#out + 1] = col
+        end
+    end
+    -- I buff PIU' IMPORTANTI sono i primi a sinistra (RF_BP_PRIORITY).
+    table.sort(out, function(a, b)
+        local pa = RF_BP_PRIORITY[a.key] or 99
+        local pb = RF_BP_PRIORITY[b.key] or 99
+        if pa ~= pb then return pa < pb end
+        return (a.label or a.key or "") < (b.label or b.key or "")
+    end)
+    self._matrixColsCache = out
+    return out
+end
+
+-- Intestazione matrice: UN BOTTONE per colonna con l'ICONA CUSTOM della
+-- categoria (media/BUFFCATICONS/BCI_<c-1>.tga, i file caricati dall'utente).
+-- Ordine = colonne da sinistra a destra; size = iconSize + iconSpacing.
+-- Hover: l'icona si accende; click: raid warning per quella categoria.
+function RF:_BuffCatIconPath(c)
+    return RLSuite:AddonTexture("media\\BUFFCATICONS\\BCI_" .. (c - 1) .. ".tga")
+end
+
+function RF:_MatrixHeaderBtn(c)
+    self._buffHdrBtns = self._buffHdrBtns or {}
+    local btn = self._buffHdrBtns[c]
+    if not btn then
+        -- TIRATI FUORI DAL PANNELLO: figli della WINDOW, non di content: la
+        -- riga d'intestazione resta SEMPRE visibile, per sempre.
+        btn = CreateFrame("Button", nil, self.frame)
+        local tex = btn:CreateTexture(nil, "OVERLAY")
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        tex:SetPoint("CENTER", btn, "CENTER", 0, 0)
+        tex:SetVertexColor(0.8, 0.8, 0.8) -- "spento"; hover accende a piena luce
+        btn._icon = tex
+        btn:SetScript("OnEnter", function(s)
+            if s._icon then s._icon:SetVertexColor(1, 1, 1) end
+            if GameTooltip and GameTooltip.SetOwner and s._col then
+                GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+                GameTooltip:SetText(s._col.label or s._col.key or "")
+                GameTooltip:Show()
+            end
+        end)
+        btn:SetScript("OnLeave", function(s)
+            if s._icon then s._icon:SetVertexColor(0.8, 0.8, 0.8) end
+            if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+        end)
+        btn:RegisterForClicks("LeftButtonUp")
+        btn:SetScript("OnClick", function(s)
+            if s._col then RF:WarnBuffCategory(s._col) end
+        end)
+        btn:Hide()
+        self._buffHdrBtns[c] = btn
+    end
+    return btn
+end
+
+-- Left-click su un titolo di categoria: raid warning per quella colonna,
+-- con l'elenco dei player che mancano del buff (fake inclusi in debug).
+-- `/rls debugbuff`: per OGNI colonna stampa chiave, icona di gioco usata e
+-- dimensione della region (info deterministiche, nessun test di caricamento:
+-- le icone sono texture interne del gioco, si caricano per definizione).
+function RF:DiagnoseBuffCatIcons()
+    local p = function(t) RLSuite.utils:Print(t) end
+    p(L["Buff headers: per-category game icons (no custom files)"])
+    local cols = self._matrixColsCache or self:_MatrixCols()
+    for c = 1, #cols do
+        local btn = self._buffHdrBtns and self._buffHdrBtns[c]
+        local col = btn and btn._col or cols[c]
+        local tex = btn and btn._icon
+        local sz = tex and (tostring(tex:GetWidth()) .. "x" .. tostring(tex:GetHeight())) or "?"
+        p(string.format("  %d %s: %s btn=%s size=%s", c,
+            tostring(col and col.key or "?"), tostring(self:_BuffCatIconPath(c)),
+            btn and "Y" or "N", sz))
+    end
+end
+
+function RF:WarnBuffCategory(col)
+    if not col then return end
+    local label = col.label or col.key or "?"
+    local missing = {}
+    for _, member in ipairs(self:GetRoster()) do
+        if member.unit or member.fake then
+            if not self:_BuffCellIconFor(member, col) then
+                missing[#missing + 1] = member.name or "?"
+            end
+        end
+    end
+    local msg
+    if #missing == 0 then
+        msg = string.format(L["Buff check: %s - OK on everyone"], label)
+    else
+        msg = string.format(L["Buff check: %s - missing: %s"], label, table.concat(missing, ", "))
+    end
+    if #msg > 240 then msg = msg:sub(1, 237) .. "..." end
+    if RLSuite.utils and RLSuite.utils.SendChat then
+        RLSuite.utils:SendChat(msg, "RAID_WARNING")
+    end
+end
+
+-- Toggle dal tasto "Raid Buffs": la matrice appare solo se cliccata.
+function RF:ToggleBuffMatrix()
+    self.buffMatrixOn = not (self.buffMatrixOn == true)
+    self:ApplyLayout()
+    self:RefreshBuffMatrix()
+end
+
+-- Celle-icona LUNGO LA RIGA del player: texture figlie di content (come le
+-- icone consumabili), oltre il bordo destro della riga, centrate in altezza.
+function RF:_MatrixCell(slot, c)
+    slot._buffCells = slot._buffCells or {}
+    local tex = slot._buffCells[c]
+    if not tex then
+        tex = self.content:CreateTexture(nil, "ARTWORK")
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        slot._buffCells[c] = tex
+    end
+    return tex
+end
+
+function RF:_LayoutMatrixRow(slot, m, y, mCols)
+    -- Backdrop UNO PER RIGA (non tutta la finestra): striscia grigia
+    -- semi-trasparente dietro le icone di QUESTO player, tra il bordo destro
+    -- della barra+cd e la fine dell'area colonne.
+    local bg = slot._matrixBg
+    if not bg then
+        bg = self.content:CreateTexture(nil, "BACKGROUND")
+        slot._matrixBg = bg
+    end
+    local bc = (self.db and self.db.appearance and self.db.appearance.matrixBackdrop) or {}
+    bg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
+    bg:ClearAllPoints()
+    bg:SetPoint("TOPLEFT", self.content, "TOPLEFT", m.rowWidth + 2, y - 1)
+    bg:SetSize(#mCols * m.cellW + 6, m.rowHeight - 2)
+    bg:Show()
+    for c = 1, #mCols do
+        local tex = self:_MatrixCell(slot, c)
+        if tex then
+            tex:ClearAllPoints()
+            tex:SetSize(m.iconSize, m.iconSize)
+            tex:SetPoint("TOPLEFT", self.content, "TOPLEFT",
+                m.rowWidth + 4 + (c - 1) * m.cellW + (m.cellW - m.iconSize) / 2,
+                y - (m.rowHeight - m.iconSize) / 2)
+        end
+    end
+end
+
+-- Riempie la matrice: icona del buff attivo del player per categoria,
+-- nascosta quando manca / matrice spenta / riga senza unita' reale.
+function RF:RefreshBuffMatrix()
+    local on = self.buffMatrixOn and self.rows and self.rows[1] ~= nil
+    local cols = on and self:_MatrixCols() or nil
+    local headersOn = self.rows and self.rows[1] ~= nil
+    for _, slot in ipairs(self.slots or {}) do
+        for c = 1, #(slot._buffCells or {}) do
+            local tex = slot._buffCells[c]
+            local icon
+            if on and slot:IsShown() and slot.member and cols and cols[c] then
+                icon = self:_BuffCellIconFor(slot.member, cols[c])
+            end
+            if icon then
+                tex:SetTexture(icon)
+                tex:Show()
+            else
+                tex:Hide()
+            end
+        end
+    end
+    -- Backdrop PER RIGA: visibile solo a matrice accesa, quando la riga
+    -- e' visibile e occupata. Nascosto altrimenti (toglie il tasto "Raid
+    -- Buffs" solo le icone e queste strisce, MAI l'intestazione).
+    for _, slot in ipairs(self.slots or {}) do
+        local bg = slot._matrixBg
+        if bg then
+            if on and slot:IsShown() and slot.member then
+                bg:Show()
+            else
+                bg:Hide()
+            end
+        end
+    end
+    -- LA RIGA D'INTESTAZIONE si accende/spegne COL TASTO "Raid Buffs":
+    -- stessa visibility della matrice (e solo se c'e' l'header G1 a cui
+    -- ancorarla).
+    local g1Shown = self.groupHeaders and self.groupHeaders[1] and self.groupHeaders[1]:IsShown()
+    for c, btn in ipairs(self._buffHdrBtns or {}) do
+        if on and g1Shown and RLSuite.raidBuffColumns and self:_MatrixCols()[c] then
+            btn:Show()
+        else
+            btn:Hide()
+        end
+    end
+end
+
+-- Set di spellId per categoria (cache pigra).
+function RF:_BuffColSet(col)
+    if not col._set then
+        col._set = {}
+        for _, id in ipairs(col.spells or {}) do
+            col._set[id] = true
+        end
+    end
+    return col._set
+end
+
+-- DEBUG: aure simulati dei player FITTIZI (le persone invitate "ricevono
+-- buff casuali"). Set stabile in sessione: seme dal nome (LCG), per OGNI
+-- categoria ~55% di possibilita' di averne uno, spell scelta a caso.
+function RF:_DebugMemberBuffSet(name)
+    if not (RLSuite.DebugMode and RLSuite:DebugMode()) or not name then return {} end
+    RLSuite.debugBuffs = RLSuite.debugBuffs or {}
+    local set = RLSuite.debugBuffs[name]
+    if set then return set end
+    set = {}
+    local seed = 0
+    for i = 1, #name do
+        seed = (seed * 31 + name:byte(i)) % 2147483647
+    end
+    local function rnd()
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        return seed / 2147483648
+    end
+    for _, col in ipairs(RLSuite.raidBuffColumns or {}) do
+        local sp = col.spells
+        if sp and #sp > 0 and rnd() < 0.55 then
+            set[sp[math.floor(rnd() * #sp) + 1]] = true
+        end
+    end
+    RLSuite.debugBuffs[name] = set
+    return set
+end
+
+-- Icona della cella per un MEMBER: fake in debug -> set simulato (per
+-- spellId, tessera della spell reale); altrimenti -> scan aure reale.
+function RF:_BuffCellIconFor(member, col)
+    if not (member and col) then return nil end
+    if member.fake and RLSuite.DebugMode and RLSuite:DebugMode() then
+        local set = self:_DebugMemberBuffSet(member.name)
+        for _, id in ipairs(col.spells or {}) do
+            if set[id] then
+                local tex = GetSpellTexture and GetSpellTexture(id)
+                return tex or col.icon, id
+            end
+        end
+        return nil
+    end
+    return self:_BuffCellIcon(member.unit, col)
+end
+
+-- Icona del buff ATTIVO del player che copre la categoria (nil se nessuno).
+-- Match per spellId (set) oppure per nome aura (byNameSpell -> locale-safe,
+-- copre tutte le varianti, es. Well Fed). Icona = texture della spell reale
+-- trovata; per byName si usa l'icona fissa della categoria.
+function RF:_BuffCellIcon(unit, col)
+    if not (unit and col and UnitBuff) then return nil end
+    local set = self:_BuffColSet(col)
+    local wantName
+    if col.byNameSpell and GetSpellInfo then
+        wantName = GetSpellInfo(col.byNameSpell)
+    end
+    for i = 1, 40 do
+        local bname, _, _, _, _, _, _, _, _, _, bid = UnitBuff(unit, i)
+        if not bname then return nil end
+        if bid and set[bid] then
+            local tex = GetSpellTexture and GetSpellTexture(bid)
+            return tex or col.icon, bid
+        end
+        if wantName and bname == wantName then
+            return col.icon, bid
+        end
+    end
+    return nil
+end
+
+

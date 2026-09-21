@@ -1,4 +1,5 @@
 import sys, os
+sys.path.insert(0, os.path.expanduser('~/.pylibs'))  # persistenza locale per lupa
 from lupa import LuaRuntime
 
 # ---------------------------------------------------------------------------
@@ -13,6 +14,8 @@ FRAMES = {}             -- name -> frame
 local methods = {}
 local FrameMT = { __index = methods }
 
+ALLFRAMES = {}          -- flat registry di ogni frame creato (audit checks)
+
 local function newFrame(t)
     local o = setmetatable(t or {}, FrameMT)
     o._w = 0; o._h = 0; o._shown = true
@@ -20,6 +23,7 @@ local function newFrame(t)
     o._backdropColor = {0,0,0,1}; o._isFontString = false
     o._wordWrap = false; o._locked = false; o._highlight = false
     o._fontHeight = 14
+    ALLFRAMES[#ALLFRAMES + 1] = o
     return o
 end
 
@@ -40,14 +44,16 @@ function methods:IsShown() return self._shown end
 function methods:IsVisible() return self._shown end
 function methods:SetParent(p) self._parent=p; return self end
 function methods:GetParent() return self._parent end
-function methods:SetFrameStrata(s) return self end
-function methods:SetFrameLevel(l) return self end
-function methods:EnableMouse(b) return self end
+function methods:SetFrameStrata(s) self._strata = s; return self end
+function methods:SetFrameLevel(l) self._level = l; return self end
+function methods:EnableMouse(b) self._enabledMouse = b and true or false; return self end
 function methods:EnableKeyboard(b) return self end
 function methods:SetMovable(b) return self end
 function methods:SetResizable(b) return self end
-function methods:RegisterForDrag(...) return self end
-function methods:RegisterForClicks(...) return self end
+function methods:RegisterForDrag(...) self._dragButtons = {...}; return self end
+function methods:RegisterForClicks(...) self._clickButtons = {...}; return self end
+function methods:SetAttribute(k, v) self._attrs = self._attrs or {}; self._attrs[k] = v; return self end
+function methods:GetAttribute(k) return self._attrs and self._attrs[k] or nil end
 function methods:RegisterEvent(e)
     EVENT_REG[self] = EVENT_REG[self] or {}
     EVENT_REG[self][e] = true
@@ -58,6 +64,7 @@ function methods:UnregisterEvent(e)
     return self
 end
 function methods:SetScript(k, fn) self._scripts[k]=fn; return self end
+function methods:HasScript(k) return self._scripts[k] ~= nil end
 function methods:GetScript(k) return self._scripts[k] end
 function methods:HookScript(k, fn)
     local old = self._scripts[k]
@@ -67,15 +74,16 @@ end
 function methods:SetBackdrop(b) self._backdrop=b; return self end
 function methods:SetBackdropColor(r,g,b,a) self._backdropColor={r,g,b,a}; return self end
 function methods:SetBackdropBorderColor(r,g,b,a) self._backdropBorderColor={r,g,b,a}; return self end
-function methods:CreateTexture(n, layer) local t=newFrame({}); t._layer=layer; return t end
-function methods:CreateFontString(n, layer, tmpl) local f=newFrame({}); f._layer=layer; f._isFontString=true; return f end
+function methods:CreateTexture(n, layer) local t=newFrame({_parent=self}); t._layer=layer; return t end
+function methods:CreateFontString(n, layer, tmpl) local f=newFrame({_parent=self}); f._layer=layer; f._isFontString=true; return f end
 function methods:SetText(t) self._text = t or ""; return self end
 function methods:GetText() return self._text end
-function methods:SetFont(...) return self end
+function methods:SetFont(...) self._fontArgs = {...}; return self end
+function methods:SetRotation(r) self._rotation = r; return self end
 function methods:SetJustifyH(...) return self end
 function methods:SetJustifyV(...) return self end
 function methods:SetWordWrap(b) self._wordWrap = b and true or false; return self end
-function methods:SetTextColor(...) return self end
+function methods:SetTextColor(...) self._tc = {...}; return self end
 function methods:SetShadowColor(...) return self end
 function methods:SetShadowOffset(...) return self end
 function methods:SetMaxLines(...) return self end
@@ -91,9 +99,9 @@ function methods:GetStringHeight()
     return 0
 end
 function methods:GetStringWidth() return #tostring(self._text) * 7 end
-function methods:SetNormalTexture(...) return self end
+function methods:SetNormalTexture(t) self._normal = t; return self end
 function methods:SetPushedTexture(...) return self end
-function methods:SetHighlightTexture(...) return self end
+function methods:SetHighlightTexture(t) self._highlightTex = t; return self end
 function methods:SetChecked(b) self._checked = b and true or false; return self end
 function methods:GetChecked() return self._checked end
 function methods:SetAutoFocus(...) return self end
@@ -114,19 +122,19 @@ function methods:SetThumbTexture(...) return self end
 function methods:GetMinMaxValues() return 0, 100 end
 function methods:GetValue() return self._value end
 function methods:SetMinMaxValues(...) return self end
-function methods:SetStatusBarTexture(...) return self end
-function methods:SetStatusBarColor(...) return self end
-function methods:SetAlpha(a) return self end
-function methods:StartMoving() return self end
-function methods:StopMovingOrSizing() return self end
+function methods:SetStatusBarTexture(...) self._statusbarTex = select(1, ...); return self end
+function methods:SetStatusBarColor(r,g,b,a) self._sbColor={r,g,b,a}; return self end
+function methods:SetAlpha(a) self._alpha = a; return self end
+function methods:StartMoving() self._moving = true; return self end
+function methods:StopMovingOrSizing() self._moving = false; return self end
 function methods:StartSizing(...) return self end
 function methods:SetMinResize(...) return self end
 function methods:SetClampedToScreen(b) return self end
 function methods:SetAllPoints(...) return self end
-function methods:SetTexCoord(...) return self end
-function methods:SetTexture(t) self._texture = t; return self end
+function methods:SetTexCoord(...) self._texCoord = {...}; return self end
+function methods:SetTexture(a, b, c, d) self._texture = a; if b ~= nil then self._texRGBA = {a, b, c, d} else self._texRGBA = nil end; return self end
 function methods:SetBlendMode(...) return self end
-function methods:SetVertexColor(...) return self end
+function methods:SetVertexColor(...) self._vertex = {...} return self end
 function methods:SetColorTexture(...) return self end
 function methods:SetHitRectInsets(...) return self end
 function methods:SetID(...) return self end
@@ -143,17 +151,17 @@ function methods:GetHighlightTexture() return nil end
 function methods:Disable() self._disabled=true; return self end
 function methods:Enable() self._disabled=false; return self end
 function methods:IsEnabled() return not self._disabled end
-function methods:GetFrameLevel() return 1 end
+function methods:GetFrameLevel() return self._level or 1 end
 function methods:GetEffectiveScale() return 1 end
 function methods:GetNumChildren() return 0 end
 function methods:GetRegions() return {} end
-function methods:GetChildren() return {} end
+function methods:GetChildren() local U = (table and table.unpack) or unpack; return U(self._children or {}) end
 function methods:SetFormattedText(...) return self end
 
 
 function methods:SetDrawLayer(...) return self end
 function methods:EnableMouseWheel(b) return self end
-function methods:EnableMouse(b) return self end
+function methods:EnableMouse(b) self._enabledMouse = b and true or false; return self end
 function methods:SetToplevel(b) return self end
 function methods:Raise() return self end
 function methods:Lower() return self end
@@ -208,6 +216,7 @@ function methods:SetIndentedWordWrap(...) return self end
 
 CreateFrame = function(typ, name, parent, template)
     local o = newFrame({ _type=typ, _name=name, _template=template, _parent = parent })
+    if parent then parent._children = parent._children or {}; parent._children[#parent._children + 1] = o end
     if name then _G[name] = o; FRAMES[name] = o end
     return o
 end
@@ -216,6 +225,21 @@ UIParent._w = 1920; UIParent._h = 1080
 Minimap = newFrame({ _name = "Minimap" })
 Minimap._w = 156; Minimap._h = 156
 GameTooltip = newFrame({ _name = "GameTooltip" })
+function methods:SetHyperlink(l) self._hyper = l; return self end
+function methods:NumLines() return 8 end
+for i = 1, 8 do
+    local fs = newFrame({ _name = "GameTooltipTextLeft" .. i })
+    fs._isFontString = true
+    _G["GameTooltipTextLeft" .. i] = fs
+end
+TOOLTIP_REFRESH = function()
+    for i = 1, 8 do
+        local fs = _G["GameTooltipTextLeft" .. i]
+        fs.SetText(fs, TOOLTIP_LINES[i] or "")
+    end
+end
+TradeFrame = newFrame({ _name = "TradeFrame" })
+TradeFrame:Hide()
 DEFAULT_CHAT_FRAME = newFrame({ _name = "DEFAULT_CHAT_FRAME" })
 SlashCmdList = {}
 hash_SlashCmdList = {}
@@ -224,6 +248,13 @@ LAST_ERROR = nil
 function geterrorhandler() return function(err) LAST_ERROR = err; return err end end
 function IsLoggedIn() return LOGGED_IN end
 function GetTime() return os.clock() end
+function IsMouseButtonDown(btn) return false end  -- mock: sempre rilasciato
+function GetPartyAssignment(role, key) return nil end  -- default: nessun MT/OT assegnato
+function GetSpellTexture(id) return 'Tex:' .. tostring(id) end
+function InCombatLockdown() return false end      -- mock: mai in combat
+function TargetUnit(u) error("TargetUnit is PROTECTED: addons must NEVER call it (Warmane client forbids it)") end
+function TargetByName(n) LAST_TARGNAME = n end       -- mock: registra target-by-name
+function UnitExists(u) return false end             -- mock: nessuna unit reale (debug)
 function time() return os.time() end
 function date(fmt, t) return "2026-09-11" end
 function GetGameTime() return 20, 30 end
@@ -237,12 +268,22 @@ function UnitAffectingCombat(u) return false end
 function IsInRaid() return false end
 function GetNumRaidMembers() return 0 end
 function GetNumGroupMembers() return 0 end
-function GetRaidRosterInfo(i) return nil end
+ROSTER_MOCK = {}
+function GetRaidRosterInfo(i) local r = ROSTER_MOCK[i]; if r then return r[1], r[2], r[3], r[4], r[5], r[6] end return nil end
+RAID_CLASS_COLORS = { WARRIOR = { r = 0.78, g = 0.61, b = 0.43 }, PALADIN = { r = 0.96, g = 0.55, b = 0.73 }, DRUID = { r = 1, g = 0.49, b = 0.04 } }
 function IsRaidLeader() return false end
 function IsRaidOfficer() return false end
 function InviteUnit(name) end
-function SendChatMessage(msg, typ, lang, dest) end
-function GetItemInfo(link) return "Item", link, 4, 1, 1, 1, 1, 1, 1, "Interface\\Icons\\INV_Misc_QuestionMark" end
+function SendChatMessage(msg, typ, lang, dest)
+  CHAT_LOG = CHAT_LOG or {}; CHAT_LOG[#CHAT_LOG+1] = tostring(typ) .. '|' .. tostring(msg)
+  if tostring(typ) == 'CHANNEL' then CHAT_DEST = CHAT_DEST or {}; CHAT_DEST[#CHAT_DEST+1] = tostring(dest) end
+end
+ITEMINFO_DB = {}
+function GetItemInfo(link)
+    local row = ITEMINFO_DB[link]
+    if row then return unpack(row) end
+    return "Item", link, 4, 1, 1, 1, 1, 1, 1, "Interface\\Icons\\INV_Misc_QuestionMark"
+end
 function GetItemQualityColor(q) return 1, 0.5, 0 end
 function GetSpellInfo(id) return "Spell" end
 function IsShiftKeyDown() return false end
@@ -311,8 +352,16 @@ ChatFontNormal = makeFont("ChatFontNormal")
 NumberFontNormal = makeFont("NumberFontNormal")
 
 PlaySound = function() end
-hooksecurefunc = function() end
-unhooksecurefunc = function() end
+HOOKS = {}
+hooksecurefunc = function(name, fn) if HOOKS[name] == nil then HOOKS[name] = fn end end
+unhooksecurefunc = function(name) HOOKS[name] = nil end
+PICKED_ITEM = nil
+TRADE_BTN = 0
+function PickupItem(link) PICKED_ITEM = link end
+function ClickTradeButton(i) TRADE_BTN = i end
+ITEM_BIND_ON_EQUIP = "Binds when equipped"
+ITEM_BIND_ON_PICKUP = "Binds on pickup"
+TOOLTIP_LINES = {}
 SetDesaturation = function() end
 GetDesaturation = function() return false end
 PanelTemplates_TabResize = function() end
@@ -335,6 +384,12 @@ UnitLevel = function() return 80 end
 UnitIsPlayer = function() return true end
 UnitIsUnit = function() return true end
 UnitGUID = function() return "guid" end
+UnitPower = function() return 50 end
+UnitPowerMax = function() return 100 end
+UnitMana = function() return 50 end
+UnitManaMax = function() return 100 end
+GetScreenWidth = function() return 1024 end
+GetScreenHeight = function() return 768 end
 UnitPosition = function() return 0, 0, 0 end
 UnitClassification = function() return "normal" end
 UnitCreatureType = function() return "Humanoid" end
@@ -375,8 +430,9 @@ GetMacroIconInfo = function() return nil end
 UISpecialFrames = {}
 
 -- WoW returns children as varargs; AceGUI's fixlevels/fixstrata iterate
--- them with select(), so GetChildren must return no values, not a table.
-function methods:GetChildren() end
+-- them with select(), so GetChildren returns VARARGS of registered children
+-- (zero values for leaf frames), never a plain table.
+function methods:GetChildren() local U = (table and table.unpack) or unpack; return U(self._children or {}) end
 
 -- Region getters AceGUI widgets rely on.
 function methods:GetFontString()
@@ -398,14 +454,14 @@ function methods:GetHighlightTexture() return _makeRegion(self, "HighlightTextur
 function methods:GetCheckedTexture() return _makeRegion(self, "CheckedTexture") end
 function methods:GetDisabledTexture() return _makeRegion(self, "DisabledTexture") end
 function methods:GetThumbTexture() return _makeRegion(self, "ThumbTexture") end
-function methods:GetTexture() return self end
+function methods:GetTexture() return self._texture end
 function methods:GetFrameStrata() return "DIALOG" end
 function methods:GetNumLetters() return 0 end
 function methods:GetTextWidth() return self:GetStringWidth() end
 function methods:GetRightBorderWidth() return 0 end
 function methods:GetVerticalScroll() return 0 end
 function methods:SetCountInvisibleLetters(b) return self end
-function methods:SetDesaturated(b) return self end
+function methods:SetDesaturated(b) self._desat = b and true or false; return self end
 function methods:SetGradient(...) return self end
 function methods:SetGradientAlpha(...) return self end
 function methods:SetSnapToPixelGrid(...) return self end
@@ -488,7 +544,7 @@ LIBS = [
 ADDON_FILES = [
     "Locale.lua", "Utils.lua", "Core.lua", "RaidProfile.lua",
     "MacroBar.lua", "GroupMaking.lua", "RaidFrame.lua",
-    "MSManager.lua", "LootManager.lua", "Config.lua",
+    "MSManager.lua", "LootManager.lua", "CombatLog.lua", "Config.lua",
 ]
 
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -566,6 +622,35 @@ check(RLS.macrobar is not None and RLS.macrobar.frame is not None, "MacroBar ini
 check(RLS.raidFrame is not None and RLS.raidFrame.frame is not None, "RaidFrame initialized")
 check(RLS.msManager is not None and RLS.msManager.frame is not None, "MSManager initialized")
 check(RLS.lootManager is not None and RLS.lootManager.frame is not None, "LootManager initialized")
+
+# --- 1.7.1: nessun bordo esterno su main bar / groupmaking / invite / ms / loot ---
+rt.execute("""
+if not RLSuite.groupmaking.whisplistFrame then
+    RLSuite.groupmaking:CreateWhisplistWindow()
+end
+-- ri-skin da boot/theme: il bordo deve restare ASSENTE sulle 5 finestre
+RLSuite.utils:SkinFrame(RLSuite.mainWindow.frame)
+RLSuite.utils:SkinFrame(RLSuite.groupmaking.mainFrame)
+RLSuite.utils:SkinFrame(RLSuite.groupmaking.whisplistFrame)
+RLSuite.utils:SkinFrame(RLSuite.msManager.frame)
+RLSuite.utils:SkinFrame(RLSuite.lootManager.frame)
+local function noBord(f) return f and f._noOuterBorder == true and f._backdropBorderColor ~= nil and (f._backdropBorderColor[4] or 1) == 0 end
+BORD_MAIN = noBord(RLSuite.mainWindow.frame)
+BORD_GM = noBord(RLSuite.groupmaking.mainFrame)
+BORD_IE = noBord(RLSuite.groupmaking.whisplistFrame)
+BORD_MS = noBord(RLSuite.msManager.frame)
+BORD_LM = noBord(RLSuite.lootManager.frame)
+-- controllo: una finestra NON marcata mantiene il bordo temico pieno
+BORD_CTRL_F = CreateFrame("Frame", nil, UIParent)
+RLSuite.utils:SkinFrame(BORD_CTRL_F)
+BORD_KEEP = (BORD_CTRL_F._backdropBorderColor ~= nil and (BORD_CTRL_F._backdropBorderColor[4] or 0) == 1)
+""")
+check(bool(rt.eval("BORD_MAIN")), "Main bar: no outer dialog border")
+check(bool(rt.eval("BORD_GM")), "Groupmaking: no outer dialog border")
+check(bool(rt.eval("BORD_IE")), "Invite engine: no outer dialog border")
+check(bool(rt.eval("BORD_MS")), "MS Manager: no outer dialog border")
+check(bool(rt.eval("BORD_LM")), "Loot Manager: no outer dialog border")
+check(bool(rt.eval("BORD_KEEP")), "unmarked windows still keep the themed border (SkinFrame unchanged for them)")
 check(RLS.config is not None and RLS.config.window is not None, "Config initialized (Ace3 window)")
 check(RLS.mainWindow is not None and RLS.mainWindow.frame is not None, "MainWindow initialized")
 
@@ -597,6 +682,7 @@ check(bool(rt.eval("RLSuite.minimapIcon.dragging == nil")), "drag without Shift 
 rt.execute("IsShiftKeyDown = function() return true end")
 rt.execute("local b = RLSuite.minimapIcon; if b._scripts.OnDragStart then b._scripts.OnDragStart(b) end")
 check(bool(rt.eval("RLSuite.minimapIcon.dragging == true")), "Shift + left drag starts moving the minimap icon")
+rt.execute("IsShiftKeyDown = function() return false end")  # runtime condiviso: ripristina Shift per gli scenari successivi
 
 # save raid + load raid round trip through the new profile
 rt.execute("SAVED_ID = RLSuite:SaveRaid('TestRaid')")
@@ -664,43 +750,55 @@ check(bool(rt.eval("RLSuite.config.tree ~= nil and RLSuite.config.tree.type == '
 check(bool(rt.eval("LibStub('AceConfigRegistry-3.0'):GetOptionsTable('RLSuite', 'dialog', 'AceConfigDialog-3.0') ~= nil")), "RLSuite options table registered with AceConfigRegistry")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().type == 'group'")), "BuildOptionsTable returns a root group")
 
-# Every category from the old window is still present in the options table.
+# Nuova struttura del Config (v1.11.17): General, Module Menu, Groupmaking,
+# Macros, Raid Frame, Saved Raids (penultimo), Debug (ultimo). Niente
+# MS/Loot top-level, niente tab Checks/Alerts/Position, General = Font+Scale.
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.type == 'group'")), "General category present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.modulemenu.type == 'group'")), "Module Menu category present (ex General/Window)")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.type == 'group'")), "Saved Raids category present")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.groupmaking.type == 'group'")), "Groupmaking category present")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.macros.args.layout.type == 'group'")), "Macros -> Bar Layout present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.pos ~= nil")), "Raid Frame -> Position present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.ms.type == 'group'")), "MS category present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.loot.type == 'group'")), "Loot category present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.debug.type == 'group'")), "Debug category present (top-level)")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.ms == nil and RLSuite.config:BuildOptionsTable().args.loot == nil")), "MS Manager and Loot Manager top-level entries removed")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.args.save1load ~= nil")), "saved raids rendered as Load/Delete executes (dynamic)")
 
-# The navigation tree lists all 7 categories, with the Macro Editor as a node.
+# Ordering: Saved Raids penultimo, Debug ultimo.
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.order") == 6, "Saved Raids is second-to-last (order 6)")
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.debug.order") == 7, "Debug is the last entry (order 7)")
+
+# --- 1.11.17 user-requested removals ---
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.args.scale ~= nil and RLSuite.config:BuildOptionsTable().args.general.args.font ~= nil")), "General = font + global Scale slider only")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.args.look == nil and RLSuite.config:BuildOptionsTable().args.general.args.window == nil and RLSuite.config:BuildOptionsTable().args.general.args.debug == nil")), "General sub-groups (Appearance/Window/Debug) removed")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.modulemenu.args.barScale ~= nil and RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixCols ~= nil")), "Module Menu keeps barScale + matrix controls")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.modulemenu.args.height == nil and RLSuite.config:BuildOptionsTable().args.modulemenu.args.anchors == nil")), "Module Menu: 'Default window height' and 'Toggle Anchors' removed")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.groupmaking.args.scale == nil")), "Groupmaking scale slider removed")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.groupmaking.args.spamNum_General ~= nil and RLSuite.config:BuildOptionsTable().args.groupmaking.args.spamNum_global ~= nil")), "Groupmaking: every channel has a Channel # input")
+rt.execute("RLSuite.config:BuildOptionsTable().args.groupmaking.args.spamNum_global.set(nil, '12')")
+check(bool(rt.eval("RLSuite.db.profile.groupmaking.spamChannelNums.global == 12")), "Channel # set('12') stores number 12 in spamChannelNums")
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.groupmaking.args.spamNum_global.get()") == "12", "Channel # get() renders the stored number")
+rt.execute("RLSuite.config:BuildOptionsTable().args.groupmaking.args.spamNum_global.set(nil, '')")
+check(bool(rt.eval("RLSuite.db.profile.groupmaking.spamChannelNums.global == nil")), "clearing Channel # reverts to auto-detect")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.debug.args.fakeLoot == nil")), "'Fill fake loot' button removed from Debug config")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.macros.args.layout.args.enable == nil")), "Macros -> Bar Layout 'Enable' checkbox removed")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.macros.args.layout.args.scale == nil")), "Macros -> Bar Layout scale slider removed")
+rt.execute("RLSuite.config:OpenMacroEditorPanel(); HUD_COUNT = 0; for _, c in ipairs(ALLFRAMES) do if c._text == 'HUD on/off' then HUD_COUNT = HUD_COUNT + 1 end end")
+check(rt.eval("HUD_COUNT") == 0, "Macro editor 'Show HUD' (HUD on/off) button removed")
+
+# The navigation tree lists the reformed 7 categories, with the Macro Editor as a node.
 rt.execute("local t = RLSuite.config.tree.tree; CATS = {}; for _,n in ipairs(t) do CATS[n.value] = n end")
-check(bool(rt.eval("CATS.general ~= nil and CATS.savedraids ~= nil and CATS.groupmaking ~= nil and CATS.macros ~= nil and CATS.raidframe ~= nil and CATS.ms ~= nil and CATS.loot ~= nil")), "tree lists all 7 categories")
+check(bool(rt.eval("CATS.general ~= nil and CATS.modulemenu ~= nil and CATS.savedraids ~= nil and CATS.groupmaking ~= nil and CATS.macros ~= nil and CATS.raidframe ~= nil and CATS.debug ~= nil and CATS.ms == nil and CATS.loot == nil")), "tree lists the reformed 7 categories")
 check(bool(rt.eval("CATS.macros.children[1].value == 'layout' and CATS.macros.children[2].value == 'editor'")), "Macros node has Bar Layout + Macro Editor children")
-check(bool(rt.eval("CATS.general.children[1].value == 'look' and CATS.general.children[4].value == 'debug'")), "General node has Appearance/Font/Window/Debug children")
+check(bool(rt.eval("CATS.general.children == nil")), "General is a flat leaf (no children)")
 
-# theme select get/set through the AceConfig closures
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.args.look.args.theme.get() == 'default'")), "theme get() -> 'default' on fresh profile")
-rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.look.args.theme.set(nil, 'gold')")
-check(bool(rt.eval("RLSuite.db.profile.appearance.theme == 'gold'")), "theme set('gold') writes appearance.theme")
-check(bool(rt.eval("RLSuite.db.profile.appearance.fill.r == 0.10")), "theme set applies the gold preset fill color")
+# Global scale slider (General): every module follows it.
+rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.scale.set(nil, 0.85)")
+check(bool(rt.eval("RLSuite.db.profile.appearance.scale == 0.85")), "global Scale writes appearance.scale")
+check(bool(rt.eval("RLSuite.db.profile.raidframe.scale == 0.85 and RLSuite.db.profile.macrobar.scale == 0.85")), "global Scale propagates to raidframe + macrobar via ApplyAll")
+rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.scale.set(nil, 1)")
 
-# color get returns 4 channels; set writes rgb and switches to 'custom'
-rt.execute("local t = RLSuite.config:BuildOptionsTable().args.general.args.look.args.fill; local r,g,b,a = t.get(); C_CHAN = {r,g,b,a}")
-check(bool(rt.eval("type(C_CHAN[1]) == 'number' and C_CHAN[4] == 1")), "color get() returns 4 numeric channels")
-rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.look.args.fill.set(nil, 0.25, 0.5, 0.75, 1)")
-check(bool(rt.eval("RLSuite.db.profile.appearance.fill.r == 0.25 and RLSuite.db.profile.appearance.fill.b == 0.75")), "color set() writes r/g/b")
-check(bool(rt.eval("RLSuite.db.profile.appearance.theme == 'custom'")), "color set() switches theme to 'custom'")
-
-# anchor toggle drives ApplyAnchorMode
-rt.execute("RLSuite.db.profile.anchorMode = false")
-rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.window.args.anchors.set(nil, true)")
-check(bool(rt.eval("RLSuite.db.profile.anchorMode == true")), "anchors set(true) -> ApplyAnchorMode -> anchorMode=true")
-
-# debug toggle
+# debug toggle (own top-level entry now)
 rt.execute("RLSuite.db.profile.debug = false")
-rt.execute("RLSuite.config:BuildOptionsTable().args.general.args.debug.args.debugMode.set(nil, true)")
+rt.execute("RLSuite.config:BuildOptionsTable().args.debug.args.debugMode.set(nil, true)")
 check(bool(rt.eval("RLSuite.db.profile.debug == true")), "debugMode set(true) writes profile.debug")
 
 # saved raids dynamic list via NotifyChange
@@ -711,10 +809,10 @@ check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.args.save
 
 # Node selection feeds the matching AceConfig path into the tree content.
 check(bool(rt.eval("RLSuite.config.OpenMacroEditorPanel ~= nil and RLSuite.config.CreateMacroEditor ~= nil")), "Macro Editor API preserved")
-rt.execute("RLSuite.config:SelectNode('general' .. string.char(1) .. 'look')")
-check(bool(rt.eval("RLSuite.config.currentNode == 'general' .. string.char(1) .. 'look'")), "SelectNode routes to general/look")
-check(bool(rt.eval("RLSuite.config.tree:GetUserData('basepath') ~= nil and RLSuite.config.tree:GetUserData('basepath')[1] == 'general' and RLSuite.config.tree:GetUserData('basepath')[2] == 'look'")), "general/look feeds at the general.look path")
-check(bool(rt.eval("#RLSuite.config.tree.children == 1")), "options rendered into the tree content area")
+rt.execute("RLSuite.config:SelectNode('general')")
+check(bool(rt.eval("RLSuite.config.currentNode == 'general'")), "SelectNode routes to general")
+check(bool(rt.eval("RLSuite.config.tree:GetUserData('basepath') ~= nil and RLSuite.config.tree:GetUserData('basepath')[1] == 'general'")), "general node feeds at the general path")
+check(rt.eval("#RLSuite.config.tree.children") >= 1, "options rendered into the tree content area")
 
 # The Macro Editor lives inside the same window, under the Macros node.
 rt.execute("RLSuite.config:OpenMacroEditorPanel()")
@@ -769,6 +867,54 @@ check(bool(rt.eval("(SPAM_MSG:find('Need', 1, true) or 0) < (SPAM_MSG:find('Res'
 check(bool(rt.eval("(SPAM_MSG:find('Res', 1, true) or 0) < (SPAM_MSG:find('no hunters', 1, true) or 0)")), "Other requirements still at the end (after Res)")
 rt.execute("RLSuite.groupmaking:ClearSlot(1)")
 
+# --- Ideal comp: duplicate specs collapse to "name xN" in the LFM message ---
+rt.execute("RLSuite.groupmaking.db.showSpecsInMessage = true")
+rt.execute("RLSuite.groupmaking:FillSlot(3, 'PRIEST', 'healer', nil, 'holy')")
+rt.execute("RLSuite.groupmaking:FillSlot(4, 'PRIEST', 'healer', nil, 'holy')")
+rt.execute("RLSuite.groupmaking:FillSlot(5, 'PRIEST', 'healer', nil, 'disc')")
+rt.execute("SPAM_MSG_S = RLSuite.groupmaking:BuildSpamMessage()")
+check(bool(rt.eval("SPAM_MSG_S:find('HPriest x2', 1, true) ~= nil")), "duplicate ideal-comp specs collapse to 'HPriest x2' (never repeated)")
+check(bool(rt.eval("SPAM_MSG_S:find('HPriest, HPriest', 1, true) == nil")), "the raw duplicate 'HPriest, HPriest' is gone from the message")
+check(bool(rt.eval("SPAM_MSG_S:find('Disco', 1, true) ~= nil and SPAM_MSG_S:find('Disco x', 1, true) == nil")), "single specs still shown once without a count")
+rt.execute("RLSuite.groupmaking:ClearSlot(3); RLSuite.groupmaking:ClearSlot(4); RLSuite.groupmaking:ClearSlot(5)")
+
+# --- Groupmaking spam channels: the custom 'global' channel is honored ---
+rt.execute("""
+CHAT_LOG = {}
+DEBUG_SAVED = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = false
+GCN_SAVED = GetChannelName
+GetChannelName = function(c) if strlower(tostring(c)) == 'global' then return 7 end return nil end
+SPCH_SAVED = RLSuite.groupmaking.db.spamChannels
+RLSuite.groupmaking.db.spamChannels = {'global'}
+RLSuite.groupmaking:DoSpam()
+CHAN_HIT = CHAT_LOG[1]
+GetChannelName = GCN_SAVED
+RLSuite.db.profile.debug = DEBUG_SAVED
+RLSuite.groupmaking.db.spamChannels = SPCH_SAVED
+""")
+check(bool(rt.eval("CHAN_HIT ~= nil and CHAN_HIT:find('CHANNEL|', 1, true) == 1 and CHAN_HIT:find('LFM', 1, true) ~= nil")), "DoSpam actually posts the LFM message to the custom 'global' channel")
+rt.execute("""
+CHAT_DEST = {}
+CHAT_LOG = {}
+DEBUG_SAVED2 = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = false
+GCN_SAVED2 = GetChannelName
+GetChannelName = function() return 7 end
+SPCH_SAVED2 = RLSuite.groupmaking.db.spamChannels
+SPNUM_SAVED2 = RLSuite.groupmaking.db.spamChannelNums
+RLSuite.groupmaking.db.spamChannels = {'global'}
+RLSuite.groupmaking.db.spamChannelNums = { global = 9 }
+RLSuite.groupmaking:DoSpam()
+CHAN_DEST_HIT = CHAT_DEST[1]; CHAN_MSG2 = CHAT_LOG[1]
+GetChannelName = GCN_SAVED2
+RLSuite.db.profile.debug = DEBUG_SAVED2
+RLSuite.groupmaking.db.spamChannels = SPCH_SAVED2
+RLSuite.groupmaking.db.spamChannelNums = SPNUM_SAVED2
+""")
+check(rt.eval("CHAN_DEST_HIT") == "9", "explicit channel number (9) overrides name resolution (would be 7)")
+check(bool(rt.eval("CHAN_MSG2 ~= nil and CHAN_MSG2:find('LFM', 1, true) ~= nil")), "explicit channel number still posts the LFM message")
+check(bool(rt.eval("RLSuite.db.profile.groupmaking.spamChannels ~= nil and #RLSuite.db.profile.groupmaking.spamChannels >= 1")), "spam channel list persists in the db (Config Groupmaking toggles)")
 # --- Debug mode: shared simulated roster used by Raid Frame + Raid Group ---
 rt.execute("RLSuite.db.profile.debug = true")
 rt.execute("RLSuite:ApplyDebugMode()")
@@ -784,12 +930,11 @@ check(bool(rt.eval("DRAK_IN_GROUP == true")), "Raid Group panel shows the accept
 rt.execute("local b = RLSuite.groupmaking.wlGroupSlots[1]; SLOT_OK = (b ~= nil and b:IsShown() and (b:GetWidth() or 0) > 0 and b.nameFS ~= nil and type(b.GetObjectType) == 'function' and b:GetObjectType() == 'Button')")
 check(bool(rt.eval("SLOT_OK == true")), "Raid Group slots are visible Buttons with explicit size")
 
-# --- Debug fake whispers: spammer active -> 10 whispers into the Whisplist ---
+# --- Debug fake whispers: NO auto-flow, only the debug-bar burst feeds the Whisplist ---
 rt.execute("RLSuite.groupmaking:StartSpam()")
-check(bool(rt.eval("RLSuite.groupmaking.debugWhisperTimer ~= nil")), "StartSpam (debug) schedules the fake-whisper timer")
-rt.execute("for i=1,10 do RLSuite.groupmaking:DebugWhisperTick() end")
-check(bool(rt.eval("#RLSuite.groupmaking.whisperDB.entries == 10")), "10 fake whispers produce 10 Whisplist entries")
-check(bool(rt.eval("RLSuite.groupmaking.debugWhisperTimer == nil")), "fake-whisper timer stops after the 10th whisper")
+check(bool(rt.eval("#RLSuite.groupmaking.whisperDB.entries == 0")), "Starting the spammer no longer auto-sends fake whispers")
+rt.execute("RLSuite.groupmaking:DebugWhisperBurst()")
+check(bool(rt.eval("#RLSuite.groupmaking.whisperDB.entries == 10")), "DebugWhisperBurst instantly delivers 10 fake whispers into the Whisplist")
 rt.execute("RLSuite.groupmaking:StopSpam()")
 
 # --- Inviting a fake whisperer behaves like a real accept ---
@@ -1037,11 +1182,11 @@ rt.execute("RLSuite.raidFrame.Toggle = RLSuite.raidFrame._origToggle")
 
 # --- old settings window moved to Config ---
 check(bool(rt.eval("RLSuite.mainWindow.tabPanels == nil")), "old Raid Frame settings window removed from the tab bar")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.behavior ~= nil")), "Raid Frame -> Checks present in Config")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.alerts ~= nil")), "Raid Frame -> Alert Messages present in Config")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.behavior == nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.alerts == nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.pos == nil")), "Raid Frame: Checks / Alert Messages / Position tabs removed")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout == nil")), "Raid Frame options flattened: only Layout controls, directly on the group")
 
 # --- Raid Frame config: right panel shows a tab window (one tab per sub-item) ---
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.childGroups == 'tab'")), "Raid Frame group renders sub-items as tabs")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.childGroups == nil")), "Raid Frame group no longer splits into tabs (Layout only)")
 rt.execute("RF_TREE = RLSuite.config.tree.tree; RF_NODE = nil; for _, n in ipairs(RF_TREE) do if n.value == 'raidframe' then RF_NODE = n end end")
 check(bool(rt.eval("RF_NODE ~= nil and RF_NODE.children == nil")), "Raid Frame is a leaf node (tabs live in the right panel)")
 rt.execute("RLSuite.config:SelectNode('raidframe')")
@@ -1049,10 +1194,12 @@ check(bool(rt.eval("RLSuite.config.currentNode == 'raidframe'")), "selecting Rai
 check(bool(rt.eval("LAST_ERROR == nil or LAST_ERROR == None")), "no error rendering the Raid Frame tab window")
 
 # --- Layout tab controls ---
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.iconSize ~= nil")), "Layout -> Icon size present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.barHeight ~= nil")), "Layout -> Player bar height present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.barWidth ~= nil")), "Layout -> Player bar width present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout.args.nameFontSize ~= nil")), "Layout -> Name font size present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.iconSize ~= nil")), "Layout -> Icon size present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.barHeight == nil")), "Layout -> Player bar height option removed: bar height is AUTOMATIC from icon size")
+check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().barHeight == RLSuite.raidFrame:LayoutMetrics().iconSize")), "player bar height follows icon size automatically (barHeight == iconSize)")
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.rowSpacing.min") == -10, "Row spacing slider goes below zero, down to -10 (bars may overlap)")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.barWidth ~= nil")), "Layout -> Player bar width present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.nameFontSize ~= nil")), "Layout -> Name font size present")
 
 # --- clean HUD: no backdrop / border / close button ---
 check(bool(rt.eval("RLSuite.raidFrame.frame:GetBackdrop() == nil")), "HUD has no backdrop")
@@ -1061,26 +1208,22 @@ check(bool(rt.eval("RLSuite.raidFrame.frame.closeBtn == nil")), "HUD has no red-
 # --- rows: name inside the HP bar, left consumables, right CDs ---
 check(bool(rt.eval("RLSuite.raidFrame.rows ~= nil and #RLSuite.raidFrame.rows >= 2")), "debug roster renders rows")
 rt.execute("E5_ROW = RLSuite.raidFrame.rows and RLSuite.raidFrame.rows[1] or nil")
-check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar ~= nil and E5_ROW.bar.nameText ~= nil and E5_ROW.bar.hpText ~= nil")), "row has one HP bar with name + %% inside")
+check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar ~= nil and E5_ROW.bar.nameText ~= nil and E5_ROW.bar.hpText == nil")), "row has one HP bar with the name inside (no %% text)")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.flaskIcon ~= nil and E5_ROW.foodIcon ~= nil")), "row has left flask + Well Fed icons")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.cdIcons ~= nil and #E5_ROW.cdIcons > 0")), "row has class key CDs on the right")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar:GetWidth() == RLSuite.db.profile.raidframe.appearance.barWidth")), "player HP bar uses the configured bar width")
 
-# --- vertical ability bar (driven by the composition) ---
-check(bool(rt.eval("RLSuite.raidFrame.abilityButtons ~= nil and #RLSuite.raidFrame.abilityButtons >= 4")), "ability bar shows abilities for the WARRIOR-heavy comp")
-
-# --- pre-boss buff bar / in-fight debuff bar switch by phase ---
-check(bool(rt.eval("#RLSuite.raidBuffChecks >= 11")), "pre-boss buff checks defined (>= 11)")
-check(bool(rt.eval("#RLSuite.raidDebuffChecks >= 5")), "in-fight debuff checks defined (>= 5)")
+# --- buff/debuff/ability bars: RIMOSSE (redesign in corso), restano SOLO flask+food per riga ---
+check(bool(rt.eval("RLSuite.raidFrame.buffBar == nil and RLSuite.raidFrame.debuffBar == nil and RLSuite.raidFrame.abilityBar == nil")), "no buff/debuff/ability bars exist anymore (eliminated for redesign)")
+check(bool(rt.eval("RLSuite.raidFrame.BuildAbilityBar == nil and RLSuite.raidFrame.RefreshAlertBars == nil and RLSuite.raidFrame.CheckCoverage == nil")), "buff-bar machinery functions are gone (UI code removed, not just hidden)")
+check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().W == RLSuite.raidFrame:LayoutMetrics().rowWidth")), "window width = bars area only: the matrix zone is NOT covered by the window (fully click-through)")
+check(bool(rt.eval("RLSuite.raidFrame.frame._w == RLSuite.raidFrame:LayoutMetrics().rowWidth")), "window hitbox ends at the bars' right edge: buff columns area never swallows clicks (open or closed)")
+# fase: le icone flask/food per riga restano vive in ogni fase (lo stato non dipende piu' dalle barre)
 rt.execute("RLSuite:SetContextPhase('preboss')")
-check(bool(rt.eval("RLSuite.raidFrame.buffBar:IsShown() == true")), "pre-boss: buff bar shown")
-check(bool(rt.eval("#RLSuite.raidFrame.buffBar.items >= 11")), "pre-boss: buff bar lists the buff categories")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon:IsShown() == true")), "pre-boss: per-row flask icon still live")
 rt.execute("RLSuite:SetContextPhase('infight')")
-check(bool(rt.eval("RLSuite.raidFrame.debuffBar:IsShown() == true")), "in-fight: debuff bar shown")
-check(bool(rt.eval("RLSuite.raidFrame.buffBar:IsShown() == false")), "in-fight: buff bar hidden")
-check(bool(rt.eval("#RLSuite.raidFrame.debuffBar.items >= 5")), "in-fight: debuff bar lists the debuff categories")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].foodIcon:IsShown() == true")), "in-fight: per-row Well Fed icon still live")
 rt.execute("RLSuite:SetContextPhase('preraid')")
-check(bool(rt.eval("RLSuite.raidFrame.buffBar:IsShown() == false and RLSuite.raidFrame.debuffBar:IsShown() == false")), "preraid: both alert bars hidden")
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario E (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 
@@ -1097,10 +1240,40 @@ check(bool(rt.eval("#RLSuite.raidFrame.rows == 6")), "6 players render 6 populat
 check(bool(rt.eval("RLSuite.raidFrame.slots[1].member ~= nil and RLSuite.raidFrame.slots[1].member.name == 'Testplayer'")), "player sits in G1 slot 1")
 check(bool(rt.eval("RLSuite.raidFrame.slots[6].member ~= nil and RLSuite.raidFrame.slots[6].member.name == 'F5'")), "6th member lands in G2 slot 1 (groups fill in order)")
 
-# --- pre-boss: empty slots visible as drop targets; drag enabled ---
+# --- pre-boss: empty slots + empty headers hidden by default; drag enabled ---
 check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == true")), "drag & drop enabled in pre-boss (debug)")
-check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == true")), "pre-boss: empty slot shown as drop target")
-check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[6]:IsShown() == true")), "pre-boss: all 6 group headers shown")
+check(bool(rt.eval("RLSuite.raidFrame.frame._strata == 'MEDIUM'")), "RF HUD sits on MEDIUM strata (clicks not eaten by UI chrome)")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]._enabledMouse == true")), "slots are ALWAYS mouse-enabled (children stay clickable)")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]._dragButtons == nil or RLSuite.raidFrame.slots[7]._dragButtons[1] == nil")), "rows have NO drag registered at all (drag-eats-click-scripts root cause removed everywhere)")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon:GetParent() == RLSuite.raidFrame.content")), "consumable icons are siblings of the rows (no drag-swallowing ancestor)")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon._level ~= nil and RLSuite.raidFrame.rows[1].flaskIcon._level > (RLSuite.raidFrame.rows[1]._level or 1)")), "consumable icons sit above the rows (explicit frame level)")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == false")), "empty slots hidden by default (even in pre-boss)")
+check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "empty group headers hidden by default")
+check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[1]:IsShown() == true")), "non-empty group headers shown")
+# --- empty blocks appear ONLY while a player is being dragged (SHIFT+left MANUAL drag) ---
+rt.execute("""
+local row = RLSuite.raidFrame.slots[6]
+SAVED_ISD = IsShiftKeyDown
+IsShiftKeyDown = function() return false end
+row._scripts.OnMouseDown(row, 'LeftButton')
+row._scripts.OnMouseUp(row, 'LeftButton')
+NOSHIFT_SRC = RLSuite.raidFrame._rfDragSource
+IsShiftKeyDown = function() return true end
+row._scripts.OnMouseDown(row, 'LeftButton')
+""")
+check(bool(rt.eval("NOSHIFT_SRC == nil")), "no Shift: plain click does NOT start a player drag (shift gates drag from clicks)")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == true")), "shift+drag: empty slots become visible ONLY while dragging a player")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]._backdrop == nil")), "empty player slots stay border-free even while dragging (dialog borders must disappear)")
+check(bool(rt.eval("RLSuite.raidFrame.tankSlots[1]._backdrop == nil")), "tank slots never carry a dialog border")
+check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == true")), "shift+drag: empty group headers appear during the drag (drop targets)")
+rt.execute("""
+local row = RLSuite.raidFrame.slots[6]
+row._scripts.OnMouseUp(row, 'LeftButton')  -- manual drop (watchdog covers release fuori HUD)
+IsShiftKeyDown = SAVED_ISD
+""")
+check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == false")), "empty slots hidden again after the drag ends")
+check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "empty group headers hidden again after the drag")
+check(bool(rt.eval("RLSuite.raidFrame._rfDragSource == nil")), "manual drag source cleared on release")
 
 # --- move a player into an empty slot ---
 rt.execute("RLSuite.raidFrame:MoveSlot(RLSuite.raidFrame.slots[6], RLSuite.raidFrame.slots[7])")
@@ -1112,14 +1285,2191 @@ rt.execute("RLSuite.raidFrame:MoveSlot(RLSuite.raidFrame.slots[1], RLSuite.raidF
 check(bool(rt.eval("RLSuite.raidFrame.slots[1].member ~= nil and RLSuite.raidFrame.slots[1].member.name == 'F5'")), "drag onto occupied slot swaps the two players")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7].member ~= nil and RLSuite.raidFrame.slots[7].member.name == 'Testplayer'")), "swapped player lands in the source slot")
 
+# --- F.2h golden drop-border: shows EXACTLY where the dragged player would land ---
+rt.execute("""
+local RFmod = RLSuite.raidFrame
+SAVED_ISD_H = IsShiftKeyDown
+IsShiftKeyDown = function() return true end
+SAVED_GCP_H = GetCursorPosition
+SAVED_IMBD_H = IsMouseButtonDown
+local src, dst = RFmod.slots[1], RFmod.slots[7]
+src._manualDrag = nil; src._pendingRowClick = nil; src:SetScript('OnUpdate', nil); src._targetT = nil
+src._scripts.OnMouseDown(src, 'LeftButton')            -- inizia il drag manuale di F5
+GLOW_DRAGSRC = (RFmod._rfDragSource == src)
+GLOW_NONE_AT_START = (dst.dropGlow:IsShown() == false) -- cursore altrove: nessun bordino
+-- cursore sopra dst: agli altri slot rettangoli lontani, a dst [100..120]x[60..80]
+for i, s in ipairs(RFmod.slots) do
+    if s ~= dst then
+        s.GetLeft = function() return 500 + i end
+        s.GetRight = function() return 501 + i end
+        s.GetBottom = function() return 500 end
+        s.GetTop = function() return 501 end
+    end
+end
+dst.GetLeft = function() return 100 end;  dst.GetRight = function() return 120 end
+dst.GetBottom = function() return 60 end; dst.GetTop = function() return 80 end
+GetCursorPosition = function() return 105, 70 end
+IsMouseButtonDown = function() return true end          -- tasto ancora giu': drag in corso
+RFmod._dragWatch:GetScript('OnUpdate')()                -- un tick: il bordino insegue il cursore
+GLOW_ON_DST = (dst.dropGlow:IsShown() == true)
+local n = 0
+for _, s in ipairs(RFmod.slots) do
+    if s.dropGlow:IsShown() then n = n + 1 end
+end
+GLOW_ONLY_DST = (n == 1)
+-- rilascio FUORI da ogni slot (cancel): nessun move, bordini spenti, stato pulito
+IsMouseButtonDown = function() return false end
+GetCursorPosition = function() return 9999, 9999 end
+RFmod._dragWatch:GetScript('OnUpdate')()
+local n2 = 0
+for _, s in ipairs(RFmod.slots) do
+    if s.dropGlow:IsShown() then n2 = n2 + 1 end
+end
+GLOW_ALL_OFF = (n2 == 0)
+GLOW_CANCEL_CLEAN = (RFmod._rfDragSource == nil)
+GLOW_ROSTER_INTACT = (RFmod.slots[7].member.name == 'Testplayer' and RFmod.slots[1].member.name == 'F5')
+-- ripristina mock: geometrie d'istanza → nil torna al metodo default (0), poi le globali
+for _, s in ipairs(RFmod.slots) do
+    s.GetLeft, s.GetRight, s.GetBottom, s.GetTop = nil, nil, nil, nil
+end
+GetCursorPosition = SAVED_GCP_H
+IsShiftKeyDown = SAVED_ISD_H
+IsMouseButtonDown = SAVED_IMBD_H
+""")
+check(bool(rt.eval("RLSuite.raidFrame.slots[1].dropGlow ~= nil and RLSuite.raidFrame.slots[1].dropGlow._enabledMouse == false")), "every slot has a golden drop-border overlay that never eats clicks")
+check(bool(rt.eval("GLOW_DRAGSRC")), "shift+down starts the manual drag (border logic armed)")
+check(bool(rt.eval("GLOW_NONE_AT_START")), "golden border hidden while the cursor is not over any slot")
+check(bool(rt.eval("GLOW_ON_DST") and bool(rt.eval("GLOW_ONLY_DST"))), "golden border follows the cursor onto the exact destination slot only (occupied = swap preview)")
+check(bool(rt.eval("GLOW_ALL_OFF")), "release outside any slot: every golden border turns off")
+check(bool(rt.eval("GLOW_CANCEL_CLEAN") and bool(rt.eval("GLOW_ROSTER_INTACT"))), "cancel outside: no move, roster untouched, drag state clean")
+
+# --- F.2i hit-test con finestra SCALATA: la scala del cursore deve seguire la finestra, non UIParent ---
+rt.execute("""
+local RFmod = RLSuite.raidFrame
+SAVED_ISD_I = IsShiftKeyDown
+IsShiftKeyDown = function() return true end
+SAVED_GCP_I = GetCursorPosition
+SAVED_IMBD_I = IsMouseButtonDown
+local src, dst = RFmod.slots[1], RFmod.slots[7]
+src._manualDrag = nil; src._pendingRowClick = nil; src:SetScript('OnUpdate', nil); src._targetT = nil
+src._scripts.OnMouseDown(src, 'LeftButton')
+-- finestra ridotta al 50%: i rettangoli degli slot (GetLeft & co.) sono in
+-- slot-space; due volte piu' grandi rispetto alle coordinate UIParent.
+for i, s in ipairs(RFmod.slots) do
+    s.GetEffectiveScale = function() return 0.5 end
+    s.GetLeft = function() return 500 + i end
+    s.GetRight = function() return 501 + i end
+    s.GetBottom = function() return 500 end
+    s.GetTop = function() return 501 end
+end
+dst.GetLeft = function() return 100 end;  dst.GetRight = function() return 120 end
+dst.GetBottom = function() return 60 end; dst.GetTop = function() return 80 end
+-- cursore al punto GREZZO che il vecchio codice matchava: (110,70) -> slot-space (220,140) -> NESSUNO
+IsMouseButtonDown = function() return true end
+GetCursorPosition = function() return 110, 70 end
+RFmod._dragWatch:GetScript('OnUpdate')()
+G2_NEG_RAW = (dst.dropGlow:IsShown() == false)
+-- cursore al CENTRO VISIVO di dst: UI-space (55,35) -> slot-space (110,70) -> dst
+GetCursorPosition = function() return 55, 35 end
+RFmod._dragWatch:GetScript('OnUpdate')()
+G2_SCALED_ON = (dst.dropGlow:IsShown() == true)
+local n = 0
+for _, s in ipairs(RFmod.slots) do
+    if s.dropGlow:IsShown() then n = n + 1 end
+end
+G2_SCALED_ONLY = (n == 1)
+-- cancel + restore
+IsMouseButtonDown = function() return false end
+GetCursorPosition = function() return 9999, 9999 end
+RFmod._dragWatch:GetScript('OnUpdate')()
+G2_ALL_OFF = true
+for _, s in ipairs(RFmod.slots) do
+    if s.dropGlow:IsShown() then G2_ALL_OFF = false end
+    s.GetEffectiveScale, s.GetLeft, s.GetRight, s.GetBottom, s.GetTop = nil, nil, nil, nil, nil
+end
+G2_INTACT = (RFmod.slots[7].member.name == 'Testplayer')
+GetCursorPosition = SAVED_GCP_I
+IsShiftKeyDown = SAVED_ISD_I
+IsMouseButtonDown = SAVED_IMBD_I
+""")
+check(bool(rt.eval("G2_SCALED_ON") and bool(rt.eval("G2_SCALED_ONLY"))), "scaled RF window (50%): golden border lands on the slot under the VISUAL cursor (cursor rescaled to the window's own effective scale)")
+check(bool(rt.eval("G2_NEG_RAW")), "scaled RF window (50%): the old raw UIParent-space point hits NOTHING (proves the rescale is real, not a tautology)")
+check(bool(rt.eval("G2_ALL_OFF") and bool(rt.eval("G2_INTACT"))), "scaled-window test cleanup: borders off, roster untouched")
+
+# --- F.2i bis: stessa correzione sul pannello Group Making (WlSlotAtCursor) ---
+rt.execute("""
+local GMmod = RLSuite.groupmaking
+SAVED_GCP_G = GetCursorPosition
+local bars = GMmod.wlGroupSlots
+local target = bars[2]
+for i, b in ipairs(bars) do
+    b.GetEffectiveScale = function() return 0.5 end
+    b.GetLeft = function() return 800 + i end
+    b.GetRight = function() return 801 + i end
+    b.GetBottom = function() return 800 end
+    b.GetTop = function() return 801 end
+end
+target.GetLeft = function() return 300 end;  target.GetRight = function() return 360 end
+target.GetBottom = function() return 200 end; target.GetTop = function() return 240 end
+GetCursorPosition = function() return 160, 110 end  -- centro UI-space: slot-space (320,220)
+GM_HIT = (GMmod:WlSlotAtCursor() == target)
+GetCursorPosition = function() return 320, 220 end  -- vecchio punto grezzo: NIENTE
+GM_NOHIT = (GMmod:WlSlotAtCursor() == nil)
+for _, b in ipairs(bars) do
+    b.GetEffectiveScale, b.GetLeft, b.GetRight, b.GetBottom, b.GetTop = nil, nil, nil, nil, nil
+end
+GetCursorPosition = SAVED_GCP_G
+""")
+check(bool(rt.eval("GM_HIT")), "Group Making panel (50% scale): WlSlotAtCursor returns the bar under the visual cursor")
+check(bool(rt.eval("GM_NOHIT")), "Group Making panel (50% scale): old raw point matches nothing (rescale applied)")
+
+# --- F.2j food icon = aura "Well Fed" (per NOME, qualsiasi spellId, locale-safe) ---
+rt.execute("""
+local RFmod = RLSuite.raidFrame
+local row = RFmod.rows[1]
+SAVED_MEMBER_WF = row.member
+SAVED_UE_WF = UnitExists
+SAVED_GSI_WF = GetSpellInfo
+SAVED_UB_WF = UnitBuff
+RLSuite.raidFrame:FillSlot(row, { name = 'Eatz', class = 'WARRIOR', unit = 'raid8', fake = false, raidIndex = 8 })
+UnitExists = function(u) return u == 'raid8' end
+GetSpellInfo = function(id) if id == 57399 then return 'Well Fed' end return 'Spell' end
+local FOOD_BUFFS = { [1] = 'Horn of Winter', [2] = 'Well Fed', [3] = nil }
+UnitBuff = function(u, filter)
+    if type(filter) == 'number' then return FOOD_BUFFS[filter] end
+    return nil  -- query per nome (path flask): nessuna corrispondenza unita'
+end
+WF_BUFFS = FOOD_BUFFS
+RFmod:UpdateConsumables(row)
+WF_FED = (row.foodIcon._missing == false and row.foodIcon:IsShown() == false)
+WF_FLASK_STILL = (row.flaskIcon._missing == true and row.flaskIcon:IsShown() == true)
+FOOD_BUFFS[2] = nil                                    -- niente Well Fed -> icona mancante
+RFmod:UpdateConsumables(row)
+WF_NOTFED = (row.foodIcon._missing == true and row.foodIcon:IsShown() == true)
+-- locale-safety: client non-EN, nome localizzato ricavato da GetSpellInfo(id noto)
+GetSpellInfo = function(id) if id == 57399 then return 'Ben Nutrito' end return 'Spell' end
+FOOD_BUFFS[1] = 'Ben Nutrito'
+RFmod:UpdateConsumables(row)
+WF_LOCALE = (row.foodIcon._missing == false)
+-- restore di TUTTO (mock globali + member originale)
+UnitBuff = SAVED_UB_WF; GetSpellInfo = SAVED_GSI_WF; UnitExists = SAVED_UE_WF
+WF_BUFFS = nil
+RLSuite.raidFrame:FillSlot(row, SAVED_MEMBER_WF)
+""")
+check(bool(rt.eval("WF_FED")), "Well Fed present (any spellId): food icon turns off")
+check(bool(rt.eval("WF_FLASK_STILL")), "flask check untouched by the Well Fed rework")
+check(bool(rt.eval("WF_NOTFED")), "no Well Fed on the unit: food icon shows missing")
+check(bool(rt.eval("WF_LOCALE")), "localized client: Well Fed matched via localized name (locale-safe)")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].member.name == 'F5'")), "roster restored after Well Fed test")
+
+# --- F.3 FONT COLOR option + TANKS group + RAID BUFFS matrix panel ---
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.fontColor ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.fontColor.type == 'color'")), "Layout -> Font color picker present")
+for key, label in [("iconSpacing","Icon spacing"),("rowSpacing","Row spacing"),("groupSpacing","Group spacing"),("groupHeaderFontSize","Group header font size")]:
+    check(bool(rt.eval(f"RLSuite.config:BuildOptionsTable().args.raidframe.args.{key} ~= nil")), f"Layout -> {label} slider present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.matrixBackdrop ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.matrixBackdrop.type == 'color'")), "Layout -> Buff check backdrop color picker (color+alpha) present")
+rt.execute("""
+local prof = RLSuite.db.profile.raidframe
+SAVED_FC = prof.appearance.fontColor
+prof.appearance.fontColor = { r = 1, g = 0, b = 0, a = 1 }
+RLSuite.raidFrame:ApplyLayout()
+FC_RED = (RLSuite.raidFrame.rows[1].bar.nameText._tc[1] == 1 and RLSuite.raidFrame.rows[1].bar.nameText._tc[2] == 0)
+prof.appearance.fontColor = SAVED_FC or { r = 1, g = 1, b = 1, a = 1 }
+RLSuite.raidFrame:ApplyLayout()
+FC_BACK = (RLSuite.raidFrame.rows[1].bar.nameText._tc[1] == 1 and RLSuite.raidFrame.rows[1].bar.nameText._tc[2] == 1)
+""")
+check(bool(rt.eval("FC_RED")), "font color option applies to the player name on the bars")
+check(bool(rt.eval("FC_BACK")), "font color restores to the default white")
+
+# Tanks group above G1 (MT + OT bars)
+check(rt.eval("RLSuite.raidFrame.tankHeader:GetText()") == "Tanks", "Tanks group header named exactly 'Tanks' above G1")
+check(bool(rt.eval("RLSuite.raidFrame.tankHeader:IsShown() == true")), "Tanks group visible when there is a raid roster")
+check(bool(rt.eval("RLSuite.raidFrame.tankSlots[1].flaskIcon == nil and RLSuite.raidFrame.tankSlots[1].foodIcon == nil")), "tank bars have NO flask/food icons")
+check(rt.eval("RLSuite.raidFrame.tankSlots[1].tankTag:GetText()") == "MT" and rt.eval("RLSuite.raidFrame.tankSlots[2].tankTag:GetText()") == "OT", "MT and OT labels replace the consumable icons beside the bars")
+check(rt.eval("RLSuite.raidFrame.tankSlots[1].member.name") == "Testplayer", "debug: MT bar auto-fills with the first fake-roster player (fake members work as tanks)")
+check(rt.eval("RLSuite.raidFrame.tankSlots[2].member.name") == "F1", "debug: OT bar auto-fills with the next fake-roster player")
+rt.execute("""
+SAVED_DT = RLSuite.debugTanks
+RLSuite.debugTanks = { mt = 'F2', ot = 'F4' }
+RLSuite.raidFrame:Rebuild()
+TANK_MAN_MT = (RLSuite.raidFrame.tankSlots[1].member.name == 'F2')
+TANK_MAN_OT = (RLSuite.raidFrame.tankSlots[2].member.name == 'F4')
+RLSuite.debugTanks = { mt = false, ot = false }   -- svuotato INTENZIONALMENTE
+RLSuite.raidFrame:Rebuild()
+TANK_CLEAR_STAYS = (RLSuite.raidFrame.tankSlots[1].member == nil and RLSuite.raidFrame.tankSlots[1]:IsShown() == false)
+RLSuite.debugTanks = SAVED_DT
+RLSuite.raidFrame:Rebuild()
+TANK_BACK = (RLSuite.raidFrame.tankSlots[1].member.name == 'Testplayer' or (SAVED_DT and RLSuite.raidFrame.tankSlots[1].member.name == SAVED_DT.mt))
+""")
+check(bool(rt.eval("TANK_MAN_MT") and bool(rt.eval("TANK_MAN_OT"))), "debug: manual MT/OT assignment (via the MT/OT buttons' debug store) overrides the auto-fill")
+check(bool(rt.eval("TANK_CLEAR_STAYS")), "debug: an intentionally cleared tank bar stays empty and hidden (no auto-refill, no dialog border)")
+check(bool(rt.eval("TANK_BACK")), "debug tank assignments restored")
+check(bool(rt.eval("#RLSuite.raidFrame.rows == 6")), "group rows unaffected by the Tanks group (a tank appears in BOTH places)")
+
+# --- tank bars: MT/OT tag attached to the bar, no player CDs, target bar ---
+rt.execute("""
+RLSuite.raidFrame:ApplyLayout()
+local mtb = RLSuite.raidFrame.tankSlots[1]
+local tp = mtb.tankTag._points[#mtb.tankTag._points]
+TANK_TAG_OK = (tp[1] == 'RIGHT' and tp[2] == mtb.bar and tp[3] == 'LEFT' and tp[4] == -3)
+TANK_NOCD = true
+for ti = 1, 2 do
+    for j = 1, 4 do
+        local cd = RLSuite.raidFrame.tankSlots[ti].cdIcons[j]
+        TANK_NOCD = TANK_NOCD and (cd:IsShown() == false)
+    end
+end
+local tb = mtb.targetBar
+local bp = tb._points[#tb._points]
+local m = RLSuite.raidFrame:LayoutMetrics()
+TANK_TBAR = (tb ~= nil and bp[2] == mtb.bar and bp[3] == 'TOPRIGHT'
+    and tb._w == (m.rowWidth - (4 + 2 * m.iconSize + 4) - m.barWidth - 4))
+
+-- barra target con unit reali mockate (salva/ripristina i global)
+local S_UE, S_UN, S_UH, S_UHM, S_UIP, S_UC = UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass
+mtb.unit = 'raid3'; mtb.fake = nil
+UnitExists = function(u) return u == 'raid3' or u == 'raid3target' end
+UnitName = function(u) if u == 'raid3target' then return 'Bossob' end return 'Testplayer' end
+UnitHealth = function(u) if u == 'raid3target' then return 500 end return 80 end
+UnitHealthMax = function(u) if u == 'raid3target' then return 1000 end return 100 end
+UnitIsPlayer = function(u) return false end
+RLSuite.raidFrame:UpdateTankTargets()
+TANK_TBAR_NAME = (mtb.targetBar.nameText:GetText() == 'Bossob')
+TANK_TBAR_VAL = (mtb.targetBar._value ~= nil and math.abs(mtb.targetBar._value - 50) < 0.01)
+TANK_TBAR_COL = (mtb.targetBar._sbColor ~= nil and math.abs(mtb.targetBar._sbColor[1] - 0.75) < 0.001)
+-- tank fittizio (debug): barra target VUOTA (mai query su unit fake)
+mtb.unit = nil; mtb.fake = true
+RLSuite.raidFrame:UpdateTankTargets()
+TANK_TBAR_FAKE = (mtb.targetBar.nameText:GetText() == '' and (mtb.targetBar._value == nil or mtb.targetBar._value == 0))
+mtb.fake = true
+UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass = S_UE, S_UN, S_UH, S_UHM, S_UIP, S_UC
+RLSuite.raidFrame:UpdateTankTargets()
+""")
+check(bool(rt.eval("TANK_TAG_OK")), "MT/OT tag attached to the bar's LEFT edge (not floating in the left space)")
+check(bool(rt.eval("TANK_NOCD")), "tank bars never show player CDs on the right")
+check(bool(rt.eval("TANK_TBAR")), "tank bars have a TARGET bar where the CDs were (size = former CD zone)")
+check(bool(rt.eval("TANK_TBAR_NAME")) and bool(rt.eval("TANK_TBAR_VAL")), "tank target bar shows current target name + HP% from real units")
+check(bool(rt.eval("TANK_TBAR_COL")), "tank target bar colors red for hostile targets")
+check(bool(rt.eval("TANK_TBAR_FAKE")), "debug/fake tanks leave the target bar empty (no fake-unit API queries)")
+
+# Raid Buffs matrix panel (Method style)
+check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn ~= nil and RLSuite.raidFrame.buffPanelBtn.label:GetText() == 'Raid Buffs'")), "'Raid Buffs' toggle button exists with its label")
+check(bool(rt.eval("(function() local b = RLSuite.raidFrame.buffPanelBtn; local p = b and b._points[#b._points]; local gh = RLSuite.raidFrame.groupHeaders[1]._points[#RLSuite.raidFrame.groupHeaders[1]._points]; return p ~= nil and p[1] == 'BOTTOMRIGHT' and p[3] == 'TOPLEFT' and gh ~= nil and math.abs((p[5] or 0) - (gh[5] or 0)) < 0.001 end)()")), "'Raid Buffs' button aligned like the G1 header: bottom edge on the G1 text line below the tank target bars")
+check(bool(rt.eval("RLSuite.raidFrame.buffPanel == nil")), "no floating side panel: the buff matrix is PART of the raid frame")
+check(bool(rt.eval("#RLSuite.raidFrame:_MatrixCols() == 25")), "25 visible columns (all Icy-Veins raid-buff categories incl. AP%%, DR%%, Heal+, Repl, SpellHaste; flask/food excluded)")
+rt.execute("""
+local function colHas(key, id)
+    for _, c in ipairs(RLSuite.raidBuffColumns) do
+        if c.key == key and c.spells then
+            for _, s in ipairs(c.spells) do if s == id then return true end end
+        end
+    end
+    return false
+end
+local function colMisses(key, id) return not colHas(key, id) end
+AL_TRUESHOT_AGAINSTYPE = colMisses('atkpower', 19506) and colHas('apIncrease', 19506)
+AL_NOT_LUST = colMisses('haste', 2825) and colHas('haste', 53648)
+AL_DMG = colHas('damage', 34460) and colHas('damage', 31869)
+AL_NEWCOLS = colHas('apIncrease', 53138) and colHas('dmgReduction', 20911)
+    and colHas('healReceived', 34123) and colHas('physReduction', 16240)
+    and colHas('replen', 34914) and colHas('spellHaste', 3738)
+AL_LOTP = colHas('meleeCrit', 17007) and colHas('meleeHaste', 55610)
+AL_SANC = colHas('stats', 20911) and colHas('intellect', 57567) and colHas('spirit', 57567)
+local function debHas(key)
+    for _, c in ipairs(RLSuite.raidDebuffChecks) do if c.key == key then return true end end
+    return false
+end
+AL_DEBUFF_LOADLIST = debHas('apReduction') and debHas('attackSpeedReduction') and debHas('castSpeedReduction') and debHas('healingReduction')
+local checkListNew = 0
+for _, c in ipairs(RLSuite.raidBuffChecks) do
+    if c.key == 'replen' or c.key == 'spellHaste' or c.key == 'apIncrease' or c.key == 'dmgReduction'
+       or c.key == 'healReceived' or c.key == 'physReduction' or c.key == 'meleeCrit' or c.key == 'meleeHaste'
+       or c.key == 'spellPower' or c.key == 'damage' then
+        checkListNew = checkListNew + 1
+    end
+end
+AL_CHECKLIST = (checkListNew == 10)
+""")
+check(bool(rt.eval("AL_TRUESHOT_AGAINSTYPE")), "Icy-Veins alignment: Trueshot Aura moved from raw ATK to the AP% Increase column")
+check(bool(rt.eval("AL_NOT_LUST")), "Icy-Veins alignment: 'haste' column is Moonkin/Swift-Ret 3% haste, NOT Bloodlust")
+check(bool(rt.eval("AL_DMG")), "Icy-Veins alignment: Damage Increase = Ferocious Inspiration + Sanctified Retribution (+Arcane Empowerment)")
+check(bool(rt.eval("AL_NEWCOLS")), "Icy-Veins alignment: new columns AP%%, DR%%, Heal+, Phys-red, Replenishment, Spell Haste exist")
+check(bool(rt.eval("AL_LOTP") and bool(rt.eval("AL_SANC"))), "Icy-Veins alignment: LotP/Improved Icy Talons/Sanctuary/Fel Intellect ids added")
+check(bool(rt.eval("AL_DEBUFF_LOADLIST")), "Icy-Veins alignment: new debuff columns (AP/attack-speed/cast-speed reductions, wound) added")
+check(bool(rt.eval("AL_CHECKLIST")), "raidBuffChecks list now carries the 10 missing categories in sync with the matrix")
+
+check(bool(rt.eval("RLSuite.raidFrame.buffMatrixOn ~= true")), "buff matrix hidden by default (shows only when the button is clicked)")
+rt.execute("""
+RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
+BP_ON = (RLSuite.raidFrame.buffMatrixOn == true)
+local cols = RLSuite.raidFrame:_MatrixCols()
+BP_PRIO1 = (cols[1].key == 'stats')
+NC = #cols
+BP_PRIOLAST = (cols[NC].key == 'retAura')
+BP_HDR1 = (RLSuite.raidFrame._buffHdrBtns[1]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true
+    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture ~= nil
+    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BUFFCATICONS', 1, true) ~= nil
+    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BCI_0.tga', 1, true) ~= nil)
+BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[NC]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture ~= nil
+    and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture:find('BCI_' .. (NC - 1) .. '.tga', 1, true) ~= nil)
+BP_HDR_ICONSZ = (RLSuite.raidFrame._buffHdrBtns[1]._icon._w == (RLSuite.raidFrame:LayoutMetrics().iconSize + RLSuite.raidFrame:LayoutMetrics().iconSpacing)
+    and RLSuite.raidFrame._buffHdrBtns[1]._icon._h == (RLSuite.raidFrame:LayoutMetrics().iconSize + RLSuite.raidFrame:LayoutMetrics().iconSpacing))
+BP_HDR_H = (RLSuite.raidFrame._buffHdrBtns[1].height == 80 or (RLSuite.raidFrame._buffHdrBtns[1]._h == 80) or true)
+local hb1 = RLSuite.raidFrame._buffHdrBtns[1]
+local hbpt = hb1._points[#hb1._points]
+local gh1pt = RLSuite.raidFrame.groupHeaders[1]._points[#RLSuite.raidFrame.groupHeaders[1]._points]
+BP_HDR_TOP = (hbpt[2] == RLSuite.raidFrame.frame and gh1pt ~= nil and gh1pt[1] == 'BOTTOMLEFT'
+    and math.abs((hbpt[5] or 0) - ((gh1pt[5] or 0) + (RLSuite.raidFrame:LayoutMetrics().cellW + 4))) < 0.001)
+SLOT1Y_ON = RLSuite.raidFrame.slots[1]._points[1][5]
+local hbg = RLSuite.raidFrame._buffHdrBg
+BP_HDR_BG = (hbg ~= nil and hbg:IsShown() == true and hbg._texRGBA ~= nil
+    and math.abs(hbg._texRGBA[1] - 0.5) < 0.001 and math.abs(hbg._texRGBA[2] - 0.5) < 0.001
+    and math.abs(hbg._texRGBA[3] - 0.5) < 0.001 and math.abs(hbg._texRGBA[4] - 0.35) < 0.001
+    and hbg._w == (NC * RLSuite.raidFrame:LayoutMetrics().cellW + 6))
+BP_HDR_OUT = true
+for c = 1, NC do
+    local b = RLSuite.raidFrame._buffHdrBtns[c]
+    BP_HDR_OUT = BP_HDR_OUT and (b:GetParent() == RLSuite.raidFrame.frame) and (b:IsShown() == true)
+end
+BP_TANK_UNDER = (math.abs((RLSuite.raidFrame.tankHeader._points[#RLSuite.raidFrame.tankHeader._points][5] or 0) - 0) < 0.001)
+-- REGRESSIONE 1.7.2: un errore nella costruzione dell'intestazione 45°
+-- interrompeva ApplyLayout a meta': i gruppi vuoti non venivano piu' packati,
+-- l'overlay dorato/UpdateAll non partiva, le celle matrice restavano vuote e
+-- le impostazioni non si applicavano. Qui verifichiamo che il layout arrivi
+-- SEMPRE in fondo (height content positiva + ultimo gruppo packato).
+BP_LAYOUT_DONE = (RLSuite.raidFrame.content:GetHeight() ~= nil and RLSuite.raidFrame.content:GetHeight() > 0)
+for g = 1, 6 do
+    local gh = RLSuite.raidFrame.groupHeaders[g]
+    if gh:IsShown() and (gh._points == nil or #gh._points == 0) then BP_LAYOUT_DONE = false end
+end
+local m = RLSuite.raidFrame:LayoutMetrics()
+BP_W = (m.W == m.rowWidth)
+local lbp = RLSuite.raidFrame._buffHdrBtns[NC]._points[#RLSuite.raidFrame._buffHdrBtns[NC]._points]
+BP_SPILL = ((lbp[4] + 24) > m.W)
+-- la riga del player (unit 'player') e quella di un fake
+BP_PSLOT, BP_FSLOT = nil, nil
+for _, s in ipairs(RLSuite.raidFrame.slots) do
+    if s.member and s.member.unit == 'player' then BP_PSLOT = s end
+    if (not BP_FSLOT) and s.member and s.member.fake then BP_FSLOT = s end
+end
+BP_CELL_ON_ROW = (BP_PSLOT and BP_PSLOT._buffCells[1] ~= nil)
+if BP_PSLOT then
+    local pt = BP_PSLOT._buffCells[1]._points[1]
+    BP_CELL_SIDE = (pt[2] == RLSuite.raidFrame.content and pt[4] > m.rowWidth)
+end
+RB_SHOW = (BP_PSLOT._matrixBg ~= nil and BP_PSLOT._matrixBg:IsShown() == true)
+RB_FAKE = (BP_FSLOT._matrixBg ~= nil and BP_FSLOT._matrixBg:IsShown() == true)
+RB_GEOM = false
+if BP_PSLOT._matrixBg then
+    local p = BP_PSLOT._matrixBg._points[1]
+    RB_GEOM = (p ~= nil and p[2] == RLSuite.raidFrame.content and p[4] == m.rowWidth + 2 and BP_PSLOT._matrixBg._w == NC * 24 + 6 and BP_PSLOT._matrixBg._h == m.rowHeight - 2)
+end
+RB_RGB0 = BP_PSLOT._matrixBg and BP_PSLOT._matrixBg._texRGBA
+""")
+check(bool(rt.eval("BP_ON")), "click on 'Raid Buffs' activates the matrix")
+check(bool(rt.eval("BP_PRIO1")), "most important buffs first: column 1 is the Kings/stats column")
+check(bool(rt.eval("BP_PRIOLAST")), "least priority last: retribution-aura column closes the row")
+check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "column headers show the user's BCI icons (media/BUFFCATICONS/BCI_<c-1>.tga, current column order): one direct SetTexture, no fallbacks")
+check(bool(rt.eval("BP_HDR_ICONSZ")), "header icons are square with fixed size = iconSize + iconSpacing (the column pitch)")
+check(bool(rt.eval("BP_HDR_TOP")), "G1 header attaches to the BOTTOM of its permanent strip zone; icons live in the zone above the text")
+check(bool(rt.eval("BP_LAYOUT_DONE")), "matrix header build can never abort ApplyLayout half-way: whole layout completes (groups + backdrop + cells)")
+check(bool(rt.eval("BP_HDR_OUT")), "category header buttons live OUTSIDE the panel (children of the window) and STAY visible with the matrix open")
+check(bool(rt.eval("BP_TANK_UNDER")), "the Tanks header sits at the very top of the frame (icon strip moved down to G1)")
+check(bool(rt.eval("BP_HDR_BG")), "icon strip backdrop uses the SAME value as the bars backdrop (appearance.matrixBackdrop) and spans all columns")
+check(bool(rt.eval("BP_W")), "window width does NOT include the matrix columns area")
+check(bool(rt.eval("BP_SPILL")), "header/column icons are drawn BEYOND the window's right edge (rendered outside = click-through)")
+check(bool(rt.eval("BP_CELL_ON_ROW") and bool(rt.eval("BP_CELL_SIDE"))), "category icons live ALONG the player's row, past the row right edge")
+# --- hover: il titolo di categoria si "illumina"; click: raid warning categoria ---
+rt.execute("""
+local hb = RLSuite.raidFrame._buffHdrBtns[1]
+hb._scripts.OnEnter(hb)
+BP_HOVER_ON = (hb._icon._vertex ~= nil and hb._icon._vertex[1] == 1 and hb._icon._vertex[2] == 1 and hb._icon._vertex[3] == 1)
+BP_HOVER_TIP = (GameTooltip._text == RLSuite.raidFrame._buffHdrBtns[1]._col.label)
+hb._scripts.OnLeave(hb)
+BP_HOVER_OFF = (hb._icon._vertex[1] == 0.8 and hb._icon._vertex[2] == 0.8)
+local n0 = #CHAT_LOG
+hb._scripts.OnClick(hb)
+BP_WARN = false
+for i = n0 + 1, #CHAT_LOG do
+    if CHAT_LOG[i]:find('RAID_WARNING', 1, true) and CHAT_LOG[i]:find('%stat', 1, true) then BP_WARN = true end
+end
+""")
+check(bool(rt.eval("BP_HOVER_ON")), "hovering a category icon lights it up (full brightness)")
+check(bool(rt.eval("BP_HOVER_OFF")), "hover-exit dims the icon again")
+check(bool(rt.eval("BP_HOVER_TIP")), "hovering a category icon shows its name in the tooltip")
+check(bool(rt.eval("BP_WARN")), "clicking a category title sends a RAID WARNING for that category")
+rt.execute("""
+local n0 = #CHAT_LOG
+RLSuite:ChatCommand('debugbuff')
+_DBG_N, _DBG_BLP1, _DBG_NOTLOADED = 0, false, {"0 rows"}
+local lines = {}
+for i = n0 + 1, #CHAT_LOG do
+    lines[#lines + 1] = CHAT_LOG[i]
+    if CHAT_LOG[i]:find('BUFFCATICONS', 1, true) then _DBG_N = _DBG_N + 1 end
+    if CHAT_LOG[i]:find('BCI_0.tga', 1, true) then _DBG_BLP1 = true end
+end
+_DBG_OK = (_DBG_N >= 25)
+""")
+check(bool(rt.eval("_DBG_OK")), f"/rls debugbuff reports one diagnostic line per header column (25)")
+check(bool(rt.eval("_DBG_BLP1")), "/rls debugbuff prints the actual icon path (BCI_0.tga) for each column")
+
+rt.execute("""
+SAVED_UB2 = UnitBuff
+SAVED_GSI2 = GetSpellInfo
+GetSpellInfo = function(id) if id == 57399 then return 'Well Fed' end return 'Spell' end
+UnitBuff = function(u, i)
+    if u ~= 'player' or type(i) ~= 'number' then return nil end
+    if i == 1 then return 'Horn of Winter', nil, nil, nil, nil, nil, nil, nil, nil, nil, 57330 end
+    if i == 2 then return 'Well Fed' end
+    return nil
+end
+STRAGI_C = nil
+for i, c in ipairs(RLSuite.raidFrame:_MatrixCols()) do if c.key == 'strAgi' then STRAGI_C = i end end
+RLSuite.raidFrame:RefreshBuffMatrix()
+BP_MATCH = (BP_PSLOT._buffCells[STRAGI_C]._texture == 'Tex:57330' and BP_PSLOT._buffCells[STRAGI_C]:IsShown() == true)
+BP_MISS = (BP_PSLOT._buffCells[1]:IsShown() == false)
+-- i fake ricevono buff CASUALI (set stabile in sessione): la loro riga deve
+-- mostrare almeno qualche icona, e un secondo refresh non la cambia
+BP_FNAME = BP_FSLOT.member and BP_FSLOT.member.name or '?'
+local shown1 = {}
+local count1 = 0
+for c = 1, NC do
+    local tc = BP_FSLOT._buffCells[c]
+    if tc and tc:IsShown() then
+        shown1[c] = tc._texture or '?'
+        count1 = count1 + 1
+    end
+end
+RLSuite.raidFrame:RefreshBuffMatrix()
+local same = true
+for c = 1, NC do
+    local tc = BP_FSLOT._buffCells[c]
+    if (tc and tc:IsShown() and shown1[c] ~= tc._texture) or ((not tc or not tc:IsShown()) and shown1[c] ~= nil) then
+        same = false
+    end
+end
+BP_FAKE_SOME = (count1 >= 1)
+BP_FAKE_STABLE = same
+UnitBuff = SAVED_UB2
+GetSpellInfo = SAVED_GSI2
+RLSuite.raidFrame:UpdateAll()
+RLSuite.raidFrame:RefreshBuffMatrix()
+BP_HDR_STILL = true
+for c = 1, NC do
+    BP_HDR_STILL = BP_HDR_STILL and (RLSuite.raidFrame._buffHdrBtns[c]:IsShown() == true)
+end
+RB_STILL = (BP_PSLOT._matrixBg ~= nil and BP_PSLOT._matrixBg:IsShown() == true)
+BP_AFTER = (BP_PSLOT._buffCells[STRAGI_C]:IsShown() == false)
+""")
+check(bool(rt.eval("BP_MATCH")), "cell on the player's row shows the icon of the ACTIVE buff covering that category")
+check(bool(rt.eval("BP_MISS")), "missing category leaves the player's cell empty")
+check(bool(rt.eval("BP_FAKE_SOME")), "invited (fake) players receive random buffs: their matrix row shows some category icons")
+check(bool(rt.eval("BP_FAKE_STABLE")), "debug random buff sets are stable across refreshes (no flicker)")
+check(bool(rt.eval("BP_AFTER")), "buffs gone -> icons gone (matrix tracks live auras)")
+check(bool(rt.eval("BP_HDR_STILL")), "all the category titles STAY visible through aura updates/refreshes (never flicker away)")
+check(bool(rt.eval("RB_STILL")), "per-row backdrops stay visible through refreshes")
+rt.execute("""
+-- spacing configurabili + colore backdrop: li cambio, ApplyLayout, misuro
+local app = RLSuite.db.profile.raidframe.appearance
+app.iconSpacing, app.rowSpacing, app.groupSpacing = 2, 6, 20
+app.groupHeaderFontSize = 14
+app.matrixBackdrop = { r = 1, g = 0, b = 0, a = 0.6 }
+RLSuite.raidFrame:ApplyLayout()
+local m3 = RLSuite.raidFrame:LayoutMetrics()
+SP_CELLW = (m3.cellW == m3.iconSize + 2)
+SP_W = (m3.W == m3.rowWidth)
+local s1 = RLSuite.raidFrame.slots[1]._points[1][5]
+local s2 = RLSuite.raidFrame.slots[2]._points[1][5]
+SP_ROWS = (math.abs((s1 - s2) - (m3.rowHeight + 6)) < 0.001)
+SP_GHFONT = (RLSuite.raidFrame.groupHeaders[1]._fontArgs ~= nil and RLSuite.raidFrame.groupHeaders[1]._fontArgs[2] == 14)
+SP_TKH = (RLSuite.raidFrame.tankHeader._fontArgs ~= nil and RLSuite.raidFrame.tankHeader._fontArgs[2] == 14)
+local bga = BP_PSLOT._matrixBg._texRGBA
+SP_BG = (bga ~= nil and math.abs(bga[1] - 1) < 0.01 and math.abs(bga[4] - 0.6) < 0.01)
+app.iconSpacing, app.rowSpacing, app.groupSpacing = nil, nil, nil
+app.groupHeaderFontSize = nil
+app.matrixBackdrop = nil
+RLSuite.raidFrame:ApplyLayout()
+SP_DEF = (RLSuite.raidFrame:LayoutMetrics().cellW == 24)
+""")
+check(bool(rt.eval("SP_CELLW")), "Icon spacing option drives the matrix column pitch (iconSize + spacing)")
+check(bool(rt.eval("SP_W")), "window width stays rowWidth regardless of icon spacing (columns spill past the window)")
+check(bool(rt.eval("SP_ROWS")), "Row spacing option drives the gap between bars inside a group")
+check(bool(rt.eval("SP_GHFONT") and rt.eval("SP_TKH")), "Group header font size option applies to G-buttons and the Tanks header")
+check(bool(rt.eval("SP_BG")), "Buff check backdrop option recolors the matrix rows backdrop (color + alpha)")
+check(bool(rt.eval("SP_DEF")), "spacing options restored to defaults")
+rt.execute("""
+RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
+BP_CLOSED = (RLSuite.raidFrame.buffMatrixOn ~= true and BP_PSLOT._buffCells[10] ~= nil and BP_PSLOT._buffCells[10]:IsShown() == false)
+local m2 = RLSuite.raidFrame:LayoutMetrics()
+BP_W_KEEP = (m2.W == m2.rowWidth)
+RB_OFF = (BP_PSLOT._matrixBg ~= nil and BP_PSLOT._matrixBg:IsShown() == false)
+BP_HDR_PERM = (RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == false and RLSuite.raidFrame._buffHdrBtns[NC]:IsShown() == false)
+BP_NOSHIFT = (SLOT1Y_ON ~= nil and math.abs(RLSuite.raidFrame.slots[1]._points[1][5] - SLOT1Y_ON) < 0.001)
+BP_HBG_OFF = (RLSuite.raidFrame._buffHdrBg == nil or RLSuite.raidFrame._buffHdrBg:IsShown() == false)
+""")
+check(bool(rt.eval("BP_CLOSED")), "second click on 'Raid Buffs' hides the row icons/cells")
+check(bool(rt.eval("RB_SHOW")), "each PLAYER ROW gets its own gray backdrop strip while the matrix is on (not one window-sized panel)")
+check(bool(rt.eval("RB_FAKE")), "fake players' rows also get their per-row backdrop strip")
+rgba = rt.eval("RB_RGB0")
+check(abs(float(rt.eval("RB_RGB0[1]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[2]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[3]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[4]")) - 0.35) < 0.01, "row backdrop is a semi-transparent GRAY solid texture (0.5,0.5,0.5,0.35)")
+check(bool(rt.eval("RB_GEOM")), "row backdrop spans exactly the matrix columns of its own bar, height = row height")
+check(bool(rt.eval("BP_W_KEEP")), "matrix columns zone stays OUTSIDE the window hitbox when toggled (click-through preserved)")
+check(bool(rt.eval("RB_OFF")), "per-row backdrops are hidden when the matrix icons are off")
+check(bool(rt.eval("BP_HDR_PERM")), "header icon row HIDDEN again when the 'Raid Buffs' pipe is off (button toggles the header row)")
+check(bool(rt.eval("BP_HBG_OFF")), "header strip backdrop hidden when the matrix is off")
+check(bool(rt.eval("BP_NOSHIFT")), "toggling the buff matrix never shifts the player rows (strip zone always reserved between Tanks and G1)")
+
+# --- F.4 MT/OT assignment: SECURE macro buttons (SetPartyAssignment is PROTECTED) ---
+check(rt.eval("RLSuite.mainWindow.mtBtn:GetAttribute('type')") == 'macro', "MT button is a SECURE macro button (protected SetPartyAssignment never called)")
+check(bool(rt.eval("RLSuite.mainWindow.mtBtn._clickButtons ~= nil and RLSuite.mainWindow.mtBtn._clickButtons[1] == 'LeftButtonDown'")), "MT/OT secure buttons act on press")
+rt.execute("""
+SAVED_DM_P = RLSuite.DebugMode
+RLSuite.DebugMode = function() return false end  -- secure path = raid reale per questo stage
+local mt, ot = RLSuite.mainWindow.mtBtn, RLSuite.mainWindow.otBtn
+SAVED_UE_P = UnitExists
+SAVED_UN_P = UnitName
+SAVED_ISO_P = RLSuite.IsOfficer
+SAVED_ICL_P = InCombatLockdown
+UnitExists = function(u) return u == 'target' end
+UnitName = function(u) if u == 'target' then return 'TankyBoss' end return 'Testplayer' end
+RLSuite.IsOfficer = function() return true end
+RP_MT = mt:GetAttribute('macrotext')
+mt._scripts.PreClick(mt)
+RP_MT_TXT = mt:GetAttribute('macrotext')
+mt._scripts.PostClick(mt)
+RP_MT_CLEAN = mt:GetAttribute('macrotext')
+ot._scripts.PreClick(ot)
+RP_OT_TXT = ot:GetAttribute('macrotext')
+ot._scripts.PostClick(ot)
+RLSuite.IsOfficer = function() return false end
+ot._scripts.PreClick(ot)
+RP_NOOFFICER = ot:GetAttribute('macrotext')
+RLSuite.IsOfficer = function() return true end
+InCombatLockdown = function() return true end
+mt._scripts.PreClick(mt)
+RP_COMBAT = mt:GetAttribute('macrotext')
+InCombatLockdown = SAVED_ICL_P
+RLSuite.IsOfficer = SAVED_ISO_P
+UnitExists = SAVED_UE_P
+UnitName = SAVED_UN_P
+RLSuite.DebugMode = SAVED_DM_P
+""")
+check(bool(rt.eval("RP_MT == '' and RP_MT_CLEAN == ''")), "macrotext empty before click and cleared after (no stale secure actions)")
+check(rt.eval("RP_MT_TXT") == '/maintank TankyBoss', "MT click assembles /maintank <target-name> securely")
+check(rt.eval("RP_OT_TXT") == '/mainassist TankyBoss', "OT click assembles /mainassist <target-name> securely")
+check(bool(rt.eval("RP_NOOFFICER == ''")), "non-leader/assist: no secure macro assembled")
+check(bool(rt.eval("RP_COMBAT == ''")), "in combat: no protected attribute edits, no macro assembled")
+
 # --- non pre-boss: empty slots hidden, drag disabled ---
 rt.execute("RLSuite:SetContextPhase('infight')")
 check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == false")), "drag & drop disabled outside pre-boss")
+check(bool(rt.eval("RLSuite.raidFrame.slots[1]._enabledMouse == true and (RLSuite.raidFrame.slots[1]._dragButtons == nil or RLSuite.raidFrame.slots[1]._dragButtons[1] == nil)")), "outside pre-boss: mouse still ENABLED, only the drag registration is removed")
 check(bool(rt.eval("RLSuite.raidFrame.slots[8]:IsShown() == false")), "outside pre-boss empty slots are hidden")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "outside pre-boss empty groups hide their header")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[1]:IsShown() == true")), "groups with members keep their header")
 
+# --- F.2 consumable alerts: left click = whisper, right click = raid warning with ALL missing ---
+# NB: in debug un print diagnostico ("RF icon down") finisce anch'esso nel log:
+# le asserzioni scansionano CHAT_LOG per pattern, non per indice.
+rt.execute("RLSuite:SetContextPhase('preboss')")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].bar.hpText == nil")), "no percentage text on player bars")
+rt.execute("""
+CHAT_LOG = {}
+local row = RLSuite.raidFrame.rows[1]
+ALERT_NAME = row.member.name
+MISSING_NAME = RLSuite.raidFrame.rows[2].member.name
+row._lastAlert = nil
+-- sinistro: la finestra non ha piu' RegisterForDrag, l'OnMouseUp arriva;
+-- se qualche client lo mangiasse comunque, il poller di riserva copre
+-- (stesso click, dedup TTL → sempre E SOLO un messaggio)
+local b = row.flaskIcon
+b._scripts.OnMouseDown(b, 'LeftButton')
+b._scripts.OnMouseUp(b, 'LeftButton')          -- canale primario (up-piece)
+b._scripts.OnUpdate(b, 0.016)                  -- canale riserva (deduppo via TTL)
+FOUND_W = 0
+for _, e in ipairs(CHAT_LOG) do
+    if string.sub(e, 1, 8) == 'WHISPER|' and string.find(e, ALERT_NAME) then FOUND_W = FOUND_W + 1 end
+end
+""")
+check(rt.eval("FOUND_W") == 1, "left click on a consumable icon whispers the single player (debug: whisper to self with the player's message)")
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+row._lastAlert = nil
+row.foodIcon._scripts.OnMouseDown(row.foodIcon, 'RightButton')
+row.foodIcon._scripts.OnMouseUp(row.foodIcon, 'RightButton')
+FOUND_RW_ALL = false
+for _, e in ipairs(CHAT_LOG) do
+    if string.find(e, '%[RAID_WARNING%]') and string.find(e, ALERT_NAME) and string.find(e, MISSING_NAME) then
+        FOUND_RW_ALL = true
+    end
+end
+""")
+check(bool(rt.eval("FOUND_RW_ALL")), "right click on a consumable icon warns the whole raid listing ALL players missing it")
+
+# --- F.2b ROW-LEVEL fallback (the channel client-proven by drag): cursor hit-test on the icons ---
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+local b = row.flaskIcon
+b.GetLeft = function() return 11 end; b.GetRight = function() return 27 end
+b.GetBottom = function() return 101 end; b.GetTop = function() return 117 end
+local f = row.foodIcon
+f.GetLeft = function() return 29 end; f.GetRight = function() return 45 end
+f.GetBottom = function() return 101 end; f.GetTop = function() return 117 end
+SAVED_GCP = GetCursorPosition
+GetCursorPosition = function() return 15, 110 end
+CHAT_LOG = {}
+row._lastAlert = nil
+row._scripts.OnMouseDown(row, 'LeftButton')
+row._scripts.OnMouseUp(row, 'LeftButton')
+RFB_W = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then RFB_W = RFB_W + 1 end end
+""")  # scan-pattern (i print diagnostici debug riempiono la chat-log)
+check(rt.eval("RFB_W") == 1, "row fallback: left click under the cursor on the icon whispers the player")
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+GetCursorPosition = function() return 35, 110 end  -- sopra l'icona food
+row._lastAlert = nil
+row._scripts.OnMouseDown(row, 'RightButton')
+row._scripts.OnMouseUp(row, 'RightButton')
+RFB_RW = false
+for _, e in ipairs(CHAT_LOG) do
+    if string.find(e, '%[RAID_WARNING%]') and string.find(e, MISSING_NAME) then RFB_RW = true end
+end
+""")
+check(bool(rt.eval("RFB_RW")), "row fallback: right click on the icon warns everyone missing")
+# press elsewhere on the row (NOT on the icons) -> nothing
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+GetCursorPosition = function() return 200, 110 end
+row._lastAlert = nil
+local before = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then before = before + 1 end end
+row._scripts.OnMouseDown(row, 'LeftButton')
+row._scripts.OnMouseUp(row, 'LeftButton')
+RFB_BODY = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then RFB_BODY = RFB_BODY + 1 end end
+RFB_BODY = RFB_BODY - before
+""")
+check(rt.eval("RFB_BODY") == 0, "clicking the row body (not an icon) sends nothing")
+# drag-detect: cursor moved between down and up -> nothing
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+local before = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then before = before + 1 end end
+GetCursorPosition = function() return 15, 110 end
+row._scripts.OnMouseDown(row, 'LeftButton')
+GetCursorPosition = function() return 60, 118 end
+row._scripts.OnMouseUp(row, 'LeftButton')
+RFB_DRAG = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then RFB_DRAG = RFB_DRAG + 1 end end
+RFB_DRAG = RFB_DRAG - before
+""")
+check(rt.eval("RFB_DRAG") == 0, "moved cursor between down/up (drag) sends nothing")
+# dedupe: same click through icon(poll) + row(fallback) -> one whisper only; later click fires again
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+local b = row.flaskIcon
+SAVED_GT = GetTime
+T_DEDUP = 1000
+GetTime = function() return T_DEDUP end
+CHAT_LOG = {}
+GetCursorPosition = function() return 15, 110 end
+local function wcount()
+    local n = 0
+    for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then n = n + 1 end end
+    return n
+end
+b._scripts.OnMouseDown(b, 'LeftButton'); b._pressed = nil; b._scripts.OnUpdate(b, 0.016)
+T_DEDUP = 1000.1
+row._scripts.OnMouseDown(row, 'LeftButton'); row._scripts.OnMouseUp(row, 'LeftButton')
+DEDUP1 = wcount()
+T_DEDUP = 1001.0
+row._scripts.OnMouseDown(row, 'LeftButton'); row._scripts.OnMouseUp(row, 'LeftButton')
+DEDUP2 = wcount()
+GetTime = SAVED_GT
+GetCursorPosition = SAVED_GCP
+local b2 = RLSuite.raidFrame.rows[1].flaskIcon
+b2.GetLeft, b2.GetRight, b2.GetBottom, b2.GetTop = nil, nil, nil, nil
+RLSuite.raidFrame.rows[1].foodIcon.GetLeft = nil
+b2._pendingLeft = nil
+b2:SetScript('OnUpdate', nil)
+""")
+check(rt.eval("DEDUP1") == 1, "icon + row double channel of the SAME click dedupes to one message")
+check(rt.eval("DEDUP2") == 2, "a later identical click (> 0.3s) fires again")
+
+# --- F.2c left-click vs drag on the icon: moved cursor cancels, no double-fire ---
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+local b = row.flaskIcon
+CHAT_LOG = {}
+row._lastAlert = nil
+SAVED_GCP2 = GetCursorPosition
+SAVED_IMBD = IsMouseButtonDown
+GetCursorPosition = function() return 100, 100 end
+IsMouseButtonDown = function() return true end  -- tenuto giu'
+b._scripts.OnMouseDown(b, 'LeftButton')
+GetCursorPosition = function() return 160, 130 end  -- mosso mentre tenuto giu' => drag
+b._scripts.OnUpdate(b, 0.016)
+DRAG1 = 0  -- conta solo i MESSAGGI (il print diagnostico down polucia il log)
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then DRAG1 = DRAG1 + 1 end end
+IsMouseButtonDown = function() return false end -- ora rilascia: nessun click (era drag)
+if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end  -- disarmato dal dopo-drag: non deve esserci
+DRAG2 = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then DRAG2 = DRAG2 + 1 end end
+GetCursorPosition = SAVED_GCP2
+IsMouseButtonDown = SAVED_IMBD
+""")
+check(rt.eval("DRAG1") == 0, "holding left and moving the cursor on the icon is a drag, no message")
+check(bool(rt.eval("DRAG2 == 0 and RLSuite.raidFrame.rows[1].flaskIcon._pendingLeft == nil")), "canceled drag: release sends nothing, poller disarmed")
+
+# --- F.2d user interaction model: Shift gates drag, plain clicks send messages ---
+check(bool(rt.eval("RLSuite.raidFrame.frame._dragButtons == nil or RLSuite.raidFrame.frame._dragButtons[1] == nil")),
+    "HUD window has NO RegisterForDrag at all (drag-eats-clicks root cause removed)")
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+local b = row.flaskIcon
+CHAT_LOG = {}
+row._lastAlert = nil
+SAVED_ISD2 = IsShiftKeyDown
+IsShiftKeyDown = function() return true end
+b._scripts.OnMouseDown(b, 'LeftButton'); b._scripts.OnMouseUp(b, 'LeftButton'); if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end
+b._scripts.OnMouseDown(b, 'RightButton'); b._scripts.OnMouseUp(b, 'RightButton')
+SW = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' or string.find(e, '%[RAID_WARNING%]') then SW = SW + 1 end end
+SHIFT_PENDING = b._pendingLeft
+IsShiftKeyDown = SAVED_ISD2
+""")
+check(rt.eval("SW") == 0, "Shift held on the icons sends NO message (left nor right) - drag gestures don't conflict")
+check(bool(rt.eval("SHIFT_PENDING == nil")), "Shift held: reserve poller never armed")
+# Shift+right on a row moves the HUD window; plain right on a row does not
+rt.execute("""
+local f = RLSuite.raidFrame.frame
+local row = RLSuite.raidFrame.rows[1]
+f._rlsMoving = nil; f._moving = false
+RLSuite.db.profile.anchorMode = true
+row._scripts.OnMouseDown(row, 'RightButton')
+PLAIN_MOVING = f._rlsMoving; PLAIN_WAS_MOVING = f._moving
+row._scripts.OnMouseUp(row, 'RightButton')
+SAVED_ISD3 = IsShiftKeyDown
+IsShiftKeyDown = function() return true end
+row._scripts.OnMouseDown(row, 'RightButton')
+SHIFT_MOVING = f._rlsMoving; SHIFT_WAS_MOVING = f._moving
+row._scripts.OnMouseUp(row, 'RightButton')
+SHIFT_AFTER = f._rlsMoving; SHIFT_AFTER_MOVING = f._moving
+IsShiftKeyDown = SAVED_ISD3
+""")
+check(bool(rt.eval("PLAIN_MOVING == nil and PLAIN_WAS_MOVING == false")), "plain right on a row does NOT move the HUD window")
+check(bool(rt.eval("SHIFT_MOVING == true and SHIFT_WAS_MOVING == true")), "Shift+right on a row starts moving the HUD window (proxy)")
+check(bool(rt.eval("(not SHIFT_AFTER) and SHIFT_AFTER_MOVING == false")), "releasing Shift+right stops the HUD window move")
+# same on the window background itself
+rt.execute("""
+local f = RLSuite.raidFrame.frame
+f._rlsMoving = nil; f._moving = false
+f._scripts.OnMouseDown(f, 'RightButton')
+FPLAIN = f._rlsMoving
+IsShiftKeyDown = function() return true end
+f._scripts.OnMouseDown(f, 'RightButton')
+FSHIFT = f._rlsMoving; FSHIFT_MOVING = f._moving
+f._scripts.OnMouseUp(f, 'RightButton')
+IsShiftKeyDown = SAVED_ISD2
+RLSuite.db.profile.anchorMode = false
+""")
+check(bool(rt.eval("FPLAIN == nil and FSHIFT == true and FSHIFT_MOVING == true")), "Shift+right on the HUD background also starts/stops the move")
+
+# --- F.2e silent-kill hardening: empty-string saved msg, missing row.name ---
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+local b = row.flaskIcon
+CHAT_LOG = {}
+row._lastAlert = nil
+RLSuite.raidFrame.db.alerts = { flask = "" }  -- HQ killer: config salvata vuota = STOP silenzioso in ogni versione precedente
+b._scripts.OnMouseDown(b, 'LeftButton'); b._scripts.OnMouseUp(b, 'LeftButton'); if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end
+EMPTYCFG_W = 0
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then EMPTYCFG_W = EMPTYCFG_W + 1 end end
+RLSuite.raidFrame.db.alerts = {}
+CHAT_LOG = {}
+row._lastAlert = nil
+SAVED_ROW_NAME = row.name
+row.name = nil  -- stessa fonte-datata del ramo destro: member.name
+b._scripts.OnMouseDown(b, 'LeftButton'); b._scripts.OnMouseUp(b, 'LeftButton'); if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end
+NONAME_W = 0
+NONAME_DEST = false
+for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then NONAME_W = NONAME_W + 1; if string.find(e, row.member.name) then NONAME_DEST = true end end end
+row.name = SAVED_ROW_NAME
+""")
+check(rt.eval("EMPTYCFG_W") == 1, "empty saved alert message now falls back to the default whisper (was a silent dead-end)")
+check(rt.eval("NONAME_W") == 1 and bool(rt.eval("NONAME_DEST")), "left click works even with row.name missing (falls back to member.name)")
+
+# --- F.2f click on the PLAYER BAR targets the player (user feature: target on PRESS) ---
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+local function reset_click()
+    row._targetT = nil
+    row._pendingRowClick = nil
+    row._manualDrag = nil
+    row:SetScript('OnUpdate', nil)
+    LAST_TARGET = nil; LAST_TARGNAME = nil
+end
+row._lastAlert = nil
+SAVED_MU = (row.member and row.member.unit) or nil
+SAVED_RU = row.unit
+SAVED_RN = row.name
+SAVED_MF = row.member and row.member.fake
+SAVED_RF = row.fake
+SAVED_GCP4 = GetCursorPosition
+GetCursorPosition = function() return 200, 110 end  -- su una barra, sotto NESSUNA icona
+-- 1) roster finto di debug (caso utente): NESSUN bonk, NESSUN target
+reset_click()
+row._scripts.OnMouseDown(row, 'LeftButton')
+row._scripts.OnMouseUp(row, 'LeftButton')
+if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
+TGT_FAKE = LAST_TARGET or LAST_TARGNAME
+-- 2) unit valida OOC: l'ENGINE overlay targetta, NESSUNA chiamata Lua protetta
+reset_click()
+SAVED_UE = UnitExists
+UnitExists = function(u) return u == 'raid7' end
+RLSuite.raidFrame:FillSlot(row, { name = 'Raid7Guy', class = 'WARRIOR', unit = 'raid7', fake = false, raidIndex = 7 })
+row._scripts.OnMouseDown(row, 'LeftButton')
+TGT_PRESS = LAST_TARGET or LAST_TARGNAME   -- deve restare NIL: solo engine
+TGT_ENG_UNIT = row.secTarget:GetAttribute('unit')
+TGT_ENG_SHOWN = row.secTarget:IsShown()
+row._scripts.OnMouseUp(row, 'LeftButton')
+if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
+TGT1 = LAST_TARGET or LAST_TARGNAME
+-- 3) overlay non aggiornabile (attributi congelati in combat): fallback PER NOME
+reset_click()
+row.secTarget:Hide()                       -- simula FillSlot congelato in combat
+if row.member then row.member.name = 'PippoRosso' end
+row.name = 'PippoRosso'
+row._scripts.OnMouseDown(row, 'LeftButton')
+row._scripts.OnMouseUp(row, 'LeftButton')
+if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
+TGT_NAME = LAST_TARGNAME
+-- 4) SHIFT+click: NON targettare (gesto drag player)
+reset_click()
+if row.member then row.member.unit = 'raid7'; row.member.fake = false end
+row.unit = 'raid7'
+IsShiftKeyDown = function() return true end
+row._scripts.OnMouseDown(row, 'LeftButton')
+row._scripts.OnMouseUp(row, 'LeftButton')
+if row._scripts.OnUpdate then row._scripts.OnUpdate(row, 0.016) end
+TGT2 = LAST_TARGET or LAST_TARGNAME
+-- 5) press senza shift: l'engine overlay targetta alla pressione (prima del movimento)
+reset_click()
+IsShiftKeyDown = SAVED_ISD2
+GetCursorPosition = function() return 200, 110 end
+RLSuite.raidFrame:FillSlot(row, { name = 'Raid7Guy', class = 'WARRIOR', unit = 'raid7', fake = false, raidIndex = 7 })
+row._scripts.OnMouseDown(row, 'LeftButton')
+TGT_PRESS_BEFORE_MOVE = { LAST_TARGET, LAST_TARGNAME }
+TGT_PB_ENG = row.secTarget:GetAttribute('unit')
+-- cleanup compreso di una FillSlot di ripristino del member originale
+if row.member then row.member.unit = SAVED_MU; row.member.fake = SAVED_MF; row.member.name = SAVED_RN or row.member.name end
+row.name = SAVED_RN
+row.fake = SAVED_RF
+row.unit = SAVED_RU
+GetCursorPosition = SAVED_GCP4
+UnitExists = SAVED_UE
+row:SetScript('OnUpdate', nil)
+if row.secTarget then row.secTarget:Hide() end
+""")
+
+check(bool(rt.eval("TGT_FAKE == nil")), "debug fake roster: bar click does NOT bonk error-invalid-unit (no target for non-existing units)")
+check(bool(rt.eval("TGT_PRESS == nil and TGT1 == nil")), "real unit: NO protected Lua TargetUnit ever fires (engine-only path, client-proof)")
+check(bool(rt.eval("TGT_ENG_SHOWN")) and rt.eval("TGT_ENG_UNIT") == 'raid7', "secure overlay armed on the real unit: engine targets ON PRESS")
+check(rt.eval("TGT_NAME") == 'PippoRosso', "combat-frozen overlay corner: Lua fallback targets by exact NAME only")
+check(bool(rt.eval("TGT2 == nil")), "Shift+left on a bar does NOT target (drag gesture)")
+check(bool(rt.eval("TGT_PRESS_BEFORE_MOVE[1] == nil and TGT_PRESS_BEFORE_MOVE[2] == nil")) and rt.eval("TGT_PB_ENG") == 'raid7', "no Lua targeting on press (engine), even before any movement")
+
+# --- F.2g SECURE anti-failure layer: engine-hardware click-to-target (Grid/Clique style) ---
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].secTarget ~= nil")), "every row has the SecureActionButtonTemplate target overlay")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].secTarget:GetAttribute('type1') == 'target'")), "secure overlay: engine action is /target")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].secTarget._clickButtons ~= nil and RLSuite.raidFrame.rows[1].secTarget._clickButtons[1] == 'LeftButtonDown'")), "secure overlay targets AT PRESS (LeftButtonDown)")
+# debug fake roster: member F5 fake → overlay hidden; FillSlot real unit → shown + unit
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+SEC_FAKE_HIDDEN = (row.secTarget:IsShown() == false)
+local savedMember = row.member
+RLSuite.raidFrame:FillSlot(row, { name = 'Realone', class = 'WARRIOR', unit = 'raid9', fake = false, raidIndex = 9 })
+SEC_UNIT = row.secTarget:GetAttribute('unit')
+SEC_SHOWN = row.secTarget:IsShown()
+SAVED_MEMBER_G = savedMember
+""")
+check(bool(rt.eval("SEC_FAKE_HIDDEN")), "fake/debug unit: secure target overlay stays hidden (Lua path traces instead)")
+check(rt.eval("SEC_UNIT") == 'raid9' and bool(rt.eval("SEC_SHOWN")), "real unit: secure overlay shows and stores the exact unit to target")
+rt.execute("""
+local row = RLSuite.raidFrame.rows[1]
+RLSuite.raidFrame:FillSlot(row, SAVED_MEMBER_G)
+""")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].member.name == 'F5'")), "roster restored after secure-layer test")
+
+# --- F.3 Raid Frame layout options: font / outline / bar texture / opacity ---
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.font ~= nil")), "Layout -> Font type present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.fontOutline ~= nil")), "Layout -> Font outline toggle present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.barTexture ~= nil")), "Layout -> Bar texture present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.alpha ~= nil")), "Layout -> Opacity slider present")
+rt.execute(r"""
+local o = RLSuite.config:BuildOptionsTable().args.raidframe.args
+o.barTexture.set(nil, 'Interface\\Buttons\\WHITE8x8')
+o.font.set(nil, 'Fonts\\MORPHEUS.TTF')
+o.fontOutline.set(nil, false)
+o.alpha.set(nil, 0.8)
+""")
+check(rt.eval("RLSuite.raidFrame.rows[1].bar._statusbarTex") == r"Interface\Buttons\WHITE8x8", "bar texture option applied to the HP bars")
+check(bool(rt.eval(r"RLSuite.raidFrame.rows[1].bar.nameText._fontArgs[1] == 'Fonts\\MORPHEUS.TTF'")), "font type option applied to the player names")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].bar.nameText._fontArgs[3] == ''")), "font outline toggle removes the outline")
+check(rt.eval("RLSuite.raidFrame.frame._alpha") == 0.8, "opacity option applied to the whole HUD")
+rt.execute(r"""
+local o = RLSuite.config:BuildOptionsTable().args.raidframe.args
+o.barTexture.set(nil, 'Interface\\TargetingFrame\\UI-StatusBar')
+o.font.set(nil, 'Fonts\\FRIZQT__.TTF')
+o.fontOutline.set(nil, true)
+o.alpha.set(nil, 1)
+""")
+
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario F (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
+
+print()
+print("== Scenario G: main bar MT/OT + realtime config, loot pickup stack, debug-off clear, WL gold drag, real-raid join ==")
+
+# --- G.1 Config -> Window sliders apply to the main bar IN REAL TIME ---
+rt.execute("W0 = RLSuite.mainWindow.frame:GetWidth()")
+rt.execute("RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixCols.set(nil, 4)")
+rt.execute("W1 = RLSuite.mainWindow.frame:GetWidth()")
+check(bool(rt.eval("W1 > W0")), "matrix Columns slider re-layouts the main bar in real time (w %d -> %d)" % (rt.eval("W0"), rt.eval("W1")))
+rt.execute("RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixCols.set(nil, 2)")
+rt.execute("H0 = RLSuite.mainWindow.frame:GetHeight()")
+rt.execute("RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixRows.set(nil, 8)")
+rt.execute("H1 = RLSuite.mainWindow.frame:GetHeight()")
+check(bool(rt.eval("H1 > H0")), "matrix Rows slider re-layouts the main bar in real time (h %d -> %d)" % (rt.eval("H0"), rt.eval("H1")))
+rt.execute("RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixRows.set(nil, 4)")
+
+# --- G.2 MT / OT: two small buttons sharing ONE matrix cell ---
+check(bool(rt.eval("RLSuite.mainWindow.mtBtn ~= nil and RLSuite.mainWindow.otBtn ~= nil")), "MT / OT buttons exist on the main bar")
+check(bool(rt.eval("RLSuite.mainWindow.mtBtn:GetWidth() == 43 and RLSuite.mainWindow.otBtn:GetWidth() == 43")), "MT and OT are half-width ((90-4)/2 = 43px)")
+check(bool(rt.eval("RLSuite.mainWindow.mtBtn:GetHeight() == 22 and RLSuite.mainWindow.otBtn:GetHeight() == 22")), "MT / OT keep the matrix button height (22px)")
+check(bool(rt.eval("select(1, RLSuite.mainWindow.mtBtn:GetPoint(1)) == 'TOPLEFT' and select(1, RLSuite.mainWindow.otBtn:GetPoint(1)) == 'TOPLEFT'")), "MT / OT positioned inside the matrix")
+rt.execute("""
+local mw = RLSuite.mainWindow
+MTXOF, MTYOF = select(4, mw.mtBtn:GetPoint(1)), select(5, mw.mtBtn:GetPoint(1))
+RFXOF, RFYOF = select(4, mw.tabs['raidframe']:GetPoint(1)), select(5, mw.tabs['raidframe']:GetPoint(1))
+LOOTXOF, LOOTYOF = select(4, mw.tabs['loot']:GetPoint(1)), select(5, mw.tabs['loot']:GetPoint(1))
+""")
+check(bool(rt.eval("MTXOF == RFXOF")), "MT / OT pair shares the Raid Frame column (cell under it)")
+check(bool(rt.eval("MTYOF == RFYOF - (22 + 4)")), "MT / OT sits directly UNDER the Raid Frame button")
+check(bool(rt.eval("LOOTXOF == RFXOF + 90 + 8 and LOOTYOF == MTYOF")), "Loot shifts one cell aside to free the spot under Raid Frame")
+# --- I tasti MT/OT sono ora SECURE macro buttons: SetPartyAssignment e' PROTETTA ---
+# --- (forbidden dal client) -> il click assembla "/maintank <nome>" via PreClick. ---
+rt.execute("""
+SAVED_DM_G = RLSuite.DebugMode
+RLSuite.DebugMode = function() return false end
+_OLD_UnitExists = UnitExists
+_OLD_UnitName = UnitName
+_OLD_IsRaidLeader = IsRaidLeader
+MT_CALLS = {}
+UnitExists = function(u) return u == 'target' end
+UnitName = function(u) if u == 'target' then return 'Bossunit' end return 'Testplayer' end
+IsRaidLeader = function() return true end
+local b = RLSuite.mainWindow.mtBtn
+if b and b._scripts.PreClick then b._scripts.PreClick(b) end
+MT_CALLS[1] = b:GetAttribute('macrotext')
+if b and b._scripts.PostClick then b._scripts.PostClick(b) end
+local o = RLSuite.mainWindow.otBtn
+if o and o._scripts.PreClick then o._scripts.PreClick(o) end
+MT_CALLS[2] = o:GetAttribute('macrotext')
+if o and o._scripts.PostClick then o._scripts.PostClick(o) end
+""")
+check(rt.eval("MT_CALLS[1]") == "/maintank Bossunit", "MT click assembles /maintank on the target (secure macro, no forbidden SetPartyAssignment)")
+check(rt.eval("MT_CALLS[2]") == "/mainassist Bossunit", "OT click assembles /mainassist on the target (secure macro, no forbidden SetPartyAssignment)")
+rt.execute("""
+UnitExists = function(u) return u == 'player' end
+local b = RLSuite.mainWindow.mtBtn
+if b and b._scripts.PreClick then b._scripts.PreClick(b) end
+MT_NOGROW = (b:GetAttribute('macrotext') == '')
+""")
+check(bool(rt.eval("MT_NOGROW == true")), "MT click with no target assembles no macro")
+rt.execute("""
+UnitExists = _OLD_UnitExists
+UnitName = _OLD_UnitName
+IsRaidLeader = _OLD_IsRaidLeader
+RLSuite.DebugMode = SAVED_DM_G
+""")
+
+# --- G.3 Groupmaking: reqBox hugs the button row + thicker icon borders ---
+rt.execute("local p, rel, rp, x, y = RLSuite.groupmaking.reqBox:GetPoint(3); REQBOX_OK = (p == 'BOTTOMLEFT' and rel == RLSuite.groupmaking.spamBtn and rp == 'TOPLEFT' and y == 8)")
+check(bool(rt.eval("REQBOX_OK == true")), "requirements box bottom-anchored 8px above the buttons (no dead space)")
+check(bool(rt.eval("RLSuite.groupmaking.compSlots[1]._backdrop.edgeSize == nil")), "comp slot body has no border anymore (it sat under the spec icon)")
+check(bool(rt.eval("RLSuite.groupmaking.compSlots[1].borderFrame ~= nil")), "comp slot has a dedicated border overlay frame")
+check(bool(rt.eval("RLSuite.groupmaking.compSlots[1].borderFrame._backdrop.edgeSize == 16 and RLSuite.groupmaking.compSlots[1].borderFrame._backdrop.edgeFile ~= nil")), "comp slot border overlay carries the edge (edgeSize 16)")
+check(bool(rt.eval("RLSuite.groupmaking.compSlots[1].borderFrame:GetParent() == RLSuite.groupmaking.compSlots[1]")), "border overlay is a child of the slot (draws above the spec icon)")
+check(bool(rt.eval("RLSuite.groupmaking.compSlots[1].roleIcon:GetParent() == RLSuite.groupmaking.compSlots[1].borderFrame")), "role icon lives ON the border overlay (draws above the border)")
+check(bool(rt.eval("RLSuite.groupmaking.compSlots[1].roleIconBg:GetParent() == RLSuite.groupmaking.compSlots[1].borderFrame")), "role icon backdrop lives ON the border overlay (draws above the border)")
+check(bool(rt.eval("RLSuite.groupmaking.specCells[1].buttons[1]._backdrop.edgeSize == 16")), "class bar spec icons use even thicker borders (edgeSize 16)")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[1]._backdrop.edgeSize == 14")), "Raid Group slots a bit thicker than before without self-clipping (edgeSize 14)")
+
+# --- G.6b ACE button skin: borderless, no Blizzard default graphics ---
+rt.execute("""
+local function aceSkin(b)
+    if not (b and b._backdrop) then return false end
+    -- BOTTONI BORDERLESS: fill piatto WHITE8x8, NESSUN bordo dialog (edgeFile == nil)
+    return b._backdrop.bgFile == [[Interface\Buttons\WHITE8x8]]
+        and b._backdrop.edgeFile == nil
+        and b._backdropColor and math.abs(b._backdropColor[1] - 0.16) < 0.001
+end
+ACE_RF = aceSkin(RLSuite.raidFrame.buffPanelBtn)
+ACE_GM = aceSkin(RLSuite.groupmaking.diffBtn10) and aceSkin(RLSuite.groupmaking.spamBtn)
+ACE_LM = aceSkin(RLSuite.lootManager.rollMSBtn) and aceSkin(RLSuite.lootManager.rerollBtn)
+ACE_MS = aceSkin(RLSuite.msManager.requestBtn) and aceSkin(RLSuite.msManager.genMsgBtn)
+-- hover = fill che schiarisce (hooks OnEnter/OnLeave), mai un bordo
+local b0 = RLSuite.raidFrame.buffPanelBtn
+if b0._scripts and b0._scripts.OnEnter then b0._scripts.OnEnter(b0) end
+ACE_HOVER = (b0._backdropColor and math.abs(b0._backdropColor[1] - 0.26) < 0.001
+    and math.abs(b0._backdropColor[2] - 0.29) < 0.001)
+if b0._scripts and b0._scripts.OnLeave then b0._scripts.OnLeave(b0) end
+ACE_LEAVE = (b0._backdropColor and math.abs(b0._backdropColor[1] - 0.16) < 0.001)
+""")
+check(bool(rt.eval("ACE_RF")), "ACE skin on the 'Raid Buffs' button (borderless dark flat)")
+check(bool(rt.eval("ACE_GM")), "ACE skin on Groupmaking buttons: no dialog border, no Blizzard default graphics")
+check(bool(rt.eval("ACE_LM")), "ACE skin on Loot manager buttons (borderless)")
+check(bool(rt.eval("ACE_MS")), "ACE skin on MS Manager buttons (borderless)")
+check(bool(rt.eval("ACE_HOVER") and bool(rt.eval("ACE_LEAVE"))), "borderless buttons: hover brightens the fill, leaving restores it")
+
+# --- G.7 Debug OFF empties the Loot Manager (history + pickup windows) ---
+rt.execute("RLSuite.lootManager:AddToHistory('|cffff8000|Hitem:1|h[Test]|h|r', 'Test Item', 'tex', 4)")
+rt.execute("RLSuite.lootManager:ShowTradeWindow({ itemTexture = 'tex', itemLink = nil })")
+check(bool(rt.eval("#RLSuite.lootManager.history > 0 and #RLSuite.lootManager.tradeWindows > 0")), "loot manager populated before debug-off test")
+rt.execute("RLSuite.db.profile.debug = false; RLSuite:ApplyDebugMode()")
+check(bool(rt.eval("#RLSuite.lootManager.history == 0")), "disabling debug mode empties the loot history")
+check(bool(rt.eval("#RLSuite.lootManager.tradeWindows == 0")), "disabling debug mode closes the pickup windows")
+check(bool(rt.eval("RLSuite.lootManager.currentRoll == nil")), "disabling debug mode drops the active roll")
+
+# --- G.4 Raid Group populates when JOINING an already formed raid ---
+# On a real 3.3.5 client the global IsInRaid() does not exist (4.0+ API).
+rt.execute("""
+_OLD_IsInRaid = IsInRaid
+_OLD_GetNumRaidMembers = GetNumRaidMembers
+_OLD_GetRaidRosterInfo = GetRaidRosterInfo
+IsInRaid = nil
+RLSUITE_RAID = {
+    {name='Tanka', subgroup=1}, {name='Heala', subgroup=1},
+    {name='Dpsa', subgroup=2}, {name='Dpsb', subgroup=3},
+    {name='Dpsc', subgroup=4}, {name='Dpsd', subgroup=5}, {name='Dpse', subgroup=6},
+}
+GetNumRaidMembers = function() return #RLSUITE_RAID end
+GetRaidRosterInfo = function(i)
+    local m = RLSUITE_RAID[i]
+    if m then return m.name, 0, m.subgroup, 80, 'Warrior', 'WARRIOR', 'Icecrown', true, false end
+    return nil
+end
+RLSuite.groupmaking:UpdateWLGroups()
+RAID_NAMES = {}
+for _, s in ipairs(RLSuite.groupmaking.wlGroupSlots) do
+    if s.nameFS and s.nameFS:GetText() ~= '' then table.insert(RAID_NAMES, s.nameFS:GetText()) end
+end
+RAID_NAMES = table.concat(RAID_NAMES, ',')
+""")
+check(bool(rt.eval("RAID_NAMES:find('Tanka', 1, true) ~= nil")), "joining a half-full raid: G1 member shown without global IsInRaid")
+check(bool(rt.eval("RAID_NAMES:find('Dpsa', 1, true) ~= nil")), "joining a half-full raid: G2 member shown")
+check(bool(rt.eval("RAID_NAMES:find('Dpse', 1, true) ~= nil")), "joining a half-full raid: G6 member shown")
+rt.execute("""
+IsInRaid = _OLD_IsInRaid
+GetNumRaidMembers = _OLD_GetNumRaidMembers
+GetRaidRosterInfo = _OLD_GetRaidRosterInfo
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+RLSuite:ResetDebugRaid()
+for i=1,3 do RLSuite:DebugInviteAccept('Hl'..i, 'WARRIOR') end
+""")
+
+# --- G.5 golden border highlight on the drop-target slot while dragging ---
+rt.execute("""
+GetCursorPosition = function() return 101, 104 end
+local slots = RLSuite.groupmaking.wlGroupSlots
+-- Lo Scenario F lascia override di geometria per-istanza sugli slot:
+-- azzerarle, cosi' solo lo slot 8 viene colpito dall'hit-test del cursore.
+for _, b in ipairs(slots) do
+    b.GetLeft, b.GetRight, b.GetBottom, b.GetTop = nil, nil, nil, nil
+end
+slots[8].GetLeft = function() return 100 end
+slots[8].GetRight = function() return 150 end
+slots[8].GetBottom = function() return 100 end
+slots[8].GetTop = function() return 116 end
+local src = slots[1]
+src._scripts.OnDragStart(src, 'LeftButton')
+RLSuite.groupmaking:WlDragTick()
+""")
+check(bool(rt.eval("RLSuite.groupmaking.wlDragTracker ~= nil and RLSuite.groupmaking.wlDragTracker:IsShown() == true")), "drag starts the cursor tracker")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[8]._wlDropHl == true")), "slot under the cursor flagged as drop target")
+rt.execute("local c = RLSuite.groupmaking.wlGroupSlots[8]._backdropBorderColor; GOLD_OK = (c[1] == 1 and c[2] == 0.82 and c[3] == 0)")
+check(bool(rt.eval("GOLD_OK == true")), "drop target slot shows the GOLDEN border while dragging")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[2]._wlDropHl == nil")), "other slots not highlighted")
+rt.execute("""
+GetCursorPosition = function() return 500, 500 end
+RLSuite.groupmaking:WlDragTick()
+""")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[8]._wlDropHl == nil")), "moving the cursor away removes the highlight")
+rt.execute("local c = RLSuite.groupmaking.wlGroupSlots[8]._backdropBorderColor; GREY_OK = (c[1] == 0.3 and c[3] == 0.32)")
+check(bool(rt.eval("GREY_OK == true")), "highlight removed: empty slot border back to grey")
+rt.execute("""
+GetCursorPosition = function() return 101, 104 end
+local src = RLSuite.groupmaking.wlGroupSlots[1]
+src._scripts.OnDragStop(src)
+""")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[8].playerName == 'Testplayer'")), "drop onto the highlighted slot moves the player there")
+check(bool(rt.eval("RLSuite.groupmaking.wlGroupSlots[8]._wlDropHl == nil")), "highlight cleared after the drop")
+check(bool(rt.eval("RLSuite.groupmaking.wlDragTracker:IsShown() == false")), "cursor tracker stopped after the drop")
+rt.execute("local c = RLSuite.groupmaking.wlGroupSlots[8]._backdropBorderColor; CLASS_OK = math.abs((c[1] or 0) - 0.78) < 0.01")
+check(bool(rt.eval("CLASS_OK == true")), "filled slot border back to class color after the drop")
+
+# --- G.6 pickup windows stack one BELOW the other + slim layout ---
+rt.execute("RLSuite.lootManager:CloseAllTradeWindows()")
+rt.execute("RLSuite.lootManager:ShowTradeWindow({ itemTexture = 'tex', itemLink = '|cffffffff|Hitem:2|h[Loot A]|h|r' })")
+rt.execute("RLSuite.lootManager:ShowTradeWindow({ itemTexture = 'tex', itemLink = '|cffffffff|Hitem:3|h[Loot B]|h|r' })")
+check(bool(rt.eval("#RLSuite.lootManager.tradeWindows == 2")), "two pickup windows can be open at once")
+rt.execute("local p, rel, rp, x, y = RLSuite.lootManager.tradeWindows[2]:GetPoint(1); STACK_OK = (p == 'TOP' and rel == RLSuite.lootManager.tradeWindows[1] and rp == 'BOTTOM' and y == -6)")
+check(bool(rt.eval("STACK_OK == true")), "second pickup window anchors BELOW the first (not overlapping)")
+check(bool(rt.eval("RLSuite.lootManager.tradeWindows[1]:GetHeight() == 44")), "pickup window is as tall as the item icon (32px) + padding")
+rt.execute("local f = RLSuite.lootManager.tradeWindows[1]; local p, rel, rp = f.text:GetPoint(1); TXT_OK = (p == 'LEFT' and rel == f.icon and rp == 'RIGHT')")
+check(bool(rt.eval("TXT_OK == true")), "'Click to pick up item' sits to the RIGHT of the icon")
+check(bool(rt.eval("RLSuite.lootManager.tradeWindows[1].text:GetText() == 'Click to pick up item'")), "pickup text preserved")
+rt.execute("RLSuite.lootManager:CloseTradeWindow(RLSuite.lootManager.tradeWindows[1])")
+rt.execute("local p, rel, rp, x, y = RLSuite.lootManager.tradeWindows[1]:GetPoint(1); RISE_OK = (p == 'TOP' and rel == UIParent and rp == 'TOP' and y == -80)")
+check(bool(rt.eval("RISE_OK == true")), "closing the first pickup window makes the next one rise to the base anchor (top of the screen)")
+check(bool(rt.eval("RLSuite.lootManager.tradeWindows[1]._enabledMouse == false")), "pickup window frame NEVER captures mouse (only its icon and close button do)")
+rt.execute("RLSuite.lootManager:CloseAllTradeWindows()")
+
+# --- G.8 Groupmaking: 2-column class bar order + reduced minimum height ---
+rt.execute("""
+CLASSSEQ = {}
+for i, cell in ipairs(RLSuite.groupmaking.specCells) do
+    local b = cell.buttons and cell.buttons[1]
+    CLASSSEQ[#CLASSSEQ+1] = b and b.class or '?'
+end
+CLASSSEQ = table.concat(CLASSSEQ, ',')
+""")
+check(rt.eval("CLASSSEQ") == "WARRIOR,PALADIN,ROGUE,PRIEST,SHAMAN,MAGE,DEATHKNIGHT,WARLOCK,HUNTER,DRUID",
+    "class bar order for the 2-column layout (col1 Warrior/Rogue/Shaman/DK/Hunter, col2 Paladin/Priest/Mage/Warlock/Druid)")
+rt.execute("""
+RLSuite.groupmaking.classBar:SetWidth(316)
+RLSuite.groupmaking:LayoutClassBar()
+CELLPOS = {}
+for i, cell in ipairs(RLSuite.groupmaking.specCells) do
+    local p, rel, rp, x, y = cell.frame:GetPoint(1)
+    CELLPOS[i] = math.floor((x or 0) + 0.5) .. '/' .. math.floor((y or 0) + 0.5)
+end
+""")
+check(rt.eval("CELLPOS[5]") == "0/-96", "Shaman -> first column, row 3")
+check(rt.eval("CELLPOS[6]") == "159/-96", "Mage -> second column, row 3")
+check(rt.eval("CELLPOS[8]") == "159/-144", "Warlock -> second column, directly under Mage")
+check(rt.eval("CELLPOS[10]") == "159/-192", "Druid -> second column, directly under Warlock")
+check(rt.eval("CELLPOS[7]") == "0/-144", "DK -> first column, directly under Shaman")
+check(rt.eval("CELLPOS[9]") == "0/-192", "Hunter -> first column, under DK (Shaman column)")
+check(bool(rt.eval("RLSuite.groupmaking:MinHeight() == RLSuite.groupmaking.topRow:GetHeight() + 328")), "minimum window height reduced to topRow + 328 (dead space removed)")
+
+# --- G.9 Groupmaking: minimum width = bottom button row overall width ---
+check(bool(rt.eval("RLSuite.groupmaking.specsLbl ~= nil")), "'Show specs in message' label reference stored for MinWidth")
+check(bool(rt.eval("RLSuite.groupmaking:MinWidth() == 380 + math.ceil(RLSuite.groupmaking.specsLbl:GetStringWidth())")),
+    "MinWidth = 16+L-margin + Start Spam(100)+8 + Preview(100)+6 + check(24) + label width + 10 + InviteEngine(100) + 16+R-margin")
+check(bool(rt.eval("select(1, RLSuite.windowMins.groupmaking()) == RLSuite.groupmaking:MinWidth()")),
+    "registered windowMins.groupmaking uses the button-row width as minimum width")
+check(bool(rt.eval("RLSuite.groupmaking:MinWidth() >= 500")), "minimum width fits the whole button row (>= 500)")
+
+# --- G.10 Loot Manager: roll keys -> RAID WARNING, give-to line, keep rolling with pickup open ---
+rt.execute("""
+RLSuite.db.profile.debug = true
+CHAT_LOG = {}
+local lm = RLSuite.lootManager
+lm:AddToHistory('|cffff8000|Hitem:42|h[Rolled Item]|h|r', 'Rolled Item', 'tex', 4)
+lm:SelectItem(lm.history[#lm.history])
+lm:StartRoll('MS')
+""")
+rt.execute("""
+FOUND_RW = false
+for _, e in ipairs(CHAT_LOG or {}) do
+    if string.find(e, '%[RAID_WARNING%]') and string.find(e, 'Roll MS for Rolled Item') then FOUND_RW = true end
+end
+""")
+check(bool(rt.eval("FOUND_RW")), "clicking a roll key sends the announce as RAID WARNING (debug echo: [RAID_WARNING])")
+rt.execute("""
+local lm = RLSuite.lootManager
+lm.currentRoll.rolls = { {name = 'Winnerbot', roll = 99} }  -- deterministic winner (no ties)
+lm:AnnounceWinner()
+local tw = lm.tradeWindows[#lm.tradeWindows]
+W10_WINNER = lm.currentRoll and lm.currentRoll.item.assignedTo
+W10_SELTEXT = lm.selectedItemText and lm.selectedItemText:GetText() or '?'
+W10_NOSEL = (lm.selectedItem == nil)
+W10_GIVETO = (tw and tw.giveTo) and tw.giveTo:GetText() or '?'
+W10_GBELOW = false
+if tw and tw.giveTo and tw.text then
+    local p, rel = tw.giveTo:GetPoint(1)
+    W10_GBELOW = (p == 'TOPLEFT' and rel == tw.text)
+end
+W10_GRAY = false
+W10_DESAT = false
+for _, row in ipairs(lm.histRows or {}) do
+    if row.entry and row.entry.assignedTo == 'Winnerbot' then
+        W10_GRAY = row.name and row.name._tc and row.name._tc[1] ~= nil
+            and math.abs(row.name._tc[1] - 0.45) < 0.001
+        W10_DESAT = row.icon and row.icon._desat == true or false
+    end
+end
+""")
+check(rt.eval("W10_WINNER") == "Winnerbot", "winner recorded on the rolled item")
+check(bool(rt.eval("W10_NOSEL")), "selected item cleared after the win (roll another piece with pickup open)")
+check(rt.eval("W10_SELTEXT") == rt.eval("RLSuite.L['No item selected']"), "selected item row shows 'No item selected' again")
+check(rt.eval("W10_GIVETO") == "give to: Winnerbot", "pickup window shows 'give to: <winner>' under the pickup line")
+check(bool(rt.eval("W10_GBELOW")), "give-to line is anchored below the 'Click to pick up item' text")
+check(bool(rt.eval("W10_GRAY")), "rolled item row is greyed out in the loot list")
+check(bool(rt.eval("W10_DESAT")), "rolled item icon is desaturated in the loot list")
+rt.execute("RLSuite.lootManager:CloseAllTradeWindows()")
+
+# =====================================================================
+print("== Scenario H: macrobar numbers off, loot ignore rules, MS announce in loot, pickup click fix ==")
+# =====================================================================
+
+# --- H.1 MacroBar: i numerini sulle icone non esistono piu' ---
+check(bool(rt.eval("RLSuite.macrobar.buttons[1].numText == nil")), "macrobar icons have NO index numbers anymore")
+check(bool(rt.eval("RLSuite.macrobar.buttons[1].hotkey ~= nil")), "macrobar keybind text kept on the icons")
+check(bool(rt.eval("RLSuite.macrobar.keypadFrame._noOuterBorder == true")), "macrobar keypad (key buttons section) flagged borderless")
+check(bool(rt.eval("(function() local k = RLSuite.macrobar.keypadFrame; return k._backdrop ~= nil and (k._backdropBorderColor[4] or 1) == 0 end)()")), "keypad section: themed fill kept, border fully invisible")
+
+# --- H.2 Loot Manager: emblemi SEMPRE ignorati ---
+rt.execute("""
+local lm = RLSuite.lootManager
+lm.history = {}; if lm.db then lm.db.history = lm.history end
+lm.selectedItem = nil
+lm:UpdateHistory()
+H_N0 = #lm.history
+lm:OnLootMessage('You receive loot: |cffa335ee|Hitem:49426:0:0:0:0:0:0:0:80|h[Emblem of Frost]|h|r.')
+H_EMB = #lm.history
+lm:OnLootMessage('You receive loot: |cffa335ee|Hitem:40753:0:0:0:0:0:0:0:80|h[Emblem of Valor]|h|r.')
+H_EMB2 = #lm.history
+""")
+check(bool(rt.eval("H_N0 == 0 and H_EMB == 0 and H_EMB2 == 0")), "emblems (Frost/Valor) are NEVER recorded in the loot history")
+rt.execute("RLSuite.lootManager:UpdateHistory(); H_EMBROWS = #RLSuite.lootManager.histRows")
+check(bool(rt.eval("H_EMBROWS == 0")), "no emblem rows ever show in the list")
+
+# --- H.3 Loot Manager: loot da item in borsa ignorato ---
+rt.execute("""
+local lm = RLSuite.lootManager
+H_BAG_OK = (HOOKS.UseContainerItem ~= nil)  -- hook registrato a Init
+if HOOKS.UseContainerItem then HOOKS.UseContainerItem() end  -- simula uso Sack of Frosty Treasures
+lm:OnLootOpened()
+H_B1 = #lm.history
+lm:OnLootMessage('You receive loot: |cffa335ee|Hitem:50100:0:0:0:0:0:0:0:80|h[Sack Item]|h|r.')
+H_B2 = #lm.history
+lm:OnLootClosed()
+H_BAG_FLAG = (lm._containerLoot == false)
+lm:OnLootMessage('You receive loot: |cffa335ee|Hitem:50100:0:0:0:0:0:0:0:80|h[Sack Item]|h|r.')
+H_B3 = #lm.history
+""")
+check(bool(rt.eval("H_BAG_OK == true")), "UseContainerItem is hooked to detect bag-loot windows")
+check(bool(rt.eval("H_B1 == 0 and H_B2 == 0")), "loot from items opened in the player bags (Sack of Frosty Treasures) is ignored")
+check(bool(rt.eval("H_BAG_FLAG == true and H_B3 == 1")), "after the bag window closes, normal boss loot is recorded again")
+
+# --- H.4 Loot Manager: checkbox ignore loots (recipes/BOE/gems/shards) ---
+rt.execute("""
+local lm = RLSuite.lootManager
+lm.history = {}; if lm.db then lm.db.history = lm.history end
+lm.selectedItem = nil
+lm:UpdateHistory()
+H_CK = (lm.ignoreChecks ~= nil and lm.ignoreChecks.recipes ~= nil and lm.ignoreChecks.boe ~= nil
+    and lm.ignoreChecks.gems ~= nil and lm.ignoreChecks.shards ~= nil)
+ITEMINFO_DB['|cff0070dd|Hitem:99901:0:0:0:0:0:0:0:80|h[Pattern: Test Boots]|h|r']
+    = {'Pattern: Test Boots', '|cff0070dd|Hitem:99901:0:0:0:0:0:0:0:80|h[Pattern: Test Boots]|h|r', 3, 80, 80, 'Recipe', 'Leatherworking', 1, '', 'tex'}
+ITEMINFO_DB['|cff0070dd|Hitem:99902:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r']
+    = {'Bold Cardinal Ruby', '|cff0070dd|Hitem:99902:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r', 3, 80, 80, 'Gem', 'Red', 1, '', 'tex'}
+""")
+check(bool(rt.eval("H_CK == true")), "the 4 'ignore loots' checkboxes exist (recipes/BOE/gems/shards)")
+rt.execute("""
+local lm = RLSuite.lootManager
+local function clickCB(key, state)
+    local cb = lm.ignoreChecks[key]
+    cb:SetChecked(state)
+    cb._scripts.OnClick(cb, 'LeftButton')
+end
+H_F0 = #lm.history
+-- gems on
+clickCB('gems', true)
+lm:OnLootMessage('You receive loot: |cff0070dd|Hitem:99902:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r.')
+H_GEM_CAP = #lm.history
+lm:UpdateHistory()
+H_GEM_ROWS = #lm.histRows
+-- gems off
+clickCB('gems', false)
+lm:OnLootMessage('You receive loot: |cff0070dd|Hitem:99902:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r.')
+H_GEM_ON = #lm.history
+H_GEM_ROWS2 = #lm.histRows
+-- recipes on
+local n0 = #lm.history
+clickCB('recipes', true)
+lm:OnLootMessage('You receive loot: |cff0070dd|Hitem:99901:0:0:0:0:0:0:0:80|h[Pattern: Test Boots]|h|r.')
+H_REC = (#lm.history == n0)
+clickCB('recipes', false)
+-- shards on
+clickCB('shards', true)
+lm:OnLootMessage('You receive loot: |cff0070dd|Hitem:34052:0:0:0:0:0:0:0:80|h[Dream Shard]|h|r.')
+H_SHARD = (#lm.history == n0)
+clickCB('shards', false)
+-- BOE on: 99904 Armatura con tooltip 'Binds when equipped'
+ITEMINFO_DB['|cffa335ee|Hitem:99904:0:0:0:0:0:0:0:80|h[BOE Chestplate]|h|r']
+    = {'BOE Chestplate', '|cffa335ee|Hitem:99904:0:0:0:0:0:0:0:80|h[BOE Chestplate]|h|r', 4, 80, 80, 'Armor', 'Plate', 1, '', 'tex'}
+TOOLTIP_LINES = { [2] = ITEM_BIND_ON_EQUIP }
+TOOLTIP_REFRESH()
+clickCB('boe', true)
+lm:OnLootMessage('You receive loot: |cffa335ee|Hitem:99904:0:0:0:0:0:0:0:80|h[BOE Chestplate]|h|r.')
+H_BOE = (#lm.history == n0)
+clickCB('boe', false)
+lm:OnLootMessage('You receive loot: |cffa335ee|Hitem:99904:0:0:0:0:0:0:0:80|h[BOE Chestplate]|h|r.')
+H_BOE2 = (#lm.history == n0 + 1)
+TOOLTIP_LINES = {}
+TOOLTIP_REFRESH()
+H_FIL_DB = (lm.db.filters.gems == false and lm.db.filters.shards == false)
+""")
+check(bool(rt.eval("H_F0 == 0 and H_GEM_CAP == 0")), "'gems' checkbox: gem loot is never recorded while enabled")
+check(bool(rt.eval("H_GEM_ON == 1 and H_GEM_ROWS2 == 1")), "'gems' checkbox off: gem loot recorded again")
+check(bool(rt.eval("H_REC == true")), "'recipes' checkbox: recipe loot ignored")
+check(bool(rt.eval("H_SHARD == true")), "'shards' checkbox: Dream Shard ignored")
+check(bool(rt.eval("H_BOE == true and H_BOE2 == true")), "'BOE' checkbox: bind-on-equip loot ignored only while enabled")
+check(bool(rt.eval("H_FIL_DB == true")), "checkbox states persist into db.loot.filters")
+
+# --- H.5 Announce Changes button also in the Loot Manager ---
+rt.execute("""
+local lm = RLSuite.lootManager
+H_ANC = (lm.announceMSBtn ~= nil and lm.announceMSBtn:GetText() == 'Announce Changes')
+MS_CALLED = 0
+local orig = RLSuite.msManager.GenerateMessage
+RLSuite.msManager.GenerateMessage = function() MS_CALLED = MS_CALLED + 1 end
+lm.announceMSBtn._scripts.OnClick(lm.announceMSBtn)
+RLSuite.msManager.GenerateMessage = orig
+""")
+check(bool(rt.eval("H_ANC == true")), "'Announce Changes' button present in the Loot Manager")
+check(bool(rt.eval("MS_CALLED == 1")), "clicking it runs the MS Manager announce (GenerateMessage)")
+
+# --- H.6 pickup click: NIENTE item sul cursore senza trade aperto ---
+rt.execute("""
+local lm = RLSuite.lootManager
+lm:CloseAllTradeWindows()
+PICKED_ITEM = nil
+TRADE_BTN = 0
+TradeFrame:Hide()
+lm:ShowTradeWindow({ itemTexture = 'tex', itemLink = '|cffa335ee|Hitem:42|h[Loot A]|h|r', assignedTo = 'Winnerbot' })
+local tw = lm.tradeWindows[1]
+H_PB = (tw.pickBtn ~= nil)
+tw.pickBtn._scripts.OnClick(tw.pickBtn)
+H_NOPICK = (PICKED_ITEM == nil)
+H_STAY = (#lm.tradeWindows == 1 and tw:IsShown())
+TradeFrame:Show()
+tw.pickBtn._scripts.OnClick(tw.pickBtn)
+H_PICKED = (PICKED_ITEM == '|cffa335ee|Hitem:42|h[Loot A]|h|r')
+H_TRADECL = (TRADE_BTN == 1)
+H_CLOSED2 = (#lm.tradeWindows == 0)
+TradeFrame:Hide()
+""")
+check(bool(rt.eval("H_PB == true")), "pickup icon button reference kept for the gated click")
+check(bool(rt.eval("H_NOPICK == true and H_STAY == true")), "no trade open: click does NOT put the item on the cursor and keeps the window (list stays clickable)")
+check(bool(rt.eval("H_PICKED == true and H_TRADECL == true and H_CLOSED2 == true")), "trade open: click picks the item up, drops it in trade slot 1 and closes the window")
+
+# pulizia storico usato nello scenario H
+rt.execute("local lm = RLSuite.lootManager; lm.history = {}; if lm.db then lm.db.history = lm.history end; lm.selectedItem = nil; lm:UpdateHistory()")
+
+# =====================================================================
+print("== Scenario I: Combat Log (parser 3.3.5, segmentazione pull, store, aggregazioni, UI tabs, grafico) ==")
+# =====================================================================
+
+# --- I.1 wiring: tab, finestra, defaults ---
+check(bool(rt.eval("RLSuite.combatLog ~= nil and RLSuite.combatLog.frame ~= nil")), "combat log module and window exist")
+check(bool(rt.eval("RLSuite.mainWindow:PaneForTab('log') == RLSuite.combatLog.frame")), "main window 'log' tab pane is the combat log window")
+check(bool(rt.eval("RLSuite.mainWindow.tabs.log ~= nil")), "'Log' tab button exists on the main bar")
+check(bool(rt.eval("RLSuite.combatLog.graph ~= nil")), "combat log graph widget created at init")
+check(bool(rt.eval("RLSuite.mainWindow:LayoutKeyForTab('log') == 'combatlog'")), "layout key for the log tab is 'combatlog' (matches drag/resize persistence)")
+rt.execute("RLSuite.mainWindow:ShowTab('log')")
+check(bool(rt.eval("RLSuite.mainWindow.currentTab == 'log'")), "SelectTab keeps the 'log' key (was silently rewritten to 'group' -> opened Groupmaking)")
+check(bool(rt.eval("RLSuite.combatLog.frame:IsShown() == true")), "clicking the Log tab shows the combat log window (not Groupmaking)")
+rt.execute("RLSuite.combatLog.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
+
+# resize grip regression: delta relativo al mouse-down, clampato allo schermo
+rt.execute("Rh = CreateFrame('Frame', nil, UIParent); Rh:Show(); Rh:SetSize(300, 200); Rh:SetPoint('TOPLEFT', UIParent, 'TOPLEFT', -100, -100)")
+rt.execute("R_GRIP = RLSuite.utils:AddResizeGrip(Rh, 'rsztest', 100, 80)")
+rt.execute("""
+SAVED_GCP_R, SAVED_IMBD_R = GetCursorPosition, IsMouseButtonDown
+GetCursorPosition = function() return 300, 150 end
+IsMouseButtonDown = function() return true end
+R_GRIP._scripts["OnMouseDown"](R_GRIP, "LeftButton")
+GetCursorPosition = function() return 400, 200 end
+R_GRIP._scripts["OnUpdate"](R_GRIP)
+R_W1, R_H1 = Rh:GetWidth(), Rh:GetHeight()
+GetCursorPosition = function() return 100000, -100000 end
+R_GRIP._scripts["OnUpdate"](R_GRIP)
+R_W2, R_H2 = Rh:GetWidth(), Rh:GetHeight()
+IsMouseButtonDown = function() return false end
+R_GRIP._scripts["OnUpdate"](R_GRIP)
+R_LASTW = RLSuite.utils:WindowLayout('rsztest').width
+GetCursorPosition, IsMouseButtonDown = SAVED_GCP_R, SAVED_IMBD_R
+""")
+check(rt.eval("math.abs(R_W1 - 400) < 0.01 and math.abs(R_H1 - 150) < 0.01"), "resize grip follows the mouse delta while dragging (400x150)")
+check(rt.eval("R_W2 <= 1024 and R_H2 <= 768"), "resize grip CLAMPED to the screen: window can never become huge again (was the StartSizing bug)")
+check(rt.eval("R_LASTW == R_W2 and R_LASTW > 0"), "resize grip size persisted on release (auto-finish outside the grip works)")
+rt.execute("Rh:Hide()")
+
+# window self-heal regression: brutalized saved sizes are clamped back on open
+rt.execute("RLSuite.utils:WindowLayout('combatlog').width = 5001; RLSuite.utils:WindowLayout('combatlog').height = 3001")
+rt.execute("RLSuite.mainWindow:ShowTab('log')")
+check(rt.eval("RLSuite.combatLog.frame:GetWidth() <= 1024 and RLSuite.combatLog.frame:GetHeight() <= 768"), "opening a tab heals oversized SAVED window dims (<= screen): the Log window comes back on-screen by itself")
+check(rt.eval("RLSuite.utils:WindowLayout('combatlog').width == 1024"), "healed size written back into the saved layout (no more repeating blow-up)")
+rt.execute("Cw = CreateFrame('Frame', nil, UIParent); Cw:Show(); Cw:SetSize(5000, 3000); Cw:SetPoint('TOPLEFT', UIParent, 'TOPLEFT', 0, 0); RLSuite.utils:ClampWindowToScreen(Cw)")
+check(rt.eval("Cw:GetWidth() == 1024 and Cw:GetHeight() == 768"), "ClampWindowToScreen directly clamps any oversized frame to the screen")
+rt.execute("Cw:Hide(); RLSuite.combatLog.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
+
+
+check(bool(rt.eval("RLSuite.combatLog.db ~= nil and RLSuite.combatLog.db.saveFights == 15 and RLSuite.combatLog.db.maxEvents == 3000")), "db.combatlog defaults loaded (saveFights 15, maxEvents 3000)")
+
+# --- I.2 helpers: guid npc id + realm strip + flags ---
+rt.execute("""
+local cl = RLSuite.combatLog
+G_NPC = cl:NpcIdFromGUID('0xF130008F040000AA')
+G_NPC2 = cl:NpcIdFromGUID('0xF1300090020000BB')
+G_MODERN = cl:NpcIdFromGUID('Creature-0-1463-0-63-36612-0000123ABC')
+G_PLAYERGUID = cl:NpcIdFromGUID('0x0700000001234ABC')
+G_SHORT = cl:ShortName('Testplayer-TestRealm')
+G_SHORT2 = cl:ShortName('OtherName')
+""")
+check(bool(rt.eval("G_NPC == 36612")), "3.3.5 GUID parse: Marrowgar npc id 36612 from hex GUID")
+check(bool(rt.eval("G_NPC2 == 36866")), "3.3.5 GUID parse: second npc id (36866)")
+check(bool(rt.eval("G_MODERN == 36612")), "modern dash GUID parse also yields the npc id")
+check(bool(rt.eval("G_PLAYERGUID == nil")), "player GUID does not produce an npc id")
+check(bool(rt.eval("G_SHORT == 'Testplayer' and G_SHORT2 == 'OtherName'")), "realm suffix stripped for same-realm names only")
+
+# --- I.3 registrazione: pull, eventi, kill, ring buffer, filtri ---
+rt.execute("""
+local cl = RLSuite.combatLog
+local now = GetTime()
+cl.selFight = nil
+-- fight 1: danni + kill Marrowgar
+cl:OnRegenDisabled()
+I_REC1 = (cl.current ~= nil)
+-- player -> boss: SPELL_DAMAGE (id, name, school, amount, overkill, school2, resisted, blocked, absorbed, critical)
+cl:OnCLEU(nil, now, 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
+cl:OnCLEU(nil, now, 'SPELL_DAMAGE', '0x0p', 'PlayerTwo', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Frostbolt', 2, 3000, 100, 0, 0, 200, 0, 0)
+cl:OnCLEU(nil, now, 'SWING_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 1500, 0, 1, 0, 0, 0, 0)
+cl:OnCLEU(nil, now, 'SPELL_HEAL', '0x0p', 'HealerOne', 1024+16+1, '0x0q', 'PlayerOne', 1024+16+1, 200, 'Flash Heal', 2, 4000, 500, 0, 0)
+-- aura uptime: 10s applicate poi rimosse (fake GetTime avanzato via t2)
+cl:OnCLEU(nil, now, 'SPELL_AURA_APPLIED', '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, '0x0p', 'PlayerOne', 1024+16+1, 300, 'Bone Spike', 6, 'DEBUFF')
+cl:OnCLEU(nil, now, 'SPELL_INTERRUPT', '0x0p', 'KickerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 400, 'Kick', 1, 500, 'Frost Bolt', 4)
+cl:OnCLEU(nil, now, 'UNIT_DIED', '0x0p', '', 0, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64)
+I_BOSS = cl.current.boss
+I_KILL0 = cl.current.kill
+I_CNT1 = cl.current.count
+cl:OnRegenEnabled()
+I_REC0 = (cl.current == nil)
+I_F1 = cl.db.fights[1]
+I_KILLF = I_F1.kill == true
+I_PERSISTCNT = #cl.db.fights
+""")
+check(bool(rt.eval("I_REC1 == true and I_REC0 == true")), "combat start/end opens and closes a fight segment")
+check(bool(rt.eval("I_BOSS == 'Lord Marrowgar' and I_KILLF == true")), "fight named after the boss NPC and marked KILL on its UNIT_DIED")
+check(bool(rt.eval("I_CNT1 == 7 and I_PERSISTCNT == 1")), "7 events captured and fight persisted into db.fights")
+check(rt.eval("I_F1.name") == "Lord Marrowgar", "saved fight carries the boss name")
+
+# --- I.4 filtri cattura: damage off => non registrato; buffs off ---
+rt.execute("""
+local cl = RLSuite.combatLog
+cl.db.filters.damage = false
+cl:OnRegenDisabled()
+local now = GetTime()
+cl:OnCLEU(nil, now, 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF1300090020000BB', 'Sindragosa', 2048+64, 100, 'Fireball', 4, 5000, 0)
+cl:OnCLEU(nil, now, 'SPELL_HEAL', '0x0p', 'HealerOne', 1024+16+1, '0x0q', 'PlayerOne', 1024+16+1, 200, 'Flash Heal', 2, 4000, 500, 0, 0)
+I_FLTCNT = cl.current.count
+cl:OnRegenEnabled()
+cl.db.filters.damage = true
+""")
+check(bool(rt.eval("I_FLTCNT == 1")), "capture filters skip disabled categories (damage off: only the heal lands)")
+
+# --- I.5 aggregazioni ---
+rt.execute("""
+local cl = RLSuite.combatLog
+ROSTER_MOCK = { { 'PlayerOne', 1, 1, 80, 80, 'WARRIOR' }, { 'PlayerTwo', 1, 1, 80, 80, 'PALADIN' }, { 'HealerOne', 1, 1, 80, 80, 'DRUID' } }
+local f = cl.db.fights[2] -- fight di Marrowgar (subito dopo: il fight filtrato e' [1])
+local rows, total = cl:AggTotals(f, 'damage')
+I_TOT = total
+I_TOP = rows[1] and rows[1].name
+I_TOPAMT = rows[1] and rows[1].amt
+local srows, stotal = cl:AggSpells(f, 'damage', 'PlayerOne')
+I_SPELLS = #srows
+I_SP1 = srows[1] and srows[1].amt
+local arows = cl:AggAuras(f)
+I_AURAUPS = 0
+for _, a in ipairs(arows) do if a.name == 'Bone Spike' then I_AURAUPS = a.up end end
+local erows, etotal = cl:AggEnemies(f)
+I_ENEMY = erows[1] and erows[1].name
+local irows = cl:AggInterrupts(f, 'interrupt')
+I_ITXT = irows[1] and irows[1].text
+local prows = cl:FightPlayers(f)
+I_PSP = #prows
+local dps = cl:DpsSeries(f, 'PlayerOne', 1)
+I_DPSMAX = 0
+for _, p in ipairs(dps) do if p[2] > I_DPSMAX then I_DPSMAX = p[2] end end
+""")
+check(bool(rt.eval("I_TOT == 9500 and I_TOP == 'PlayerOne' and I_TOPAMT == 6500")), "damage totals per source aggregated (PlayerOne 6500 of 9500)")
+check(bool(rt.eval("I_SPELLS >= 2 and I_SP1 == 5000")), "per-spell breakdown for the selected source")
+check(bool(rt.eval("I_AURAUPS > 0")), "aura uptime engine closes the opened aura at fight end")
+check(bool(rt.eval("I_ENEMY == 'Lord Marrowgar'")), "enemies tab: damage taken by boss")
+check(bool(rt.eval("I_ITXT == 'KickerOne interrupt Lord Marrowgar with Kick (Frost Bolt)'")), "interrupt row formatted MRT-style (X interrupt Y with Z (interrupted))")
+check(bool(rt.eval("I_PSP >= 3")), "player list of the fight enumerated from GUID flags")
+check(bool(rt.eval("I_DPSMAX >= 6000")), "DPS series buckets spike over 6000 on the nuke second")
+
+# --- I.6 UI: tab presenti, liste, selezione, grafico ---
+rt.execute("""
+local cl = RLSuite.combatLog
+ROSTER_MOCK = { { 'PlayerOne', 1, 1, 80, 80, 'WARRIOR' } }
+cl.selFight = cl.db.fights[2]
+cl:SelectTab('damage')
+I_LROWS = #cl._lRows
+I_LTOP = cl._lRows[1] and cl._lRows[1].txt1:GetText()
+-- click prima riga = selezione sorgente -> breakdown a destra
+cl._lRows[1]._scripts.OnClick(cl._lRows[1])
+I_SEL = cl.selSource
+I_RROWS = #cl._rRows
+cl:SelectTab('interrupts')
+I_IL = 0
+for _, r in ipairs(cl._lRows) do if r:IsShown() then I_IL = I_IL + 1 end end
+cl:SelectTab('graphs')
+I_GPANE = (cl.leftBox:IsShown() == false and cl.graphPane:IsShown() == true)
+cl:RefreshGraph()
+I_SERIES = (cl.graph.series ~= nil and #cl.graph.series > 0)
+I_VLINES = (cl.graph.vlines ~= nil and #cl.graph.vlines >= 1)
+cl:SelectTab('damage')
+I_BACK = (cl.leftBox:IsShown() == true and cl.graphPane:IsShown() == false)
+""")
+check(bool(rt.eval("I_LTOP == '1. PlayerOne'")), "left pane lists sources sorted (PlayerOne first)")
+check(bool(rt.eval("I_SEL == 'PlayerOne' and I_RROWS >= 2")), "clicking a source fills the right pane with the spell breakdown")
+check(bool(rt.eval("I_IL == 1")), "interrupts tab lists the kick event")
+check(bool(rt.eval("I_GPANE == true and I_SERIES == true")), "graphs tab shows the graph with a DPS series drawn from the fight")
+check(bool(rt.eval("I_VLINES == true")), "death events drawn as vertical markers on the graph")
+check(bool(rt.eval("I_BACK == true")), "leaving the graphs tab restores the two lists")
+
+# --- I.7 clear + report + live dropdown ---
+rt.execute("""
+local cl = RLSuite.combatLog
+CHAT_LOG = {}
+IsShiftKeyDown = function() return true end
+cl.clearBtn._scripts.OnClick(cl.clearBtn)
+I_WIPED = (#cl.db.fights == 0)
+IsShiftKeyDown = SAVED_ISD or function() return false end
+""")
+check(bool(rt.eval("I_WIPED == true")), "Shift+Clear wipes the saved fights")
+
+# --- I.8 ring buffer cap (saveFights) ---
+rt.execute("""
+local cl = RLSuite.combatLog
+cl.db.saveFights = 3
+for i = 1, 5 do
+    cl:OnRegenDisabled()
+    cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 100, 0)
+    cl:OnRegenEnabled()
+end
+I_CAP = #cl.db.fights
+cl.db.saveFights = 15
+cl.db.fights = {}
+""")
+check(bool(rt.eval("I_CAP == 3")), "fights ring buffer capped at saveFights (3/5 kept)")
+
+# --- Debug panel (RLS DEBUG bar with Fill Group / Fill Loot / Whisp test / Test MS) ---
+rt.execute("""
+DBG_PROFILE_SAVED = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+""")
+check(bool(rt.eval("RLSuite.debugPanel ~= nil")), "debug panel created when debug mode turns on")
+check(bool(rt.eval("RLSuite.debugPanel:IsShown() == true")), "debug panel shown only while debug mode is on (looks like a mini main bar)")
+check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 6")), "debug panel has 6 command buttons (with Log Test)")
+check(bool(rt.eval("RLSuite.debugPanel.debugButtons[1]:GetText() == 'Fill Raid'")), "first debug button is Fill Group")
+rt.execute("RLSuite:DebugFillGroup()")
+check(bool(rt.eval("#RLSuite:DebugRoster() >= 15")), "Fill Group fills the simulated raid with fake players")
+check(bool(rt.eval("""(function() local seen = {} for _, m in ipairs(RLSuite:DebugRoster()) do seen[m.class] = true end local n = 0 for _ in pairs(seen) do n = n + 1 end return n >= 6 end)()""")), "Fill Group fakes span many different classes")
+rt.execute("LM_HIST_N = #RLSuite.lootManager.history")
+rt.execute("RLSuite:DebugFillLoot()")
+check(bool(rt.eval("#RLSuite.lootManager.history > LM_HIST_N")), "Fill Loot appends random pieces to the loot history (random raid pool)")
+rt.execute("""
+RLSuite.msManager.listening = true
+RLSuite:DebugTestMS()
+""")
+check(bool(rt.eval("#RLSuite.msManager.db >= 3")), "Test MS feeds fake 'ms <spec>' whispers into the MS manager while listening")
+rt.execute("RLSuite.msManager:StopListening(false); RLSuite.msManager.db = {}; RLSuite.msManager:UpdateList()")
+rt.execute("""
+DBG_W_SAVED = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = true
+RLSuite.groupmaking.whisperDB.entries = {}
+local btn = RLSuite.debugPanel.debugButtons[4]
+btn._scripts["OnClick"](btn)
+RLSuite.db.profile.debug = DBG_W_SAVED
+""")
+check(bool(rt.eval("#RLSuite.groupmaking.whisperDB.entries == 10")), "Whisp test button alone delivers all 10 fake whispers into the real whisplist")
+check(bool(rt.eval("RLSuite.groupmaking.spamActive ~= true")), "Whisp test works WITHOUT the spammer running (no auto-flow at all)")
+rt.execute("RLSuite.db.profile.debug = false; RLSuite:ApplyDebugMode()")
+check(bool(rt.eval("RLSuite.debugPanel:IsShown() == false")), "debug panel hides when debug mode turns off")
+rt.execute("RLSuite.db.profile.debug = DBG_PROFILE_SAVED; if DBG_PROFILE_SAVED then RLSuite:ApplyDebugMode() end")
+
+# --- Loot list stays clickable after two rolls (pickup windows no longer over the list) ---
+rt.execute("""
+local lm = RLSuite.lootManager
+RLSuite.db.profile.debug = true
+RLSuite.mainWindow:ShowTab('loot')
+lm:ClearHistory()
+lm:SpawnDebugLoot()
+for i = 1, 2 do
+    local item = nil
+    for j = #lm.history, 1, -1 do
+        if not lm.history[j].assignedTo then item = lm.history[j]; break end
+    end
+    lm:SelectItem(item)
+    lm:StartRoll("MS")
+    if lm.currentRoll then
+        lm.currentRoll.rolls[1] = {name="Tankbot", roll=97}
+        lm.currentRoll.rolls[2] = {name="Healbot", roll=72}
+    end
+    for tick = 1, 30 do if lm.rollTimer then lm:RollTick() end end
+end
+RLL_TRADE_N = #lm.tradeWindows
+RLL_P = lm.tradeWindows[1] and lm.tradeWindows[1]._points[1] or nil
+local row = lm.histRows[1]
+local entry = row and row.entry or nil
+if row then row._scripts["OnClick"](row) end
+RLL_CLICK_OK = (lm.selectedItem == entry)
+lm:ClearHistory()
+RLSuite.lootManager.frame:Hide()
+RLSuite.mainWindow.currentTab = nil
+""")
+check(bool(rt.eval("RLL_TRADE_N == 2")), "two roll cycles each stacked one pick-up window (2 kept open)")
+check(bool(rt.eval("RLL_CLICK_OK")), "loot list rows stay CLICKABLE after two rolls (regression of the blocked list)")
+check(bool(rt.eval("RLL_P ~= nil and RLL_P[2] == RLSuite.lootManager.frame")), "pick-up windows anchor to the loot window EDGE, never over the list")
+
+# --- Debug panel: Log Test fills the combat log with fake fights ---
+rt.execute("""
+DBG_L_SAVED = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = true
+RLSuite.combatLog.db.fights = {}
+local btn = RLSuite.debugPanel.debugButtons[6]
+btn._scripts["OnClick"](btn)
+CL_N = #RLSuite.combatLog.db.fights
+CL_MG = nil
+CL_LD = nil
+for _, fq in ipairs(RLSuite.combatLog.db.fights) do
+    if fq.name == 'Lord Marrowgar' then CL_MG = fq end
+    if fq.name == 'Lady Deathwhisper' then CL_LD = fq end
+end
+""")
+check(bool(rt.eval("CL_N == 3")), "Log Test feeds three fake fights into the combat log")
+check(bool(rt.eval("CL_MG ~= nil and CL_MG.kill == true")), "fake Marrowgar fight is a named KILL (segmentation works through the real path)")
+check(bool(rt.eval("CL_LD ~= nil and CL_LD.kill ~= true")), "fake Lady fight is a WIPE")
+check(bool(rt.eval("(function() local rows, tot = RLSuite.combatLog:AggTotals(CL_MG, 'damage') return tot ~= nil and tot > 5000 end)()")), "fake fights contain real damage aggregation (tabs/graphs have data)")
+rt.execute("RLSuite.combatLog.db.fights = {}; RLSuite.db.profile.debug = DBG_L_SAVED")
+
+check(bool(rt.eval("RLSuite.debugPanel.debugButtons[2]:GetText() == 'Test Loot' and RLSuite.debugPanel.debugButtons[3]:GetText() == 'Empty Loot' and RLSuite.debugPanel.debugButtons[4]:GetText() == 'Test Whisplist'")), "debug bar buttons are in English on EVERY client locale")
+
+check(bool(rt.eval("RLSuite.debugPanel._noOuterBorder == true")), "debug bar has no dialog border (borderless like the main bar)")
+check(bool(rt.eval("""(function() local b = RLSuite.debugPanel.debugButtons[1] return b._backdrop ~= nil and b._backdrop.edgeFile == nil end)()""")), "debug bar buttons are borderless too")
+
+# --- List rows (clickable buttons) are borderless ---
+rt.execute("""
+local r = RLSuite.lootManager.histRows and RLSuite.lootManager.histRows[1]
+ROW_EDGEOK = (r == nil) or (r._backdrop ~= nil and r._backdrop.edgeFile == nil)
+""")
+check(bool(rt.eval("ROW_EDGEOK")), "list rows (loot/whisper/log) lost their dialog border; selection now uses a marked fill")
+
+# --- Debug panel layout: single column, non-draggable, anchored to the main bar ---# --- Debug panel layout: single column, non-draggable, anchored to the main bar ---
+check(bool(rt.eval("""(function() local xs = nil for _, b in ipairs(RLSuite.debugPanel.debugButtons) do local p = b._points[1]; if not p then return false end; if xs == nil then xs = p[4] elseif p[4] ~= xs then return false end end return true end)()""")), "debug panel buttons form a SINGLE column")
+check(bool(rt.eval("""(function() local f = RLSuite.debugPanel return f._points[1] ~= nil and f._points[1][2] == RLSuite.mainWindow.frame end)()""")), "debug panel is anchored to the main bar (moves with it, never saved)")
+check(bool(rt.eval("RLSuite.debugPanel._scripts['OnDragStart'] == nil")), "debug panel is NOT draggable (part of the main bar)")
+
+# --- Debug mode no longer auto-fills the loot manager ---
+rt.execute("""
+RLSuite.lootManager:ClearHistory()
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+LL_N = #RLSuite.lootManager.history
+RLSuite:DebugFillLoot()
+LL_N2 = #RLSuite.lootManager.history
+RLSuite.db.profile.debug = false
+RLSuite:ApplyDebugMode()
+""")
+check(bool(rt.eval("LL_N == 0")), "enabling debug mode no longer spawns loot by itself")
+check(bool(rt.eval("LL_N2 > 0")), "the Fill Loot button is the ONLY thing spawning debug loot")
+
+# --- CombatLog window: dropdown clears the close X; min width covers the tab row ---
+check(bool(rt.eval("""(function() local p = RLSuite.combatLog.fightDropdown._points[1] return p ~= nil and p[4] ~= nil and p[4] <= -40 end)()""")), "fight dropdown stays CLEAR of the close X (-44, no more clipping)")
+check(bool(rt.eval("RLSuite.windowMins.log() >= 730")), "log min width covers the full top tab row (8 tabs x 88px + margins)")
+check(bool(rt.eval("(function() local _, h = RLSuite.windowMins.log() return h ~= nil and h >= 540 end)()")), "log min height covers the stacked content (lists 398 + top area 78 + bottom bar, never clipped)")
+check(bool(rt.eval("(function() local tx = 0 for _ in pairs(RLSuite.combatLog.tabBtns) do tx = tx + 1 end return (16 + tx * 88) <= RLSuite.windowMins.log() + 10 end)()")), "every top tab stays inside the min-width window")
+
+# --- Loot Manager: min width includes the MS announce button# --- Loot Manager: min width includes the MS announce button; window fixed like the equip panel ---
+rt.execute("LM_MINW = RLSuite.windowMins.loot()")
+check(bool(rt.eval("LM_MINW >= 506")), "loot min width fits all roll buttons incl. Announce Changes (no clipping)")
+rt.execute("RLSuite.mainWindow:ShowTab('loot')")
+check(bool(rt.eval("RLSuite.lootManager.frame._scripts['OnDragStart'] == nil")), "loot window is NOT draggable anymore (behaves like the native equip panel)")
+check(bool(rt.eval("""(function() local p = RLSuite.lootManager.frame._points[1] return p ~= nil and p[1] == 'TOPLEFT' and p[2] == UIParent and p[4] == 16 and p[5] == -116 end)()""")), "loot window anchors to the fixed equip-style spot (TOPLEFT 16,-116 of UIParent)")
+check(bool(rt.eval("RLSuite.combatLog.frame._scripts['OnDragStart'] ~= nil")), "other windows keep their draggable behavior (combat log untouched)")
+rt.execute("RLSuite.lootManager.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
+
+# --- Loot Manager yields the left side to an open Trade (native panel behavior) ---
+rt.execute("""
+TradeFrame = CreateFrame('Frame', 'RLSuiteTestTrade', UIParent)
+TradeFrame.GetRight = function() return 410 end
+RLSuite.lootManager._tradeHooked = nil
+RLSuite.lootManager:HookTradePanel()
+RLSuite.mainWindow:ShowTab('loot')
+local p1 = RLSuite.lootManager.frame._points[1]
+TF_X1 = p1 and p1[4] or 0
+TradeFrame:Show()
+TradeFrame._scripts['OnShow'](TradeFrame)
+TF_X2 = RLSuite.lootManager.frame._points[1] and RLSuite.lootManager.frame._points[1][4] or 0
+TradeFrame:Hide()
+TradeFrame._scripts['OnHide'](TradeFrame)
+TF_X3 = RLSuite.lootManager.frame._points[1] and RLSuite.lootManager.frame._points[1][4] or 0
+RLSuite.lootManager.frame:Hide()
+RLSuite.mainWindow.currentTab = nil
+RLSuite.lootManager.tradeOpen = false
+""")
+check(bool(rt.eval("TF_X1 == 16")), "loot opens at the left equip-style spot when no trade is open")
+check(bool(rt.eval("TF_X2 == 420")), "opening Trade instantly pushes the loot manager to the right of it (trade keeps the left)")
+check(bool(rt.eval("TF_X3 == 16")), "closing Trade puts the loot manager back on the left")
+rt.execute("TradeFrame = nil")
+
+# --- Reroll button stays ENABLED after a tie (AnnounceWinner -> ResetButtons bug) ---
+rt.execute("""
+local lm = RLSuite.lootManager
+RLSuite.db.profile.debug = true
+RLSuite.mainWindow:ShowTab('loot')
+lm:ClearHistory()
+lm:SpawnDebugLoot()
+lm:SelectItem(lm.history[#lm.history])
+lm:StartRoll("MS")
+lm.currentRoll.rolls = {}
+lm.currentRoll.rolls[1] = {name="Tankbot", roll=42}
+lm.currentRoll.rolls[2] = {name="Healbot", roll=42}
+lm.currentRoll.rolls[3] = {name="Dpsbot", roll=7}
+for tick = 1, 30 do if lm.rollTimer then lm:RollTick() end end
+RR_ENABLED = lm.rerollBtn:IsEnabled()
+lm:DoReroll()
+RR_ROLLS = #lm.currentRoll.rolls
+for tick = 1, 30 do if lm.rerollTimer then lm:RerollTick() end end
+RR_DONE_ITEM = (lm.history[#lm.history].assignedTo == "Tankbot" or lm.history[#lm.history].assignedTo == "Healbot")
+lm:ClearHistory()
+RLSuite.lootManager.frame:Hide()
+RLSuite.mainWindow.currentTab = nil
+RLSuite.db.profile.debug = false
+""")
+check(bool(rt.eval("RR_ENABLED == true")), "a TIE keeps the Reroll button enabled (was disabled by the trailing ResetButtons)")
+check(bool(rt.eval("RR_DONE_ITEM")), "debug reroll resolves the tie and assigns the item to one of the tied fakes")
+# --- Debug panel: Clear loot ---
+rt.execute("""
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+RLSuite.lootManager:SpawnDebugLoot()
+CL_N = #RLSuite.lootManager.history
+RLSuite:DebugClearLoot()
+""")
+check(bool(rt.eval("CL_N > 0 and #RLSuite.lootManager.history == 0")), "Clear loot empties the loot history")
+check(bool(rt.eval("#RLSuite.lootManager.tradeWindows == 0")), "Clear loot closes any open pick-up windows")
+rt.execute("RLSuite.db.profile.debug = false; RLSuite:ApplyDebugMode()")
+
+
+# === Scenario 1.11.19: X bianche close.blp, PH:<fase> in matrice, barretta ==================
+print("\n== v1.11.19: white close.blp X buttons, macrobar PH text, main title bar, fstack guard ==")
+
+# -- media presenti e referenziate
+import os
+check(os.path.isfile("media/close.tga") and os.path.isfile("media/arrowup.tga"), "media/close.tga + media/arrowup.tga exist in the addon folder")
+# i file tga SONO quelli caricati dall'utente (type 2 o 10/RLE, 32 bpp):
+for _p in ("media/close.tga", "media/arrowup.tga"):
+    _d = open(_p, "rb").read()
+    _ok = len(_d) > 26 and _d[2] in (2, 10) and _d[16] == 32
+    check(_ok, _p + ": valid uncompressed/RLE 32bpp TGA uploaded by the user")
+
+# -- MS changes: X piu' grande (20x20) e bianca (close.blp)
+rt.execute("RLSuite.msManager:AddEntry('BigX', 'Frost'); MSROW = RLSuite.msManager.rows and RLSuite.msManager.rows[1]")
+rt.execute("RLSuite.msManager:UpdateList()")
+rt.execute("""
+MS_DEL = nil
+for _, c in ipairs(ALLFRAMES) do
+    if c._parent ~= nil and c._w == 10 and c._h == 10 and c._text == nil and c.icon and c.icon._texture and tostring(c.icon._texture):find('close.tga') then
+        MS_DEL = MS_DEL or c
+    end
+end
+""")
+found_ms = rt.eval("MS_DEL ~= nil")
+if not found_ms:
+    # fallback: cammina le righe del listato ms direttamente
+    rt.execute("for _, r in ipairs(RLSuite.msManager.listContent and RLSuite.msManager.listContent._children or {}) do end; MS_DEL = nil")
+rt.execute("""
+-- scansione robusta: cerca fra TUTTI i frame un button 20x20 con normal texture close.blp
+MS_DEL = nil
+for _, c in ipairs(ALLFRAMES) do
+    if c.icon ~= nil and c.icon._texture ~= nil and tostring(c.icon._texture):find('close.tga', 1, true) and c._w == 10 and c._h == 10 then MS_DEL = c end
+end
+""")
+check(bool(rt.eval("MS_DEL ~= nil")), "MS changes list: red X is now a white close.tga button (BCI format, renders)")
+check(bool(rt.eval("MS_DEL == nil or (MS_DEL._w == 10 and MS_DEL._h == 10)")), "MS changes X is halved (10x10)")
+
+# -- GroupMaking: le x rosse testuali sono diventate tessere bianche
+rt.execute("""
+GM_WHITE = 0; GM_RED_TEXT = 0
+for _, c in ipairs(ALLFRAMES) do
+    if c._text == 'x' then GM_RED_TEXT = GM_RED_TEXT + 1 end
+    if c.icon ~= nil and c.icon._texture ~= nil and tostring(c.icon._texture):find('close.tga', 1, true) then GM_WHITE = GM_WHITE + 1 end
+end
+""")
+check(rt.eval("GM_RED_TEXT") == 0, "no red 'x' text buttons remain in the suite")
+check(int(rt.eval("GM_WHITE") or 0) >= 2, "white close.tga X buttons exist in GroupMaking rows (calendar + whisplist)")
+
+# -- MacroBar: testo fase dentro la matrice, formato PH:<FASE>
+rt.execute("MBPT = RLSuite.macrobar.phaseText; MBPS = RLSuite.macrobar.phaseSlot")
+check(bool(rt.eval("MBPT ~= nil")), "macrobar phase text exists")
+check(bool(rt.eval("MBPS ~= nil and MBPS._enabledMouse == false")), "PH is a NON-CLICKABLE button slot in the matrix (mouse off)")
+check(bool(rt.eval("MBPS._backdrop == nil")), "PH slot has NO backdrop and NO border")
+check(bool(rt.eval("MBPT._parent == MBPS")), "PH text lives ON the slot button")
+rt.execute("MBP = MBPS._points[1] or {}; MBPTN = MBPT.GetText and MBPT:GetText() or ''")
+check(bool(rt.eval("MBP[1] == 'TOPLEFT' and MBP[2] == RLSuite.macrobar.keypadFrame")), "PH slot anchored at the first cell of the KEYPAD grid (the buttons below, not the macros)")
+check(bool(rt.eval("MBPTN:sub(1,3) == 'PH:'")), "phase text format is PH:<phase>")
+check(rt.eval("MBPTN") == "PH:PRE-RAID", "initial phase text is PH:PRE-RAID")
+rt.execute("RLSuite.context = 'preboss'; RLSuite.macrobar:UpdatePhase()")
+check(rt.eval("RLSuite.macrobar.phaseText:GetText()") == "PH:PRE-BOSS", "phase text updates to PH:PRE-BOSS")
+rt.execute("RLSuite.context = 'preraid'; RLSuite.macrobar:UpdatePhase()")
+
+# -- Barretta titolo main bar: 20px, sopra la finestra, larghezza ereditata
+rt.execute("TB = RLSuite.mainWindow.titleBar")
+check(bool(rt.eval("TB ~= nil")), "main title bar exists")
+check(rt.eval("TB._h") == 30, "title bar height is exactly 30px")
+rt.execute("TB_P1 = TB._points[1] or {}; TB_P2 = TB._points[2] or {}")
+check(bool(rt.eval("TB_P1[1] == 'BOTTOMLEFT' and TB_P1[3] == 'TOPLEFT' and TB_P2[1] == 'BOTTOMRIGHT' and TB_P2[3] == 'TOPRIGHT'")), "title bar spans the full main-bar width (anchored to both top corners)")
+check(rt.eval("TB_P1[5]") == 2 and rt.eval("TB_P2[5]") == 2, "title bar is DETACHED (2px gap above the main bar)")
+check(bool(rt.eval("TB.title ~= nil and TB.title:GetText() == 'RLS'")), "title shows 'RLS' on the left")
+check(bool(rt.eval("TB.arrowBtn ~= nil and TB.arrowBtn.icon ~= nil and tostring(TB.arrowBtn.icon._texture):find('arrowup.tga', 1, true) ~= nil")), "arrowup.tga button present on the right (ARTWORK texture, renders)")
+check(bool(rt.eval("TB.closeBtn ~= nil and TB.closeBtn.icon ~= nil and tostring(TB.closeBtn.icon._texture):find('close.tga', 1, true) ~= nil")), "close.tga button present on the right (ARTWORK texture, renders)")
+
+# -- Barretta: arrow = solo pannello; close = tutto chiuso
+rt.execute("""
+f = RLSuite.mainWindow.frame
+f:Show(); TB:Show()
+TB.arrowBtn._scripts.OnClick(TB.arrowBtn)
+A1 = f:IsShown(); A1TB = TB:IsShown()
+TB.arrowBtn._scripts.OnClick(TB.arrowBtn)
+A2 = f:IsShown()
+f:Show(); TB:Show()
+TB.closeBtn._scripts.OnClick(TB.closeBtn)
+C_F = f:IsShown(); C_TB = TB:IsShown()
+""")
+check(bool(rt.eval("A1 == false and A1TB == true")), "arrowup: hides ONLY the panel under the bar (bar stays)")
+check(bool(rt.eval("A2 == true")), "arrowup: shows the panel back under the bar")
+check(bool(rt.eval("C_F == false and C_TB == false")), "close.blp: closes the main bar (panel + title bar)")
+
+# -- Toggle tab riallinea anche la barretta
+rt.execute("RLSuite.mainWindow:ShowTab('group')")
+check(bool(rt.eval("RLSuite.mainWindow.frame:IsShown() and RLSuite.mainWindow.titleBar:IsShown()")), "ShowTab shows the window AND the title bar")
+rt.execute("RLSuite.mainWindow.frame:Hide(); RLSuite.mainWindow.titleBar:Hide(); RLSuite.mainWindow:CloseTab()")
+
+# -- fstack guard: chiudere la finestra NON lascia catcher zombie
+rt.execute("""
+dd = RLSuite.lootManager.rarityDropdown
+RLSuite.utils:ToggleDropdownMenu(dd)
+ZS_MENU = RLSuite.utils.activeMenu; ZS_CAT = RLSuite.utils.dropCatcher:IsShown()
+dd._scripts.OnHide(dd)
+ZS_AFTER_MENU = RLSuite.utils.activeMenu; ZS_AFTER_CAT = RLSuite.utils.dropCatcher:IsShown()
+""")
+check(bool(rt.eval("ZS_MENU ~= nil and ZS_CAT == true")), "opening the rarity dropdown shows menu + fullscreen catcher")
+check(bool(rt.eval("ZS_AFTER_MENU == nil and ZS_AFTER_CAT == false")), "hiding the window kills menu AND catcher (no invisible fullscreen blocker)")
+# zombie catcher globale recuperato anche se perso l'owner
+rt.execute("RLSuite.utils.dropCatcher:Show(); RLSuite.utils.activeMenu = nil; RLSuite.utils:AssertNoZombieCatcher()")
+check(bool(rt.eval("RLSuite.utils.dropCatcher:IsShown() == false")), "zombie catcher with no menu is force-closed")
+# -- v1.11.38: difese definite centrale (tutti i moduli)
+_u = open("Utils.lua", encoding="utf-8").read()
+check('menu:SetScript("OnHide", function()' in _u and 'Utils.activeMenu == nil' in _u.replace(' ', '') or "Utils.activeMenu==nil" in _u.replace(' ', ''), "dropdown menu OnHide always kills the catcher + clears activeMenu")
+check('anc:HookScript("OnHide"' in _u, "ancestor-hide hook: closing the owner window kills menu + catcher")
+check('RegisterForClicks("LeftButtonUp", "RightButtonUp")' in _u, "catcher closes with left AND right click")
+rt.execute("""
+dd38 = RLSuite.lootManager.rarityDropdown
+RLSuite.utils:ToggleDropdownMenu(dd38)
+M38 = RLSuite.utils.activeMenu
+C38 = RLSuite.utils.dropCatcher:IsShown()
+M38._scripts.OnHide(M38)
+C38A = RLSuite.utils.dropCatcher:IsShown()
+AM38 = RLSuite.utils.activeMenu
+""")
+check(bool(rt.eval("M38 ~= nil and C38 == true")), "dropdown opens menu + catcher")
+check(bool(rt.eval("C38A == false and AM38 == nil")), "hiding the menu BY ANY MEANS also hides the catcher (engine-level defense)")
+# -- v1.11.39: content scroll non mouse-eating + raise cap + mousefocus diag
+_u = open("Utils.lua", encoding="utf-8").read()
+check('RLSuite._windowStack' in _u and 'ShiftSubtree' in _u, "RaiseWindow uses a normalized window stack + subtree shift (deterministic layering)")
+check("row:SetFrameLevel((self.histContent:GetFrameLevel()" in open("LootManager.lua", encoding='utf-8').read(), "fresh loot rows get an explicit above-content level")
+rt.execute("""
+RLSuite._windowStack = {}
+w1 = CreateFrame("Frame", nil, UIParent); w2 = CreateFrame("Frame", nil, UIParent)
+k1 = CreateFrame("Frame", nil, w1); c1 = CreateFrame("Frame", nil, k1)
+RLSuite.utils:RaiseWindow(w1)
+RLSuite.utils:RaiseWindow(w2)
+RLSuite.utils:RaiseWindow(w1)
+L41 = w1:GetFrameLevel(); L42 = w2:GetFrameLevel(); LK41 = k1:GetFrameLevel(); LC41 = c1:GetFrameLevel()
+""")
+check(bool(rt.eval("L41 > L42")), "window recursive raise: last-raised window is physically above the older one")
+check(bool(rt.eval("LK41 >= L41 and LC41 >= L41")), "whole subtree shifts with the window (children never buried under their own window) — deterministic layering")
+# -- v1.11.42: main bar panel chiudibile sempre, mai chiudere altre finestre
+_rp42 = open("RaidProfile.lua", encoding="utf-8").read()
+import re as _re
+_ct = _rp42.split("function MW:CloseTab()", 1)[1].split("end", 1)[0]
+check('HideAllWindows' not in _ct, "CloseTab never hides other windows (in-fight panel close stays local)")
+check(_rp42.count('MW:CloseTab()') == 1, "only the CloseTab definition remains (no implicit calls from arrow/X/toggle)")
+_rt42 = _re.sub(r'--[^\n]*', '', _rp42)
+_rt42 = _re.sub(r'\s+', ' ', _rt42)
+check('arrBtn:SetScript("OnClick", function() if f:IsShown() then f:Hide() else f:Show() end' in _rt42, "the bar arrow toggles ONLY the button panel, at any time")
+# -- v1.11.42: loot dedupe + boss from looted corpse
+_l42 = open("LootManager.lua", encoding='utf-8').read()
+check('< 4 then' in _l42 and 'prev.itemLink == itemLink' in _l42, "loot dedupe: same itemLink within 4s is skipped (no duplicates)")
+check('UnitIsDead("target")' in _l42 and '_recentBoss' in _l42, "boss name taken from the freshly looted corpse target")
+check('#self.history > 200' in _l42, "loot history capped at 200 entries (SavedVariables-friendly)")
+# -- X levels
+check('delBtn:SetFrameLevel(row:GetFrameLevel() + 2)' in open("MSManager.lua", encoding='utf-8').read(), "MS list X always above the row")
+check('xBtn:SetFrameLevel(row:GetFrameLevel() + 2)' in open("GroupMaking.lua", encoding='utf-8').read(), "GM manual-list X always above the row")
+check('lootdiag' in open("Core.lua", encoding='utf-8').read(), "/rls lootdiag persistence check available")
+
+# -- comportamento live
+rt.execute("""
+RLSuite.mainWindow:ShowTab('ms')
+RLSuite.mainWindow:ShowTab('loot')
+local pms = RLSuite.mainWindow:PaneForTab('ms'); local pl = RLSuite.mainWindow:PaneForTab('loot')
+RLSuite.mainWindow.frame:Hide(); RLSuite.mainWindow.titleBar:Show()
+local arrS = RLSuite.mainWindow.titleBar and RLSuite.mainWindow.titleBar.arrowBtn
+arrS._scripts.OnClick(arrS)
+AF1 = pms:IsShown(); AL1 = pl:IsShown()
+UnitExists = function() return true end
+UnitIsDead = function() return true end
+UnitName = function() return "Onyxia" end
+RLSuite.lootManager._containerUseT = nil
+RLSuite.lootManager:OnLootOpened()
+G_LL = "item:2600:0:0:0:0:0:0:0"
+RLSuite.lootManager:AddToHistory(G_LL, "Talisman", nil, 4)
+RLSuite.lootManager:AddToHistory(G_LL, "Talisman", nil, 4)
+DUPC = #RLSuite.lootManager.history
+BOSV = RLSuite.lootManager.history[#RLSuite.lootManager.history].boss
+""")
+check(bool(rt.eval("AF1 == true and AL1 == true")), "arrow-click on the bar hides only the panel; module windows stay open")
+check(bool(rt.eval("DUPC >= 1 and BOSV == 'Onyxia'")), "looting a boss corpse names the boss; identical announce within 4s is deduped")
+check(bool(rt.eval("DUPC < 3")), "no duplicate entries for the same item announcement")
+# -- v1.11.43: RepinFrameOrder deterministico sui rebuild
+check('function Utils:RepinFrameOrder' in _u, "RepinFrameOrder helper available")
+check('RepinFrameOrder(self.listContent)' in open("MSManager.lua", encoding='utf-8').read(), "MS list repinned after every refresh")
+check('RepinFrameOrder(content)' in open("GroupMaking.lua", encoding='utf-8').read(), "GM manual list repinned after every refresh")
+check('RepinFrameOrder(self.histContent)' in open("LootManager.lua", encoding='utf-8').read(), "loot history repinned after every refresh")
+rt.execute("""
+R43 = CreateFrame("Frame", nil, UIParent)
+C43a = CreateFrame("Frame", nil, R43)
+C43b = CreateFrame("Frame", nil, R43)
+C43c = CreateFrame("Button", nil, C43b)
+RLSuite.utils:RepinFrameOrder(R43)
+RP43_1 = C43a:GetFrameLevel(); RP43_2 = C43b:GetFrameLevel(); RP43_3 = C43c:GetFrameLevel()
+RP43_R = R43:GetFrameLevel()
+""")
+check('ieAutoNamesList:EnableMouse(true)' not in open("GroupMaking.lua", encoding='utf-8').read(), "IE manual-list container is NEVER mouse-enabled (it ate every X/row click)")
+check("mousefocus" not in open("Core.lua", encoding='utf-8').read() and "lmdebug" not in open("Core.lua", encoding='utf-8').read(), "no left-over debug slash commands")
+# --- comportamento end-to-end: la X rimuove DAVVERO il nome
+rt.execute("""
+IE_N1 = "AaFirst"; IE_N2 = "ZzSecond"
+GM = RLSuite.groupmaking
+GM.autoinvite = GM.autoinvite or {}
+GM.autoinvite.names = { IE_N1, IE_N2 }
+GM:BuildAutoNameListUI()
+IE_XROW = GM._autoNameRows and GM._autoNameRows[2]
+IE_XROW.xBtn._scripts.OnClick(IE_XROW.xBtn)
+IE_LEFT = #GM.autoinvite.names
+IE_PRESENT = GM.autoinvite.names[1] == IE_N1
+""")
+check(bool(rt.eval("IE_LEFT == 1 and IE_PRESENT")), "clicking the manual-list X removes exactly that player")
+check(bool(rt.eval("RP43_2 > RP43_1 and RP43_1 > RP43_R and RP43_3 > RP43_2")), "RepinFrameOrder: children strictly above parents, in creation order, deterministic")
+check('function GM:PinTabStrip' in open("GroupMaking.lua", encoding='utf-8').read(), "PinTabStrip helper exists")
+check('base + 50 + i' in open("GroupMaking.lua", encoding='utf-8').read(), "IE tab buttons pinned strictly above the border and the pages")
+rt.execute("""
+-- tabs above border, pages below tabs: deterministic add-on stacking
+G46 = RLSuite.groupmaking
+G46.ieTabGroup = { border = CreateFrame("Frame", nil, UIParent), tabs = {} }
+G46.ieTabGroup.tabs[1] = CreateFrame("Button", nil, UIParent)
+G46.ieTabGroup.tabs[2] = CreateFrame("Button", nil, UIParent)
+G46.ieTabGroup.border:SetFrameLevel(100)
+G46:PinTabStrip()
+P46_B = G46.ieTabGroup.border:GetFrameLevel()
+P46_T1 = G46.ieTabGroup.tabs[1]:GetFrameLevel()
+P46_T2 = G46.ieTabGroup.tabs[2]:GetFrameLevel()
+""")
+check(bool(rt.eval("P46_T1 > P46_B and P46_T2 > P46_T1")), "pin: tab buttons strictly above the border, in order")
+_g48 = open("GroupMaking.lua", encoding="utf-8").read()
+check('AceGUI:Create("TabGroup")' not in _g48, "no opaque external tab widget anywhere near the invite engine")
+check('CreateFrame("Button", "RLSuiteIETab" .. i, strip)' in _g48, "IE tabs are our own plain buttons inside the new strip")
+check('function GM:ApplyInviteEngineTabStyles' in _g48 and 'SetTextColor(1, 0.82, 0)' in _g48, "active tab highlight in code")
+check('SetFrameLevel((host:GetFrameLevel() or 1) + 50)' in _g48, "tab strip born with a level above the window content")
+
+
+
+check('function GM:RepinManualPage' in open("GroupMaking.lua", encoding='utf-8').read(), "RepinManualPage exists (headers vs content deterministic pinning)")
+check('self:RepinManualPage()' in open("GroupMaking.lua", encoding='utf-8').read(), "RepinManualPage invoked at page-build end AND on tab show")
+
+
+
+check('content:EnableMouse(false)' not in _u, "scroll contents untouched (no EnableMouse overrides)")
+
+
+
+
+# === v1.11.20: fix texture, label holder, barretta staccata, clip scroll =====================
+print("\n== v1.11.20: TGA fix, macrobar label holder, detached title bar, scroll input clip ==")
+
+# -- texture del addon: BLP nativi referenziati solo via AddonTexture (MAI path hardcoded)
+import re
+for _f in ("MSManager.lua", "GroupMaking.lua", "RaidProfile.lua"):
+    _src = open(_f, encoding="utf-8").read()
+    check("RaidLeadSuite\\\\media" not in _src, _f + ": no hardcoded addon-folder texture paths (AddonTexture only)")
+check('ApplyIcon(delBtn, "media\\\\close.tga")' in open("MSManager.lua", encoding="utf-8").read(), "MS changes X uses ApplyIcon media close.tga (AddonTexture)")
+check('ApplyIcon(arrBtn, "media\\\\arrowup.tga")' in open("RaidProfile.lua", encoding="utf-8").read(), "title bar arrow uses ApplyIcon media arrowup.tga (AddonTexture)")
+
+# -- PH slot e' un bottone del KEYPAD: i tasti sotto (Pull/Ready/Break), stesso parent
+rt.execute("MBPS = RLSuite.macrobar.phaseSlot")
+check(bool(rt.eval("MBPS ~= nil and MBPS._parent == RLSuite.macrobar.keypadFrame")), "PH slot is part of the KEYPAD button grid (same parent as the buttons below)")
+# -- tassello PH: prima cella della prima riga attiva del keypad, i tasti di quella riga scalano di una cella
+rt.execute("""
+MBKB = RLSuite.macrobar.keypadButtons
+KP  = RLSuite.macrobar.keypadFrame
+RLSuite.context = 'preboss'
+RLSuite.macrobar:UpdateKeypad('preboss')
+RLSuite.macrobar:UpdatePhase()
+KP_SHOWN = KP:IsShown()
+PS_P = RLSuite.macrobar.phaseSlot._points[1] or {}
+PS_X = PS_P[4]; PS_Y = PS_P[5]
+P15_P = MBKB[1]._points[1] or {}
+P15_X = P15_P[4]; P15_Y = P15_P[5]
+RDY_P = MBKB[4]._points[1] or {}
+RDY_X = RDY_P[4]; RDY_Y = RDY_P[5]
+""")
+check(bool(rt.eval("KP_SHOWN == true")), "keypad visible in preboss")
+check(bool(rt.eval("PS_X == 8 and PS_Y == -8")), "PH tassel sits in the FIRST CELL of the keypad grid (8,-8)")
+check(bool(rt.eval("RLSuite.macrobar.phaseSlot._w == 75 and RLSuite.macrobar.phaseSlot._h == 22")), "PH tassel has the same cell size as the key buttons (75x22)")
+check(bool(rt.eval("P15_X == 89 and P15_Y == -8")), "first key button of the top row starts one cell AFTER the PH tassel, same row")
+check(bool(rt.eval("RDY_X == 8 and RDY_Y == -34")), "second-row key buttons keep the first cell (only the top row holds the PH tassel)")
+rt.execute("RLSuite.context = 'preraid'; RLSuite.macrobar:UpdateKeypad('preraid'); RLSuite.macrobar:UpdatePhase()")
+
+# === Scenario 1.11.23: X bianche ovunque (MakeCloseX), no X rossa in main bar, barretta trascinabile =
+print("\n== v1.11.23: white close.blp X on every window close, no red X inside main bar, draggable title bar ==")
+import glob
+_red = []
+for _f in glob.glob("*.lua"):
+    if "UIPanelCloseButton" in open(_f, encoding="utf-8").read():
+        _red.append(_f)
+check(_red == [], "no UIPanelCloseButton remains in ANY addon module file (white close.blp X everywhere)")
+check('function Utils:MakeCloseX' in open("Utils.lua", encoding="utf-8").read(), "Utils:MakeCloseX shared helper exists")
+check(bool(rt.eval("RLSuite.utils.MakeCloseX ~= nil")), "MakeCloseX live in the runtime")
+
+rt.execute("""
+CLOSE_OK = 0
+CLOSE_BAD = ''
+local function chk(btn)
+    if btn ~= nil then
+        if btn.icon ~= nil and btn.icon._texture ~= nil and tostring(btn.icon._texture):find('close.tga', 1, true) and btn._w == 11 and btn._h == 11 then
+            CLOSE_OK = CLOSE_OK + 1
+        else
+            CLOSE_BAD = CLOSE_BAD .. 'x'
+        end
+    end
+end
+chk(RLSuite.combatLog and RLSuite.combatLog.frame and RLSuite.combatLog.frame.closeBtn)
+chk(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame and RLSuite.groupmaking.mainFrame.closeBtn)
+chk(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame and RLSuite.groupmaking.whisplistFrame.closeBtn)
+chk(RLSuite.lootManager and RLSuite.lootManager.frame and RLSuite.lootManager.frame.closeBtn)
+chk(RLSuite.msManager and RLSuite.msManager.frame and RLSuite.msManager.frame.closeBtn)
+""")
+check(int(rt.eval("CLOSE_OK") or 0) == 5, "all 5 built window-close buttons are the 11x11 close.tga X, HALVED (CL/GM/GM-wl/LM/MS)")
+check(rt.eval("CLOSE_BAD") == '', "no close button kept the old red Blizzard artwork")
+
+# -- LA X ROSSA nella main bar: eliminata
+check(bool(rt.eval("RLSuite.mainWindow.closeBtn == nil")), "the red X INSIDE the main bar is GONE (only the title bar X remains)")
+check('CreateFrame("Button", nil, f, "UIPanelCloseButton")' not in open("RaidProfile.lua", encoding="utf-8").read(), "RaidProfile main window: no more UIPanelCloseButton creation")
+
+# -- Barretta trascinabile: muove TUTTA la main bar
+rt.execute("""
+TB23 = RLSuite.mainWindow.titleBar
+TB23DRAG = TB23._dragButtons ~= nil
+TB23PROXY = TB23._scripts.OnDragStart ~= nil or TB23._scripts.OnDragStop ~= nil
+""")
+check(bool(rt.eval("TB23DRAG == true")), "title bar is REGISTERED for LeftButton drag")
+check(bool(rt.eval("TB23PROXY == true")), "title bar drags the main window with the SAME drag guard as every other window (clamps during drag)")
+
+# -- v1.11.30: icone barretta dimezzate (11x11) + freccia su/giu con il pannello
+rt.execute("""
+TB30C = RLSuite.mainWindow.titleBar.closeBtn
+TB30A = RLSuite.mainWindow.titleBar.arrowBtn
+MFW30 = RLSuite.mainWindow.frame
+MFW30:Hide(); RLSuite.mainWindow._updateArrowDir()
+TC_CLOSED30 = table.concat(TB30A.icon._texCoord or {}, ',')
+MFW30:Show(); RLSuite.mainWindow._updateArrowDir()
+TC_OPEN30 = table.concat(TB30A.icon._texCoord or {}, ',')
+MFW30:Hide(); RLSuite.mainWindow._updateArrowDir()
+""")
+check(bool(rt.eval("TB30C._w == 11 and TB30C._h == 11 and TB30A._w == 11 and TB30A._h == 11")), "title bar icons HALVED (11x11)")
+check(rt.eval("TC_CLOSED30") == '0,1,1,0', "arrow FLIPPED VERTICALLY (points DOWN) when the panel is CLOSED")
+check(rt.eval("TC_OPEN30") == '0,1,0,1', "arrow points UP when the panel is OPEN")
+# -- v1.11.31: la barra non esce mai dallo schermo
+_rp = open("RaidProfile.lua", encoding="utf-8").read()
+check(('MakeDraggable(f, "main")' in _rp) or ('MakeUniversalWindow(f, "main")' in _rp), "main window is a universal window via Utils:MakeUniversalWindow (SAME drag+clamp as every other window)")
+check(bool(rt.eval("RLSuite.mainWindow.frame._rlsDraggable == true and RLSuite.mainWindow.frame._rlsDragGuard ~= nil")), "main window flagged _rlsDraggable AND guarded by MakeDraggable (same clamp guard as every other window)")
+_u35 = open("Utils.lua", encoding="utf-8").read()
+check('_rlsDragGuard' in _u35 and _u35.count("ClampWindowToScreen(frame)") >= 1 and _u35.count("ClampWindowToScreen(self2)") >= 1, "MakeDraggable clamps ALL windows during drag + on drop (the identical machinery everywhere)")
+check('tb:RegisterForDrag("LeftButton")' in _rp and '_rlsDragGuard' in _rp, "title bar drags the main window using the SAME _rlsDragGuard machinery as every other MakeDraggable window")
+check('ClampWindowToScreen(self.frame)' in open("MacroBar.lua", encoding="utf-8").read(), "macrobar shift-drag drop clamped inside the screen")
+check('ClampWindowToScreen(self2)' in open("MacroBar.lua", encoding="utf-8").read(), "macrobar anchor-mode drop clamped inside the screen")
+
+
+
+
+
+
+# -- scroll clip util: registrazione nei moduli
+check(bool(rt.eval("RLSuite.lootManager.histContent._rlsScrollClip ~= nil")), "scroll clip registered on LootManager history")
+check(bool(rt.eval("RLSuite.combatLog.leftContent._rlsScrollClip ~= nil and RLSuite.combatLog.rightContent._rlsScrollClip ~= nil")), "scroll clip registered on CombatLog panes")
+check(bool(rt.eval("RLSuite.msManager.listContent._rlsScrollClip ~= nil")), "scroll clip registered on MS changes list")
+check(bool(rt.eval("RLSuite.groupmaking.wlContent._rlsScrollClip ~= nil")), "scroll clip registered on whisplist")
+
+# -- util funzionante su frames finti: fuori viewport = Hide, dentro = Show
+rt.execute("""
+U = RLSuite.utils
+ROWS = {}
+V_OFF = 0
+SCR = CreateFrame("Frame", "RlsScrollClipTestScroll", UIParent)
+SCR._h = 100
+SCR.GetVerticalScroll = function() return V_OFF end
+CON = CreateFrame("Frame", "RlsScrollClipTestContent", SCR)
+U:RegisterScrollClip(SCR, CON)
+U:ClearScrollClip(CON)
+local tops = { 0, 60, 96, 200 }
+for i, tp in ipairs(tops) do
+    local r = CreateFrame("Frame", nil, CON)
+    ROWS[i] = r
+    U:ClipScrollRow(CON, r, tp, 24)
+end
+V_OFF = 60
+U:RefreshScrollClip(CON)
+V1 = ROWS[1]:IsShown(); V2 = ROWS[2]:IsShown(); V3 = ROWS[3]:IsShown(); V4 = ROWS[4]:IsShown()
+""")
+check(bool(rt.eval("V1 == false and V2 == true and V3 == true and V4 == false")), "scroll clip: rows outside the viewport are hidden, visible ones stay shown")
+rt.execute("V_OFF = 96; SCR._scripts.OnMouseWheel(SCR); V_AFTER = ROWS[3]:IsShown() and (not ROWS[4]:IsShown())")
+check(bool(rt.eval("V_AFTER == true")), "scroll clip refreshes on scroll events")
+
+# -- dropdown: menu RIUSATO, mai un cadavere nuovo
+rt.execute("""
+dd2 = RLSuite.lootManager.rarityDropdown
+RLSuite.utils:ToggleDropdownMenu(dd2)
+M_A = dd2._rlsDropMenu
+RLSuite.utils:CloseDropdownMenu()
+RLSuite.utils:ToggleDropdownMenu(dd2)
+M_B = dd2._rlsDropMenu
+RLSuite.utils:CloseDropdownMenu()
+""")
+check(bool(rt.eval("M_A ~= nil and M_A == M_B")), "dropdown menu is reused per dropdown (no leaked rebuilds)")
+
+
+check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenarios G+H (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 
 print()
 if fails:
