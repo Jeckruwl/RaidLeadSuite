@@ -3282,6 +3282,22 @@ IE_PRESENT = GM.autoinvite.names[1] == IE_N1
 """)
 check(bool(rt.eval("IE_LEFT == 1 and IE_PRESENT")), "clicking the manual-list X removes exactly that player")
 check(bool(rt.eval("RP43_2 > RP43_1 and RP43_1 > RP43_R and RP43_3 > RP43_2")), "RepinFrameOrder: children strictly above parents, in creation order, deterministic")
+check('function GM:PinTabStrip' in open("GroupMaking.lua", encoding='utf-8').read(), "PinTabStrip helper exists")
+check('base + 50 + i' in open("GroupMaking.lua", encoding='utf-8').read(), "IE tab buttons pinned strictly above the border and the pages")
+rt.execute("""
+-- tabs above border, pages below tabs: deterministic add-on stacking
+G46 = RLSuite.groupmaking
+G46.ieTabGroup = { border = CreateFrame("Frame", nil, UIParent), tabs = {} }
+G46.ieTabGroup.tabs[1] = CreateFrame("Button", nil, UIParent)
+G46.ieTabGroup.tabs[2] = CreateFrame("Button", nil, UIParent)
+G46.ieTabGroup.border:SetFrameLevel(100)
+G46:PinTabStrip()
+P46_B = G46.ieTabGroup.border:GetFrameLevel()
+P46_T1 = G46.ieTabGroup.tabs[1]:GetFrameLevel()
+P46_T2 = G46.ieTabGroup.tabs[2]:GetFrameLevel()
+""")
+check(bool(rt.eval("P46_T1 > P46_B and P46_T2 > P46_T1")), "pin: tab buttons strictly above the border, in order")
+
 check('function GM:RepinManualPage' in open("GroupMaking.lua", encoding='utf-8').read(), "RepinManualPage exists (headers vs content deterministic pinning)")
 check('self:RepinManualPage()' in open("GroupMaking.lua", encoding='utf-8').read(), "RepinManualPage invoked at page-build end AND on tab show")
 

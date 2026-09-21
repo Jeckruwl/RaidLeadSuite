@@ -1378,6 +1378,26 @@ function GM:CreateInviteEngineTabs()
     self:LayoutInviteEngineTabs()
 end
 
+-- I bottoni della striscia tab sono SEMPRE sopra border e soprattutto
+-- sopra le pagine (gli header finivano sotto). Deterministico, idempotente,
+-- richiamato da Layout e tab-switch.
+function GM:PinTabStrip()
+    local tg = self.ieTabGroup
+    if not tg then return end
+    local base = 0
+    if tg.border and tg.border.GetFrameLevel then
+        base = tg.border:GetFrameLevel() or 0
+    end
+    local tabs = tg.tabs
+    if not tabs then return end
+    for i = 1, #tabs do
+        local tb = tabs[i]
+        if tb and tb.SetFrameLevel then
+            tb:SetFrameLevel(base + 50 + i)
+        end
+    end
+end
+
 -- Ridimensiona il TabGroup alla costola corrente e ricalcola l'area di
 -- contenuto sotto le tab. Richiamato a ogni cambio di altezza/difficolta'.
 function GM:LayoutInviteEngineTabs()
