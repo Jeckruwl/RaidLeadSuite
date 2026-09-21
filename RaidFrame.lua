@@ -92,6 +92,21 @@ local RF_BP_PRIORITY = {
 }
 local RF_BP_BTN_W = 72
 
+-- --- Check buff CONSAPEVOLE DELLA COMPOSIZIONE -----------------------
+-- Colori dell'icona di intestazione di una categoria della matrice:
+--   NORMAL   categoria disponibile (il check puo' essere soddisfatto)
+--   NODATA   categoria NON disponibile con questa composizione (nessun
+--            fornitore nel raid) -> icona grigio scuro, niente "accensione"
+--   RED      overlay rosso sopra l'icona quando la categoria e' disponibile
+--            ma il check NON e' soddisfatto (stile spell non utilizzabile)
+local RF_HDR_NORMAL = 0.8
+local RF_HDR_NODATA = 0.35
+local RF_HDR_RED = { 0.85, 0.05, 0.05, 0.55 }
+-- Focus Magic (3.3.5): il buff vive sul BERSAGLIO, quindi l'unico modo per
+-- sapere QUALE mago non l'ha dato e' il combat log (SPELL_AURA_APPLIED ha
+-- la fonte). Il conteggio delle aure resta la fonte di verita' del check.
+local RF_FM_SPELL = 54646
+
 -- Bordino DORATO di drop: indica lo slot in cui il player trascinato
 -- atterrerebbe se rilasciassi ADESSO (blocco pieno = swap, vuoto = move).
 -- Decorazione pura: bordo su frame figlio (MAI toccare il backdrop dello
@@ -209,9 +224,15 @@ end
 
 function RF:OnCombatLog(event, ...)
     -- 3.3.5: timestamp, subEvent, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, ...
-    local _, subEvent, _, sourceName, _, _, _, _, spellId = ...
+    local _, subEvent, _, sourceName, _, _, destName, _, spellId = ...
     if subEvent == "SPELL_CAST_SUCCESS" then
         self:OnSpellCast(sourceName, spellId)
+    elseif subEvent == "SPELL_AURA_APPLIED" and spellId == RF_FM_SPELL and sourceName then
+        -- Focus Magic: l'aura vive sul BERSAGLIO, la FONTE e' il mago che
+        -- l'ha lanciata. E' l'unico modo per dire NELL'ALERT quale mago non
+        -- l'ha ancora dato (contare le aure non basta a fare i nomi).
+        self.fmCasters = self.fmCasters or {}
+        self.fmCasters[sourceName] = destName or true
     end
 end
 
@@ -1806,18 +1827,40 @@ function RF:_MatrixHeaderBtn(c)
         local tex = btn:CreateTexture(nil, "OVERLAY")
         tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         tex:SetPoint("CENTER", btn, "CENTER", 0, 0)
-        tex:SetVertexColor(0.8, 0.8, 0.8) -- "spento"; hover accende a piena luce
+        tex:SetVertexColor(RF_HDR_NORMAL, RF_HDR_NORMAL, RF_HDR_NORMAL)
         btn._icon = tex
+        -- Overlay ROSSO sopra l'icona: categoria disponibile ma check non
+        -- soddisfatto (stesso linguaggio visivo delle spell non usabili).
+        -- Texture bianca tinta via SetVertexColor (SetColorTexture non esiste
+        -- su 3.3.5) e sub-layer SOPRA l'icona.
+        local red = btn:CreateTexture(nil, "OVERLAY", nil, 1)
+        red:SetTexture("Interface\\Buttons\\WHITE8x8")
+        red:SetVertexColor(RF_HDR_RED[1], RF_HDR_RED[2], RF_HDR_RED[3], RF_HDR_RED[4])
+        red:SetAllPoints(tex)
+        red:Hide()
+        btn._red = red
         btn:SetScript("OnEnter", function(s)
-            if s._icon then s._icon:SetVertexColor(1, 1, 1) end
+            -- Categoria NON disponibile con questa composizione: resta spenta
+            -- anche in hover (non deve sembrare disponibile).
+            if s._icon then
+                local v = s._nodata and RF_HDR_NODATA or 1
+                s._icon:SetVertexColor(v, v, v)
+            end
             if GameTooltip and GameTooltip.SetOwner and s._col then
                 GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
                 GameTooltip:SetText(s._col.label or s._col.key or "")
+                if s._status and GameTooltip.AddLine then
+                    local txt, r, g, b = RF:_BuffStatusText(s._status)
+                    if txt then GameTooltip:AddLine(txt, r, g, b) end
+                end
                 GameTooltip:Show()
             end
         end)
         btn:SetScript("OnLeave", function(s)
-            if s._icon then s._icon:SetVertexColor(0.8, 0.8, 0.8) end
+            if s._icon then
+                local v = s._nodata and RF_HDR_NODATA or RF_HDR_NORMAL
+                s._icon:SetVertexColor(v, v, v)
+            end
             if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
         end)
         btn:RegisterForClicks("LeftButtonUp")
@@ -1850,22 +1893,237 @@ function RF:DiagnoseBuffCatIcons()
     end
 end
 
-function RF:WarnBuffCategory(col)
-    if not col then return end
-    local label = col.label or col.key or "?"
-    local missing = {}
-    for _, member in ipairs(self:GetRoster()) do
-        if member.unit or member.fake then
-            if not self:_BuffCellIconFor(member, col) then
-                missing[#missing + 1] = member.name or "?"
+-- ------------------------------------------------------------------
+-- CHECK BUFF CONSAPEVOLE DI CLASSE E COMPOSIZIONE
+-- Il check classico chiedeva il buff a TUTTI i player e segnalava come
+-- "mancante" anche chi non puo' riceverlo (Int su un warrior) o chi non
+-- puo' averlo perche' in raid nessuno lo fornisce. Qui, per ogni categoria:
+--   applicable  chi ne BENEFICIA (col.beneficiaries; vuoto = tutti)
+--   coverable   chi PUO' riceverlo: in raid c'e' un fornitore raid-wide,
+--               oppure un fornitore party-only (totem) nel SUO party
+--   available   almeno un player applicable+coverable esiste
+--   satisfied   tutti i coverable hanno l'aura; per scope "single"/"capped"
+--               invece il numero di aure deve raggiungere quello atteso
+-- ------------------------------------------------------------------
+
+-- La classe di questo membro puo' fornire la categoria?
+function RF:_BuffClassProvides(col, class)
+    if not (col and class) then return false end
+    local provs = col.classes
+    for i = 1, #(provs or {}) do
+        if provs[i] == class then return true end
+    end
+    return false
+end
+
+-- La classe e' elencata fra i fornitori la cui versione copre SOLO il party?
+function RF:_BuffClassPartyOnly(col, class)
+    if not (col and class) then return false end
+    local party = col.partyProviders
+    for i = 1, #(party or {}) do
+        if party[i] == class then return true end
+    end
+    return false
+end
+
+-- La categoria interessa questa classe? (beneficiaries assente/vuoto = tutti)
+function RF:_BuffApplicable(member, col)
+    local ben = col and col.beneficiaries
+    if not (ben and #ben > 0) then return true end
+    local class = member and member.class
+    if not class then return true end
+    for i = 1, #ben do
+        if ben[i] == class then return true end
+    end
+    return false
+end
+
+-- Contesto di fornitura dati i membri presenti (entries: {member, group}):
+--   providerCount   quanti membri possono fornirla
+--   hasRaidProvider esiste un fornitore raid-wide (copre chiunque)
+--   partyProvider   [gruppo] = true se li' c'e' un fornitore party-only
+function RF:_BuffProviderContext(col, entries)
+    local ctx = { providerCount = 0, hasRaidProvider = false, partyProvider = {} }
+    for _, e in ipairs(entries or {}) do
+        local class = e.member and e.member.class
+        if self:_BuffClassProvides(col, class) then
+            ctx.providerCount = ctx.providerCount + 1
+            if self:_BuffClassPartyOnly(col, class) then
+                if e.group then ctx.partyProvider[e.group] = true end
+            else
+                ctx.hasRaidProvider = true
             end
         end
     end
+    return ctx
+end
+
+-- Questo membro PUO' ricevere la categoria?
+function RF:_BuffCoverable(col, ctx, group)
+    if ctx.hasRaidProvider then return true end
+    if group and ctx.partyProvider[group] then return true end
+    return false
+end
+
+-- Aggregato per colonna: si riempie DURANTE il refresh della matrice, nella
+-- stessa passata di UnitBuff che disegna le celle (nessun scan in piu').
+function RF:_BuffAggNew(col, entries)
+    return {
+        col = col,
+        ctx = self:_BuffProviderContext(col, entries),
+        count = 0,       -- membri con l'aura (qualunque classe)
+        applicable = 0,  -- membri che ne beneficiano
+        coverable = 0,   -- membri che possono riceverla
+        missing = {},    -- nomi dei coverable senza l'aura
+        hasByName = nil, -- solo scope "single": nome -> l'ha
+    }
+end
+
+function RF:_BuffAggAdd(agg, member, group, has)
+    if not (agg and member) then return end
+    local col = agg.col
+    if has then agg.count = agg.count + 1 end
+    if col.scope == "single" then
+        agg.hasByName = agg.hasByName or {}
+        if has then agg.hasByName[member.name or "?"] = true end
+    end
+    if not self:_BuffApplicable(member, col) then return end
+    agg.applicable = agg.applicable + 1
+    if not self:_BuffCoverable(col, agg.ctx, group) then return end
+    agg.coverable = agg.coverable + 1
+    if not has then agg.missing[#agg.missing + 1] = member.name or "?" end
+end
+
+-- Dallo stato aggregato allo stato finale della categoria.
+function RF:_BuffStatusFromAgg(agg)
+    local col = agg.col
+    local st = {
+        key = col.key, label = col.label or col.key,
+        scope = col.scope or "raid",
+        count = agg.count, applicable = agg.applicable, coverable = agg.coverable,
+        missing = agg.missing, missingProviders = {},
+    }
+    -- Disponibile solo se qualcuno puo' DAVVERO riceverla: cosi' una categoria
+    -- senza fornitore in raid (o senza beneficiari presenti) si ingrigisce
+    -- invece di produrre un muro di "mancante".
+    st.available = (agg.coverable > 0)
+    if st.scope == "single" then
+        -- Focus Magic: tante aure quanti sono i maghi (uno per mago).
+        st.expected = math.min(agg.ctx.providerCount, agg.coverable)
+        st.satisfied = (st.expected == 0) or (agg.count >= st.expected)
+        if not st.satisfied then
+            -- Nomi dei maghi SENZA un FM ancora attivo: dal combat log, quindi
+            -- solo per i lanci visti (best effort: il conteggio e' la verita').
+            local fm = self.fmCasters or {}
+            for _, m in ipairs(self:GetRoster()) do
+                if self:_BuffClassProvides(col, m.class) then
+                    local dest = fm[m.name]
+                    local active = dest and dest ~= true and agg.hasByName and agg.hasByName[dest]
+                    if not active then
+                        st.missingProviders[#st.missingProviders + 1] = m.name or "?"
+                    end
+                end
+            end
+        end
+    elseif st.scope == "capped" then
+        -- Replenishment copre al massimo `cap` player: pretendere l'aura su
+        -- tutti i mana user sarebbe un falso allarme.
+        st.expected = math.min(col.cap or agg.coverable, agg.coverable)
+        st.satisfied = (st.expected == 0) or (agg.count >= st.expected)
+    else
+        st.expected = agg.coverable
+        st.satisfied = (#agg.missing == 0)
+    end
+    return st
+end
+
+-- Stato COMPLETO di una categoria (ricalcolo): lo usano il click sull'header
+-- e il tooltip. Il refresh della matrice non passa da qui: aggrega nella sua
+-- passata per non raddoppiare gli scan di UnitBuff.
+function RF:BuffCoverage(col)
+    if not col then return nil end
+    local entries = {}
+    local groups = self:GetGroupedRoster()
+    for g = 1, #groups do
+        for s = 1, #groups[g] do
+            local m = groups[g][s]
+            if m then entries[#entries + 1] = { member = m, group = g } end
+        end
+    end
+    local agg = self:_BuffAggNew(col, entries)
+    for _, e in ipairs(entries) do
+        self:_BuffAggAdd(agg, e.member, e.group, self:_BuffCellIconFor(e.member, col) ~= nil)
+    end
+    return self:_BuffStatusFromAgg(agg)
+end
+
+-- Icona di intestazione: grigio scuro se la categoria NON e' disponibile con
+-- questa composizione; overlay rosso se e' disponibile ma il check non e'
+-- soddisfatto ("non usabile"); altrimenti icona normale.
+function RF:ApplyBuffHeaderStatus(btn, st)
+    if not (btn and btn._icon) then return end
+    btn._status = st
+    local nodata = (st ~= nil) and (st.available == false)
+    local failing = (st ~= nil) and (st.available == true) and (st.satisfied == false)
+    btn._nodata = nodata
+    if btn._red then
+        if failing then btn._red:Show() else btn._red:Hide() end
+    end
+    if btn._icon.SetDesaturated then btn._icon:SetDesaturated(failing and true or false) end
+    -- Il refresh della matrice gira ogni 0,5s: senza questo guard l'icona
+    -- tornerebbe a 0.8 sotto il cursore, spegnendo l'hover a ogni tick.
+    local v = nodata and RF_HDR_NODATA or RF_HDR_NORMAL
+    if (not nodata) and btn.IsMouseOver and btn:IsMouseOver() then v = 1 end
+    btn._icon:SetVertexColor(v, v, v)
+end
+
+-- Riga di stato per il tooltip dell'header.
+function RF:_BuffStatusText(st)
+    if not st then return nil end
+    if st.available == false then
+        return L["Not available in this composition"], 0.6, 0.6, 0.6
+    end
+    if st.scope == "single" or st.scope == "capped" then
+        local txt = string.format(L["Covered: %d/%d"], st.count, st.expected)
+        if st.satisfied then return txt, 0.2, 1, 0.2 end
+        return txt, 1, 0.35, 0.35
+    end
+    if st.satisfied then return L["OK on everyone"], 0.2, 1, 0.2 end
+    local shown = {}
+    for i = 1, math.min(#st.missing, 4) do shown[i] = st.missing[i] end
+    local txt = string.format(L["Missing: %d"], #st.missing)
+    if #shown > 0 then txt = txt .. ": " .. table.concat(shown, ", ") end
+    return txt, 1, 0.35, 0.35
+end
+
+-- Left-click su un titolo di categoria: raid warning per quella colonna.
+-- Il messaggio segue il check consapevole della composizione:
+--   non disponibile -> lo dice (niente nomi, non e' colpa di nessuno)
+--   scope single    -> aure presenti/attese + maghi che non l'hanno dato
+--   scope capped    -> coperte/attese
+--   altrimenti      -> elenco dei SOLI player che ne beneficiano e possono
+--                      riceverlo
+function RF:WarnBuffCategory(col)
+    if not col then return end
+    local st = self:BuffCoverage(col)
+    if not st then return end
+    local label = st.label
     local msg
-    if #missing == 0 then
+    if st.available == false then
+        msg = string.format(L["Buff check: %s - not available in this composition"], label)
+    elseif st.scope == "single" then
+        msg = string.format(L["Buff check: %s - %d/%d"], label, st.count, st.expected)
+        if #st.missingProviders > 0 then
+            msg = msg .. string.format(L[" - mages missing: %s"],
+                table.concat(st.missingProviders, ", "))
+        end
+    elseif st.scope == "capped" then
+        msg = string.format(L["Buff check: %s - %d/%d"], label, st.count, st.expected)
+    elseif #st.missing == 0 then
         msg = string.format(L["Buff check: %s - OK on everyone"], label)
     else
-        msg = string.format(L["Buff check: %s - missing: %s"], label, table.concat(missing, ", "))
+        msg = string.format(L["Buff check: %s - missing: %s"], label,
+            table.concat(st.missing, ", "))
     end
     if #msg > 240 then msg = msg:sub(1, 237) .. "..." end
     if RLSuite.utils and RLSuite.utils.SendChat then
@@ -1926,6 +2184,21 @@ function RF:RefreshBuffMatrix()
     local on = self.buffMatrixOn and self.rows and self.rows[1] ~= nil
     local cols = on and self:_MatrixCols() or nil
     local headersOn = self.rows and self.rows[1] ~= nil
+    -- Aggregati per il check consapevole della composizione: si riempiono
+    -- nella STESSA passata che disegna le celle (una UnitBuff sola per cella).
+    -- I membri sono presi dagli slot dei gruppi: le barre MT/OT non fanno
+    -- parte di self.slots, quindi nessun doppio conteggio.
+    local aggs
+    if on and cols then
+        aggs = {}
+        local entries = {}
+        for _, slot in ipairs(self.slots or {}) do
+            if slot.member and slot:IsShown() then
+                entries[#entries + 1] = { member = slot.member, group = slot.group }
+            end
+        end
+        for c = 1, #cols do aggs[c] = self:_BuffAggNew(cols[c], entries) end
+    end
     for _, slot in ipairs(self.slots or {}) do
         for c = 1, #(slot._buffCells or {}) do
             local tex = slot._buffCells[c]
@@ -1938,6 +2211,9 @@ function RF:RefreshBuffMatrix()
                 tex:Show()
             else
                 tex:Hide()
+            end
+            if aggs and aggs[c] and slot.member and cols and cols[c] and slot:IsShown() then
+                self:_BuffAggAdd(aggs[c], slot.member, slot.group, icon ~= nil)
             end
         end
     end
@@ -1961,6 +2237,11 @@ function RF:RefreshBuffMatrix()
     for c, btn in ipairs(self._buffHdrBtns or {}) do
         if on and g1Shown and RLSuite.raidBuffColumns and self:_MatrixCols()[c] then
             btn:Show()
+            -- Stato della categoria (dall'aggregato di questa passata): grigio
+            -- se non disponibile con la composizione, rosso se non soddisfatta.
+            if aggs and aggs[c] then
+                self:ApplyBuffHeaderStatus(btn, self:_BuffStatusFromAgg(aggs[c]))
+            end
         else
             btn:Hide()
         end

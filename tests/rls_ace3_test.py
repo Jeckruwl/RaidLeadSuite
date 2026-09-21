@@ -1679,13 +1679,31 @@ check(bool(rt.eval("BP_W")), "window width does NOT include the matrix columns a
 check(bool(rt.eval("BP_SPILL")), "header/column icons are drawn BEYOND the window's right edge (rendered outside = click-through)")
 check(bool(rt.eval("BP_CELL_ON_ROW") and bool(rt.eval("BP_CELL_SIDE"))), "category icons live ALONG the player's row, past the row right edge")
 # --- hover: il titolo di categoria si "illumina"; click: raid warning categoria ---
+# v1.11.49: l'accensione vale per le categorie DISPONIBILI con la composizione
+# (quelle non disponibili restano spente anche in hover). La verifica sceglie
+# quindi una colonna disponibile invece di dare per scontato che lo sia la 1.
 rt.execute("""
+local av, na
+for c, b in ipairs(RLSuite.raidFrame._buffHdrBtns) do
+    if b:IsShown() and b._status then
+        if b._nodata == false and not av then av = b end
+        if b._nodata == true and not na then na = b end
+    end
+end
+BP_HOVER_ON, BP_HOVER_OFF, BP_HOVER_TIP, BP_NODATA_HOVER = false, false, false, false
+if av then
+    av._scripts.OnEnter(av)
+    BP_HOVER_ON = (av._icon._vertex ~= nil and av._icon._vertex[1] == 1 and av._icon._vertex[2] == 1 and av._icon._vertex[3] == 1)
+    BP_HOVER_TIP = (GameTooltip._text == av._col.label)
+    av._scripts.OnLeave(av)
+    BP_HOVER_OFF = (av._icon._vertex[1] == 0.8 and av._icon._vertex[2] == 0.8)
+end
+if na then
+    na._scripts.OnEnter(na)
+    BP_NODATA_HOVER = (na._icon._vertex[1] == 0.35 and na._red:IsShown() == false)
+    na._scripts.OnLeave(na)
+end
 local hb = RLSuite.raidFrame._buffHdrBtns[1]
-hb._scripts.OnEnter(hb)
-BP_HOVER_ON = (hb._icon._vertex ~= nil and hb._icon._vertex[1] == 1 and hb._icon._vertex[2] == 1 and hb._icon._vertex[3] == 1)
-BP_HOVER_TIP = (GameTooltip._text == RLSuite.raidFrame._buffHdrBtns[1]._col.label)
-hb._scripts.OnLeave(hb)
-BP_HOVER_OFF = (hb._icon._vertex[1] == 0.8 and hb._icon._vertex[2] == 0.8)
 local n0 = #CHAT_LOG
 hb._scripts.OnClick(hb)
 BP_WARN = false
@@ -1693,9 +1711,11 @@ for i = n0 + 1, #CHAT_LOG do
     if CHAT_LOG[i]:find('RAID_WARNING', 1, true) and CHAT_LOG[i]:find('%stat', 1, true) then BP_WARN = true end
 end
 """)
-check(bool(rt.eval("BP_HOVER_ON")), "hovering a category icon lights it up (full brightness)")
+check(bool(rt.eval("BP_HOVER_ON")), "hovering an AVAILABLE category icon lights it up (full brightness)")
 check(bool(rt.eval("BP_HOVER_OFF")), "hover-exit dims the icon again")
 check(bool(rt.eval("BP_HOVER_TIP")), "hovering a category icon shows its name in the tooltip")
+# (il caso "categoria non disponibile" e' verificato in modo deterministico
+#  nella sezione v1.11.49, con un roster costruito ad hoc)
 check(bool(rt.eval("BP_WARN")), "clicking a category title sends a RAID WARNING for that category")
 rt.execute("""
 local n0 = #CHAT_LOG
@@ -3468,6 +3488,278 @@ RLSuite.utils:CloseDropdownMenu()
 """)
 check(bool(rt.eval("M_A ~= nil and M_A == M_B")), "dropdown menu is reused per dropdown (no leaked rebuilds)")
 
+
+# =====================================================================
+# v1.11.49: check buff consapevole di CLASSE e COMPOSIZIONE
+#   - applicabilita' per classe (Int non si segnala a un warrior)
+#   - scope completo: raid-wide / party-only (totem) / single (FM) / capped
+#   - intestazione GRIGIA se la categoria non e' disponibile con la comp
+#   - overlay ROSSO se la categoria e' disponibile ma il check non e' ok
+#   - Focus Magic: tante aure quanti maghi, nomi dei maghi mancanti
+# =====================================================================
+print("\n== v1.11.49: class/composition-aware buff check (grey header, red overlay, FM per mage) ==")
+
+# --- guardie statiche sul modello dati ------------------------------------
+rt.execute("""
+COMPB_PARTY_SUBSET, COMPB_CAP_OK, COMPB_BEN_VALID = true, true, true
+local VALID = { WARRIOR=true, PALADIN=true, HUNTER=true, ROGUE=true, PRIEST=true,
+                DEATHKNIGHT=true, SHAMAN=true, MAGE=true, WARLOCK=true, DRUID=true }
+for _, c in ipairs(RLSuite.raidBuffColumns) do
+    for _, pc in ipairs(c.partyProviders or {}) do
+        local found = false
+        for _, cc in ipairs(c.classes or {}) do if cc == pc then found = true end end
+        if not found then COMPB_PARTY_SUBSET = false end
+    end
+    if c.scope == "capped" and not (c.cap and c.cap > 0) then COMPB_CAP_OK = false end
+    for _, bc in ipairs(c.beneficiaries or {}) do
+        if not VALID[bc] then COMPB_BEN_VALID = false end
+    end
+end
+COMPB_SCOPE_VALUES = true
+for _, c in ipairs(RLSuite.raidBuffColumns) do
+    if c.scope ~= nil and c.scope ~= 'raid' and c.scope ~= 'single' and c.scope ~= 'capped' then
+        COMPB_SCOPE_VALUES = false
+    end
+end
+""")
+check(bool(rt.eval("COMPB_PARTY_SUBSET")), "static: every partyProviders class is also listed in classes (provider subset invariant)")
+check(bool(rt.eval("COMPB_CAP_OK")), "static: every 'capped' category declares a positive cap")
+check(bool(rt.eval("COMPB_BEN_VALID")), "static: every beneficiaries entry is a real WoW class")
+check(bool(rt.eval("COMPB_SCOPE_VALUES")), "static: scope is only raid/single/capped")
+
+# --- roster deterministico + aure STUBBATE --------------------------------
+# G1: Pala(PALADIN) Mago1(MAGE) Sham(SHAMAN) Warro(WARRIOR) Pret(PRIEST)
+# G2: Mago2(MAGE) Druid(DRUID) Ladro(ROGUE)
+# Le aure sono stub: il test misura la LOGICA (applicabilita'/copertura), non
+# lo scan di UnitBuff del client.
+rt.execute("""
+local RF = RLSuite.raidFrame
+COMPB_SAVED = RF._BuffCellIconFor
+RLSuite.db.profile.debug = true
+RLSuite.debugTanks = nil
+RLSuite.debugRaid = { slots = {
+    [1] = { name = 'Pala',  class = 'PALADIN', isPlayer = false, subgroup = 1 },
+    [2] = { name = 'Mago1', class = 'MAGE',    isPlayer = false, subgroup = 1 },
+    [3] = { name = 'Sham',  class = 'SHAMAN',  isPlayer = false, subgroup = 1 },
+    [4] = { name = 'Warro', class = 'WARRIOR', isPlayer = false, subgroup = 1 },
+    [5] = { name = 'Pret',  class = 'PRIEST',  isPlayer = false, subgroup = 1 },
+    [6] = { name = 'Mago2', class = 'MAGE',    isPlayer = false, subgroup = 2 },
+    [7] = { name = 'Druid', class = 'DRUID',   isPlayer = false, subgroup = 2 },
+    [8] = { name = 'Ladro', class = 'ROGUE',   isPlayer = false, subgroup = 2 },
+} }
+COMPB_AURA = {}
+RF._BuffCellIconFor = function(self2, member, col)
+    local byName = COMPB_AURA[member and member.name]
+    if byName and byName[col.key] then return 'Tex:' .. col.key, 1 end
+    return nil
+end
+COMPB = function(key)
+    for _, c in ipairs(RLSuite.raidBuffColumns) do
+        if c.key == key then return RLSuite.raidFrame:BuffCoverage(c) end
+    end
+    return nil
+end
+COMPB_HDR = function(key)
+    for c, b in ipairs(RLSuite.raidFrame._buffHdrBtns) do
+        if b._col and b._col.key == key then return b, c end
+    end
+    return nil, nil
+end
+RLSuite.raidFrame.buffMatrixOn = true
+RLSuite.raidFrame:Rebuild()
+""")
+
+# --- applicabilita' per classe --------------------------------------------
+rt.execute("""
+local st = COMPB('intellect')
+COMPB_INT_APPLICABLE = st.applicable
+COMPB_INT_MISSING = #st.missing
+COMPB_INT_AVAILABLE = st.available
+COMPB_INT_NO_PHYS = true
+for _, n in ipairs(st.missing) do
+    if n == 'Warro' or n == 'Ladro' then COMPB_INT_NO_PHYS = false end
+end
+-- e la stessa categoria su chi NON ha mana: 0 player applicabili
+local st2 = COMPB('intellect')
+COMPB_INT_MANA_ONLY = (st2.applicable == 6)
+""")
+check(bool(rt.eval("COMPB_INT_MANA_ONLY")), "class applicability: Int counts the 6 mana users only (warrior/rogue are NOT applicable)")
+check(bool(rt.eval("COMPB_INT_NO_PHYS")), "class applicability: the missing list never names non-benefiting classes (no Int for a warrior)")
+check(bool(rt.eval("COMPB_INT_AVAILABLE")), "a category whose provider class IS in the raid stays available")
+
+# --- scope party-only (totem shaman) -------------------------------------
+rt.execute("""
+local st = COMPB('spellHaste')
+COMPB_SPH_COVERABLE = st.coverable
+COMPB_SPH_MISSING = #st.missing
+COMPB_SPH_AVAILABLE = st.available
+-- i caster del gruppo 2 (senza shaman) NON vanno accusati
+COMPB_SPH_NO_G2 = true
+for _, n in ipairs(st.missing) do
+    if n == 'Mago2' or n == 'Druid' then COMPB_SPH_NO_G2 = false end
+end
+-- i caster del gruppo 1 (col totem) si'
+COMPB_SPH_G1 = false
+for _, n in ipairs(st.missing) do
+    if n == 'Mago1' then COMPB_SPH_G1 = true end
+end
+""")
+check(bool(rt.eval("COMPB_SPH_AVAILABLE")), "party-only: Wrath of Air (shaman totem) is available when a shaman is in the raid")
+check(bool(rt.eval("COMPB_SPH_COVERABLE == 4")), "party-only: only the shaman's party is expected to have it (4 casters in G1, not the 6 casters of the raid)")
+check(bool(rt.eval("COMPB_SPH_NO_G2")), "party-only: casters OUTSIDE the shaman's party are NOT reported as missing (no false alarm)")
+check(bool(rt.eval("COMPB_SPH_G1")), "party-only: casters INSIDE the shaman's party ARE reported when the totem is down")
+
+# --- scope capped (Replenishment copre 10) --------------------------------
+rt.execute("""
+local slots = {}
+for i = 1, 25 do
+    local mana = (i <= 15)
+    slots[i] = { name = mana and ('Mana' .. i) or ('Phys' .. i),
+                 class = mana and 'MAGE' or 'WARRIOR', isPlayer = false,
+                 subgroup = math.floor((i - 1) / 5) + 1 }
+end
+RLSuite.debugRaid = { slots = slots }
+RLSuite.debugTanks = nil
+COMPB_AURA = {}
+RLSuite.raidFrame:Rebuild()
+local st = COMPB('replen')
+COMPB_REPLEN_EXPECTED = st.expected
+COMPB_REPLEN_APPLICABLE = st.applicable
+COMPB_REPLEN_RED = (COMPB_HDR('replen')._red:IsShown() == true)
+-- 10 aure su 15 mana user: il check DEVE essere soddisfatto (cap 10)
+for i = 1, 10 do COMPB_AURA['Mana' .. i] = { replen = true } end
+RLSuite.raidFrame:RefreshBuffMatrix()
+local st2 = COMPB('replen')
+COMPB_REPLEN_SAT_10 = st2.satisfied
+COMPB_REPLEN_COUNT_10 = (st2.count == 10)
+COMPB_REPLEN_RED_10 = (COMPB_HDR('replen')._red:IsShown() == true)
+-- 9 aure: non soddisfatto -> overlay rosso
+COMPB_AURA['Mana10'] = nil
+RLSuite.raidFrame:RefreshBuffMatrix()
+local st3 = COMPB('replen')
+COMPB_REPLEN_SAT_9 = st3.satisfied
+COMPB_REPLEN_RED_9 = (COMPB_HDR('replen')._red:IsShown() == true)
+""")
+check(bool(rt.eval("COMPB_REPLEN_EXPECTED == 10 and COMPB_REPLEN_APPLICABLE == 15")), "capped: Replenishment expects 10 of the 15 mana users (cap respected, not 'everyone')")
+check(bool(rt.eval("COMPB_REPLEN_SAT_10 and COMPB_REPLEN_COUNT_10")), "capped: 10 covered auras SATISFY the check")
+check(bool(rt.eval("COMPB_REPLEN_RED_10 == false")), "capped: a satisfied category shows NO red overlay")
+check(bool(rt.eval("COMPB_REPLEN_RED == true")), "red overlay: an available category with nobody covered is flagged")
+check(bool(rt.eval("COMPB_REPLEN_SAT_9 == false and COMPB_REPLEN_RED_9 == true")), "red overlay: dropping to 9 auras (below the 10 cap) flags the column again")
+
+# --- Focus Magic: una FM per mago + nomi nell'alert -----------------------
+rt.execute("""
+RLSuite.debugTanks = nil
+RLSuite.debugRaid = { slots = {
+    [1] = { name = 'Pala',  class = 'PALADIN', isPlayer = false, subgroup = 1 },
+    [2] = { name = 'Mago1', class = 'MAGE',    isPlayer = false, subgroup = 1 },
+    [3] = { name = 'Sham',  class = 'SHAMAN',  isPlayer = false, subgroup = 1 },
+    [4] = { name = 'Warro', class = 'WARRIOR', isPlayer = false, subgroup = 1 },
+    [5] = { name = 'Pret',  class = 'PRIEST',  isPlayer = false, subgroup = 1 },
+    [6] = { name = 'Mago2', class = 'MAGE',    isPlayer = false, subgroup = 2 },
+    [7] = { name = 'Druid', class = 'DRUID',   isPlayer = false, subgroup = 2 },
+    [8] = { name = 'Ladro', class = 'ROGUE',   isPlayer = false, subgroup = 2 },
+} }
+COMPB_AURA = {}
+RLSuite.raidFrame.fmCasters = nil
+RLSuite.raidFrame:Rebuild()
+-- il combat log registra FONTE -> BERSAGLIO (l'aura sta sul bersaglio)
+RLSuite.raidFrame:OnCombatLog('COMBAT_LOG_EVENT_UNFILTERED', 0, 'SPELL_AURA_APPLIED',
+    'GUID-A', 'Mago1', 0, 'GUID-B', 'Mago2', 0, 54646)
+COMPB_FM_LOGGED = (RLSuite.raidFrame.fmCasters ~= nil
+    and RLSuite.raidFrame.fmCasters['Mago1'] == 'Mago2')
+-- 1 sola aura su 2 maghi -> manca Mago2
+COMPB_AURA['Mago2'] = { focusMagic = true }
+RLSuite.raidFrame:RefreshBuffMatrix()
+local st = COMPB('focusMagic')
+COMPB_FM_EXPECTED = st.expected
+COMPB_FM_COUNT = st.count
+COMPB_FM_SAT = st.satisfied
+COMPB_FM_NAMES = table.concat(st.missingProviders, ',')
+COMPB_FM_RED = (COMPB_HDR('focusMagic')._red:IsShown() == true)
+-- alert: conteggio + NOME del mago che non l'ha dato
+local n0 = #CHAT_LOG
+COMPB_HDR('focusMagic')._scripts.OnClick(COMPB_HDR('focusMagic'))
+COMPB_FM_ALERT = ''
+for i = n0 + 1, #CHAT_LOG do
+    if CHAT_LOG[i]:find('RAID_WARNING', 1, true) then COMPB_FM_ALERT = CHAT_LOG[i] end
+end
+-- secondo mago coperto -> soddisfatto, niente rosso
+COMPB_AURA['Druid'] = { focusMagic = true }
+RLSuite.raidFrame:OnCombatLog('COMBAT_LOG_EVENT_UNFILTERED', 0, 'SPELL_AURA_APPLIED',
+    'GUID-C', 'Mago2', 0, 'GUID-D', 'Druid', 0, 54646)
+RLSuite.raidFrame:RefreshBuffMatrix()
+local st2 = COMPB('focusMagic')
+COMPB_FM_SAT2 = st2.satisfied
+COMPB_FM_RED2 = (COMPB_HDR('focusMagic')._red:IsShown() == true)
+COMPB_FM_NAMES2 = #st2.missingProviders
+""")
+check(bool(rt.eval("COMPB_FM_LOGGED")), "FM: the combat log records caster->target for Focus Magic (SPELL_AURA_APPLIED)")
+check(bool(rt.eval("COMPB_FM_EXPECTED == 2")), "FM: expected auras = number of MAGES in the raid (2), not number of casters (6)")
+check(bool(rt.eval("COMPB_FM_COUNT == 1 and COMPB_FM_SAT == false")), "FM: one aura on two mages leaves the check unsatisfied")
+check(bool(rt.eval("COMPB_FM_NAMES == 'Mago2'")), "FM: the missing provider is named from the combat log (only Mago2, Mago1 already cast)")
+check(bool(rt.eval("COMPB_FM_RED == true")), "FM: an unsatisfied category paints the red overlay on its header")
+check(bool(rt.eval("COMPB_FM_ALERT:find('1/2', 1, true) ~= nil and COMPB_FM_ALERT:find('Mago2', 1, true) ~= nil")), "FM: the alert carries the count (1/2) AND the name of the mage who has not cast it")
+check(bool(rt.eval("COMPB_FM_SAT2 == true and COMPB_FM_RED2 == false and COMPB_FM_NAMES2 == 0")), "FM: with one FM per mage the column is satisfied and the red overlay disappears")
+
+# --- intestazione GRIGIA per categoria non disponibile --------------------
+# Roster: solo WARRIOR + ROGUE -> niente paladini/maghi/shaman.
+rt.execute("""
+RLSuite.debugTanks = nil
+RLSuite.debugRaid = { slots = {
+    [1] = { name = 'Warro', class = 'WARRIOR', isPlayer = false, subgroup = 1 },
+    [2] = { name = 'Ladro', class = 'ROGUE',   isPlayer = false, subgroup = 1 },
+} }
+COMPB_AURA = {}
+RLSuite.raidFrame:Rebuild()
+local hStats = COMPB_HDR('stats')
+local hHp = COMPB_HDR('hp')
+local stStats = COMPB('stats')
+local stHp = COMPB('hp')
+COMPB_NODATA_FLAG = (hStats._nodata == true)
+COMPB_NODATA_GREY = (hStats._icon._vertex[1] == 0.35)
+COMPB_NODATA_NORED = (hStats._red:IsShown() == false)
+COMPB_NODATA_HIDDEN = (stStats.available == false)
+COMPB_AVAIL_NOT_GREY = (hHp._nodata == false and hHp._icon._vertex[1] == 0.8)
+COMPB_AVAIL_RED = (hHp._red:IsShown() == true)
+-- tooltip: riga di stato dedicata
+local t1 = select(1, RLSuite.raidFrame:_BuffStatusText(stStats))
+local t2 = select(1, RLSuite.raidFrame:_BuffStatusText(stHp))
+COMPB_TOOLTIP_NODATA = (t1 == 'Not available in this composition')
+COMPB_TOOLTIP_MISS = (t2 == 'Missing: 2: Warro, Ladro')
+-- hover su una categoria non disponibile: resta spenta
+hStats._scripts.OnEnter(hStats)
+COMPB_NODATA_HOVER = (hStats._icon._vertex[1] == 0.35 and hStats._red:IsShown() == false)
+hStats._scripts.OnLeave(hStats)
+-- alert: dice che la categoria non e' disponibile, senza accusare nessuno
+local n0 = #CHAT_LOG
+hStats._scripts.OnClick(hStats)
+COMPB_NODATA_ALERT = ''
+for i = n0 + 1, #CHAT_LOG do
+    if CHAT_LOG[i]:find('RAID_WARNING', 1, true) then COMPB_NODATA_ALERT = CHAT_LOG[i] end
+end
+""")
+check(bool(rt.eval("COMPB_NODATA_FLAG and COMPB_NODATA_HIDDEN")), "unavailable: a category with no provider class in the raid is marked not-available")
+check(bool(rt.eval("COMPB_NODATA_GREY")), "unavailable: its header icon is greyed (0.35) instead of the normal 0.8")
+check(bool(rt.eval("COMPB_NODATA_NORED")), "unavailable: NO red overlay (grey and red are distinct states)")
+check(bool(rt.eval("COMPB_NODATA_HOVER")), "unavailable: hovering keeps it dim (it must not look available)")
+check(bool(rt.eval("COMPB_AVAIL_NOT_GREY and COMPB_AVAIL_RED")), "available but unsatisfied: normal brightness + red overlay (e.g. HP with nobody buffed)")
+check(bool(rt.eval("COMPB_TOOLTIP_NODATA")), "tooltip: 'Not available in this composition' on an unavailable column")
+check(bool(rt.eval("COMPB_TOOLTIP_MISS")), "tooltip: missing count + names on an unsatisfied column")
+check(bool(rt.eval("COMPB_NODATA_ALERT:find('not available in this composition', 1, true) ~= nil")), "alert: an unavailable category says so instead of listing the whole raid as missing")
+
+# --- ripristino: nessuna traccia lasciata ai test successivi --------------
+rt.execute("""
+local RF = RLSuite.raidFrame
+RF._BuffCellIconFor = COMPB_SAVED
+RF.fmCasters = nil
+COMPB_AURA = nil
+RLSuite:ResetDebugRaid()
+RLSuite.debugTanks = nil
+RLSuite.raidFrame.buffMatrixOn = false
+RLSuite.raidFrame:Rebuild()
+COMPB_RESTORED = (RF._BuffCellIconFor == COMPB_SAVED)
+""")
+check(bool(rt.eval("COMPB_RESTORED")), "v1.11.49 harness restores the aura source and the roster (no leak into other scenarios)")
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenarios G+H (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 

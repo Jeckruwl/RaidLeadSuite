@@ -1,13 +1,51 @@
 # Handoff — RaidLeadSuite (agent → agent)
 
 Documento di passaggio per continuare il lavoro su questa repo in una nuova chat.
-Branch di lavoro corrente: `arena/01a0aa40-raidleadsuite` — base `main @ 36cdbac`
-(che già include il merge della PR #3 della sessione precedente, branch
-`arena/01a0883a-raidleadsuite`).
+Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 0430146`
+(che già include il merge della PR #4 della sessione precedente, branch
+`arena/01a0aa40-raidleadsuite`, 1.11.30 → 1.11.48).
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.49**.
+
+## Novità della sessione 1.11.49 (questo branch, dopo 1.11.48) — CHECK BUFF CONSAPEVOLE DI CLASSE E COMPOSIZIONE
+
+Il check della matrice "Raid Buffs" non discriminava: chiedeva ogni categoria a TUTTI i player
+(segnalando Int su un warrior) e non sapeva quali categorie il raid non può nemmeno fornire.
+Ora ogni categoria ha tre dati in più in `RLSuite.raidBuffColumns` (`Core.lua`):
+- **`beneficiaries`** = classi che ne BENEFICIANO (assente = tutti). Il check ignora le altre:
+  Int/MP5/Replen → mana user (`BUFF_CLASSES_MANA`), Spirit/FM/spell power-haste-crit → caster
+  (`BUFF_CLASSES_CASTER`), ATK/S+Agi/crit-haste melee/AP% → fisici (`BUFF_CLASSES_PHYS`).
+- **`classes`** (già presente, prima "solo informativa") = FORNITORI: se nessuna di queste classi
+  è nel raid la categoria è **NON disponibile** → icona di intestazione **grigio scuro 0.35**,
+  resta spenta anche in hover, e l'alert dice "not available in this composition" invece di
+  elencare 30 nomi.
+- **`scope`** = `raid` (default, una sorgente copre tutti) · `single` (Focus Magic: tante aure
+  quanti sono i **maghi**) · `capped` (Replenishment: `cap = 10`). **`partyProviders`** elenca le
+  classi la cui versione copre SOLO il party: in 3.3.5 sono i **totem shaman** (SoE, Windfury,
+  Wrath of Air, Mana Spring, Totem of Wrath, tutti in `partyProviders = { "SHAMAN" }`) — se l'unico
+  fornitore è uno shaman il check guarda solo il SUO party e non accusa il resto del raid.
+
+Visivo: **overlay ROSSO** (WHITE8x8 tinta, sub-layer 1 sopra l'icona, icona desaturata) sull'icona
+di colonna quando la categoria è disponibile ma il check non è soddisfatto — stile "spell non
+usabile"; l'intestazione **grigia** e il rosso sono stati DISTINTI. Il tooltip dell'header ha ora
+una riga di stato (`BuffCoverage` → `_BuffStatusText`): "OK on everyone" / "Missing: N: nomi" /
+"Covered: 10/15" / "Not available in this composition".
+
+Focus Magic: l'aura vive sul BERSAGLIO, quindi i nomi dei maghi mancanti vengono dal combat log
+(`SPELL_AURA_APPLIED` → `RF.fmCasters[fonte] = bersaglio`, nuovo ramo in `RF:OnCombatLog`; il
+conteggio delle aure resta la fonte di verità). Alert: "Buff check: FM - 1/2 - mages missing: Mago2".
+
+Efficienza: i conteggi si accumulano nella STESSA passata che disegna le celle (`_BuffAggNew` /
+`_BuffAggAdd` dentro `RefreshBuffMatrix`, che gira ogni 0,5s) → nessuno scan di `UnitBuff` in più.
+`BuffCoverage` (ricalcolo completo) la usano solo il click sull'header e il tooltip. Le barre MT/OT
+non fanno parte di `self.slots`, quindi nessun doppio conteggio dei tank.
+
+Test: **737 check** (34 nuovi: guardie statiche sul modello dati, applicabilità per classe,
+party-only dei totem, cap di Replenishment a 10, FM con nomi dal combat log, grigio vs rosso,
+tooltip, alert). Due check di hover sono stati RISCRITTI: ora scelgono una colonna disponibile
+dinamicamente, perché "accenditi in hover" vale solo per le categorie disponibili.
 
 ## Novità della sessione 1.11.48 (questo branch, dopo 1.11.47) — tab-strip RISCRITTA da zero (niente AceGUI TabGroup)
 
@@ -1359,16 +1397,17 @@ Ordine di caricamento dal `.toc` (`RaidLeadSuite.toc`): prima le Ace3 in `Libs/`
 
 | # | File | Righe | Ruolo |
 |---|------|------:|-------|
-| 1 | `Locale.lua` | ~100 | AceLocale-3.0; `enUS` default; tutte le stringhe UI via `RLSuite.L` |
-| 2 | `Utils.lua` | ~700 | Helper condivisi (colori classe, icone spec, chat/whisper, tempo, tabelle) |
-| 3 | `Core.lua` | ~1480 | AceAddon core: DB (`RLSuiteDB`), fasi (`RLSuite.context`), debug raid model, minimap button, autoinviter, spam Lim/Aim |
-| 4 | `RaidProfile.lua` | ~800 | Finestra principale dell'addon (main window) |
-| 5 | `MacroBar.lua` | ~900 | Barra macro/pull; countdown pull/break non sovrapposti (AceTimer named timers) |
-| 6 | `GroupMaking.lua` | ~3770 | **InviteEngine**: composizione raid, pannello "Raid Group" a 6 gruppi con drag & drop (implementazione di riferimento) |
-| 7 | `RaidFrame.lua` | ~1200 | **Raid Frame HUD**: barre HP per player in 6 gruppi, CD classe, flask/food, barre buff pre-boss / debuff in-fight, drag & drop pre-boss |
-| 8 | `MSManager.lua` | ~250 | Main-spec manager; countdown 40s ascolto via AceTimer |
-| 9 | `LootManager.lua` | ~800 | Gestione loot/roll; righe ad altezza unica con word-wrap; countdown roll/reroll non sovrapposti; AceEvent per `CHAT_MSG_SYSTEM` |
-| 10 | `Config.lua` | ~1270 | **Unica** finestra Ace3 di configurazione: `AceGUI:Create("Window")` + `TreeGroup` a sinistra + `AceConfigDialog` |
+| 1 | `Locale.lua` | 345 | AceLocale-3.0; `enUS` default; tutte le stringhe UI via `RLSuite.L` |
+| 2 | `Utils.lua` | 1227 | Helper condivisi (colori classe, icone spec, chat/whisper, tempo, tabelle, drag/layering, scroll-clip) |
+| 3 | `Core.lua` | 1961 | AceAddon core: DB (`RLSuiteDB`), fasi (`RLSuite.context`), debug raid model, minimap button, autoinviter, spam Lim/Aim, **tabelle `raidBuffColumns` / `raidBuffChecks` / `raidDebuffChecks`** |
+| 4 | `RaidProfile.lua` | 906 | Finestra principale dell'addon (main window) + barretta titolo |
+| 5 | `MacroBar.lua` | 1175 | Barra macro/pull; countdown pull/break non sovrapposti (AceTimer named timers) |
+| 6 | `GroupMaking.lua` | 4061 | **InviteEngine**: composizione raid, pannello "Raid Group" a 6 gruppi con drag & drop (implementazione di riferimento) |
+| 7 | `RaidFrame.lua` | 2328 | **Raid Frame HUD**: barre HP per player in 6 gruppi, CD classe, flask/food, barre buff pre-boss / debuff in-fight, drag & drop pre-boss, **matrice "Raid Buffs" + check consapevole di classe/composizione** |
+| 8 | `MSManager.lua` | 271 | Main-spec manager; countdown 40s ascolto via AceTimer |
+| 9 | `LootManager.lua` | 1247 | Gestione loot/roll; righe ad altezza unica con word-wrap; countdown roll/reroll non sovrapposti; AceEvent per `CHAT_MSG_SYSTEM` |
+| 10 | `CombatLog.lua` | 1350 | **Combat log stile MRT** (fight log in-game, dalla 1.11.0): parser 3.3.5, segmentazione pull, store, aggregazioni, tab UI, grafici |
+| 11 | `Config.lua` | 1251 | **Unica** finestra Ace3 di configurazione: `AceGUI:Create("Window")` + `TreeGroup` a sinistra + `AceConfigDialog` |
 
 Altre directory/file:
 
@@ -1441,6 +1480,18 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 - **Buff check**: confrontare spellId via `GetSpellInfo` (`UnitHasSpellBuff`),
   non nomi inglesi (client non-EN). Max rank WotLK già risolti nei sorgenti
   (es. Battle Shout `47436`, Trauma `46855`, Devotion `48942`).
+- **Matrice "Raid Buffs" (dalla 1.11.49)**: il check consapevole di classe e
+  composizione vive in `RaidFrame.lua` e legge i campi di `RLSuite.raidBuffColumns`
+  (`beneficiaries` = chi ne beneficia; `classes` = fornitori; `scope` +
+  `cap`; `partyProviders` = fornitori party-only). Invarianti da rispettare:
+  ogni voce di `partyProviders` DEVE essere anche in `classes`; `scope` può
+  essere solo `raid`/`single`/`capped`; con `scope = "capped"` serve un `cap`
+  positivo. In 3.3.5 **tutti i totem shaman sono party-only** e ci vanno
+  elencati: se un domani si aggiunge una categoria fornita da totem, mettere
+  lo shaman in `partyProviders` o il check accuserà tutto il raid.
+  I conteggi si fanno in `RefreshBuffMatrix` (passata unica, gira ogni 0,5s):
+  NON aggiungere scan di `UnitBuff` fuori da lì; per un ricalcolo completo
+  esiste `RF:BuffCoverage(col)` (solo click/tooltip).
 - **Test Lupa**: `rt.eval` NON esegue statement/`local` → setup con `rt.execute`,
   asserzioni con sole espressioni in `rt.eval`. Lupa va installata:
   `pip install --break-system-packages lupa` (ambiente PEP 668).
@@ -1449,8 +1500,13 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 540 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 737 PASS, RESULT: ALL CHECKS PASSED
 ```
+
+`lupa` non è installata di serie nell'ambiente: `pip install --break-system-packages lupa`
+(poi lo script si esegue con `python3`). Suite aggiornata a ogni sessione: il numero di check
+cresce e **le sezioni con intestazione `== vX.Y.Z ==` non sono in ordine cronologico stretto**:
+verificare sempre il contenuto, non l'etichetta.
 
 Scenari: A DB fresh · B migrazione DB legacy · A2 AceTimer/AceEvent ·
 C Config single-window · D Lim/Aim/fasi/debug/autoinviter · E HUD Raid Frame ·
@@ -1481,4 +1537,23 @@ aggiornati (MT/OT sotto Raid Frame, bordi 16/16/18) · fix 1.4.4 nel blocco bord
 5. File chiave per area: HUD/gruppi → `RaidFrame.lua`; pannello riferimento →
    `GroupMaking.lua` (`WL_*`, `MoveWLSlotDebug`); roster debug → `Core.lua`
    (`DebugRaidSlots`, `DebugSyncSubgroups`); opzioni → `Config.lua`;
-   finestre pickup loot → `LootManager.lua` (`ShowTradeWindow`, `StackTradeWindows`).
+   finestre pickup loot → `LootManager.lua` (`ShowTradeWindow`, `StackTradeWindows`);
+   matrice buff + check → `RaidFrame.lua` (`_MatrixCols`, `BuffCoverage`,
+   `_BuffAggNew/_BuffAggAdd`, `_BuffStatusFromAgg`, `ApplyBuffHeaderStatus`)
+   e i dati in `Core.lua` (`raidBuffColumns`).
+6. **Nomi dei maghi per Focus Magic**: vengono dal combat log
+   (`RF.fmCasters`, `SPELL_AURA_APPLIED`), quindi compaiono solo per i lanci
+   visti da quando l'addon è caricato; dopo un `/reload` i maghi che avevano
+   già dato FM risultano "mancanti" finché non rilanciano. Il CONTEGGIO delle
+   aure resta corretto. Se dà fastidio, la via è ricostruire `fmCasters` anche
+   dalle aure già presenti al login (non c'è modo di sapere CHI le ha date
+   senza il log).
+7. **Liste "classes" non riviste**: in `raidBuffColumns` restano provider
+   storicamente imprecisi (`atkpower` elenca HUNTER anche se Trueshot è passata
+   in `apIncrease`; `armor` elenca DRUID). Effetto: con una composizione che ha
+   solo quelle classi la categoria risulta "disponibile" (rossa) invece che
+   "non disponibile" (grigia). Da ripulire con l'utente, con calma.
+8. **`raidBuffChecks` / `raidDebuffChecks` sono liste MORTE** (`Core.lua`):
+   nessun codice di produzione le legge, le referenziano solo i test. Da
+   rimuovere o da ricollegare alla ability bar verticale (che oggi usa
+   `raidBuffColumns`).

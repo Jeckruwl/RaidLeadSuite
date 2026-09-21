@@ -542,59 +542,95 @@ RLSuite.buffData = {
 
 -- ============================================================
 -- RAID BUFF MATRIX COLUMNS (pannello "Raid Buffs" a scomparsa del Raid Frame)
--- 21 categorie di buff: colonne della tabella; le righe sono i giocatori.
+-- 25 categorie di buff: colonne della tabella; le righe sono i giocatori.
 -- Per ogni cella si scansionano le aure del player (UnitBuff per indice) e
 -- si mostra l'icona della spell che copre la categoria. Campi:
 --   label          nome sintetico (header colonna)
 --   icon           icona di fallback (anche icona fissa per byNameSpell)
 --   spells         lista spellId che coprono la categoria (match per id)
---   classes        classi che possono fornirla (solo informativa)
+--   classes        classi che possono FORNIRLA (provider). E' il dato che
+--                  rende il check consapevole della composizione: se nessuna
+--                  di queste classi e' nel raid, la categoria NON e'
+--                  disponibile e l'icona di intestazione si ingrigisce.
+--   beneficiaries  classi che ne BENEFICIANO: il check ignora le altre (es.
+--                  Int su un warrior non viene mai segnalata). Assente/vuoto
+--                  = la categoria interessa TUTTI (Kings, Fortitude, ...).
+--   scope          "raid"   = una sorgente copre tutto il raid (default)
+--                  "single" = una sorgente per fornitore: Focus Magic, il
+--                             numero di FM attesi = numero di maghi
+--                  "capped" = copre al massimo `cap` player (Replen. = 10)
+--   cap            solo con scope "capped": quanti player copre al massimo
+--   partyProviders classi la cui versione copre SOLO il party. In 3.3.5 sono
+--                  i TOTEM shaman (SoE, Windfury, Wrath of Air, Mana Spring,
+--                  Totem of Wrath): se l'unico fornitore presente e' un
+--                  partyProvider il check guarda solo il party dello shaman
+--                  invece di accusare tutto il raid (falso allarme evitato).
 --   byNameSpell    se presente: match per NOME aura (nome risolto via
 --                  GetSpellInfo(byNameSpell) => locale-safe, copre tutte le
 --                  varianti della stessa aura, es. "Well Fed" di ogni cibo)
 -- ============================================================
+
+-- Liste di classi riusate dalle categorie (beneficiari del buff):
+--   MANA   = chi ha una barra mana  -> Int, MP5, Replenishment
+--   CASTER = chi fa danno/cure magiche -> Spirit, FM, spell power/haste/crit
+--   PHYS   = chi vive di attack power  -> ATK, S+Agi, crit/haste melee, AP%
+local BUFF_CLASSES_MANA = { "PALADIN", "HUNTER", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
+local BUFF_CLASSES_CASTER = { "MAGE", "WARLOCK", "PRIEST", "DRUID", "SHAMAN", "PALADIN" }
+local BUFF_CLASSES_PHYS = { "WARRIOR", "ROGUE", "HUNTER", "DEATHKNIGHT", "PALADIN", "SHAMAN", "DRUID" }
+
 RLSuite.raidBuffColumns = {
-        { key = "stats",       label = "%stat",   icon = "Interface\\Icons\\Spell_Magic_GreaterBlessingofKings",
+    { key = "stats",       label = "%stat",   icon = "Interface\\Icons\\Spell_Magic_GreaterBlessingofKings",
       classes = { "PALADIN" }, spells = { 20217, 25898, 20911 } },
     { key = "mp5",         label = "MP5",     icon = "Interface\\Icons\\Spell_Holy_GreaterBlessingofWisdom",
-      classes = { "PALADIN", "SHAMAN" }, spells = { 48936, 48938, 58774 } },
-        { key = "atkpower",    label = "ATK",     icon = "Interface\\Icons\\Ability_Warrior_BattleShout",
-      classes = { "PALADIN", "WARRIOR", "HUNTER" }, spells = { 48932, 48934, 47436 } },
+      classes = { "PALADIN", "SHAMAN" }, partyProviders = { "SHAMAN" },
+      beneficiaries = BUFF_CLASSES_MANA, spells = { 48936, 48938, 58774 } },
+    { key = "atkpower",    label = "ATK",     icon = "Interface\\Icons\\Ability_Warrior_BattleShout",
+      classes = { "PALADIN", "WARRIOR", "HUNTER" }, beneficiaries = BUFF_CLASSES_PHYS,
+      spells = { 48932, 48934, 47436 } },
     { key = "hp",          label = "HP",      icon = "Interface\\Icons\\Ability_Warrior_RallyingCry",
       classes = { "WARRIOR", "WARLOCK" }, spells = { 47440, 27267, 47982 } },
-        { key = "spirit",      label = "Spirit",  icon = "Interface\\Icons\\Spell_Holy_DivineSpirit",
-      classes = { "PRIEST", "WARLOCK" }, spells = { 48073, 48075, 57567 } },
+    { key = "spirit",      label = "Spirit",  icon = "Interface\\Icons\\Spell_Holy_DivineSpirit",
+      classes = { "PRIEST", "WARLOCK" }, beneficiaries = BUFF_CLASSES_CASTER,
+      spells = { 48073, 48075, 57567 } },
     { key = "stamina",     label = "Stamina", icon = "Interface\\Icons\\Spell_Holy_WordFortitude",
       classes = { "PRIEST" }, spells = { 48161, 48162 } },
-        { key = "intellect",   label = "Int",     icon = "Interface\\Icons\\Spell_Holy_MagicalSentry",
-      classes = { "MAGE", "WARLOCK" }, spells = { 42995, 43002, 61316, 57567 } },
+    { key = "intellect",   label = "Int",     icon = "Interface\\Icons\\Spell_Holy_MagicalSentry",
+      classes = { "MAGE", "WARLOCK" }, beneficiaries = BUFF_CLASSES_MANA,
+      spells = { 42995, 43002, 61316, 57567 } },
     { key = "armor",       label = "Armor",   icon = "Interface\\Icons\\Spell_Holy_DevotionAura",
       classes = { "PALADIN", "DRUID" }, spells = { 48942, 48941, 48470 } },
     { key = "wild",        label = "Gift",    icon = "Interface\\Icons\\Spell_Nature_Regeneration",
       classes = { "DRUID" }, spells = { 21849, 21850, 48470 } },
     { key = "strAgi",      label = "S+Agi",   icon = "Interface\\Icons\\Spell_Nature_Strength",
-      classes = { "DEATHKNIGHT", "SHAMAN" }, spells = { 57330, 58643 } },
+      classes = { "DEATHKNIGHT", "SHAMAN" }, partyProviders = { "SHAMAN" },
+      beneficiaries = BUFF_CLASSES_PHYS, spells = { 57330, 58643 } },
     { key = "focusMagic",  label = "FM",      icon = "Interface\\Icons\\Spell_Arcane_FocusedPower",
-      classes = { "MAGE" }, spells = { 54646 } },
-        { key = "haste",       label = "Haste",   icon = "Interface\\Icons\\Ability_Druid_ImprovedMoonkinForm",
+      classes = { "MAGE" }, beneficiaries = BUFF_CLASSES_CASTER, scope = "single",
+      spells = { 54646 } },
+    { key = "haste",       label = "Haste",   icon = "Interface\\Icons\\Ability_Druid_ImprovedMoonkinForm",
       classes = { "DRUID", "PALADIN" }, spells = { 24907, 53648 } },
     { key = "spellCrit",   label = "SpC",     icon = "Interface\\Icons\\Spell_Nature_MoonGlow",
-      classes = { "DRUID", "SHAMAN" }, spells = { 24907, 51470 } },
+      classes = { "DRUID", "SHAMAN" }, beneficiaries = BUFF_CLASSES_CASTER,
+      spells = { 24907, 51470 } },
     { key = "shadow",      label = "ShProt",  icon = "Interface\\Icons\\Spell_Shadow_AntiShadow",
       classes = { "PRIEST" }, spells = { 48169, 48170 } },
     { key = "retAura",     label = "Ret",     icon = "Interface\\Icons\\Spell_Holy_AuraMastery",
       classes = { "PALADIN" }, spells = { 54043, 54044 } },
-        { key = "meleeCrit",   label = "MCrit",   icon = "Interface\\Icons\\Ability_CriticalStrike",
-      classes = { "DRUID", "WARRIOR" }, spells = { 17007, 24932, 29801 } },
-        { key = "meleeHaste",  label = "MHaste",  icon = "Interface\\Icons\\Spell_Nature_Windfury",
-      classes = { "SHAMAN", "DEATHKNIGHT" }, spells = { 55610, 8512, 8515, 8516 } },
-        { key = "spellPower",  label = "SPow",    icon = "Interface\\Icons\\Spell_Fire_FlameBolt",
-      classes = { "WARLOCK", "SHAMAN" }, spells = { 47240, 30706, 58656 } },
-        { key = "damage",      label = "Dmg%",    icon = "Interface\\Icons\\Ability_Hunter_FerociousInspiration",
+    { key = "meleeCrit",   label = "MCrit",   icon = "Interface\\Icons\\Ability_CriticalStrike",
+      classes = { "DRUID", "WARRIOR" }, beneficiaries = BUFF_CLASSES_PHYS,
+      spells = { 17007, 24932, 29801 } },
+    { key = "meleeHaste",  label = "MHaste",  icon = "Interface\\Icons\\Spell_Nature_Windfury",
+      classes = { "SHAMAN", "DEATHKNIGHT" }, partyProviders = { "SHAMAN" },
+      beneficiaries = BUFF_CLASSES_PHYS, spells = { 55610, 8512, 8515, 8516 } },
+    { key = "spellPower",  label = "SPow",    icon = "Interface\\Icons\\Spell_Fire_FlameBolt",
+      classes = { "WARLOCK", "SHAMAN" }, partyProviders = { "SHAMAN" },
+      beneficiaries = BUFF_CLASSES_CASTER, spells = { 47240, 30706, 58656 } },
+    { key = "damage",      label = "Dmg%",    icon = "Interface\\Icons\\Ability_Hunter_FerociousInspiration",
       classes = { "HUNTER", "PALADIN", "MAGE" }, spells = { 31583, 34460, 31869 } },
     -- Nuove categorie allineate a Icy Veins WotLK Raid Buffs guide:
     { key = "apIncrease",  label = "AP%",     icon = "Interface\\Icons\\Ability_TrueShot",
-      classes = { "HUNTER", "SHAMAN", "DEATHKNIGHT" }, spells = { 19506, 30809, 53138 } },
+      classes = { "HUNTER", "SHAMAN", "DEATHKNIGHT" }, beneficiaries = BUFF_CLASSES_PHYS,
+      spells = { 19506, 30809, 53138 } },
     { key = "dmgReduction", label = "DR%",    icon = "Interface\\Icons\\Spell_Nature_LightningShield",
       classes = { "PALADIN", "PRIEST" }, spells = { 20911, 57472, 57479 } },
     { key = "healReceived", label = "Heal+",  icon = "Interface\\Icons\\Ability_Druid_TreeofLife",
@@ -602,9 +638,12 @@ RLSuite.raidBuffColumns = {
     { key = "physReduction", label = "Armor+", icon = "Interface\\Icons\\Spell_Nature_UndyingStrength",
       classes = { "SHAMAN", "PRIEST" }, spells = { 16240, 16239, 16236, 16235, 16176, 15363, 15359, 15358, 15277 } },
     { key = "replen",      label = "Repl",    icon = "Interface\\Icons\\Ability_Warlock_ImprovedSoulLeech",
-      classes = { "MAGE", "HUNTER", "WARLOCK", "PALADIN", "PRIEST" }, spells = { 44561, 53292, 54118, 31878, 34914 } },
+      classes = { "MAGE", "HUNTER", "WARLOCK", "PALADIN", "PRIEST" },
+      beneficiaries = BUFF_CLASSES_MANA, scope = "capped", cap = 10,
+      spells = { 44561, 53292, 54118, 31878, 34914 } },
     { key = "spellHaste",  label = "SpH",     icon = "Interface\\Icons\\Spell_Nature_SlowingTotem",
-      classes = { "SHAMAN" }, spells = { 3738 } },
+      classes = { "SHAMAN" }, partyProviders = { "SHAMAN" },
+      beneficiaries = BUFF_CLASSES_CASTER, spells = { 3738 } },
     { key = "flask",       label = "Flask",   icon = "Interface\\Icons\\INV_Alchemy_EndlessFlask_05",
       classes = {}, spells = { 53755, 53760, 54212, 53758, 67016, 67017, 67018 } },
     { key = "wellfed",     label = "Food",    icon = "Interface\\Icons\\Spell_Misc_Food",
