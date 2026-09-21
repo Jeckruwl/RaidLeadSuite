@@ -3282,6 +3282,9 @@ IE_PRESENT = GM.autoinvite.names[1] == IE_N1
 """)
 check(bool(rt.eval("IE_LEFT == 1 and IE_PRESENT")), "clicking the manual-list X removes exactly that player")
 check(bool(rt.eval("RP43_2 > RP43_1 and RP43_1 > RP43_R and RP43_3 > RP43_2")), "RepinFrameOrder: children strictly above parents, in creation order, deterministic")
+check('function GM:RepinManualPage' in open("GroupMaking.lua", encoding='utf-8').read(), "RepinManualPage exists (headers vs content deterministic pinning)")
+check('self:RepinManualPage()' in open("GroupMaking.lua", encoding='utf-8').read(), "RepinManualPage invoked at page-build end AND on tab show")
+
 
 
 check('content:EnableMouse(false)' not in _u, "scroll contents untouched (no EnableMouse overrides)")

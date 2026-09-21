@@ -1544,7 +1544,12 @@ function GM:SetInviteEngineTab(value)
         if value == "whisper" then self.wlPage:Show() else self.wlPage:Hide() end
     end
     if self.ieManualPage then
-        if value == "manual" then self.ieManualPage:Show() else self.ieManualPage:Hide() end
+        if value == "manual" then
+            self.ieManualPage:Show()
+            self:RepinManualPage()
+        else
+            self.ieManualPage:Hide()
+        end
     end
     if self.ieCalPage then
         if value == "calendar" then self.ieCalPage:Show() else self.ieCalPage:Hide() end
@@ -1785,14 +1790,7 @@ function GM:BuildManualPage()
     timeHint:SetTextColor(0.6, 0.6, 0.6)
 
     -- ============================================================
-    -- Gli header/tab della pagina stanno sempre sopra i contenuti: ordine
-    -- deterministico fissato a ogni (ri)creazione della pagina.
-    if page and RLSuite.utils and RLSuite.utils.RepinFrameOrder then
-        RLSuite.utils:RepinFrameOrder(page)
-    end
-
     -- Pannello lista manuale.
-    -- ============================================================
     self.ieAutoManualBox = CreateFrame("Frame", nil, page)
     self.ieAutoManualBox:SetPoint("TOPLEFT", page, "TOPLEFT", 8, -8)
     self.ieAutoManualBox:SetPoint("TOPRIGHT", page, "TOPRIGHT", -8, -8)
@@ -1844,6 +1842,7 @@ function GM:BuildManualPage()
     self.ieAutoNamesContent:SetSize(200, 10)
     self.ieAutoNamesScroll:SetScrollChild(self.ieAutoNamesContent)
     RLSuite.utils:RegisterScrollClip(self.ieAutoNamesScroll, self.ieAutoNamesContent)
+    self:RepinManualPage()
 end
 
 function GM:BuildCalendarPage()
@@ -3097,6 +3096,14 @@ function GM:BuildAutoNameListUI()
     RLSuite.utils:RefreshScrollClip(content)
     if self.ieAutoNamesScroll and self.ieAutoNamesScroll.UpdateScrollChildRect then
         self.ieAutoNamesScroll:UpdateScrollChildRect()
+    end
+end
+
+-- Riposiziona deterministicamente i livelli della pagina: DOPO
+-- che manualBox, header e tutti i contenuti esistono (mai meta').
+function GM:RepinManualPage()
+    if self.ieManualPage and RLSuite.utils and RLSuite.utils.RepinFrameOrder then
+        RLSuite.utils:RepinFrameOrder(self.ieManualPage)
     end
 end
 

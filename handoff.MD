@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.45 (questo branch, dopo 1.11.44) — header in pagina sempre sopra: RepinManualPage a fine build e a ogni tab-show
+
+La Repin inside BuildManualPage girava a metà costruzione (manualBox con header/testostringeri nasceva DOPO → non pinnato). Ora `GM:RepinManualPage()` viene eseguita alla FINE di BuildManualPage (tutti i figli esistono) e a ogni visualizzazione della pagina dal selettore tab — la pila deterministic di livelli comprende TUTTI i figli fin da subito. Versione 1.11.45.
+
 ## Novità della sessione 1.11.44 (questo branch, dopo 1.11.43) — IL BUG DI INVITE-ENGINE, TROVATO E UCCISO
 
 Dopo seduta di analisi della finestra: `GroupMaking.lua:1829` aveva `self.ieAutoNamesList:EnableMouse(true)` — un contenitore piatto GRANDE QUANTO l'area lista messo sopra come se fosse un pannello invisibile rubaclick (3.3.5 hit al frame mouse-enabled più alto del punto: il container vinceva, righe e X SEMPRE dietro — tonando esattamente lo "Stack che impedisce i click" e focus sul contenitore). Rimosso gli EnableMouse fuori spec: container = mai mouse-enabled; righe/X cliccabili al loro livello. Rimossi i comandi di debug di tracciamento (mousefocus/lmdebug); resta solo lootdiag. Versione 1.11.44.
