@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.48 (questo branch, dopo 1.11.47) — tab-strip RISCRITTA da zero (niente AceGUI TabGroup)
+
+La striscia tab dell'InviteEngine è stata riscritta COMPLETAMENTE senza il widget AceGUI (che ri-disponava i layer interni e faceva finire il testo dei tab sotto qualcosa). Ora: host proprio + strip a height fissa + 3 bottoni nostri (skin+label Overlay, testi sempre dentro la nostra alberatura), border host compat per le pagine (`tg.border` invariato), larghezze equidistribuite al resize, evidenziazione oro/grigio della tab attiva. Tutta la gerarchia è nel nostro albero: impossibile che qualcosa esterno ci disegni sopra. Versione 1.11.48.
+
 ## Novità della sessione 1.11.47 (questo branch, dopo 1.11.46) — tab strip sollevata a strata piena (FULLSCREEN_DIALOG)
 
 Il TabGroup AceGUI non dipende più dall'ordering relativo coi fratelli della finestra: il suo root vive su strata FULLSCREEN_DIALOG (sopra il HIGH degli slot/drag della matrice di gruppi) — le tab non possono più trovarsi sotto nessuna parte della griglia. PinTabStrip resta come ordering intra-widget. Versione 1.11.47 (e riallineamento della numerazione di versione nelle intestazioni).

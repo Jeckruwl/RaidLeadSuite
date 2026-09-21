@@ -3297,7 +3297,12 @@ P46_T1 = G46.ieTabGroup.tabs[1]:GetFrameLevel()
 P46_T2 = G46.ieTabGroup.tabs[2]:GetFrameLevel()
 """)
 check(bool(rt.eval("P46_T1 > P46_B and P46_T2 > P46_T1")), "pin: tab buttons strictly above the border, in order")
-check('tg.frame:SetFrameStrata("FULLSCREEN_DIALOG")' in open("GroupMaking.lua", encoding='utf-8').read(), "IE TabGroup widget on its own guaranteed strata (above all addon siblings)")
+_g48 = open("GroupMaking.lua", encoding="utf-8").read()
+check('AceGUI:Create("TabGroup")' not in _g48, "no opaque external tab widget anywhere near the invite engine")
+check('CreateFrame("Button", "RLSuiteIETab" .. i, strip)' in _g48, "IE tabs are our own plain buttons inside the new strip")
+check('function GM:ApplyInviteEngineTabStyles' in _g48 and 'SetTextColor(1, 0.82, 0)' in _g48, "active tab highlight in code")
+check('SetFrameLevel((host:GetFrameLevel() or 1) + 50)' in _g48, "tab strip born with a level above the window content")
+
 
 
 check('function GM:RepinManualPage' in open("GroupMaking.lua", encoding='utf-8').read(), "RepinManualPage exists (headers vs content deterministic pinning)")

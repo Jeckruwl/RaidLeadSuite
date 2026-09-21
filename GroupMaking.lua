@@ -1345,46 +1345,92 @@ function GM:CreateInviteEngineTabs()
     local f = self.whisplistFrame
     if not f then return end
 
-    local AceGUI = LibStub and LibStub("AceGUI-3.0", true)
-    if not AceGUI or not AceGUI.Create then return end
-
-    local tg = AceGUI:Create("TabGroup")
-    if not tg then return end
+    -- Tab-strip NOSTRA (niente widget AceGUI: il widget ri-disponava i
+    -- layer interni e il testo degli header finiva coperto). Tutta la
+    -- catena dei livelli qui e' dentro la nostra finestra.
+    local tg = {}
     self.ieTabGroup = tg
 
-    -- Disabilita l'altezza automatica del TabGroup. Senza figli AceGUI il
-    -- widget si "collasserebbe" all'altezza minima (striscia tab + bordo)
-    -- in LayoutFinished, sovrascrivendo la nostra SetHeight: le pagine
-    -- Whisplist/Autoinviter sono frame normali, non figli AceGUI.
-    if tg.SetAutoAdjustHeight then
-        tg:SetAutoAdjustHeight(false)
-    else
-        tg.noAutoHeight = true
+    local host = CreateFrame("Frame", nil, f)
+    host:SetPoint("TOPLEFT", self.wlGroupBox, "BOTTOMLEFT", 0, -4)
+    host:SetWidth(280)
+    host:SetHeight(200)
+    tg.frame = host
+
+    -- Striscia dei tab: una riga in cima al host, SEMPRE sopra il border.
+    local strip = CreateFrame("Frame", nil, host)
+    strip:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
+    strip:SetPoint("TOPRIGHT", host, "TOPRIGHT", 0, 0)
+    strip:SetHeight(24)
+    tg.strip = strip
+    strip:SetFrameLevel((host:GetFrameLevel() or 1) + 50)
+
+    -- Il "border" e' il contenitore delle pagine (API compat: tg.border).
+    local border = CreateFrame("Frame", nil, host)
+    border:SetPoint("TOPLEFT", strip, "BOTTOMLEFT", 0, -2)
+    border:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, 2)
+    RLSuite.utils:SkinBox(border)
+    tg.border = border
+
+    tg.tabs = {}
+    local defs = {
+        { key = "whisper", text = L["Whisplist"] },
+        { key = "manual", text = L["Manual list"] },
+        { key = "calendar", text = L["Calendar event"] },
+    }
+    local prev = nil
+    for i, d in ipairs(defs) do
+        local btn = CreateFrame("Button", "RLSuiteIETab" .. i, strip)
+        RLSuite.utils:SkinButton(btn)
+        btn:SetWidth(90)
+        btn:SetHeight(22)
+        local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetJustifyH("CENTER")
+        label:SetAllPoints(btn)
+        label:SetText(d.text)
+        btn._tabLabel = label
+        btn._tabValue = d.key
+        if prev then
+            btn:SetPoint("TOPLEFT", prev, "TOPRIGHT", 2, 0)
+        else
+            btn:SetPoint("TOPLEFT", strip, "TOPLEFT", 2, -1)
+        end
+        btn:SetScript("OnClick", function() self:SetInviteEngineTab(d.key) end)
+        tg.tabs[i] = btn
+        prev = btn
     end
 
-    tg:SetTabs({
-        { text = L["Whisplist"], value = "whisper" },
-        { text = L["Manual list"], value = "manual" },
-        { text = L["Calendar event"], value = "calendar" },
-    })
-    tg:SetCallback("OnGroupSelected", function(widget, event, value)
-        self:SetInviteEngineTab(value)
-    end)
-
-    -- Il frame del widget vive dentro la costola, sotto Raid Group.
-    -- STRATA PIENA: il widget-tab non dipende MAI dall'ordine relativo coi
-    -- fratelli (lo "sti sotto" era il suo strato che perdeva): strata
-    -- sopra HIGH, appena sotto i dialog di pieno schermo. I tab rimangono
-    -- comunque dentro la finestra (strata e' per-frame, non per-rect).
-    tg.frame:SetParent(f)
-    tg.frame:SetFrameStrata("FULLSCREEN_DIALOG")
-    tg.frame:SetPoint("TOPLEFT", self.wlGroupBox, "BOTTOMLEFT", 0, -4)
+    tg.SelectTab = function(_, value) self:SetInviteEngineTab(value) end
+    self:PinTabStrip()
     self:LayoutInviteEngineTabs()
 end
 
--- I bottoni della striscia tab sono SEMPRE sopra border e soprattutto
--- sopra le pagine (gli header finivano sotto). Deterministico, idempotente,
--- richiamato da Layout e tab-switch.
+-- Larghezze dei tab equidistribuite nella striscia (ri-calcolo al resize).
+function GM:LayoutInviteEngineTabButtons()
+    local tg = self.ieTabGroup
+    if not (tg and tg.strip and tg.tabs and #tg.tabs > 0) then return end
+    local avail = (tg.strip:GetWidth() or 0) - (#tg.tabs + 1) * 2
+    avail = math.max(avail, 20 * #tg.tabs)
+    local per = math.floor(avail / #tg.tabs)
+    for i = 1, #tg.tabs do
+        tg.tabs[i]:SetWidth(per)
+    end
+end
+
+-- Visual della selezione tab: attiva in oro, inattiva in grigio.
+function GM:ApplyInviteEngineTabStyles(value)
+    local tg = self.ieTabGroup
+    if not (tg and tg.tabs) then return end
+    for i = 1, #tg.tabs do
+        local btn = tg.tabs[i]
+        if btn._tabValue == value then
+            btn._tabLabel:SetTextColor(1, 0.82, 0)
+        else
+            btn._tabLabel:SetTextColor(0.6, 0.6, 0.6)
+        end
+    end
+end
+
 function GM:PinTabStrip()
     local tg = self.ieTabGroup
     if not tg then return end
@@ -1417,8 +1463,10 @@ function GM:LayoutInviteEngineTabs()
     local h = (f:GetHeight() or 0) - topOffset - 8
     if h < 120 then h = 120 end
 
-    if tg.SetWidth then tg:SetWidth(w) end
-    if tg.SetHeight then tg:SetHeight(h) end
+    tg.frame:SetWidth(w)
+    tg.frame:SetHeight(h)
+    self:LayoutInviteEngineTabButtons()
+    self:PinTabStrip()
 end
 
 -- Pagina "Whisplist": la lista dei whisper ricevuti e il dettaglio del
@@ -1578,6 +1626,8 @@ function GM:SetInviteEngineTab(value)
     if self.ieCalPage then
         if value == "calendar" then self.ieCalPage:Show() else self.ieCalPage:Hide() end
     end
+    self:PinTabStrip()
+    self:ApplyInviteEngineTabStyles(value)
     if value == "whisper" then
         self:UpdateWhisplist()
         self:UpdateWLGroups()
