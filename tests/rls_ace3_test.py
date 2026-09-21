@@ -391,6 +391,9 @@ UnitManaMax = function() return 100 end
 GetScreenWidth = function() return 1024 end
 GetScreenHeight = function() return 768 end
 UnitPosition = function() return 0, 0, 0 end
+MOCK_ZONE = ""
+GetRealZoneText = function() return MOCK_ZONE end
+GetZoneText = function() return MOCK_ZONE end
 UnitClassification = function() return "normal" end
 UnitCreatureType = function() return "Humanoid" end
 UnitGroupRolesAssigned = function() return "NONE" end
@@ -1095,6 +1098,160 @@ rt.execute("""
 """)
 check(bool(rt.eval("MB_EDIT_NOBOSS == true")),
       "editor rapido senza boss: non apre nulla (nessun set dove scrivere)")
+
+print()
+print("== v1.11.52: buchi di riconoscimento risolti dal COUNTER di progressione ==")
+
+rt.execute("""
+    RLSuite:ResetBossProgress()
+    RLSuite._lastBossRaid = nil
+    RLSuite._lastProgressRaid = nil
+    MOCK_UNITS_BOSS = {}
+    MOCK_ZONE = 'Icecrown Citadel'
+    RLSuite.context = 'infight'
+    RLSuite.db.profile.macrobar.bossMacros = {}
+    MB_G0_NEXT = RLSuite:NextBossByProgress('Icecrown Citadel')
+    MB_G0_ONLY = RLSuite:IsProgressOnlyBoss('Icecrown Citadel', MB_G0_NEXT)
+""")
+check(bool(rt.eval("MB_G0_NEXT == 'Lord Marrowgar' and MB_G0_ONLY == false")),
+      "counter: a inizio lockout il prossimo boss di ICC e' Marrowgar (non un buco)")
+rt.execute("MB_G0_R, MB_G0_B = RLSuite:CurrentBossInfo()")
+check(bool(rt.eval("MB_G0_R == nil and MB_G0_B == nil")),
+      "counter: il prossimo boss NON e' un buco -> il counter non viene usato (target decide)")
+
+rt.execute("""
+    MB_G1 = RLSuite:RecordBossKill(36612)   -- Lord Marrowgar (kill registrata)
+    MB_G2 = RLSuite:RecordBossKill(36855)   -- Lady Deathwhisper
+    MB_GNEXT = RLSuite:NextBossByProgress('Icecrown Citadel')
+    MB_GNEXT_ONLY = RLSuite:IsProgressOnlyBoss('Icecrown Citadel', MB_GNEXT)
+    MB_GCOUNT = RLSuite:KilledBossCount('Icecrown Citadel')
+""")
+check(bool(rt.eval("MB_G1 == true and MB_G2 == true and MB_GCOUNT == 2")),
+      "counter: le kill registrate dal combat log (id NPC) contano 2 boss")
+check(bool(rt.eval("MB_GNEXT == 'Gunship Battle' and MB_GNEXT_ONLY == true")),
+      "counter: dopo 2 boss il prossimo e' Gunship Battle (buco di riconoscimento)")
+
+rt.execute("MB_GUN_R, MB_GUN_B = RLSuite:CurrentBossInfo()")
+check(bool(rt.eval("MB_GUN_R == 'Icecrown Citadel' and MB_GUN_B == 'Gunship Battle'")),
+      "GUNSHIP: senza match su target/boss1 si usa il COUNTER (3o boss di ICC)")
+rt.execute("""
+    RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel'] =
+        RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel'] or {}
+    RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']['Gunship Battle'] =
+        { [1] = { text = 'GUNSHIP_1' } }
+    RLSuite.macrobar:UpdatePhase()
+    MB_GUN_MACRO = RLSuite.macrobar:GetMacroData(1)
+""")
+check(bool(rt.eval("MB_GUN_MACRO and MB_GUN_MACRO.text == 'GUNSHIP_1'")),
+      "GUNSHIP: la barra mostra le sue macro (riconosciuto dal counter)")
+rt.execute("""
+    RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']['Deathbringer Saurfang'] =
+        { [1] = { text = 'SAURFANG_1' } }
+    MOCK_UNITS_BOSS.target = { name = 'Deathbringer Saurfang' }
+    RLSuite.macrobar:UpdatePhase()
+    MB_SAU_MACRO = RLSuite.macrobar:FilledSlots('infight')
+    MB_SAU_NAME = RLSuite.macrobar.bossName
+""")
+check(bool(rt.eval("MB_SAU_NAME == 'Deathbringer Saurfang' and #MB_SAU_MACRO == 1 and MB_SAU_MACRO[1] == 1")),
+      "il target ha la precedenza: su Saurfang si usano le macro di Saurfang, non quelle del Gunship")
+
+# --- Nuovo lockout: un boss gia' segnato che muore di nuovo azzera il counter
+rt.execute("""
+    MOCK_UNITS_BOSS = {}     -- nessun target: niente inferenza, si vede il solo reset
+    MB_LOCK_BEFORE = RLSuite:KilledBossCount('Icecrown Citadel')
+    RLSuite:RecordBossKill(36612)
+    MB_LOCK_AFTER = RLSuite:KilledBossCount('Icecrown Citadel')
+    MB_LOCK_NEXT = RLSuite:NextBossByProgress('Icecrown Citadel')
+""")
+check(bool(rt.eval("MB_LOCK_BEFORE == 3 and MB_LOCK_AFTER == 1 and MB_LOCK_NEXT == 'Lady Deathwhisper'")),
+      "reset settimanale: riuccidere un boss gia' segnato azzera il counter del lockout")
+rt.execute("""
+    MOCK_UNITS_BOSS.target = { name = 'Deathbringer Saurfang' }
+    RLSuite:CurrentBossInfo()
+    MB_LOCK_HEAL = RLSuite:KilledBossCount('Icecrown Citadel')
+""")
+check(bool(rt.eval("MB_LOCK_HEAL == 3")),
+      "dopo il reset l'inferenza si riallinea da sola (sei su Saurfang = Gunship gia' battuto)")
+
+# --- ToC: Faction Champions (3o, buco) riconosciuto dal counter -----------
+rt.execute("""
+    RLSuite:ResetBossProgress('Trial of the Crusader')
+    RLSuite._lastBossRaid = nil
+    MOCK_UNITS_BOSS = {}
+    MOCK_ZONE = "Trial of the Crusader"
+    RLSuite:RecordBossKill(34796)   -- Northrend Beasts
+    RLSuite:RecordBossKill(34780)   -- Lord Jaraxxus
+    MB_TOC_R, MB_TOC_B = RLSuite:CurrentBossInfo()
+""")
+check(bool(rt.eval("MB_TOC_R == 'Trial of the Crusader' and MB_TOC_B == 'Faction Champions'")),
+      "FACTION CHAMPIONS: riconosciuto dal COUNTER (3o di ToC)")
+
+# --- Inferenza catena lineare: identificare un boss lineare segna i precedenti
+rt.execute("""
+    RLSuite:ResetBossProgress('Trial of the Crusader')
+    TWIN = "Twin Val" .. string.char(39) .. "kyr"
+    MOCK_UNITS_BOSS.target = { name = TWIN }   -- 4o boss di ToC, identificato per nome
+    MB_INF_R, MB_INF_B = RLSuite:CurrentBossInfo()
+    MB_INF = {}
+    for _, b in ipairs({ 'Northrend Beasts', 'Lord Jaraxxus', 'Faction Champions', TWIN }) do
+        MB_INF[b] = RLSuite:IsBossKilled('Trial of the Crusader', b)
+    end
+    MB_INF_SELF = MB_INF[TWIN]
+    MB_INF_TWIN = (MB_INF_B == TWIN and MB_INF_R == 'Trial of the Crusader')
+    MB_INF_NEXT = RLSuite:NextBossByProgress('Trial of the Crusader')
+    MB_INF_NEXT_TWIN = (MB_INF_NEXT == TWIN)
+""")
+check(bool(rt.eval("MB_INF_TWIN == true")),
+      "inferenza: il 4o boss di ToC viene identificato per nome")
+check(bool(rt.eval("MB_INF['Northrend Beasts'] == true and MB_INF['Lord Jaraxxus'] == true and MB_INF['Faction Champions'] == true")),
+      "inferenza catena lineare: i 3 boss precedenti (inclusi i Champions, kill non registrabile) risultano battuti")
+check(bool(rt.eval("MB_INF_SELF == false")),
+      "inferenza: il boss che stai affrontando NON viene segnato come battuto")
+check(bool(rt.eval("MB_INF_NEXT_TWIN == true")),
+      "inferenza: il counter ora punta a Twin Val'kyr")
+
+# --- Inferenza su ICC: identificare Saurfang deduce Gunship ---------------
+rt.execute("""
+    RLSuite:ResetBossProgress('Icecrown Citadel')
+    MOCK_ZONE = 'Icecrown Citadel'
+    MOCK_UNITS_BOSS.target = { guid = '0xF1300093B50000AA', name = 'Deathbringer Saurfang' }
+    RLSuite:CurrentBossInfo()
+    MB_ICC_INF = {}
+    for _, b in ipairs({ 'Lord Marrowgar', 'Lady Deathwhisper', 'Gunship Battle' }) do
+        MB_ICC_INF[b] = RLSuite:IsBossKilled('Icecrown Citadel', b)
+    end
+    MB_ICC_NEXT = RLSuite:NextBossByProgress('Icecrown Citadel')
+""")
+check(bool(rt.eval("MB_ICC_INF['Lord Marrowgar'] == true and MB_ICC_INF['Lady Deathwhisper'] == true and MB_ICC_INF['Gunship Battle'] == true")),
+      "inferenza ICC: trovarsi su Saurfang implica Marrowgar + Deathwhisper + Gunship battuti")
+check(bool(rt.eval("MB_ICC_NEXT == 'Deathbringer Saurfang'")), "inferenza ICC: il counter punta a Saurfang")
+
+# --- Combat log: la kill entra nel counter, ma NON in debug ---------------
+rt.execute("""
+    RLSuite:ResetBossProgress('Icecrown Citadel')
+    MOCK_UNITS_BOSS = {}
+    MB_DBG = RLSuite:DebugMode()
+    CL_MOCK = RLSuite.combatLog
+    CL_MOCK.current = { events = {}, count = 0, dropped = 0, startTime = 0, samples = { health = {}, power = {} } }
+    CL_MOCK:OnCLEU('COMBAT_LOG_EVENT_UNFILTERED', 0, 'UNIT_DIED', '', '', 0, '0xF130008F040000AA', 'Lord Marrowgar', 0)
+    MB_CLEU_DEBUG_N = RLSuite:KilledBossCount('Icecrown Citadel')
+    CL_MOCK.current = nil
+""")
+check(bool(rt.eval("MB_DBG == true")), "harness: questa suite gira in debug mode")
+check(bool(rt.eval("MB_CLEU_DEBUG_N == 0")),
+      "combat log in debug: i pull finti NON sporcano la progressione vera")
+rt.execute("""
+    RLSuite.db.profile.debug = false
+    MB_CLEU_OK = RLSuite.combatLog:NoteBossKill('0xF130008F040000AA')
+    MB_CLEU_N = RLSuite:KilledBossCount('Icecrown Citadel')
+    MB_CLEU_UNKNOWN = RLSuite.combatLog:NoteBossKill('0xF1300001000000AA')
+    RLSuite.db.profile.debug = true
+""")
+check(bool(rt.eval("MB_CLEU_OK == true and MB_CLEU_N == 1")),
+      "combat log: la morte di un boss noto (GUID) entra nel counter")
+check(bool(rt.eval("MB_CLEU_UNKNOWN == false")),
+      "combat log: un NPC sconosciuto non entra nel counter")
+rt.execute("RLSuite:ResetBossProgress()")
 
 # --- Ripristino harness (nessun leak nelle sezioni successive) ------------
 rt.execute("""

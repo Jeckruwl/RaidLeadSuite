@@ -137,6 +137,16 @@ function CL:NpcIdFromGUID(guid)
     return nil
 end
 
+-- Boss morto: aggiorna il counter di progressione (raid -> boss) per le
+-- macro in-fight. Accetta un GUID (usato da OnCLEU) o direttamente un id.
+function CL:NoteBossKill(guidOrId)
+    if not (RLSuite and RLSuite.RecordBossKill) then return false end
+    local id = guidOrId
+    if type(guidOrId) == "string" then id = self:NpcIdFromGUID(guidOrId) end
+    if not id then return false end
+    return RLSuite:RecordBossKill(id) and true or false
+end
+
 -- "Nome-Realm" -> "Nome" se il realm e' il nostro (rpmeno suffissi in chat).
 function CL:ShortName(name)
     if type(name) ~= "string" then return name end
@@ -296,6 +306,11 @@ function CL:OnCLEU(_, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dst
         if id and CL_BOSS_NPC[id] then
             f.boss = CL_BOSS_NPC[id]
             f.kill = true
+            -- Counter di progressione (macro in-fight per boss): in debug NO,
+            -- i pull finti del debug non devono sporcare la progressione vera.
+            if not (RLSuite.DebugMode and RLSuite:DebugMode()) then
+                self:NoteBossKill(dstGUID)
+            end
         end
     end
     if not cat then return end

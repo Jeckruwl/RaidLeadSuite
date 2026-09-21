@@ -21,6 +21,10 @@ local defaults = {
         debug = false,
         anchorMode = false,
         savedRaids = {},
+        -- Progressione per raid (counter dei boss battuti): registro delle
+        -- uccisioni per lockout, usato dalle macro in-fight dei boss che non
+        -- si riconoscono dal target (Gunship, Faction Champions).
+        bossProgress = {},
         macrobar = {
             enabled = true,
             locked = true,
@@ -327,10 +331,12 @@ RLSuite.raidDB = {
 -- ============================================================
 RLSuite.bossUnits = {
     ["Icecrown Citadel"] = {
-        ["Lord Marrowgar"] = { npcs = { 36612 } },
-        ["Lady Deathwhisper"] = { npcs = { 36855 } },
-        ["Gunship Battle"] = { names = { "Gunship Battle" } },
-        ["Deathbringer Saurfang"] = { npcs = { 37813 } },
+        ["Lord Marrowgar"] = { npcs = { 36612 }, linear = true },
+        ["Lady Deathwhisper"] = { npcs = { 36855 }, linear = true },
+        -- Gunship: nessun NPC affidabile come "boss" -> si riconosce col
+        -- COUNTER (3o boss della catena lineare di ICC).
+        ["Gunship Battle"] = { names = { "Gunship Battle" }, linear = true, progressOnly = true },
+        ["Deathbringer Saurfang"] = { npcs = { 37813 }, linear = true },
         ["Rotface"] = { npcs = { 36627 } },
         ["Festergut"] = { npcs = { 36626 } },
         ["Professor Putricide"] = { npcs = { 36678 } },
@@ -341,12 +347,13 @@ RLSuite.bossUnits = {
         ["The Lich King"] = { npcs = { 36597 } },
     },
     ["Trial of the Crusader"] = {
-        ["Northrend Beasts"] = { npcs = { 34796, 35144, 34799, 34797 } },
-        ["Lord Jaraxxus"] = { npcs = { 34780 } },
-        ["Faction Champions"] = { names = { "Faction Champions" } },
-        ["Twin Val'kyr"] = { npcs = { 34497, 34496 },
+        ["Northrend Beasts"] = { npcs = { 34796, 35144, 34799, 34797 }, linear = true },
+        ["Lord Jaraxxus"] = { npcs = { 34780 }, linear = true },
+        -- Faction Champions: nessun NPC affidabile -> COUNTER (3o di ToC).
+        ["Faction Champions"] = { names = { "Faction Champions" }, linear = true, progressOnly = true },
+        ["Twin Val'kyr"] = { npcs = { 34497, 34496 }, linear = true,
                              names = { "Fjola Lightbane", "Eydis Darkbane" } },
-        ["Anub'arak"] = { npcs = { 34564 } },
+        ["Anub'arak"] = { npcs = { 34564 }, linear = true },
     },
     ["Ulduar"] = {
         ["Flame Leviathan"] = { npcs = { 33113 } },
@@ -429,9 +436,147 @@ function RLSuite:BossFromName(name)
     return self._bossByName[string.lower(name)]
 end
 
--- Boss che stiamo affrontando ADESSO: il TARGET per primo (richiesta: "se
--- sono in fight con il boss X voglio le macro del boss X"), poi le unita'
--- boss1..boss4 (il boss del pull, quando non lo stai targettando).
+-- ============================================================
+-- PROGRESSIONE DEL RAID (counter dei boss battuti)
+-- Serve ai boss che NON si possono riconoscere dal target: sono punti fissi
+-- della catena lineare (Gunship Battle in ICC, Faction Champions in ToC),
+-- quindi il boss corrente si deduce dal counter: primo boss non ancora
+-- battuto in questo lockout. Il registro e' per raid e persiste nel profilo;
+-- il reset settimanale si deduce da se': se un boss GIA' segnato muore di
+-- nuovo quello e' un lockout nuovo e il registro riparte.
+-- ============================================================
+
+function RLSuite:ProgressFor(raid, create)
+    local prof = self.db and self.db.profile
+    if not (prof and raid) then return nil end
+    prof.bossProgress = prof.bossProgress or {}
+    local p = prof.bossProgress[raid]
+    if not p then
+        if not create then return nil end
+        p = { killed = {} }
+        prof.bossProgress[raid] = p
+    end
+    p.killed = p.killed or {}
+    return p
+end
+
+function RLSuite:IsBossKilled(raid, boss)
+    local p = self:ProgressFor(raid)
+    return (p and p.killed and p.killed[boss]) and true or false
+end
+
+-- Boss successivo in ordine di raidDB: il primo NON ancora battuto.
+function RLSuite:NextBossByProgress(raid)
+    local info = raid and self.raidDB[raid]
+    local list = info and info.bosses
+    if not list then return nil end
+    local p = self:ProgressFor(raid)
+    for i = 1, #list do
+        if not (p and p.killed[list[i]]) then return list[i] end
+    end
+    return nil
+end
+
+function RLSuite:KilledBossCount(raid)
+    local p = self:ProgressFor(raid)
+    if not p then return 0 end
+    local n = 0
+    for _ in pairs(p.killed) do n = n + 1 end
+    return n
+end
+
+-- Un boss e' un "buco di riconoscimento" (per lui si usa il counter)?
+function RLSuite:IsProgressOnlyBoss(raid, boss)
+    local units = self.bossUnits[raid or ""]
+    local info = units and units[boss or ""]
+    return (info and info.progressOnly) and true or false
+end
+
+-- Segna battuto un boss (NPC id visto nel combat log). Se era GIA' segnato
+-- siamo in un nuovo lockout: il registro riparte da zero.
+function RLSuite:RecordBossKill(npcId)
+    local info = self:BossFromNpcId(npcId)
+    if not info then return false end
+    local p = self:ProgressFor(info.raid, true)
+    if not p then return false end
+    if p.killed[info.boss] then
+        p.killed = {}
+        p.lockouts = (p.lockouts or 0) + 1
+    end
+    p.killed[info.boss] = true
+    p.lastKill = info.boss
+    p.lastKillAt = (time and time()) or nil
+    self._lastProgressRaid = info.raid
+    if self.macrobar and self.macrobar.OnBossProgressChanged then
+        self.macrobar:OnBossProgressChanged()
+    end
+    return true
+end
+
+function RLSuite:ResetBossProgress(raid)
+    local prof = self.db and self.db.profile
+    if not prof then return end
+    prof.bossProgress = prof.bossProgress or {}
+    if raid then
+        prof.bossProgress[raid] = nil
+    else
+        prof.bossProgress = {}
+    end
+end
+
+-- INFERENZA SULLA CATENA LINEARE: se in fight riconosci il boss N, tutti i
+-- boss LINEARI precedenti (punti fissi non skippabili) sono per forza gia'
+-- morti in questo lockout. Cosi' il counter resta corretto anche per i boss
+-- che il combat log non registra (Gunship, Faction Champions).
+function RLSuite:InferLinearKills(raid, boss)
+    local info = raid and self.raidDB[raid]
+    local list = info and info.bosses
+    local units = self.bossUnits[raid or ""]
+    if not (list and units) then return false end
+    local idx
+    for i = 1, #list do
+        if list[i] == boss then idx = i break end
+    end
+    if not idx then return false end
+    local p = self:ProgressFor(raid, true)
+    if not p then return false end
+    local changed = false
+    for i = 1, idx - 1 do
+        local b = list[i]
+        local u = units[b]
+        if u and u.linear and not p.killed[b] then
+            p.killed[b] = true
+            changed = true
+        end
+    end
+    if changed then
+        self._lastProgressRaid = raid
+        if self.macrobar and self.macrobar.OnBossProgressChanged then
+            self.macrobar:OnBossProgressChanged()
+        end
+    end
+    return changed
+end
+
+-- Raid corrente quando il boss non e' riconoscibile: nome della zona/istanza
+-- (client inglese: coincide con raidDB), poi l'ultimo raid riconosciuto in
+-- questa sessione, poi l'ultimo con progressione registrata.
+function RLSuite:CurrentRaidGuess()
+    local zone = GetRealZoneText and GetRealZoneText() or nil
+    if type(zone) == "string" and zone ~= "" and self.raidDB[zone] then return zone end
+    if self._lastBossRaid and self.raidDB[self._lastBossRaid] then return self._lastBossRaid end
+    if self._lastProgressRaid and self.raidDB[self._lastProgressRaid] then
+        return self._lastProgressRaid
+    end
+    return nil
+end
+
+-- Boss che stiamo affrontando ADESSO:
+--   1) TARGET, poi boss1..boss4 (NPC id dal GUID, poi nome) — richiesta:
+--      "se sono in fight con il boss X voglio le macro del boss X";
+--   2) COUNTER del raid, ma SOLO per i boss che non si possono riconoscere
+--      dal target (Gunship Battle, Faction Champions): primo boss non
+--      ancora battuto in questo lockout.
 -- Ritorna raid, boss oppure nil, nil (trash: nessuna macro in-fight).
 function RLSuite:CurrentBossInfo()
     local units = { "target", "boss1", "boss2", "boss3", "boss4" }
@@ -446,7 +591,21 @@ function RLSuite:CurrentBossInfo()
             if not info and UnitName then
                 info = self:BossFromName(UnitName(u))
             end
-            if info then return info.raid, info.boss end
+            if info then
+                self._lastBossRaid = info.raid
+                if (self.context or "") == "infight" then
+                    self:InferLinearKills(info.raid, info.boss)
+                end
+                return info.raid, info.boss
+            end
+        end
+    end
+    -- 2) counter del raid: vale solo per i "buchi" (Gunship / Champions).
+    local raid = self:CurrentRaidGuess()
+    if raid then
+        local nextBoss = self:NextBossByProgress(raid)
+        if nextBoss and self:IsProgressOnlyBoss(raid, nextBoss) then
+            return raid, nextBoss
         end
     end
     return nil, nil

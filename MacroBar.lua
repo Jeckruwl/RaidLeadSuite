@@ -668,6 +668,23 @@ function MB:OnBossTargetChanged()
     end
 end
 
+-- La progressione del raid e' cambiata (boss battuto o catena lineare
+-- dedotta): il boss del COUNTER puo' essere passato al successivo (es. da
+-- Lady Deathwhisper a Gunship), quindi la barra si riallinea.
+function MB:OnBossProgressChanged()
+    if self._bossProgressBusy then return end
+    self._bossProgressBusy = true
+    if (RLSuite.context or "preraid") == "infight" then
+        local raid, boss = RLSuite:CurrentBossInfo()
+        if raid ~= self.bossRaid or boss ~= self.bossName then
+            self.bossRaid, self.bossName = raid, boss
+            self:LoadMacrosForPhase("infight")
+            if self.ApplyLayout then self:ApplyLayout() end
+        end
+    end
+    self._bossProgressBusy = nil
+end
+
 function MB:MacroIsFilled(data)
     if not data then return false end
     if data.text and data.text ~= "" then return true end

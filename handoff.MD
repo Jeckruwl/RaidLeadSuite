@@ -7,7 +7,44 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.51**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.52**.
+
+## Novità della sessione 1.11.52 (questo branch, dopo 1.11.51) — BUCHI DI RICONOSCIMENTO DAL COUNTER
+
+Richiesta utente: per i boss che non si riescono a riconoscere dal target (nessun NPC affidabile sul
+server) **usare il counter del raid**, perche' sono punti fissi non skippabili della catena lineare
+("chiesene del target").
+
+**Counter di progressione** (`Core.lua`, persistito in `db.profile.bossProgress[raid]`):
+`RecordBossKill(npcId)` (chiamato dal combat log), `NextBossByProgress(raid)` = primo boss non
+ancora battuto in ordine RAIDDB, `KilledBossCount`, `IsProgressOnlyBoss`, `ResetBossProgress`.
+Il **reset settimanale si deduce da se'**: se un boss GIA' segnato muore di nuovo, quello e' un
+lockout nuovo e il registro riparte (`lockouts` conta i reset).
+
+**Boss riconoscibili solo dal counter**: flag `progressOnly = true` su **Gunship Battle** (3o di ICC)
+e **Faction Champions** (3o di ToC). `CurrentBossInfo` ordina: (1) target, poi boss1..boss4 (id NPC
+dal GUID, poi nome); (2) **solo se** il prossimo boss non ancora battuto e' un `progressOnly`, il
+counter. Quindi durante i trash normali la barra resta vuota come prima: il counter entra in gioco
+solo per Gunship e Champions.
+
+**Inferenza sulla catena lineare** (`InferLinearKills`): flag `linear = true` sui boss a
+progressione obbligata (ICC: Marrowgar, Lady Deathwhisper, Gunship, Saurfang; ToC: tutti e 5).
+Se in fight identifichi il boss N, i boss LINEARI che lo precedono sono per forza gia' morti in
+questo lockout -> il registro si aggiorna anche per i boss la cui kill il combat log non vede
+(Gunship e Champions non hanno un NPC "boss" affidabile: senza inferenza il counter resterebbe
+bloccato su di loro). Il boss identificato NON viene mai segnato come battuto.
+
+**Raid quando il boss non e' riconoscibile** (`CurrentRaidGuess`): nome della zona/istanza
+(`GetRealZoneText`, sul client inglese coincide con raidDB), poi l'ultimo raid riconosciuto nella
+sessione, poi l'ultimo con progressione registrata.
+
+**Combat log** (`CombatLog.lua`): `CL:NoteBossKill(guidOrId)` aggiorna il counter; in **debug mode
+NON registra** (i pull finti del debug non devono sporcare la progressione vera). `MacroBar:OnBossProgressChanged` riallinea la barra quando il counter avanza (guardia di rientranza perche'
+passa da `CurrentBossInfo` -> `InferLinearKills` -> di nuovo `OnBossProgressChanged`).
+
+Test: **810 check** totali sul branch (20 nuovi nella 1.11.52: registro kill, lockout reset,
+counter su Gunship e Faction Champions, precedenza del target, inferenza lineare su ICC e ToC,
+kill dal combat log con e senza debug).
 
 ## Novità della sessione 1.11.51 (questo branch, dopo 1.11.50) — MACRO IN-FIGHT PER BOSS
 
@@ -44,7 +81,7 @@ In-fight** (`UpdateMacroBossSelectors`, chiamata da `CreateMacroEditor`, `Select
 `CFG:GetMacroDB` in-fight lavora sul set `db.bossMacros[raid][boss]`, quindi anteprima, elenco,
 campi e save scrivono lì; il titolo della lista diventa "Boss macros: <boss>".
 
-Test: **790 check** totali sul branch (38 nuovi nella 1.11.51: guardie statiche su `bossUnits`
+Test: **810 check** totali sul branch (38 nuovi nella 1.11.51: guardie statiche su `bossUnits`
 (54 boss, nessun id/nome ambiguo, tutti i raid coperti), lookup per id/nome/alias, boss in target →
 boss1..4, cambio target, nessun fallback sulla macro generica, slot vuoti senza boss, menu
 raid/boss comparsi solo in-fight con i valori giusti, scrittura nel set del boss, editor rapido).
