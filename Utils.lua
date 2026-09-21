@@ -923,6 +923,26 @@ local function ShiftSubtree(node, delta, seen)
     end
 end
 
+-- Riporta un sotto-albero a una posizione di livello PREVEDIBILE rispetto a
+-- un riferimento (es. il genitore o la finestra). Se il root si e' allontanato
+-- oltre la tolleranza, sposta TUTTO il sotto-albero dello stesso delta: nessun
+-- rinumero, quindi l'ordine interno (che in gioco funziona) resta identico.
+-- Causa: in 3.3.5 i livelli dei figli non seguono il padre, e dopo ripetuti
+-- raise/rebuild una catena puo' restare centinaia di livelli fuori posto
+-- (fstack: RLSuiteWLScroll <700> sopra la finestra <200>) e mangiarsi i click.
+-- Restituisce true se ha corretto il livello.
+function Utils:RealignSubtreeLevel(root, wantLvl, tol)
+    if not (root and root.GetFrameLevel and root.SetFrameLevel) then return false end
+    if wantLvl == nil then return false end
+    tol = tol or 20
+    local cur = root:GetFrameLevel() or wantLvl
+    local d = wantLvl - cur
+    if d < 0 then d = -d end
+    if d <= tol then return false end
+    ShiftSubtree(root, wantLvl - cur, {})
+    return true
+end
+
 function Utils:RaiseWindow(frame)
     if not frame then return end
     -- Layering NORMALIZZATO: niente contatore globale +50 a click (livelli

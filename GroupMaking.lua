@@ -3723,6 +3723,84 @@ function GM:UpdateWhisplist()
         if w and w > 40 then self.wlContent:SetWidth(w) end
     end
 
+    -- ============================================================
+    -- LIVELLI DETERMINISTICI DELLA CATENA DELLA LISTA.
+    -- BUG "non riesco a cliccare le cose nella lista" (fstack:
+    -- RLSuiteWLScroll <700> SOPRA la finestra <200>): in 3.3.5 i figli NON
+    -- si riallineano ai livelli della finestra quando questa viene raisata
+    -- (RaiseWindow/ShiftSubtree normalizza a 20+40*idx), quindi la catena
+    -- della whisplist puo' restare con il vecchio drift. Se lo SCROLL frame
+    -- (mouse-enabled per la rotellina) finisce sopra le righe, il click
+    -- viene mangiato dallo scroll invece di arrivare al Bottone-riga.
+    -- Qui, a OGNI refresh, il container delle tab e la pagina vengono
+    -- riallineati ai loro genitori (shift del sotto-albero, nessun rinumero)
+    -- e la catena della lista viene ri-ancorata al livello LIVE della pagina:
+    --     finestra < host-tab < border < wlPage < wlListBox < wlScroll <
+    --     wlContent < righe
+    -- Si auto-ripara cosi' da qualunque drift passato. Le righe sono ancorate
+    -- SOPRA content e scroll come gia' in produzione su Loot Manager (righe a
+    -- histContent+2) e MS Manager; qui non era mai stato applicato.
+    -- ============================================================
+    local winLvl = (self.whisplistFrame and self.whisplistFrame.GetFrameLevel
+        and self.whisplistFrame:GetFrameLevel()) or 1
+    local function pinLvl(f, lvl)
+        if f and f.SetFrameLevel then f:SetFrameLevel(lvl) end
+    end
+
+    -- 1) CONTAINER DELLE TAB e PAGINA della whisplist: devono stare appena
+    -- sopra i loro genitori (la finestra e tg.border, che ha il backdrop).
+    -- Se un raise li ha lasciati centinaia di livelli piu' in alto, li
+    -- riallineiamo SHIFTANDO tutto il sotto-albero (Utils:RealignSubtreeLevel):
+    -- l'ordine interno — quello che in gioco funziona — resta identico,
+    -- sparisce solo il drift. Mai ancorati alla finestra in modo assoluto:
+    -- non si deve mai scendere SOTTO il genitore, o il backdrop del border
+    -- coprirebbe la lista.
+    if RLSuite.utils and RLSuite.utils.RealignSubtreeLevel then
+        local hostF = self.ieTabGroup and self.ieTabGroup.frame
+        if hostF then
+            RLSuite.utils:RealignSubtreeLevel(hostF, winLvl + 1)
+        end
+        if self.wlPage and self.wlPage.GetParent then
+            local par = self.wlPage:GetParent()
+            local parLvl = par and par.GetFrameLevel and par:GetFrameLevel()
+            if parLvl then
+                RLSuite.utils:RealignSubtreeLevel(self.wlPage, parLvl + 1)
+            end
+        end
+    end
+
+    -- 2) Catena VISIBILE della lista, ancorata al livello LIVE della pagina:
+    --    pagina < wlListBox < wlScroll < wlContent < righe.
+    local baseLvl = (self.wlPage and self.wlPage.GetFrameLevel
+        and self.wlPage:GetFrameLevel()) or winLvl
+    pinLvl(self.wlListBox, baseLvl + 2)
+    pinLvl(self.wlScroll, baseLvl + 4)
+    pinLvl(self.wlContent, baseLvl + 6)
+    local rowLvl = baseLvl + 8
+
+    -- 3) La "chrome" dello scroll (barra di scorrimento creata dal template di
+    --    Blizzard, piu' eventuali bottoni freccia) deve restare SOPRA le righe:
+    --    altrimenti le righe — ora che stanno sopra lo ScrollFrame — coprono i
+    --    16px della barra e trascinarla diventa difficile. Si pinnano TUTTI i
+    --    figli dello scroll tranne wlContent (nessuna dipendenza dal nome), piu'
+    --    la barra per nome globale (`$parentScrollBar` del template: stessa
+    --    cosa in gioco, ma la teniamo per sicurezza se un giorno cambiasse la
+    --    gerarchia).
+    local barLvl = rowLvl + 2
+    if self.wlScroll and self.wlScroll.GetChildren then
+        local ok, kids = pcall(function() return { self.wlScroll:GetChildren() } end)
+        if ok and type(kids) == "table" then
+            for i = 1, #kids do
+                local k = kids[i]
+                if k ~= self.wlContent then pinLvl(k, barLvl) end
+            end
+        end
+    end
+    local scrName = self.wlScroll and self.wlScroll.GetName and self.wlScroll:GetName()
+    if scrName and scrName ~= "" and _G[scrName .. "ScrollBar"] then
+        pinLvl(_G[scrName .. "ScrollBar"], barLvl)
+    end
+
     local entries = self.whisperDB.entries or {}
 
     -- Selezione per riferimento: sopravvive a riordini e aggregazioni.
@@ -3745,6 +3823,13 @@ function GM:UpdateWhisplist()
         row:SetPoint("TOPLEFT", self.wlContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.wlContent, "TOPRIGHT", 0, -y)
         RLSuite.utils:ClipScrollRow(self.wlContent, row, y, 24)
+        -- Livello esplicito SOPRA content e scroll per OGNI riga (anche per
+        -- quelle riusate dal pool, che altrimenti si trascinano il livello di
+        -- quando sono nate). Livello UNIFORME per tutte le righe: le righe non
+        -- si sovrappongono tra loro, quindi non serve scalarle, e cosi' la
+        -- "banda" della lista resta bassa e sottile — un eventuale menu a
+        -- tendina aperto SOPRA la lista continua a ricevere i click.
+        pinLvl(row, rowLvl)
         row.entry = entry
 
         local info = entry.name or "Unknown"

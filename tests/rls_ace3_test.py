@@ -969,6 +969,103 @@ rt.execute("TARGET = RLSuite.groupmaking.whisperDB.entries[1]")
 rt.execute("local r = RLSuite.groupmaking.wlRows[1]; if r and r._scripts.OnClick then r._scripts.OnClick(r, 'LeftButton') end")
 check(bool(rt.eval("RLSuite.groupmaking.selectedEntry == TARGET")), "clicking a reused row selects its current entry")
 
+# --- BUG CLICK NELLA LISTA (fstack: RLSuiteWLScroll <700> SOPRA la finestra
+#     <200>): la catena della whisplist non era mai stata normalizzata, quindi
+#     lo ScrollFrame (mouse-enabled, serve per la rotellina) poteva finire
+#     sopra le righe e mangiarsi i click. Ogni UpdateWhisplist deve ri-ancorare
+#     la catena: pagina < wlListBox < wlScroll < wlContent < righe. ---
+GM = "RLSuite.groupmaking"
+rt.execute(GM + ":UpdateWhisplist()")
+rt.execute("""
+    local GM = RLSuite.groupmaking
+    WL_CHAIN_OK = ((GM.wlListBox:GetFrameLevel() or 0) > (GM.wlPage:GetFrameLevel() or 0))
+        and ((GM.wlScroll:GetFrameLevel() or 0) > (GM.wlListBox:GetFrameLevel() or 0))
+        and ((GM.wlContent:GetFrameLevel() or 0) > (GM.wlScroll:GetFrameLevel() or 0))
+        and ((GM.wlContent:GetFrameLevel() or 0) > (GM.whisplistFrame:GetFrameLevel() or 0))
+    WL_ROWS_ABOVE = true
+    WL_ROWS_FLAT = true
+    local lvl0 = nil
+    for _, r in ipairs(GM.wlRows) do
+        local rl = r:GetFrameLevel() or 0
+        if rl <= (GM.wlScroll:GetFrameLevel() or 0) then WL_ROWS_ABOVE = false end
+        if rl <= (GM.wlContent:GetFrameLevel() or 0) then WL_ROWS_ABOVE = false end
+        if lvl0 == nil then lvl0 = rl elseif rl ~= lvl0 then WL_ROWS_FLAT = false end
+    end
+    WL_ROWS_MOUSE = (GM.wlRows[1] and GM.wlRows[1]._enabledMouse == true)
+    WL_SCROLL_LIVE = (GM.wlRows[1] ~= nil and #GM.wlRows > 0)
+    local bar = _G["RLSuiteWLScrollScrollBar"]
+    WL_BAR_ABOVE = (bar ~= nil and GM.wlRows[1] ~= nil
+        and (bar:GetFrameLevel() or 0) > (GM.wlRows[1]:GetFrameLevel() or 0))
+""")
+check(bool(rt.eval("WL_SCROLL_LIVE == true")), "whisplist has clickable rows to test")
+check(bool(rt.eval("WL_CHAIN_OK == true")), "whisplist levels are chained: page < listbox < scroll < content (above the window)")
+check(bool(rt.eval("WL_ROWS_ABOVE == true")), "every whisper row sits ABOVE the scroll/content frames (click reaches the row)")
+check(bool(rt.eval("WL_ROWS_FLAT == true")), "all whisper rows share one level (flat band: pull-outs above the list stay clickable)")
+check(bool(rt.eval("WL_ROWS_MOUSE == true")), "whisper rows are mouse-enabled")
+check(bool(rt.eval("WL_BAR_ABOVE == true")), "the scroll bar stays ABOVE the rows (still draggable)")
+# Chrome generica dello scroll (es. bottoni freccia figli dello ScrollFrame):
+# deve finire sopra le righe come la barra, senza dipendere dal nome.
+rt.execute("""
+    local GM = RLSuite.groupmaking
+    if not SYNTH_BAR then SYNTH_BAR = CreateFrame("Button", "RLSuiteWLSynthChrome", GM.wlScroll) end
+    SYNTH_BAR:SetFrameLevel(1)
+""")
+rt.execute(GM + ":UpdateWhisplist()")
+check(bool(rt.eval("(SYNTH_BAR:GetFrameLevel() or 0) > (RLSuite.groupmaking.wlRows[1]:GetFrameLevel() or 0)")),
+      "any scroll-frame chrome child is pinned above the rows (not just the templated bar)")
+rt.execute("""
+    -- Drift identico allo screenshot: scroll/content centinaia di livelli
+    -- sopra la finestra E una riga rimasta sotto. Il refresh deve riparare.
+    local GM = RLSuite.groupmaking
+    GM.wlPage:SetFrameLevel((GM.wlPage:GetParent():GetFrameLevel() or 1) + 500)
+    GM.wlScroll:SetFrameLevel((GM.wlScroll:GetFrameLevel() or 1) + 500)
+    GM.wlContent:SetFrameLevel((GM.wlContent:GetFrameLevel() or 1) + 500)
+    GM.wlRows[1]:SetFrameLevel(1)
+""")
+rt.execute(GM + ":UpdateWhisplist()")
+rt.execute("""
+    local GM = RLSuite.groupmaking
+    WL_HEAL_PAGE = (((GM.wlPage:GetFrameLevel() or 0) - ((GM.wlPage:GetParent():GetFrameLevel() or 0) + 1)) <= 20)
+    WL_HEAL_ROWS = true
+    for _, r in ipairs(GM.wlRows) do
+        if (r:GetFrameLevel() or 0) <= (GM.wlScroll:GetFrameLevel() or 0) then WL_HEAL_ROWS = false end
+    end
+    WL_HEAL_SCROLL = ((GM.wlScroll:GetFrameLevel() or 0) < (GM.wlPage:GetFrameLevel() or 0) + 40)
+""")
+check(bool(rt.eval("WL_HEAL_PAGE == true")), "a drifted whisplist page is re-anchored to its container (no 500-level gap)")
+check(bool(rt.eval("WL_HEAL_SCROLL == true")), "the drifted scroll frame is pulled back next to the page")
+check(bool(rt.eval("WL_HEAL_ROWS == true")), "rows stay above the scroll frame after the drift is repaired")
+
+# --- Drift del CONTENITORE delle tab (host) rispetto alla finestra: il
+#     sotto-albero viene shiftato in blocco, l'ordine interno resta intatto. ---
+rt.execute("""
+    local GM = RLSuite.groupmaking
+    GM.ieTabGroup.frame:SetFrameLevel((GM.whisplistFrame:GetFrameLevel() or 1) + 500)
+""")
+rt.execute(GM + ":UpdateWhisplist()")
+rt.execute("""
+    local GM = RLSuite.groupmaking
+    WL_HOST_GAP = (GM.ieTabGroup.frame:GetFrameLevel() or 0) - (GM.whisplistFrame:GetFrameLevel() or 0)
+    WL_HOST_ROWS = true
+    for _, r in ipairs(GM.wlRows) do
+        if (r:GetFrameLevel() or 0) <= (GM.wlScroll:GetFrameLevel() or 0) then WL_HOST_ROWS = false end
+    end
+    WL_HOST_ORDER = ((GM.wlScroll:GetFrameLevel() or 0) > (GM.wlContent and GM.wlContent:GetFrameLevel() or 0) - 100)
+""")
+check(bool(rt.eval("WL_HOST_GAP <= 20")), "a drifted tab container is shifted back next to the window (gap <= 20)")
+check(bool(rt.eval("WL_HOST_ROWS == true")), "rows are still above the scroll after the tab container is shifted")
+rt.execute("check_alias = RLSuite.utils.RealignSubtreeLevel ~= nil")
+check(bool(rt.eval("check_alias == true")), "Utils:RealignSubtreeLevel is available to every list")
+rt.execute("""
+    local GM = RLSuite.groupmaking
+    BEFORE_SCR = GM.wlScroll:GetFrameLevel() or 0
+    BEFORE_CON = GM.wlContent:GetFrameLevel() or 0
+    RLSuite.utils:RealignSubtreeLevel(GM.wlPage, (GM.wlPage:GetFrameLevel() or 0) + 500, 20)
+    SHIFTED_SCR = GM.wlScroll:GetFrameLevel() or 0
+    SHIFTED_CON = GM.wlContent:GetFrameLevel() or 0
+""")
+check(bool(rt.eval("(SHIFTED_SCR - BEFORE_SCR) == (SHIFTED_CON - BEFORE_CON)")), "subtree realign shifts every descendant by the same delta (internal order preserved)")
+
 # --- Autoinviter manual list: typeable + Enter adds + Auto invite now + label ---
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoArmBtn:GetText() == 'Start Autoinviter'")), "arm button reads 'Start Autoinviter'")
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoNowBtn ~= nil")), "Auto invite now button exists")

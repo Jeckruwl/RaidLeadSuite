@@ -7,7 +7,44 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.49**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.50**.
+
+## Novità della sessione 1.11.50 (questo branch, dopo 1.11.49) — BUG DEL CLICK NELLE LISTE (InviteEngine / Whisplist)
+
+**Sintomo**: nella lista dei whisper (InviteEngine → tab Whisplist) le righe non rispondevano
+al click; `/fstack` mostrava `RLSuiteWLScroll <700>` **sopra** la finestra `RLSuiteInviteEngine
+<200>`, cioè il frame della lista centinaia di livelli fuori posto.
+
+**Causa**: in 3.3.5 i frame **figli non seguono il livello del padre**. `Utils:RaiseWindow`
+normalizza i livelli delle finestre (20+40*idx) e sposta il sotto-albero con `ShiftSubtree`, ma
+la catena della Whisplist non veniva mai ri-ancorata: dopo un po' di raise/rebuild una sua parte
+restava con centinaia di livelli di drift. Lo **ScrollFrame** (mouse-enabled: serve per la
+rotellina) finiva così SOPRA i Bottone-riga e si mangiava i click. Loot Manager e MS Manager
+avevano già il rimedio (righe a `content+2`); la Whisplist **no, era l'unica lista senza**.
+
+**Rimedio** (tutto in `GM:UpdateWhisplist`, `GroupMaking.lua`, più un helper in `Utils.lua`):
+1. nuovo `Utils:RealignSubtreeLevel(root, wantLvl, tol=20)`: se il root si è allontanato dal
+   livello atteso oltre la tolleranza, sposta TUTTO il sotto-albero dello stesso delta
+   (**shift, nessun rinumero**: l'ordine interno che funziona in gioco resta identico);
+2. a ogni refresh vengono riallineati il **container dei tab** (`win+1`) e la **pagina** della
+   whisplist (`genitore+1`, cioè `tg.border+1`: mai ancorata alla finestra, o si scenderebbe
+   sotto il backdrop del border che copre la lista) → sparisce il drift da 500 livelli;
+3. la catena visibile viene **ri-pinnata a ogni refresh** sul livello live della pagina:
+   `wlListBox = pagina+2`, `wlScroll = +4`, `wlContent = +6`, **righe = +8 (livello UNIFORME
+   per tutte le righe**, incluse quelle riusate dal pool: non si trascinano più il livello di
+   quando sono nate; uniforme = banda sottile, così un pull-out aperto sopra la lista resta
+   cliccabile);
+4. la **chrome dello scroll** (barra del template + ogni altro figlio dello `ScrollFrame` che
+   non sia `wlContent`) viene pinnata **sopra** le righe: le righe non coprono più i 16px della
+   barra, che resta trascinabile (la rotellina continua a funzionare: in 3.3.5 `OnMouseWheel`
+   risale ai genitori).
+   ⚠️ **MAI** `EnableMouse(false)` su `wlScroll`/`wlContent`: in 3.3.5 blocca la hit-region anche
+   dei figli (vedi `RaidFrame.lua`, consumabili non cliccabili).
+
+Test: **752 check** (14 nuovi in `tests/rls_ace3_test.py`: catena livelli, righe sopra
+scroll/content, livello uniforme, righe mouse-enabled, barra sopra le righe, chrome generica,
+riparazione del drift simulato su pagina/scroll/righe e sul container dei tab, shift che
+preserva l'ordine interno).
 
 ## Novità della sessione 1.11.49 (questo branch, dopo 1.11.48) — CHECK BUFF CONSAPEVOLE DI CLASSE E COMPOSIZIONE
 
@@ -48,7 +85,7 @@ Efficienza: i conteggi si accumulano nella STESSA passata che disegna le celle (
 `BuffCoverage` (ricalcolo completo) la usano solo il click sull'header e il tooltip. Le barre MT/OT
 non fanno parte di `self.slots`, quindi nessun doppio conteggio dei tank.
 
-Test: **738 check** (35 nuovi: guardie statiche sul modello dati, applicabilità per classe,
+Test: **752 check** totali sul branch (35 nuovi nella 1.11.49: guardie statiche sul modello dati, applicabilità per classe,
 totem raid-wide + meccanismo party-only verificato con una categoria SINTETICA, cap di
 Replenishment a 10, FM con nomi dal combat log, grigio vs rosso, tooltip, alert). Due check di
 hover sono stati RISCRITTI: ora scelgono una colonna disponibile dinamicamente, perché "accenditi
