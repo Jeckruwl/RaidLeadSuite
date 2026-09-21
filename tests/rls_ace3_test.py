@@ -3587,27 +3587,44 @@ check(bool(rt.eval("COMPB_INT_MANA_ONLY")), "class applicability: Int counts the
 check(bool(rt.eval("COMPB_INT_NO_PHYS")), "class applicability: the missing list never names non-benefiting classes (no Int for a warrior)")
 check(bool(rt.eval("COMPB_INT_AVAILABLE")), "a category whose provider class IS in the raid stays available")
 
-# --- scope party-only (totem shaman) -------------------------------------
+# --- totem RAID-WIDE (3.3.5) + meccanismo party-only ----------------------
+# Dal patch 3.0.2 i totem shaman di buff sono RAID-WIDE, con limite di RAGGIO
+# (non di party): marcarli party-only darebbe FALSI NEGATIVI. La meccanica
+# partyProviders resta disponibile e si verifica con una categoria SINTETICA,
+# cosi' il test non congela un dato di gioco sbagliato.
 rt.execute("""
 local st = COMPB('spellHaste')
 COMPB_SPH_COVERABLE = st.coverable
-COMPB_SPH_MISSING = #st.missing
 COMPB_SPH_AVAILABLE = st.available
--- i caster del gruppo 2 (senza shaman) NON vanno accusati
-COMPB_SPH_NO_G2 = true
-for _, n in ipairs(st.missing) do
-    if n == 'Mago2' or n == 'Druid' then COMPB_SPH_NO_G2 = false end
+COMPB_NO_PARTY_MARKED = true
+for _, c in ipairs(RLSuite.raidBuffColumns) do
+    if c.partyProviders and #c.partyProviders > 0 then COMPB_NO_PARTY_MARKED = false end
 end
--- i caster del gruppo 1 (col totem) si'
-COMPB_SPH_G1 = false
-for _, n in ipairs(st.missing) do
-    if n == 'Mago1' then COMPB_SPH_G1 = true end
+-- categoria sintetica party-only: esercita il meccanismo
+RLSuite.raidBuffColumns[#RLSuite.raidBuffColumns + 1] = {
+    key = 'compbSyntheticParty', label = 'SynthParty',
+    icon = 'SynthIcon',  -- irrilevante: l'aura e' stub, nessun rendering
+    classes = { 'SHAMAN' }, partyProviders = { 'SHAMAN' },
+    beneficiaries = { 'MAGE', 'WARLOCK', 'PRIEST', 'DRUID', 'SHAMAN', 'PALADIN' },
+    spells = { 3738 } }
+local stp = COMPB('compbSyntheticParty')
+COMPB_SP_COVERABLE = stp.coverable
+COMPB_SP_MISSING = #stp.missing
+COMPB_SP_NO_G2 = true
+for _, n in ipairs(stp.missing) do
+    if n == 'Mago2' or n == 'Druid' then COMPB_SP_NO_G2 = false end
 end
+COMPB_SP_G1 = false
+for _, n in ipairs(stp.missing) do
+    if n == 'Mago1' then COMPB_SP_G1 = true end
+end
+RLSuite.raidBuffColumns[#RLSuite.raidBuffColumns] = nil
 """)
-check(bool(rt.eval("COMPB_SPH_AVAILABLE")), "party-only: Wrath of Air (shaman totem) is available when a shaman is in the raid")
-check(bool(rt.eval("COMPB_SPH_COVERABLE == 4")), "party-only: only the shaman's party is expected to have it (4 casters in G1, not the 6 casters of the raid)")
-check(bool(rt.eval("COMPB_SPH_NO_G2")), "party-only: casters OUTSIDE the shaman's party are NOT reported as missing (no false alarm)")
-check(bool(rt.eval("COMPB_SPH_G1")), "party-only: casters INSIDE the shaman's party ARE reported when the totem is down")
+check(bool(rt.eval("COMPB_NO_PARTY_MARKED")), "3.3.5 reality: NO category is party-only (patch 3.0.2 made every shaman buff totem raid-wide, range-limited)")
+check(bool(rt.eval("COMPB_SPH_AVAILABLE and COMPB_SPH_COVERABLE == 6")), "raid-wide totem: Wrath of Air covers ALL 6 casters, not just the shaman's party")
+check(bool(rt.eval("COMPB_SP_COVERABLE == 4 and COMPB_SP_MISSING == 4")), "party-only MECHANISM (synthetic category): only the provider's party is expected to have it")
+check(bool(rt.eval("COMPB_SP_NO_G2")), "party-only MECHANISM: members OUTSIDE the provider's party are NOT reported (no false alarm)")
+check(bool(rt.eval("COMPB_SP_G1")), "party-only MECHANISM: members INSIDE the provider's party ARE reported when it is down")
 
 # --- scope capped (Replenishment copre 10) --------------------------------
 rt.execute("""

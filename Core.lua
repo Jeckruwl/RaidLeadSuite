@@ -560,11 +560,17 @@ RLSuite.buffData = {
 --                             numero di FM attesi = numero di maghi
 --                  "capped" = copre al massimo `cap` player (Replen. = 10)
 --   cap            solo con scope "capped": quanti player copre al massimo
---   partyProviders classi la cui versione copre SOLO il party. In 3.3.5 sono
---                  i TOTEM shaman (SoE, Windfury, Wrath of Air, Mana Spring,
---                  Totem of Wrath): se l'unico fornitore presente e' un
---                  partyProvider il check guarda solo il party dello shaman
---                  invece di accusare tutto il raid (falso allarme evitato).
+--   partyProviders classi la cui versione copre SOLO il party. NESSUNA
+--                  categoria attuale lo usa: dal patch 3.0.2 TUTTI i totem
+--                  shaman di buff (SoE, Windfury, Wrath of Air, Mana Spring,
+--                  Totem of Wrath, Flametongue) sono RAID-WIDE, con limite di
+--                  RAGGIO 30-40yd: il raggio lo vede gia' il check per-player
+--                  (chi e' fuori raggio non ha l'aura), quindi marcarli
+--                  party-only farebbe FALSI NEGATIVI. Il campo resta per
+--                  sorgenti davvero party-only (i totem "a impulso": Healing
+--                  Stream, Mana Tide, Cleansing, Tremor): se l'unico
+--                  fornitore presente e' un partyProvider il check guarda
+--                  solo il party invece di accusare tutto il raid.
 --   byNameSpell    se presente: match per NOME aura (nome risolto via
 --                  GetSpellInfo(byNameSpell) => locale-safe, copre tutte le
 --                  varianti della stessa aura, es. "Well Fed" di ogni cibo)
@@ -582,7 +588,7 @@ RLSuite.raidBuffColumns = {
     { key = "stats",       label = "%stat",   icon = "Interface\\Icons\\Spell_Magic_GreaterBlessingofKings",
       classes = { "PALADIN" }, spells = { 20217, 25898, 20911 } },
     { key = "mp5",         label = "MP5",     icon = "Interface\\Icons\\Spell_Holy_GreaterBlessingofWisdom",
-      classes = { "PALADIN", "SHAMAN" }, partyProviders = { "SHAMAN" },
+      classes = { "PALADIN", "SHAMAN" },
       beneficiaries = BUFF_CLASSES_MANA, spells = { 48936, 48938, 58774 } },
     { key = "atkpower",    label = "ATK",     icon = "Interface\\Icons\\Ability_Warrior_BattleShout",
       classes = { "PALADIN", "WARRIOR", "HUNTER" }, beneficiaries = BUFF_CLASSES_PHYS,
@@ -602,7 +608,7 @@ RLSuite.raidBuffColumns = {
     { key = "wild",        label = "Gift",    icon = "Interface\\Icons\\Spell_Nature_Regeneration",
       classes = { "DRUID" }, spells = { 21849, 21850, 48470 } },
     { key = "strAgi",      label = "S+Agi",   icon = "Interface\\Icons\\Spell_Nature_Strength",
-      classes = { "DEATHKNIGHT", "SHAMAN" }, partyProviders = { "SHAMAN" },
+      classes = { "DEATHKNIGHT", "SHAMAN" },
       beneficiaries = BUFF_CLASSES_PHYS, spells = { 57330, 58643 } },
     { key = "focusMagic",  label = "FM",      icon = "Interface\\Icons\\Spell_Arcane_FocusedPower",
       classes = { "MAGE" }, beneficiaries = BUFF_CLASSES_CASTER, scope = "single",
@@ -620,10 +626,10 @@ RLSuite.raidBuffColumns = {
       classes = { "DRUID", "WARRIOR" }, beneficiaries = BUFF_CLASSES_PHYS,
       spells = { 17007, 24932, 29801 } },
     { key = "meleeHaste",  label = "MHaste",  icon = "Interface\\Icons\\Spell_Nature_Windfury",
-      classes = { "SHAMAN", "DEATHKNIGHT" }, partyProviders = { "SHAMAN" },
+      classes = { "SHAMAN", "DEATHKNIGHT" },
       beneficiaries = BUFF_CLASSES_PHYS, spells = { 55610, 8512, 8515, 8516 } },
     { key = "spellPower",  label = "SPow",    icon = "Interface\\Icons\\Spell_Fire_FlameBolt",
-      classes = { "WARLOCK", "SHAMAN" }, partyProviders = { "SHAMAN" },
+      classes = { "WARLOCK", "SHAMAN" },
       beneficiaries = BUFF_CLASSES_CASTER, spells = { 47240, 30706, 58656 } },
     { key = "damage",      label = "Dmg%",    icon = "Interface\\Icons\\Ability_Hunter_FerociousInspiration",
       classes = { "HUNTER", "PALADIN", "MAGE" }, spells = { 31583, 34460, 31869 } },
@@ -642,7 +648,7 @@ RLSuite.raidBuffColumns = {
       beneficiaries = BUFF_CLASSES_MANA, scope = "capped", cap = 10,
       spells = { 44561, 53292, 54118, 31878, 34914 } },
     { key = "spellHaste",  label = "SpH",     icon = "Interface\\Icons\\Spell_Nature_SlowingTotem",
-      classes = { "SHAMAN" }, partyProviders = { "SHAMAN" },
+      classes = { "SHAMAN" },
       beneficiaries = BUFF_CLASSES_CASTER, spells = { 3738 } },
     { key = "flask",       label = "Flask",   icon = "Interface\\Icons\\INV_Alchemy_EndlessFlask_05",
       classes = {}, spells = { 53755, 53760, 54212, 53758, 67016, 67017, 67018 } },

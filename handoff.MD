@@ -22,10 +22,16 @@ Ora ogni categoria ha tre dati in più in `RLSuite.raidBuffColumns` (`Core.lua`)
   resta spenta anche in hover, e l'alert dice "not available in this composition" invece di
   elencare 30 nomi.
 - **`scope`** = `raid` (default, una sorgente copre tutti) · `single` (Focus Magic: tante aure
-  quanti sono i **maghi**) · `capped` (Replenishment: `cap = 10`). **`partyProviders`** elenca le
-  classi la cui versione copre SOLO il party: in 3.3.5 sono i **totem shaman** (SoE, Windfury,
-  Wrath of Air, Mana Spring, Totem of Wrath, tutti in `partyProviders = { "SHAMAN" }`) — se l'unico
-  fornitore è uno shaman il check guarda solo il SUO party e non accusa il resto del raid.
+  quanti sono i **maghi**) · `capped` (Replenishment: `cap = 10`).
+  **`partyProviders`** (classi la cui versione copre SOLO il party) è **vuoto e deve restare vuoto**:
+  ⚠️ ATTENZIONE, errore già fatto una volta in questa sessione — dal **patch 3.0.2** (quindi per
+  tutto il 3.3.5) **TUTTI i totem shaman di buff sono RAID-WIDE**, con limite di **RAGGIO** 30-40yd
+  e NON di party: Strength of Earth, Windfury, Wrath of Air, Mana Spring (reso buff costante),
+  Totem of Wrath, Flametongue. Marcarli `partyProviders` produce **FALSI NEGATIVI** (il check
+  smette di segnalare chi è fuori dal party dello shaman ma DENTRO il raggio). Il limite di raggio
+  lo gestisce già da solo il check per-player: chi è fuori raggio l'aura non ce l'ha. In 3.3.5 sono
+  party-only solo i totem **"a impulso"** (Healing Stream, Mana Tide, Cleansing, Tremor), che NON
+  sono nel matrix. Il campo esiste per quelli, se un domani si aggiungono.
 
 Visivo: **overlay ROSSO** (WHITE8x8 tinta, sub-layer 1 sopra l'icona, icona desaturata) sull'icona
 di colonna quando la categoria è disponibile ma il check non è soddisfatto — stile "spell non
@@ -42,10 +48,11 @@ Efficienza: i conteggi si accumulano nella STESSA passata che disegna le celle (
 `BuffCoverage` (ricalcolo completo) la usano solo il click sull'header e il tooltip. Le barre MT/OT
 non fanno parte di `self.slots`, quindi nessun doppio conteggio dei tank.
 
-Test: **737 check** (34 nuovi: guardie statiche sul modello dati, applicabilità per classe,
-party-only dei totem, cap di Replenishment a 10, FM con nomi dal combat log, grigio vs rosso,
-tooltip, alert). Due check di hover sono stati RISCRITTI: ora scelgono una colonna disponibile
-dinamicamente, perché "accenditi in hover" vale solo per le categorie disponibili.
+Test: **738 check** (35 nuovi: guardie statiche sul modello dati, applicabilità per classe,
+totem raid-wide + meccanismo party-only verificato con una categoria SINTETICA, cap di
+Replenishment a 10, FM con nomi dal combat log, grigio vs rosso, tooltip, alert). Due check di
+hover sono stati RISCRITTI: ora scelgono una colonna disponibile dinamicamente, perché "accenditi
+in hover" vale solo per le categorie disponibili.
 
 ## Novità della sessione 1.11.48 (questo branch, dopo 1.11.47) — tab-strip RISCRITTA da zero (niente AceGUI TabGroup)
 
@@ -1487,8 +1494,8 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
   ogni voce di `partyProviders` DEVE essere anche in `classes`; `scope` può
   essere solo `raid`/`single`/`capped`; con `scope = "capped"` serve un `cap`
   positivo. In 3.3.5 **tutti i totem shaman sono party-only** e ci vanno
-  elencati: se un domani si aggiunge una categoria fornita da totem, mettere
-  lo shaman in `partyProviders` o il check accuserà tutto il raid.
+  elencati. ⚠️ Ma NON marcare i totem come party-only: dal 3.0.2 sono
+  raid-wide (limite di RAGGIO): vedi la nota nella sezione 1.11.49.
   I conteggi si fanno in `RefreshBuffMatrix` (passata unica, gira ogni 0,5s):
   NON aggiungere scan di `UnitBuff` fuori da lì; per un ricalcolo completo
   esiste `RF:BuffCoverage(col)` (solo click/tooltip).
@@ -1500,7 +1507,7 @@ Diff totale: **+7610 / −2757** su 12 file, più 4 path nuovi (`Libs/`, `Locale
 
 ```bash
 cd /home/user/RaidLeadSuite
-python3 tests/rls_ace3_test.py   # atteso: 737 PASS, RESULT: ALL CHECKS PASSED
+python3 tests/rls_ace3_test.py   # atteso: 738 PASS, RESULT: ALL CHECKS PASSED
 ```
 
 `lupa` non è installata di serie nell'ambiente: `pip install --break-system-packages lupa`
