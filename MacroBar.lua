@@ -674,14 +674,18 @@ end
 function MB:OnBossProgressChanged()
     if self._bossProgressBusy then return end
     self._bossProgressBusy = true
-    if (RLSuite.context or "preraid") == "infight" then
-        local raid, boss = RLSuite:CurrentBossInfo()
-        if raid ~= self.bossRaid or boss ~= self.bossName then
-            self.bossRaid, self.bossName = raid, boss
-            self:LoadMacrosForPhase("infight")
-            if self.ApplyLayout then self:ApplyLayout() end
+    -- in pcall: un errore qui non deve risalire fino al combat log che ha
+    -- registrato la kill ne' lasciare la guardia alzata per sempre.
+    pcall(function()
+        if (RLSuite.context or "preraid") == "infight" then
+            local raid, boss = RLSuite:CurrentBossInfo()
+            if raid ~= self.bossRaid or boss ~= self.bossName then
+                self.bossRaid, self.bossName = raid, boss
+                self:LoadMacrosForPhase("infight")
+                if self.ApplyLayout then self:ApplyLayout() end
+            end
         end
-    end
+    end)
     self._bossProgressBusy = nil
 end
 

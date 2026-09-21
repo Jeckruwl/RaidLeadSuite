@@ -42,9 +42,10 @@ sessione, poi l'ultimo con progressione registrata.
 NON registra** (i pull finti del debug non devono sporcare la progressione vera). `MacroBar:OnBossProgressChanged` riallinea la barra quando il counter avanza (guardia di rientranza perche'
 passa da `CurrentBossInfo` -> `InferLinearKills` -> di nuovo `OnBossProgressChanged`).
 
-Test: **810 check** totali sul branch (20 nuovi nella 1.11.52: registro kill, lockout reset,
+Test: **815 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
 counter su Gunship e Faction Champions, precedenza del target, inferenza lineare su ICC e ToC,
-kill dal combat log con e senza debug).
+kill dal combat log con e senza debug, riallineo automatico della barra al variare del counter,
+guardia di rientranza sempre rilasciata e robustezza a un errore di riconoscimento).
 
 ## Novità della sessione 1.11.51 (questo branch, dopo 1.11.50) — MACRO IN-FIGHT PER BOSS
 

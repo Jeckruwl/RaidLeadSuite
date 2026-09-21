@@ -1251,6 +1251,51 @@ check(bool(rt.eval("MB_CLEU_OK == true and MB_CLEU_N == 1")),
       "combat log: la morte di un boss noto (GUID) entra nel counter")
 check(bool(rt.eval("MB_CLEU_UNKNOWN == false")),
       "combat log: un NPC sconosciuto non entra nel counter")
+# --- La barra si riallinea da sola quando il counter avanza --------------
+rt.execute("""
+    RLSuite:ResetBossProgress('Icecrown Citadel')
+    MOCK_ZONE = 'Icecrown Citadel'
+    RLSuite.context = 'infight'
+    RLSuite.db.profile.macrobar.bossMacros = { ['Icecrown Citadel'] = {
+        ['Gunship Battle'] = { [1] = { text = 'GUNSHIP_1' } },
+        ['Lady Deathwhisper'] = { [1] = { text = 'LDW_1' } },
+    } }
+    RLSuite.macrobar.bossRaid, RLSuite.macrobar.bossName = nil, nil
+    MOCK_UNITS_BOSS = {}
+    RLSuite.macrobar:UpdatePhase()
+    MB_EMPTY = (RLSuite.macrobar:GetMacroData(1) == nil)
+    MOCK_UNITS_BOSS.target = { name = 'Lady Deathwhisper' }
+    RLSuite.macrobar:UpdatePhase()
+    MB_TARGET = tostring(RLSuite.macrobar:GetMacroData(1).text)
+    MOCK_UNITS_BOSS = {}            -- trash del Gunship: nessun boss nel target
+    RLSuite:RecordBossKill(36855)   -- Lady Deathwhisper: ora il prossimo e' Gunship
+    MB_AFTER = tostring(RLSuite.macrobar:GetMacroData(1).text)
+    MB_BUSY = tostring(RLSuite.macrobar._bossProgressBusy)
+""")
+check(bool(rt.eval("MB_EMPTY == true")),
+      "barra: senza target e con un prossimo boss normale resta VUOTA (niente fallback)")
+check(bool(rt.eval("MB_TARGET == 'LDW_1'")), "barra: boss nel target -> macro di quel boss")
+check(bool(rt.eval("MB_AFTER == 'GUNSHIP_1'")),
+      "barra: appena il counter avanza su Gunship la barra si riallinea DA SOLA")
+check(bool(rt.eval("MB_BUSY == 'nil'")), "barra: la guardia di rientranza viene sempre rilasciata")
+
+# --- Un errore in CurrentBossInfo non deve rompere il combat log ---------
+rt.execute("""
+    local saved = RLSuite.CurrentBossInfo
+    RLSuite.CurrentBossInfo = function() error("boom") end
+    local ok = pcall(function() RLSuite.macrobar:OnBossProgressChanged() end)
+    MB_ERR_OK = ok
+    MB_ERR_BUSY = RLSuite.macrobar._bossProgressBusy
+    RLSuite.CurrentBossInfo = saved
+""")
+check(bool(rt.eval("MB_ERR_OK == true and MB_ERR_BUSY == nil")),
+      "robustezza: un errore nel riconoscimento non risale al combat log e non blocca la barra")
+rt.execute("""
+    RLSuite.db.profile.macrobar.bossMacros = {}
+    RLSuite:ResetBossProgress()
+    RLSuite.macrobar.bossRaid, RLSuite.macrobar.bossName = nil, nil
+""")
+
 rt.execute("RLSuite:ResetBossProgress()")
 
 # --- Ripristino harness (nessun leak nelle sezioni successive) ------------
