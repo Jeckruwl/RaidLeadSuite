@@ -3266,11 +3266,24 @@ RLSuite.utils:RepinFrameOrder(R43)
 RP43_1 = C43a:GetFrameLevel(); RP43_2 = C43b:GetFrameLevel(); RP43_3 = C43c:GetFrameLevel()
 RP43_R = R43:GetFrameLevel()
 """)
+check('ieAutoNamesList:EnableMouse(true)' not in open("GroupMaking.lua", encoding='utf-8').read(), "IE manual-list container is NEVER mouse-enabled (it ate every X/row click)")
+check("mousefocus" not in open("Core.lua", encoding='utf-8').read() and "lmdebug" not in open("Core.lua", encoding='utf-8').read(), "no left-over debug slash commands")
+# --- comportamento end-to-end: la X rimuove DAVVERO il nome
+rt.execute("""
+IE_N1 = "AaFirst"; IE_N2 = "ZzSecond"
+GM = RLSuite.groupmaking
+GM.autoinvite = GM.autoinvite or {}
+GM.autoinvite.names = { IE_N1, IE_N2 }
+GM:BuildAutoNameListUI()
+IE_XROW = GM._autoNameRows and GM._autoNameRows[2]
+IE_XROW.xBtn._scripts.OnClick(IE_XROW.xBtn)
+IE_LEFT = #GM.autoinvite.names
+IE_PRESENT = GM.autoinvite.names[1] == IE_N1
+""")
+check(bool(rt.eval("IE_LEFT == 1 and IE_PRESENT")), "clicking the manual-list X removes exactly that player")
 check(bool(rt.eval("RP43_2 > RP43_1 and RP43_1 > RP43_R and RP43_3 > RP43_2")), "RepinFrameOrder: children strictly above parents, in creation order, deterministic")
 
 
-check('mousefocus' in open("Core.lua", encoding='utf-8').read(), "/rls mousefocus diagnostic command available")
-check('lmdebug' in open("Core.lua", encoding='utf-8').read(), "/rls lmdebug hitbox diagnostic command available")
 check('content:EnableMouse(false)' not in _u, "scroll contents untouched (no EnableMouse overrides)")
 
 

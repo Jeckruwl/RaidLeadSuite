@@ -1826,7 +1826,10 @@ function GM:BuildManualPage()
     self.ieAutoNamesList = CreateFrame("Frame", nil, self.ieAutoManualBox)
     self.ieAutoNamesList:SetPoint("TOPLEFT", hint, "BOTTOMLEFT", 0, -2)
     self.ieAutoNamesList:SetPoint("BOTTOMRIGHT", self.ieAutoManualBox, "BOTTOMRIGHT", -8, 4)
-    self.ieAutoNamesList:EnableMouse(true)
+    -- IL BUG DELLE X SPENTE: questo contenitore, grande quanto tutta l'area,
+    -- era mouse-enabled e mangiava OGNI click destinato alle righe/X della
+    -- lista (in 3.3.5 l'hit va al frame mouse-enabled piu' alto). Container
+    -- = mai mouse; le righe/X restano cliccabili al loro livello.
 
     self.ieAutoNamesScroll = CreateFrame("ScrollFrame", "RLSuiteIEAutoNamesScroll", self.ieAutoNamesList, "UIPanelScrollFrameTemplate")
     self.ieAutoNamesScroll:SetPoint("TOPLEFT", self.ieAutoNamesList, "TOPLEFT", 0, 0)

@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.44 (questo branch, dopo 1.11.43) — IL BUG DI INVITE-ENGINE, TROVATO E UCCISO
+
+Dopo seduta di analisi della finestra: `GroupMaking.lua:1829` aveva `self.ieAutoNamesList:EnableMouse(true)` — un contenitore piatto GRANDE QUANTO l'area lista messo sopra come se fosse un pannello invisibile rubaclick (3.3.5 hit al frame mouse-enabled più alto del punto: il container vinceva, righe e X SEMPRE dietro — tonando esattamente lo "Stack che impedisce i click" e focus sul contenitore). Rimosso gli EnableMouse fuori spec: container = mai mouse-enabled; righe/X cliccabili al loro livello. Rimossi i comandi di debug di tracciamento (mousefocus/lmdebug); resta solo lootdiag. Versione 1.11.44.
+
 ## Novità della sessione 1.11.43 (questo branch, dopo 1.11.42) — RepinFrameOrder: ordine dei livelli deterministico a ogni rebuild
 
 Nuovo `Utils:RepinFrameOrder(root)`: ricostruisce ricorsivamente i livelli dell'intero sotto-albero assegnando ad ogni figlio `base padre + 2 + 2*indice` (ordine di creazione). Invocata alla FINE di ogni refresh di lista/pagina (`LM:UpdateHistory`, `MSM:UpdateList`, `GM:BuildAutoNameListUI`, creazione pagine invite-engine), CANCELLA qualunque drift di livelli pregreso (refreshes + raises): gli header dei pannelli non stanno più sotto e le X sono sempre cliccabili. Gli assetti espliciti riga+1/X=riga+2 restano come rete. Versione 1.11.43.
