@@ -7,7 +7,47 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.50**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.51**.
+
+## Novità della sessione 1.11.51 (questo branch, dopo 1.11.50) — MACRO IN-FIGHT PER BOSS
+
+Richiesta utente: le macro della fase **in-fight** cambiano in base al boss; nell'editor, quando si
+seleziona la fase In-fight, compaiono **due menu (raid + boss)**; la barra deve capire da sola a che
+boss siamo. Scelte dell'utente (ask_user): **il boss è quello in target** ("se sono in fight con il
+boss X voglio le macro del boss X"), **nessun fallback** (boss senza macro dedicate → slot vuoti) e
+**nessun override manuale in gioco**.
+
+**Riconoscimento** (`Core.lua`): su 3.3.5a il client non manda `ENCOUNTER_START/END` (vedi
+`CombatLog.lua`), quindi si guardano le UNITA': prima **target**, poi **boss1..boss4**.
+`RLSuite.bossUnits` (54 boss, 9 raid) mappa ogni boss di `raidDB` su `npcs` (id NPC, estratti dal
+GUID con `Utils:NpcIdFromGUID`: a prova di lingua) e/o `names` (alias). Indice inverso costruito una
+volta sola (`RLSuite:BuildBossIndex`, `BossFromNpcId`, `BossFromName`), `RLSuite:CurrentBossInfo()`
+= raid+boss in corso. Boss senza id affidabile (Gunship, Faction Champions, Assembly of Iron,
+Quattro Cavalieri) si riconoscono per nome. `CombatLog:NpcIdFromGUID` ora **delega** a
+`Utils:NpcIdFromGUID` (una sola implementazione).
+
+**Storage**: `db.profile.macrobar.bossMacros[raid][boss][slot] = {text, icon}`. La fase in-fight
+NON usa più `db.macros.infight` (i set vecchi restano nel DB, non cancellati, ma non vengono più
+letti: nessun fallback, per scelta esplicita dell'utente). `MB:MacroTableFor(phase, create)` è il
+punto unico di risoluzione (usato da `GetMacroData`, `FilledSlots`, `LoadMacrosForPhase` e
+dall'editor rapido `OpenMacroEdit`): in-fight → set del boss, nessun boss → **nessuna macro**.
+
+**Runtime** (`MacroBar.lua`): `MB:UpdatePhase` rilegge il boss; `RLSuite:OnTargetChanged`
+(`PLAYER_TARGET_CHANGED`, registrato in Core) chiama `MB:OnBossTargetChanged()` che ricarica i set
+quando il boss cambia durante il fight. `ApplyLayout` mostrando solo gli slot pieni, cambiando target
+la barra si ridimensiona da sola sul numero di macro di quel boss.
+
+**Editor** (`Config.lua`): i due dropdown (`macroRaidDD`, `macroBossDD`) stanno nello spazio a
+destra delle 12 icone dell'anteprima, dentro `macroBossSel`, e sono **visibili solo con la fase
+In-fight** (`UpdateMacroBossSelectors`, chiamata da `CreateMacroEditor`, `SelectMacroPhase` e
+`ShowMacroEditor`). Default = boss in target (altrimenti raid scelto in Group Making + primo boss).
+`CFG:GetMacroDB` in-fight lavora sul set `db.bossMacros[raid][boss]`, quindi anteprima, elenco,
+campi e save scrivono lì; il titolo della lista diventa "Boss macros: <boss>".
+
+Test: **790 check** totali sul branch (38 nuovi nella 1.11.51: guardie statiche su `bossUnits`
+(54 boss, nessun id/nome ambiguo, tutti i raid coperti), lookup per id/nome/alias, boss in target →
+boss1..4, cambio target, nessun fallback sulla macro generica, slot vuoti senza boss, menu
+raid/boss comparsi solo in-fight con i valori giusti, scrittura nel set del boss, editor rapido).
 
 ## Novità della sessione 1.11.50 (questo branch, dopo 1.11.49) — BUG DEL CLICK NELLE LISTE (InviteEngine / Whisplist)
 
@@ -85,7 +125,7 @@ Efficienza: i conteggi si accumulano nella STESSA passata che disegna le celle (
 `BuffCoverage` (ricalcolo completo) la usano solo il click sull'header e il tooltip. Le barre MT/OT
 non fanno parte di `self.slots`, quindi nessun doppio conteggio dei tank.
 
-Test: **752 check** totali sul branch (35 nuovi nella 1.11.49: guardie statiche sul modello dati, applicabilità per classe,
+Test: **790 check** totali sul branch (35 nuovi nella 1.11.49: guardie statiche sul modello dati, applicabilità per classe,
 totem raid-wide + meccanismo party-only verificato con una categoria SINTETICA, cap di
 Replenishment a 10, FM con nomi dal combat log, grigio vs rosso, tooltip, alert). Due check di
 hover sono stati RISCRITTI: ora scelgono una colonna disponibile dinamicamente, perché "accenditi

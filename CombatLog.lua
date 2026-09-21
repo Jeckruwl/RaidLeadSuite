@@ -120,7 +120,12 @@ function CL:IsRaidGroupFlag(f) return ((f or 0) % 8) > 0 end
 
 -- NPC id dal GUID: formato 3.3.5 (esadecimale, high "F1xx", entry = chars 9-12)
 -- o formato moderno "Creature-0-...-ID-spawnID".
+-- NPC id dal GUID: implementazione unica in Utils (NpcIdFromGUID), qui resta
+-- solo il delegato per compatibilita' col resto del modulo.
 function CL:NpcIdFromGUID(guid)
+    if RLSuite.utils and RLSuite.utils.NpcIdFromGUID then
+        return RLSuite.utils:NpcIdFromGUID(guid)
+    end
     if type(guid) ~= "string" or guid == "" then return nil end
     if guid:find("-", 1, true) then
         local parts = { strsplit("-", guid) }

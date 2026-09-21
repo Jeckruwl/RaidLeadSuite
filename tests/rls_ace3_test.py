@@ -839,6 +839,278 @@ rt.execute("RLSuite.config:Toggle()")
 check(bool(rt.eval("RLSuite.config:IsOpen() == false")), "Toggle closes the Ace3 window")
 
 print()
+print("== v1.11.51: macro in-fight PER BOSS (editor raid+boss, boss in target) ==")
+
+# --- Guardie statiche sul modello dati boss (raidDB <-> bossUnits) --------
+rt.execute("""
+    MB_BOSS_STATIC = true
+    MB_BOSS_DUP = false
+    MB_BOSS_N = 0
+    local seenNpc, seenName = {}, {}
+    for raid, bosses in pairs(RLSuite.bossUnits or {}) do
+        if not RLSuite.raidDB[raid] then MB_BOSS_STATIC = false end
+        local list = (RLSuite.raidDB[raid] or {}).bosses or {}
+        for boss, info in pairs(bosses) do
+            MB_BOSS_N = MB_BOSS_N + 1
+            local found = false
+            for i = 1, #list do if list[i] == boss then found = true end end
+            if not found then MB_BOSS_STATIC = false end
+            local ids = info.npcs or {}
+            local names = info.names or {}
+            if #ids == 0 and #names == 0 then MB_BOSS_STATIC = false end
+            for i = 1, #ids do
+                if type(ids[i]) ~= 'number' then MB_BOSS_STATIC = false end
+                local mine = raid .. '|' .. boss
+                if seenNpc[ids[i]] and seenNpc[ids[i]] ~= mine then MB_BOSS_DUP = true end
+                seenNpc[ids[i]] = mine
+            end
+            local mine = raid .. '|' .. boss
+            local kb = string.lower(boss)
+            if seenName[kb] and seenName[kb] ~= mine then MB_BOSS_DUP = true end
+            seenName[kb] = mine
+            for i = 1, #names do
+                local k = string.lower(names[i])
+                if seenName[k] and seenName[k] ~= mine then MB_BOSS_DUP = true end
+                seenName[k] = mine
+            end
+        end
+    end
+    MB_BOSS_ALL_RAIDS = true
+    for raid in pairs(RLSuite.raidDB) do
+        if not (RLSuite.bossUnits or {})[raid] then MB_BOSS_ALL_RAIDS = false end
+    end
+""")
+check(bool(rt.eval("MB_BOSS_STATIC == true")),
+      "bossUnits: ogni boss corrisponde a un boss di raidDB (stesso nome) e ha npcs o names")
+check(bool(rt.eval("MB_BOSS_DUP == false")),
+      "bossUnits: nessun NPC id e nessun nome condiviso fra due boss (match non ambiguo)")
+check(bool(rt.eval("MB_BOSS_ALL_RAIDS == true")),
+      "bossUnits: tutti i raid di raidDB sono coperti")
+check(bool(rt.eval("MB_BOSS_N == 54")), "bossUnits: 54 boss mappati")
+
+# --- Indice: NPC id dal GUID (a prova di lingua) e nomi/alias -------------
+rt.execute("MB_N1 = RLSuite:BossFromNpcId(36612)")
+rt.execute("MB_N2 = RLSuite:BossFromNpcId(33288)")
+rt.execute("MB_N3 = RLSuite:BossFromName('sir zeliek')")  # alias, tutto minuscolo
+rt.execute("MB_N4 = RLSuite:BossFromName('Archavon the Stone Watcher')")
+rt.execute("MB_N5 = RLSuite:BossFromNpcId(1)")
+check(bool(rt.eval("MB_N1 and MB_N1.raid == 'Icecrown Citadel' and MB_N1.boss == 'Lord Marrowgar'")),
+      "NPC 36612 -> Icecrown Citadel / Lord Marrowgar")
+check(bool(rt.eval("MB_N2 and MB_N2.boss == 'Yogg-Saron'")), "NPC 33288 -> Yogg-Saron (Ulduar)")
+check(bool(rt.eval("MB_N3 and MB_N3.raid == 'Naxxramas' and MB_N3.boss == 'The Four Horsemen'")),
+      "alias per nome: 'Sir Zeliek' -> The Four Horsemen (boss senza id affidabile)")
+check(bool(rt.eval("MB_N4 and MB_N4.raid == 'Vault of Archavon' and MB_N4.boss == 'Archavon'")),
+      "alias per nome: nome lungo del boss -> voce corta di raidDB")
+check(bool(rt.eval("MB_N5 == nil")), "NPC id sconosciuto -> nessun boss")
+
+# --- Boss in corso: TARGET prima, poi boss1..boss4 ------------------------
+rt.execute("""
+    MB_S_UE, MB_S_UN, MB_S_UG = UnitExists, UnitName, UnitGUID
+    MOCK_UNITS_BOSS = {}
+    UnitExists = function(u) return MOCK_UNITS_BOSS[u] ~= nil end
+    UnitName = function(u) local t = MOCK_UNITS_BOSS[u]; return t and t.name end
+    UnitGUID = function(u) local t = MOCK_UNITS_BOSS[u]; return t and t.guid end
+    MB_S_CTX = RLSuite.context
+""")
+rt.execute("MOCK_UNITS_BOSS.target = { guid = '0xF130008F040000AA', name = 'Lord Marrowgar' }")
+rt.execute("MB_R1, MB_B1 = RLSuite:CurrentBossInfo()")
+check(bool(rt.eval("MB_R1 == 'Icecrown Citadel' and MB_B1 == 'Lord Marrowgar'")),
+      "boss in target riconosciuto dall'NPC id nel GUID (0x8F04 = 36612)")
+rt.execute("MOCK_UNITS_BOSS.target = { name = 'Sindragosa' }")
+rt.execute("MB_R2, MB_B2 = RLSuite:CurrentBossInfo()")
+check(bool(rt.eval("MB_R2 == 'Icecrown Citadel' and MB_B2 == 'Sindragosa'")),
+      "senza GUID il boss si riconosce dal nome (client inglese)")
+rt.execute("""
+    MOCK_UNITS_BOSS.target = { guid = '0xF1300001000000AA', name = 'Raging Ghoul' }
+    MOCK_UNITS_BOSS.boss1 = { guid = '0xF130009BC30000AA', name = 'Halion' }
+""")
+rt.execute("MB_R3, MB_B3 = RLSuite:CurrentBossInfo()")
+check(bool(rt.eval("MB_R3 == 'Ruby Sanctum' and MB_B3 == 'Halion'")),
+      "target su trash -> usa il boss del pull (unita' boss1)")
+rt.execute("MOCK_UNITS_BOSS = {}")
+rt.execute("MB_R4, MB_B4 = RLSuite:CurrentBossInfo()")
+check(bool(rt.eval("MB_R4 == nil and MB_B4 == nil")), "nessun boss (trash) -> nessun raid/boss")
+
+# --- La barra usa il set del boss: nessun fallback ------------------------
+rt.execute("""
+    RLSuite.db.profile.macrobar.macros = RLSuite.db.profile.macrobar.macros or {}
+    RLSuite.db.profile.macrobar.macros.infight = { [1] = { text = 'MACRO_GENERICA' } }
+    RLSuite.db.profile.macrobar.bossMacros = {}
+    RLSuite.context = 'infight'
+    MOCK_UNITS_BOSS.target = { guid = '0xF130008F040000AA', name = 'Lord Marrowgar' }
+    RLSuite.macrobar:UpdatePhase()
+    MB_GEN = RLSuite.macrobar:GetMacroData(1)
+""")
+check(bool(rt.eval("MB_GEN == nil")),
+      "in-fight con boss senza macro dedicate: la vecchia macro generica NON viene usata (nessun fallback)")
+rt.execute("""
+    RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel'] =
+        { ['Lord Marrowgar'] = { [1] = { text = 'MARROWGAR_1', icon = 'IconM' },
+                                 [2] = { text = 'MARROWGAR_2', icon = 'IconM2' } } }
+    RLSuite.macrobar:LoadMacrosForPhase('infight')
+    MB_FILLED = RLSuite.macrobar:FilledSlots('infight')
+    MB_BTN1 = RLSuite.macrobar.buttons[1].macroText
+    MB_ICON1 = RLSuite.macrobar.buttons[1].icon:GetTexture()
+    MB_ICON3 = RLSuite.macrobar.buttons[3].icon:GetTexture()
+""")
+check(bool(rt.eval("#MB_FILLED == 2 and MB_FILLED[1] == 1 and MB_FILLED[2] == 2")),
+      "barra in-fight: solo gli slot del boss in corso risultano pieni")
+check(bool(rt.eval("MB_BTN1 == 'MARROWGAR_1'")), "barra in-fight: il testo dello slot viene dal set del boss")
+check(bool(rt.eval("MB_ICON1 == 'IconM'")), "barra in-fight: l'icona dello slot viene dal set del boss")
+check(bool(rt.eval("MB_ICON3 == 'Interface\\\\Icons\\\\INV_Misc_QuestionMark'")),
+      "barra in-fight: gli slot senza macro del boss restano vuoti")
+
+# --- Cambio di target durante il fight ------------------------------------
+rt.execute("""
+    MOCK_UNITS_BOSS.target = { guid = '0xF130008F9D0000AA', name = 'Sindragosa' }
+    RLSuite.macrobar:OnBossTargetChanged()
+    MB_SIND = RLSuite.macrobar:GetMacroData(1)
+    MB_SIND_NAME = RLSuite.macrobar.bossName
+    MB_SIND_FILLED = RLSuite.macrobar:FilledSlots('infight')
+""")
+check(bool(rt.eval("MB_SIND_NAME == 'Sindragosa' and MB_SIND == nil and #MB_SIND_FILLED == 0")),
+      "cambio target: si passa al set del nuovo boss (vuoto se non hai scritto sue macro)")
+rt.execute("""
+    MOCK_UNITS_BOSS = {}
+    RLSuite.macrobar:OnBossTargetChanged()
+    MB_NOBOSS = RLSuite.macrobar:GetMacroData(1)
+    MB_NOBOSS_FILLED = RLSuite.macrobar:FilledSlots('infight')
+""")
+check(bool(rt.eval("MB_NOBOSS == nil and #MB_NOBOSS_FILLED == 0")),
+      "fight senza boss: nessuna macro in barra")
+
+# --- Le altre fasi restano invariate -------------------------------------
+rt.execute("""
+    RLSuite.db.profile.macrobar.macros.preraid = { [1] = { text = 'PRERAID_1' } }
+    RLSuite.context = 'preraid'
+    MB_PRE = RLSuite.macrobar:GetMacroData(1)
+    MB_MACRO_FOR_PRE = RLSuite.macrobar:MacroTableFor('preraid')
+""")
+check(bool(rt.eval("MB_PRE and MB_PRE.text == 'PRERAID_1'")),
+      "fase pre-raid: si usa ancora db.macros.preraid (nessun boss)")
+check(bool(rt.eval("MB_MACRO_FOR_PRE == RLSuite.db.profile.macrobar.macros.preraid")),
+      "MacroTableFor(pre-raid) restituisce la tabella di fase")
+
+# --- Editor: i due menu compaiono solo su In-fight ------------------------
+rt.execute("""
+    RLSuite.context = 'infight'
+    RLSuite.config:OpenMacroEditorPanel()
+    RLSuite.config.macroRaid, RLSuite.config.macroBoss = nil, nil
+    MOCK_UNITS_BOSS.target = { guid = '0xF130008F040000AA', name = 'Lord Marrowgar' }
+    RLSuite.config:SelectMacroPhase('infight')
+""")
+check(bool(rt.eval("RLSuite.config.macroBossSel ~= nil and RLSuite.config.macroBossSel:IsShown() == true")),
+      "fase in-fight: i due menu raid/boss compaiono nell'editor")
+check(bool(rt.eval("RLSuite.config.macroBossSel:GetParent() == RLSuite.config.macroPreview")),
+      "i due menu stanno nella riga dell'anteprima (a destra delle 12 icone)")
+check(bool(rt.eval("RLSuite.config.macroRaid == 'Icecrown Citadel' and RLSuite.config.macroBoss == 'Lord Marrowgar'")),
+      "default dei menu: il boss che stai affrontando ora")
+rt.execute("""
+    MB_RD_OPTS = #(RLSuite.config.macroRaidDD.options or {})
+    MB_RD_HAS_ICC = false
+    for _, o in ipairs(RLSuite.config.macroRaidDD.options or {}) do
+        if o.value == 'Icecrown Citadel' then MB_RD_HAS_ICC = true end
+    end
+    MB_BD_OPTS = #(RLSuite.config.macroBossDD.options or {})
+    MB_BD_FIRST = RLSuite.config.macroBossDD.options[1] and RLSuite.config.macroBossDD.options[1].value
+""")
+check(bool(rt.eval("MB_RD_OPTS == 9 and MB_RD_HAS_ICC")),
+      "menu raid: tutte le 9 raid di raidDB")
+check(bool(rt.eval("MB_BD_OPTS == 12 and MB_BD_FIRST == 'Lord Marrowgar'")),
+      "menu boss: i 12 boss della raid selezionata (Icecrown Citadel)")
+
+# --- L'editor scrive nel set del boss selezionato -------------------------
+rt.execute("""
+    local t = RLSuite.config:GetMacroDB()
+    t[1] = { text = 'EDIT_ICC_MARROWGAR' }
+    MB_EDIT_LANDS = RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']
+        and RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']['Lord Marrowgar']
+        and RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']['Lord Marrowgar'][1]
+        and RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']['Lord Marrowgar'][1].text
+    MB_TITLE = RLSuite.config.macroListTitle:GetText()
+""")
+check(bool(rt.eval("MB_EDIT_LANDS == 'EDIT_ICC_MARROWGAR'")),
+      "le modifiche dell'editor finiscono in db.bossMacros[raid][boss]")
+check(bool(rt.eval("MB_TITLE == 'Boss macros: Lord Marrowgar'")),
+      "il titolo della lista dice per quale boss stai scrivendo")
+
+rt.execute("RLSuite.config.macroBossDD.onSelect('Sindragosa')")
+rt.execute("""
+    MB_SEL_BOSS = RLSuite.config.macroBoss
+    local t2 = RLSuite.config:GetMacroDB()
+    t2[1] = { text = 'EDIT_ICC_SINDRA' }
+    MB_SEL_LANDS = RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']['Sindragosa'][1].text
+""")
+check(bool(rt.eval("MB_SEL_BOSS == 'Sindragosa' and MB_SEL_LANDS == 'EDIT_ICC_SINDRA'")),
+      "selezionando un altro boss l'editor scrive nel SUO set")
+
+rt.execute("RLSuite.config.macroRaidDD.onSelect('Naxxramas')")
+rt.execute("""
+    MB_SEL_RAID = RLSuite.config.macroRaid
+    MB_SEL_RAID_BOSS = RLSuite.config.macroBoss
+    MB_BD_N = #(RLSuite.config.macroBossDD.options or {})
+""")
+check(bool(rt.eval("MB_SEL_RAID == 'Naxxramas' and MB_SEL_RAID_BOSS == \"Anub'Rekhan\" and MB_BD_N == 15")),
+      "cambiando raid il menu boss si ripopola (Naxxramas -> 15 boss)")
+
+rt.execute("RLSuite.config:SelectMacroPhase('preraid')")
+check(bool(rt.eval("RLSuite.config.macroBossSel:IsShown() == false")),
+      "fase pre-raid: i menu raid/boss NON sono visibili")
+rt.execute("MB_PRE_DB_SAME = (RLSuite.config:GetMacroDB() == RLSuite.db.profile.macrobar.macros.preraid)")
+check(bool(rt.eval("MB_PRE_DB_SAME == true")),
+      "fase pre-raid: l'editor torna a scrivere nel set di fase")
+
+# --- Editor rapido (right-click sulla barra): stesso set dell'editor ------
+rt.execute("""
+    RLSuite.context = 'infight'
+    MOCK_UNITS_BOSS.target = { guid = '0xF130008F040000AA', name = 'Lord Marrowgar' }
+    RLSuite.macrobar:OpenMacroEdit(3)
+    local f = RLSuite.macrobar.editFrame
+    MB_EDIT_OPEN = (f ~= nil and f:IsShown() == true)
+    MB_EDIT_TEXT = _G.RLSuiteMacroEditBox and _G.RLSuiteMacroEditBox:GetText()
+    local save = nil
+    if f then
+        local kids = { f:GetChildren() }
+        for i = 1, #kids do
+            if kids[i]._text == 'Save' then save = kids[i] end
+        end
+    end
+    MB_EDIT_HAVE_SAVE = (save ~= nil)
+    if save then
+        _G.RLSuiteMacroEditBox:SetText('QUICK_EDIT_OK')
+        if save._scripts and save._scripts.OnClick then save._scripts.OnClick(save) end
+    end
+""")
+check(bool(rt.eval("MB_EDIT_OPEN == true and MB_EDIT_HAVE_SAVE == true")),
+      "editor rapido dello slot: si apre e ha il bottone Save")
+check(bool(rt.eval("MB_EDIT_TEXT == nil or MB_EDIT_TEXT == ''")),
+      "editor rapido: legge il set del boss (slot 3 ancora vuoto)")
+check(bool(rt.eval("RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']['Lord Marrowgar'][3].text == 'QUICK_EDIT_OK'")),
+      "editor rapido: salva nel set del boss in corso (non in db.macros.infight)")
+rt.execute("""
+    MOCK_UNITS_BOSS = {}
+    RLSuite.macrobar.editFrame = nil
+    RLSuite.macrobar:OpenMacroEdit(1)
+    MB_EDIT_NOBOSS = (RLSuite.macrobar.editFrame == nil)
+""")
+check(bool(rt.eval("MB_EDIT_NOBOSS == true")),
+      "editor rapido senza boss: non apre nulla (nessun set dove scrivere)")
+
+# --- Ripristino harness (nessun leak nelle sezioni successive) ------------
+rt.execute("""
+    UnitExists, UnitName, UnitGUID = MB_S_UE, MB_S_UN, MB_S_UG
+    MOCK_UNITS_BOSS = nil
+    RLSuite.context = MB_S_CTX or 'preboss'
+    RLSuite.db.profile.macrobar.macros.infight = nil
+    RLSuite.db.profile.macrobar.bossMacros = {}
+    RLSuite.config:CloseWindow()
+    MB_RESTORED = (UnitExists == MB_S_UE)
+    MB_RESTORED2 = (RLSuite.db.profile.macrobar.bossMacros ~= nil)
+""")
+check(bool(rt.eval("MB_RESTORED == true and MB_RESTORED2 == true")),
+      "v1.11.51 harness ripristina unita'/contesto (nessun leak)")
+
+print()
 print("== Scenario D: new features (Lim/Aim spam, phase, debug roster/whispers, Autoinviter) ==")
 
 # --- Phase indicator: left = forward, right = backward ---

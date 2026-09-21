@@ -212,6 +212,9 @@ function RLSuite:OnEnable()
     self:RegisterEvent("CHAT_MSG_RAID_LEADER", "OnRaidMessage")
     self:RegisterEvent("CHAT_MSG_LOOT", "OnLootMessage")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
+    -- Cambio di target = cambio boss per le macro in-fight: la barra passa
+    -- al set del boss che stai affrontando (target, poi boss1..4).
+    self:RegisterEvent("PLAYER_TARGET_CHANGED", "OnTargetChanged")
     self:InitModules()
     self:EnsureMinimapIcon()
 end
@@ -242,6 +245,14 @@ end
 function RLSuite:OnPlayerRegenDisabled()
     self.context = "infight"
     self:UpdatePhaseUI()
+end
+
+-- Il target e' cambiato: se siamo in fight, la MacroBar deve passare al
+-- set del boss che stiamo affrontando (o svuotarsi se non e' un boss).
+function RLSuite:OnTargetChanged()
+    if self.macrobar and self.macrobar.OnBossTargetChanged then
+        self.macrobar:OnBossTargetChanged()
+    end
 end
 
 function RLSuite:OnWhisper(event, msg, sender)
@@ -300,6 +311,146 @@ RLSuite.raidDB = {
         sizes = {10, 25},
     },
 }
+
+-- ============================================================
+-- BOSS → (raid, boss canonico): riconoscimento del boss IN CORSO, serve
+-- alle MACRO IN-FIGHT (la barra mostra le macro del boss che stai
+-- affrontando). Su 3.3.5a il client NON manda ENCOUNTER_START/END (vedi
+-- l'intestazione di CombatLog.lua), quindi il boss si riconosce dalle
+-- UNITA': prima il TARGET, poi boss1..boss4.
+-- Il match per NPC ID (estratto dal GUID: a prova di lingua) e' la via
+-- principale; i NOMI coprono i boss per cui il server non ha un id
+-- affidabile (Gunship, Faction Champions, Assembly of Iron, Quattro
+-- Cavalieri) e fanno da rete di sicurezza sul client inglese.
+-- Ogni nome di boss qui dentro DEVE esistere in RLSuite.raidDB con la
+-- stessa dicitura (le macro sono salvate per raid + boss).
+-- ============================================================
+RLSuite.bossUnits = {
+    ["Icecrown Citadel"] = {
+        ["Lord Marrowgar"] = { npcs = { 36612 } },
+        ["Lady Deathwhisper"] = { npcs = { 36855 } },
+        ["Gunship Battle"] = { names = { "Gunship Battle" } },
+        ["Deathbringer Saurfang"] = { npcs = { 37813 } },
+        ["Rotface"] = { npcs = { 36627 } },
+        ["Festergut"] = { npcs = { 36626 } },
+        ["Professor Putricide"] = { npcs = { 36678 } },
+        ["Blood Prince Council"] = { npcs = { 37970, 37972, 37973 } },
+        ["Blood-Queen Lana'thel"] = { npcs = { 37955 } },
+        ["Valithria Dreamwalker"] = { npcs = { 36789 } },
+        ["Sindragosa"] = { npcs = { 36853 } },
+        ["The Lich King"] = { npcs = { 36597 } },
+    },
+    ["Trial of the Crusader"] = {
+        ["Northrend Beasts"] = { npcs = { 34796, 35144, 34799, 34797 } },
+        ["Lord Jaraxxus"] = { npcs = { 34780 } },
+        ["Faction Champions"] = { names = { "Faction Champions" } },
+        ["Twin Val'kyr"] = { npcs = { 34497, 34496 },
+                             names = { "Fjola Lightbane", "Eydis Darkbane" } },
+        ["Anub'arak"] = { npcs = { 34564 } },
+    },
+    ["Ulduar"] = {
+        ["Flame Leviathan"] = { npcs = { 33113 } },
+        ["Ignis the Furnace Master"] = { npcs = { 33118 } },
+        ["Razorscale"] = { npcs = { 33186 } },
+        ["XT-002 Deconstructor"] = { npcs = { 33293 } },
+        ["Assembly of Iron"] = { names = { "Steelbreaker", "Runemaster Molgeim",
+                                           "Stormcaller Brundir" } },
+        ["Kologarn"] = { npcs = { 32930 } },
+        ["Auriaya"] = { npcs = { 33515 } },
+        ["Hodir"] = { npcs = { 32845 } },
+        ["Thorim"] = { npcs = { 32865 } },
+        ["Freya"] = { npcs = { 32906 } },
+        ["Mimiron"] = { npcs = { 33350 } },
+        ["General Vezax"] = { npcs = { 33271 } },
+        ["Yogg-Saron"] = { npcs = { 33288 } },
+        ["Algalon the Observer"] = { npcs = { 32871 } },
+    },
+    ["Naxxramas"] = {
+        ["Anub'Rekhan"] = { npcs = { 15956 } },
+        ["Grand Widow Faerlina"] = { npcs = { 15953 } },
+        ["Maexxna"] = { npcs = { 15952 } },
+        ["Noth the Plaguebringer"] = { npcs = { 15954 } },
+        ["Heigan the Unclean"] = { npcs = { 15936 } },
+        ["Loatheb"] = { npcs = { 16011 } },
+        ["Instructor Razuvious"] = { npcs = { 16061 } },
+        ["Gothik the Harvester"] = { npcs = { 16060 } },
+        ["The Four Horsemen"] = { names = { "Highlord Mograine", "Thane Korth'azz",
+                                            "Lady Blaumeux", "Sir Zeliek" } },
+        ["Patchwerk"] = { npcs = { 16028 } },
+        ["Grobbulus"] = { npcs = { 15931 } },
+        ["Gluth"] = { npcs = { 15932 } },
+        ["Thaddius"] = { npcs = { 15928 } },
+        ["Sapphiron"] = { npcs = { 15989 } },
+        ["Kel'Thuzad"] = { npcs = { 15990 } },
+    },
+    ["The Obsidian Sanctum"] = { ["Sartharion"] = { npcs = { 28860 } } },
+    ["The Eye of Eternity"] = { ["Malygos"] = { npcs = { 28859 } } },
+    ["Onyxia's Lair"] = { ["Onyxia"] = { npcs = { 10184 } } },
+    ["Ruby Sanctum"] = { ["Halion"] = { npcs = { 39863 } } },
+    ["Vault of Archavon"] = {
+        ["Archavon"] = { npcs = { 31125 }, names = { "Archavon the Stone Watcher" } },
+        ["Emalon"] = { npcs = { 33993 }, names = { "Emalon the Storm Watcher" } },
+        ["Koralon"] = { npcs = { 35013 }, names = { "Koralon the Flame Watcher" } },
+        ["Toravon"] = { npcs = { 38433 }, names = { "Toravon the Ice Watcher" } },
+    },
+}
+
+-- Indice inverso (NPC id -> raid/boss e nome -> raid/boss). Costruito una
+-- volta sola alla prima richiesta: zero lavoro a ogni lookup in fight.
+function RLSuite:BuildBossIndex()
+    if self._bossByNpc and self._bossByName then return end
+    local byNpc, byName = {}, {}
+    for raid, bosses in pairs(self.bossUnits or {}) do
+        for boss, info in pairs(bosses) do
+            local names = { boss }
+            for _, n in ipairs(info.names or {}) do names[#names + 1] = n end
+            for _, n in ipairs(names) do
+                local key = string.lower(n)
+                if not byName[key] then byName[key] = { raid = raid, boss = boss } end
+            end
+            for _, id in ipairs(info.npcs or {}) do
+                if not byNpc[id] then byNpc[id] = { raid = raid, boss = boss } end
+            end
+        end
+    end
+    self._bossByNpc = byNpc
+    self._bossByName = byName
+end
+
+function RLSuite:BossFromNpcId(id)
+    if not id then return nil end
+    self:BuildBossIndex()
+    return self._bossByNpc[id]
+end
+
+function RLSuite:BossFromName(name)
+    if not name or name == "" then return nil end
+    self:BuildBossIndex()
+    return self._bossByName[string.lower(name)]
+end
+
+-- Boss che stiamo affrontando ADESSO: il TARGET per primo (richiesta: "se
+-- sono in fight con il boss X voglio le macro del boss X"), poi le unita'
+-- boss1..boss4 (il boss del pull, quando non lo stai targettando).
+-- Ritorna raid, boss oppure nil, nil (trash: nessuna macro in-fight).
+function RLSuite:CurrentBossInfo()
+    local units = { "target", "boss1", "boss2", "boss3", "boss4" }
+    for i = 1, #units do
+        local u = units[i]
+        if UnitExists and UnitExists(u) then
+            local info
+            local guid = UnitGUID and UnitGUID(u)
+            if guid and self.utils and self.utils.NpcIdFromGUID then
+                info = self:BossFromNpcId(self.utils:NpcIdFromGUID(guid))
+            end
+            if not info and UnitName then
+                info = self:BossFromName(UnitName(u))
+            end
+            if info then return info.raid, info.boss end
+        end
+    end
+    return nil, nil
+end
 
 -- WotLK item IDs used only by debug-mode fake loot.
 RLSuite.debugLoot = {

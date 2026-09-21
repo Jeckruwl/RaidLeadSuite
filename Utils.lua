@@ -923,6 +923,23 @@ local function ShiftSubtree(node, delta, seen)
     end
 end
 
+-- NPC id dal GUID. Formato 3.3.5 (esadecimale, high "F1xx": l'entry sta nei
+-- char 9-12, es. 0xF130008F040000AA -> 0x8F04 = 36612 Lord Marrowgar) oppure
+-- formato moderno "Creature-0-...-ID-spawnID" (6o campo). Implementazione
+-- UNICA: la usano il Combat Log (nomi dei pull, kill/wipe) e il
+-- riconoscimento del boss in corso per le macro in-fight.
+function Utils:NpcIdFromGUID(guid)
+    if type(guid) ~= "string" or guid == "" then return nil end
+    if guid:find("-", 1, true) then
+        local parts = { strsplit("-", guid) }
+        return tonumber(parts[6])
+    end
+    if guid:sub(3, 4) == "F1" then
+        return tonumber(guid:sub(9, 12), 16)
+    end
+    return nil
+end
+
 -- Riporta un sotto-albero a una posizione di livello PREVEDIBILE rispetto a
 -- un riferimento (es. il genitore o la finestra). Se il root si e' allontanato
 -- oltre la tolleranza, sposta TUTTO il sotto-albero dello stesso delta: nessun
