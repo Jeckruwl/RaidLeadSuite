@@ -1063,6 +1063,51 @@ rt.execute("MB_PRE_DB_SAME = (RLSuite.config:GetMacroDB() == RLSuite.db.profile.
 check(bool(rt.eval("MB_PRE_DB_SAME == true")),
       "fase pre-raid: l'editor torna a scrivere nel set di fase")
 
+# --- v1.11.52 fix: i menu raid/boss si RIAPRONO (non "una volta sola") ---
+# Il menu era riusato tra le aperture ma non veniva mai ri-mostrato: dopo la
+# prima chiusura restava NASCOSTO e il catcher a schermo intero si mangiava i
+# click. Qui il ciclo COMPLETO: apro -> scelgo -> riapro.
+rt.execute("""
+    local U = RLSuite.utils
+    local CFG = RLSuite.config
+    DBG_OLD_RAID, DBG_OLD_BOSS = CFG.macroRaid, CFG.macroBoss
+    CFG:SelectMacroPhase('infight')
+    local RD = CFG.macroRaidDD
+    local BD = CFG.macroBossDD
+    U:ToggleDropdownMenu(RD)
+    RD_OPEN1 = (U.activeMenu ~= nil and RD._rlsDropMenu ~= nil and RD._rlsDropMenu:IsShown() == true)
+    RD_CAT1 = (U.dropCatcher ~= nil and U.dropCatcher:IsShown() == true)
+    local m = U.activeMenu
+    if m and m.optionButtons and m.optionButtons[1] then
+        m.optionButtons[1]:GetScript("OnClick")()
+    end
+    RD_AFTER = (U.activeMenu == nil and U.dropCatcher:IsShown() == false)
+    U:ToggleDropdownMenu(RD)
+    RD_OPEN2 = (U.activeMenu ~= nil and RD._rlsDropMenu:IsShown() == true)
+    U:CloseDropdownMenu()
+    U:ToggleDropdownMenu(BD)
+    BD_OPEN1 = (U.activeMenu ~= nil and BD._rlsDropMenu:IsShown() == true)
+    local m2 = U.activeMenu
+    if m2 and m2.optionButtons and m2.optionButtons[1] then
+        m2.optionButtons[1]:GetScript("OnClick")()
+    end
+    U:ToggleDropdownMenu(BD)
+    BD_OPEN2 = (U.activeMenu ~= nil and BD._rlsDropMenu:IsShown() == true)
+    BD_OPTS = #(BD.options or {})
+    U:CloseDropdownMenu()
+    CFG:SelectMacroPhase('preraid')
+    CFG.macroRaid, CFG.macroBoss = DBG_OLD_RAID, DBG_OLD_BOSS
+""")
+check(bool(rt.eval("RD_OPEN1 == true and RD_CAT1 == true")),
+      "menu raid: si apre (menu visibile + catcher)")
+check(bool(rt.eval("RD_AFTER == true")), "menu raid: dopo la scelta si chiude (menu + catcher)")
+check(bool(rt.eval("RD_OPEN2 == true")),
+      "menu raid: SI RIAPRE dopo una scelta (fix 'si aprono una volta sola')")
+check(bool(rt.eval("BD_OPEN1 == true")), "menu boss: si apre")
+check(bool(rt.eval("BD_OPEN2 == true")),
+      "menu boss: SI RIAPRE dopo una scelta (menu non piu' nascosto)")
+check(bool(rt.eval("BD_OPTS > 0")), "menu boss: le opzioni restano popolate tra le aperture")
+
 # --- Editor rapido (right-click sulla barra): stesso set dell'editor ------
 rt.execute("""
     RLSuite.context = 'infight'

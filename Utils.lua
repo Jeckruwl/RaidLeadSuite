@@ -747,6 +747,11 @@ function Utils:ToggleDropdownMenu(dd)
     menu.owner = dd
     local width = math.max(dd:GetWidth(), 80)
     menu:SetSize(width, #options * 20 + 8)
+    -- il menu e' RIUSATO tra le aperture (dd._rlsDropMenu): senza ClearAllPoints
+    -- gli ancoraggi si accumulano, senza Show() resta NASCOSTO dopo la prima
+    -- chiusura -> "le dropdown si aprono una volta sola" (il primo menu era
+    -- visibile solo perche' un frame appena creato nasce mostrato).
+    menu:ClearAllPoints()
     menu:SetPoint("TOPLEFT", dd, "BOTTOMLEFT", 0, -2)
 
     -- Se qualsiasi finestra/pannello che OSPITA il dropdown si nasconde,
@@ -788,6 +793,7 @@ function Utils:ToggleDropdownMenu(dd)
         end)
     end
 
+    menu:Show()
     self.activeMenu = menu
 end
 

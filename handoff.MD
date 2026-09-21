@@ -7,7 +7,22 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.52**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.53**.
+
+## 1.11.53 (fix dei dropdown del config) — "le dropdown si aprono UNA VOLTA SOLA"
+
+Bug segnalato dall'utente sui due menu nuovi (raid/boss delle macro in-fight):
+si aprivano al primo click e poi mai piu'.
+
+Causa (in `Utils:ToggleDropdownMenu`, valida per TUTTI i dropdown dell'addon —
+Loot Manager, MS Manager, Group Making, macro): il frame del menu viene RIUSATO
+(`dd._rlsDropMenu`), ma non veniva mai ri-mostrato. Il primo menu era visibile
+solo perche' un frame appena creato nasce mostrato; dopo la prima chiusura
+restava NASCOSTO e restava attivo il **catcher a schermo intero** (che si mangia
+il click successivo): da li' in poi il menu non si vedeva piu'.
+Rimedio: `menu:ClearAllPoints()` (gli ancoraggi si accumulavano tra le aperture)
+e `menu:Show()` a ogni apertura.
+Test: 6 nuovi check (apri -> scegli -> riapri, sia raid sia boss) + 821 totali.
 
 ## Novità della sessione 1.11.52 (questo branch, dopo 1.11.51) — BUCHI DI RICONOSCIMENTO DAL COUNTER
 
@@ -42,7 +57,7 @@ sessione, poi l'ultimo con progressione registrata.
 NON registra** (i pull finti del debug non devono sporcare la progressione vera). `MacroBar:OnBossProgressChanged` riallinea la barra quando il counter avanza (guardia di rientranza perche'
 passa da `CurrentBossInfo` -> `InferLinearKills` -> di nuovo `OnBossProgressChanged`).
 
-Test: **815 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
+Test: **821 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
 counter su Gunship e Faction Champions, precedenza del target, inferenza lineare su ICC e ToC,
 kill dal combat log con e senza debug, riallineo automatico della barra al variare del counter,
 guardia di rientranza sempre rilasciata e robustezza a un errore di riconoscimento).
