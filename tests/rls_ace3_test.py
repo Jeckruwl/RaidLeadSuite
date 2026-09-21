@@ -3297,6 +3297,8 @@ P46_T1 = G46.ieTabGroup.tabs[1]:GetFrameLevel()
 P46_T2 = G46.ieTabGroup.tabs[2]:GetFrameLevel()
 """)
 check(bool(rt.eval("P46_T1 > P46_B and P46_T2 > P46_T1")), "pin: tab buttons strictly above the border, in order")
+check('tg.frame:SetFrameStrata("FULLSCREEN_DIALOG")' in open("GroupMaking.lua", encoding='utf-8').read(), "IE TabGroup widget on its own guaranteed strata (above all addon siblings)")
+
 
 check('function GM:RepinManualPage' in open("GroupMaking.lua", encoding='utf-8').read(), "RepinManualPage exists (headers vs content deterministic pinning)")
 check('self:RepinManualPage()' in open("GroupMaking.lua", encoding='utf-8').read(), "RepinManualPage invoked at page-build end AND on tab show")

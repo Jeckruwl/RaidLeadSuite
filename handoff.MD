@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.47 (questo branch, dopo 1.11.46) — tab strip sollevata a strata piena (FULLSCREEN_DIALOG)
+
+Il TabGroup AceGUI non dipende più dall'ordering relativo coi fratelli della finestra: il suo root vive su strata FULLSCREEN_DIALOG (sopra il HIGH degli slot/drag della matrice di gruppi) — le tab non possono più trovarsi sotto nessuna parte della griglia. PinTabStrip resta come ordering intra-widget. Versione 1.11.47 (e riallineamento della numerazione di versione nelle intestazioni).
+
 ## Novità della sessione 1.11.45 (questo branch, dopo 1.11.44) — header in pagina sempre sopra: RepinManualPage a fine build e a ogni tab-show
 
 La Repin inside BuildManualPage girava a metà costruzione (manualBox con header/testostringeri nasceva DOPO → non pinnato). Ora `GM:RepinManualPage()` viene eseguita alla FINE di BuildManualPage (tutti i figli esistono) e a ogni visualizzazione della pagina dal selettore tab — la pila deterministic di livelli comprende TUTTI i figli fin da subito. Versione 1.11.45.
