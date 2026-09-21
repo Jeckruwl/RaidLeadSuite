@@ -232,6 +232,7 @@ function MSM:UpdateList()
         y = y + 26
     end
     self.listContent:SetHeight(math.max(y, 1))
+    RLSuite.utils:RepinFrameOrder(self.listContent)
     RLSuite.utils:RefreshScrollClip(self.listContent)
 end
 

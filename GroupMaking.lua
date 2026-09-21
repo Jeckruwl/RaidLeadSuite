@@ -1785,6 +1785,12 @@ function GM:BuildManualPage()
     timeHint:SetTextColor(0.6, 0.6, 0.6)
 
     -- ============================================================
+    -- Gli header/tab della pagina stanno sempre sopra i contenuti: ordine
+    -- deterministico fissato a ogni (ri)creazione della pagina.
+    if page and RLSuite.utils and RLSuite.utils.RepinFrameOrder then
+        RLSuite.utils:RepinFrameOrder(page)
+    end
+
     -- Pannello lista manuale.
     -- ============================================================
     self.ieAutoManualBox = CreateFrame("Frame", nil, page)
@@ -3084,6 +3090,7 @@ function GM:BuildAutoNameListUI()
     end
 
     content:SetHeight(math.max(-y + 2, 10))
+    RLSuite.utils:RepinFrameOrder(content)
     RLSuite.utils:RefreshScrollClip(content)
     if self.ieAutoNamesScroll and self.ieAutoNamesScroll.UpdateScrollChildRect then
         self.ieAutoNamesScroll:UpdateScrollChildRect()

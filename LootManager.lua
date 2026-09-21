@@ -808,6 +808,7 @@ function LM:UpdateHistory()
         y = y + rowH + LM_ROW_GAP
     end
     self.histContent:SetHeight(math.max(y, 1))
+    RLSuite.utils:RepinFrameOrder(self.histContent)
     RLSuite.utils:RefreshScrollClip(self.histContent)
     self:EnsureTicker()
 end

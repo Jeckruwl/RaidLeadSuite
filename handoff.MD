@@ -9,6 +9,10 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.23**.
 
+## Novità della sessione 1.11.43 (questo branch, dopo 1.11.42) — RepinFrameOrder: ordine dei livelli deterministico a ogni rebuild
+
+Nuovo `Utils:RepinFrameOrder(root)`: ricostruisce ricorsivamente i livelli dell'intero sotto-albero assegnando ad ogni figlio `base padre + 2 + 2*indice` (ordine di creazione). Invocata alla FINE di ogni refresh di lista/pagina (`LM:UpdateHistory`, `MSM:UpdateList`, `GM:BuildAutoNameListUI`, creazione pagine invite-engine), CANCELLA qualunque drift di livelli pregreso (refreshes + raises): gli header dei pannelli non stanno più sotto e le X sono sempre cliccabili. Gli assetti espliciti riga+1/X=riga+2 restano come rete. Versione 1.11.43.
+
 ## Novità della sessione 1.11.42 (questo branch, dopo 1.11.41) — pannello chiudibile sempre senza toccare le finestre; loot puliti; X funzionanti
 
 1. **Panel/main bar sempre chiudibile, anche in fight, senza chiudere altro**: `MW:CloseTab` chiamava `HideAllWindows()` (tutte le finestre modulo!): freccia, X e /rls ora toccano SOLO barra+pannello.

@@ -880,6 +880,26 @@ end
 -- restano dentro la "fascia" della loro finestra e non sbucano sopra le
 -- finestre vicine, evitando le sovrapposizioni parziali (parti di una
 -- finestra sopra e parti sotto un'altra) quando si spostano le finestre.
+-- Riposiziona deterministicamente i livelli di un intero sotto-albero:
+-- base = livello corrente del root; ogni figlio prende base+2+2*indice
+-- (ordine di CREAZIONE dei figli, stesso ordine del drawing WoW). Causa:
+-- qualunque drift pregresso (refreshes + raises) viene cancellato.
+function Utils:RepinFrameOrder(root, seenTbl)
+    if not root or not root.GetChildren then return end
+    local seen = seenTbl or {}
+    if seen[root] then return end
+    seen[root] = true
+    local base = root.GetFrameLevel and root:GetFrameLevel() or 0
+    local ok, kids = pcall(function() return { root:GetChildren() } end)
+    if not ok or not kids then return end
+    for i, kid in ipairs(kids) do
+        if kid.SetFrameLevel then
+            kid:SetFrameLevel(base + 2 + 2 * i)
+        end
+        Utils:RepinFrameOrder(kid, seen)
+    end
+end
+
 local function ShiftSubtree(node, delta, seen)
     -- Sposta il frame E tutta la gerarchia dei figli dello stesso delta:
     -- i livelli 3.3.5 NON ereditano, quindi senza questo shift i figli

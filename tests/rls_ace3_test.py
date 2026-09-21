@@ -1,4 +1,5 @@
 import sys, os
+sys.path.insert(0, os.path.expanduser('~/.pylibs'))  # persistenza locale per lupa
 from lupa import LuaRuntime
 
 # ---------------------------------------------------------------------------
@@ -3251,6 +3252,22 @@ BOSV = RLSuite.lootManager.history[#RLSuite.lootManager.history].boss
 check(bool(rt.eval("AF1 == true and AL1 == true")), "arrow-click on the bar hides only the panel; module windows stay open")
 check(bool(rt.eval("DUPC >= 1 and BOSV == 'Onyxia'")), "looting a boss corpse names the boss; identical announce within 4s is deduped")
 check(bool(rt.eval("DUPC < 3")), "no duplicate entries for the same item announcement")
+# -- v1.11.43: RepinFrameOrder deterministico sui rebuild
+check('function Utils:RepinFrameOrder' in _u, "RepinFrameOrder helper available")
+check('RepinFrameOrder(self.listContent)' in open("MSManager.lua", encoding='utf-8').read(), "MS list repinned after every refresh")
+check('RepinFrameOrder(content)' in open("GroupMaking.lua", encoding='utf-8').read(), "GM manual list repinned after every refresh")
+check('RepinFrameOrder(self.histContent)' in open("LootManager.lua", encoding='utf-8').read(), "loot history repinned after every refresh")
+rt.execute("""
+R43 = CreateFrame("Frame", nil, UIParent)
+C43a = CreateFrame("Frame", nil, R43)
+C43b = CreateFrame("Frame", nil, R43)
+C43c = CreateFrame("Button", nil, C43b)
+RLSuite.utils:RepinFrameOrder(R43)
+RP43_1 = C43a:GetFrameLevel(); RP43_2 = C43b:GetFrameLevel(); RP43_3 = C43c:GetFrameLevel()
+RP43_R = R43:GetFrameLevel()
+""")
+check(bool(rt.eval("RP43_2 > RP43_1 and RP43_1 > RP43_R and RP43_3 > RP43_2")), "RepinFrameOrder: children strictly above parents, in creation order, deterministic")
+
 
 check('mousefocus' in open("Core.lua", encoding='utf-8').read(), "/rls mousefocus diagnostic command available")
 check('lmdebug' in open("Core.lua", encoding='utf-8').read(), "/rls lmdebug hitbox diagnostic command available")
