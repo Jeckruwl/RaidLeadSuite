@@ -1372,8 +1372,12 @@ function GM:CreateInviteEngineTabs()
     end)
 
     -- Il frame del widget vive dentro la costola, sotto Raid Group.
+    -- STRATA PIENA: il widget-tab non dipende MAI dall'ordine relativo coi
+    -- fratelli (lo "sti sotto" era il suo strato che perdeva): strata
+    -- sopra HIGH, appena sotto i dialog di pieno schermo. I tab rimangono
+    -- comunque dentro la finestra (strata e' per-frame, non per-rect).
     tg.frame:SetParent(f)
-    tg.frame:SetFrameStrata("HIGH")
+    tg.frame:SetFrameStrata("FULLSCREEN_DIALOG")
     tg.frame:SetPoint("TOPLEFT", self.wlGroupBox, "BOTTOMLEFT", 0, -4)
     self:LayoutInviteEngineTabs()
 end
