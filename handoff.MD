@@ -9,27 +9,31 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.60**.
 
-## 1.11.60 — la matrice della MacroBar si apre A DESTRA DELLA BARRETTA
+## 1.11.61 — la matrice di MAIN BAR si apre a DESTRA DELLA BARRETTA
 
-Richiesta: "la matrice dei pulsanti di macro bar deve aprirsi a destra della barretta".
+(La 1.11.60 aveva ancorato alla barretta la matrice della **MacroBar**: era un
+fraintendimento — la richiesta riguardava la matrice della **main bar**.
+`MacroBar.lua` e' stato RIPRISTINATO esattamente allo stato precedente e i suoi
+test rimossi.)
 
-`MacroBar:ApplyLayout` ora ancora il contenitore a
-`TOPLEFT -> TOPRIGHT della barretta` con 4px di gap (sommita' allineate).
-La barretta e' un'ancora VIVA: se cambia la larghezza del Raid Frame (e quindi
-la main bar si sposta), la matrice la segue senza ricalcoli; lo stesso per il
-toggle chiuso/aperto (ApplyLayout viene rieseguito).
+Cosa fa la 1.11.61:
+- la **barretta** (barra in alto) e' l'ancora: `TOPLEFT` dello schermo a
+  `x = larghezza Raid Frame` (298 a scala 1), `y = 0` -> tocca il bordo alto,
+  subito a destra del Raid Frame;
+- il **pannello dei pulsanti** (la matrice dei tasti) e' ancorato
+  `TOPLEFT -> TOPRIGHT della barretta` con 4px di distacco e sommita' allineate
+  (`dy 0`): si APRE A DESTRA DELLA BARRETTA, come richiesto;
+- il tasto **"Raid Control"** nella barretta apre/chiude proprio quel pannello,
+  che compare a destra della barretta;
+- larghezze invariate: barretta = somma dei suoi elementi (205 px), pannello =
+  213 px (4 + matrice 188 + 4, mai piu' stretto della barretta);
+- l'ancoraggio segue il Raid Frame: se cambia la larghezza del Raid Frame la
+  barretta (e con lei il pannello) si sposta.
 
-Spostamento a mano: fuori dall'"Anchor Mode" lo shift-drag e' disattivato
-(combatterebbe con l'ancoraggio: `MB:BeginShiftDrag` esce subito).
-In Anchor Mode la posizione scelta vince (`MB._anchorOverride`, catturata in
-`MB:CaptureManualPosition`) e in memoria fa da override; uscendo dall'Anchor
-Mode l'override viene dimenticato e la matrice torna a destra della barretta.
-Il dropdown "Anchor Point" in Config resta come ripiego se la barretta non
-esiste.
-
-Test: **890 check** totali (6 nuovi nella 1.11.60: ancoraggio TOPLEFT->TOPRIGHT
-dx 4, inseguimento della barretta, tenuta dopo toggle, shift-drag bloccato fuori
-Anchor Mode, override in Anchor Mode, ritorno all'ancoraggio uscendo).
+Test: **894 check** totali (4 nuovi nella 1.11.61: pannello ancorato alla
+barretta con dx 4 e dy 0, barretta = somma elementi, MacroBar NON piu' ancorata
+alla barretta e senza override manuale, "Raid Control" che apre il pannello a
+destra).
 
 ## 1.11.59 — barretta: larghezza = SOMMA DEI SUOI ELEMENTI + ancoraggio dal SINISTRO
 
@@ -53,7 +57,7 @@ Due richieste dell'utente (la 1.11.57 le aveva interpretate male):
 Il pannello resta largo `2*PAD + max(matrice, barretta)` = 213 px con 2 colonne,
 cosi' nessun tasto sporge dal bordo (i tasti restano a 4 px dal bordo sinistro).
 
-Test: **890 check** totali sul branch (6 aggiornati nella 1.11.59: barretta = somma elementi con
+Test: **894 check** totali sul branch (6 aggiornati nella 1.11.59: barretta = somma elementi con
 ancoraggio singolo, larghezza costante 1 vs 8 colonne, ancoraggio TOPLEFT con
 x = +larghezza Raid Frame, spostamento a destra quando il Raid Frame si allarga).
 

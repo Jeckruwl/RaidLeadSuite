@@ -4053,9 +4053,9 @@ rt.execute("""
     SUM_W = 4 + PB:GetWidth() + 4 + RLSuite.mainWindow._phaseLabelW + 4
         + RC:GetWidth() + 4 + CLB:GetWidth() + 4
 """)
-check(bool(rt.eval("TB_P1[1] == 'BOTTOMLEFT' and TB_P1[3] == 'TOPLEFT'")),
-      "title bar anchored bottom-left to the panel (left aligned, no longer stretched)")
-check(rt.eval("TB_P1[5]") == 2, "title bar is DETACHED (2px gap above the main bar)")
+check(bool(rt.eval("TB_P1[1] == 'TOPLEFT' and TB_P1[3] == 'TOPLEFT' and TB_P1[2] == UIParent")),
+      "title bar is the anchor: TOPLEFT of the screen at x = Raid Frame width (%s)" % rt.eval("TB_P1[4]"))
+check(rt.eval("TB_P1[5]") == 0, "title bar touches the top edge exactly (y = 0)")
 check(bool(rt.eval("TB_W == TB_TITLE_W and TB_W == SUM_W")),
       "TITLE BAR WIDTH = SUM OF ITS ELEMENTS (phase icon+name, Raid Control, close) = %d px" % rt.eval("TB_W"))
 check(bool(rt.eval("TB_POINTS == 1")), "single anchor: the width is fixed, not derived from the panel")
@@ -4173,13 +4173,21 @@ rt.execute("""
     local cols = #(RLSuite.raidFrame._buffHdrBtns or {})
     BUFFS_W = cols * RF_M.cellW
 """)
-check(bool(rt.eval("ANCH_P == 'TOPLEFT' and ANCH_PARENT_NAME == 'UIParent' and ANCH_RELP == 'TOPLEFT'")),
-      "main bar anchored to the TOP-LEFT corner: the distance is from the LEFT side")
-check(bool(rt.eval("ANCH_Y == -(TBH + 2)")),
-      "the TITLE BAR (not the panel) touches the top edge: y = -(20+2) = %d" % rt.eval("ANCH_Y"))
+check(bool(rt.eval("ANCH_P == 'TOPLEFT' and ANCH_RELP == 'TOPRIGHT'")),
+      "button matrix panel opens at the RIGHT of the title bar (%s -> %s)" % (rt.eval("ANCH_P"), rt.eval("ANCH_RELP")))
+rt.execute("""
+    local tp1, tpParent, tp3, tx, ty = RLSuite.mainWindow.titleBar:GetPoint(1)
+    TB_ANCH_P, TB_ANCH_REL, TB_ANCH_X, TB_ANCH_Y = tp1, tp3, tx, ty
+    TB_ANCH_PARENT = (tpParent == UIParent) and 'UIParent' or 'ALTRO'
+""")
+check(bool(rt.eval("TB_ANCH_P == 'TOPLEFT' and TB_ANCH_PARENT == 'UIParent' and TB_ANCH_REL == 'TOPLEFT'")),
+      "the title bar (the anchor) is at the TOP-LEFT of the screen: distance from the LEFT side")
+check(bool(rt.eval("ANCH_Y == 0 and TB_ANCH_Y == 0")),
+      "title bar and panel are both flush with the top edge (tops aligned, dy 0)")
+check(bool(rt.eval("ANCH_X == 4")), "panel starts 4px right of the title bar (no overlap)")
 check(bool(rt.eval("RFW == RF_LIVE_W and RF_LIVE_W == RF_M.W * RF_SCALE")),
       "right offset = Raid Frame width (%d px at scale %s)" % (rt.eval("RF_M.W * RF_SCALE"), rt.eval("RF_SCALE")))
-check(bool(rt.eval("ANCH_X == RFW")), "the offset IS the Raid Frame width, on the LEFT side (no other constant)")
+check(bool(rt.eval("TB_ANCH_X == RFW")), "the offset IS the Raid Frame width, on the LEFT side (no other constant)")
 check(bool(rt.eval("BUFFS_W > 0 and RFW < RF_M.rowWidth + BUFFS_W")),
       "the buff columns are NOT part of that width (matrix %d px drawn beyond the frame)" % rt.eval("BUFFS_W"))
 check(bool(rt.eval("RF_M.W == RF_M.rowWidth")), "Raid Frame width = food/flask + player bar + CDs (no buffs)")
@@ -4191,16 +4199,18 @@ rt.execute("""
     local old = app.barWidth
     app.barWidth = 220
     RLSuite.raidFrame:ApplyLayout()
-    local _, _, _, xNew = MW.frame:GetPoint(1)
+    local _, _, _, xNew = MW.titleBar:GetPoint(1)
     RFW_NEW = MW:RaidFrameWidth()
     ANCH_X_NEW = xNew
+    FOLLOWS = (MW.frame._points[1] or {})[2] == MW.titleBar
     app.barWidth = old
     RLSuite.raidFrame:ApplyLayout()
-    local _, _, _, xBack = MW.frame:GetPoint(1)
+    local _, _, _, xBack = MW.titleBar:GetPoint(1)
     ANCH_X_BACK = xBack
 """)
 check(bool(rt.eval("RFW_NEW == RFW + 40 and ANCH_X_NEW == (RFW + 40)")),
       "player bar +40px -> the bar moves 40px right (offset follows the Raid Frame)")
+check(bool(rt.eval("FOLLOWS == true")), "the panel keeps following the title bar when the bar moves")
 check(bool(rt.eval("ANCH_X_BACK == RFW")), "restoring the Raid Frame restores the bar position")
 
 # -- larghezza fissa = somma degli elementi -------------------------------
@@ -4274,86 +4284,52 @@ check(bool(rt.eval("RC_W >= RC_TEXT_W + 8")),
 check(bool(rt.eval("PHASE_RESERVE >= 40 and PHASE_RESERVE <= 90")),
       "phase name reserve is measured on the real labels (%d px), not a magic number" % rt.eval("PHASE_RESERVE"))
 
-# -- v1.11.60: la matrice MacroBar si apre A DESTRA DELLA BARRETTA ---------
+# -- v1.11.61: la matrice di MAIN BAR si apre a DESTRA della barretta -------
 rt.execute("""
     MW = RLSuite.mainWindow
-    MB = RLSuite.macrobar
-    MW.frame:Show(); MW.titleBar:Show(); MB.frame:Show()
-    MB:ApplyLayout()
-    local mf = MB.frame
-    local mp = mf._points[1] or {}
-    MBP_ARGS = tostring(mp[1]) .. ' ' .. tostring(mp[3]) .. ' dx=' .. tostring(mp[4]) .. ' dy=' .. tostring(mp[5])
-    MBP_ANCHORED_TO_TITLE = (mp[2] == MW.titleBar)
-    MBP_ONLY_ONE = (mf:GetNumPoints() == 1)
-    MBP_TITLE_W = MW.titleBar._w
-    MBP_TITLE_H = MW.titleBar._h
-    MBP_SCALE = mf:GetScale()
+    MW.frame:Show(); MW.titleBar:Show(); MW:ApplyLayout()
+    local fp1, fpParent, fp3, fx, fy = MW.frame:GetPoint(1)
+    PANEL_ANCH = fp1 .. ' -> ' .. fp3 .. ' dx=' .. tostring(fx) .. ' dy=' .. tostring(fy)
+    PANEL_TO_TITLE = (fpParent == MW.titleBar)
+    PANEL_POINTS = MW.frame:GetNumPoints()
+    PANEL_TOP = fy
+    TB_TOP = select(5, MW.titleBar:GetPoint(1))
+    -- la barretta resta larga quanto i suoi elementi
+    TITLE_W2 = MW.titleBar:GetWidth()
+    TITLE_SUM = 4 + MW.phaseBtn:GetWidth() + 4 + MW._phaseLabelW + 4
+        + MW.titleBar.raidControlBtn:GetWidth() + 4 + MW.titleBar.closeBtn:GetWidth() + 4
 """)
-check(bool(rt.eval("MBP_ANCHORED_TO_TITLE == true and MBP_ONLY_ONE == true")),
-      "macro button matrix opens ANCHORED to the title bar (%s)" % rt.eval("MBP_ARGS"))
-check(bool(rt.eval("MBP_ARGS:find('TOPLEFT') ~= nil and MBP_ARGS:find('TOPRIGHT') ~= nil")),
-      "it sits at the RIGHT of the title bar, tops aligned (TOPLEFT -> TOPRIGHT)")
+check(bool(rt.eval("PANEL_TO_TITLE == true and PANEL_POINTS == 1")),
+      "MAIN BAR panel is anchored to the title bar (%s)" % rt.eval("PANEL_ANCH"))
+check(bool(rt.eval("PANEL_ANCH:find('TOPRIGHT') ~= nil")),
+      "it opens at the RIGHT of the title bar (TOPLEFT -> TOPRIGHT)")
+check(bool(rt.eval("PANEL_TOP == 0 and TB_TOP == 0")), "panel and bar are top-aligned (both at y = 0)")
+check(bool(rt.eval("TITLE_W2 == TITLE_SUM")), "title bar still measures exactly its own elements")
 
-# -- segue la barretta: se la main bar si sposta, la matrice la segue ------
+# -- la MACROBAR e' tornata come prima (nessun ancoraggio alla barretta) ---
+rt.execute("""
+    MB = RLSuite.macrobar
+    MB:ApplyLayout()
+    local mp = MB.frame._points[1] or {}
+    MB_TB_ANCHOR = (mp[2] == RLSuite.mainWindow.titleBar)
+    MB_OVERRIDE_FN = (MB.CaptureManualPosition ~= nil)
+    MB_HAS_POINT = (mp[1] ~= nil)
+""")
+check(bool(rt.eval("MB_TB_ANCHOR == false")), "MacroBar is NOT anchored to the title bar any more (back to its own position)")
+check(bool(rt.eval("MB_OVERRIDE_FN == false")), "MacroBar manual-position override removed (v1.11.60 reverted)")
+check(bool(rt.eval("MB_HAS_POINT == true")), "MacroBar keeps using its configured anchor point")
+
+# -- Raid Control apre/chiude proprio quel pannello, che resta a destra -----
 rt.execute("""
     MW = RLSuite.mainWindow
-    MB = RLSuite.macrobar
-    local app = RLSuite.raidFrame.db.appearance
-    local old = app.barWidth
-    app.barWidth = 260
-    RLSuite.raidFrame:ApplyLayout()
-    local _, _, _, xMoved = MW.frame:GetPoint(1)
-    local mp2 = MB.frame._points[1] or {}
-    MBP_SAME_ANCHOR = (mp2[2] == MW.titleBar)
-    app.barWidth = old
-    RLSuite.raidFrame:ApplyLayout()
+    MW.frame:Hide(); MW.titleBar:Show()
+    MW.titleBar.raidControlBtn._scripts.OnClick(MW.titleBar.raidControlBtn)
+    RC_OPEN = MW.frame:IsShown()
+    local p2 = MW.frame._points[1] or {}
+    RC_RIGHT = (p2[2] == MW.titleBar and (p2[4] or 0) == 4)
 """)
-check(bool(rt.eval("MBP_SAME_ANCHOR == true")),
-      "the matrix keeps following the title bar when the Raid Frame (and the bar) move")
-
-# -- resta a destra della barretta anche dopo un toggle chiuso/aperto -------
-rt.execute("""
-    MB = RLSuite.macrobar
-    MB:Toggle()   -- chiude
-    MB:Toggle()   -- riapre: ApplyLayout viene rieseguito
-    local mp3 = MB.frame._points[1] or {}
-    MBP_AFTER_TOGGLE = (mp3[2] == RLSuite.mainWindow.titleBar and #MB.frame._points == 1)
-""")
-check(bool(rt.eval("MBP_AFTER_TOGGLE == true")), "closing and reopening the matrix keeps it anchored there")
-
-# -- fuori dall'Anchor Mode non ci si sposta a mano (combatterebbe l'ancora)
-rt.execute("""
-    MB = RLSuite.macrobar
-    RLSuite.db.profile.anchorMode = false
-    local moved = false
-    MB:BeginShiftDrag()
-    moved = (MB._shiftDrag == true)
-    MB._shiftDrag = false
-    MBP_DRAG_BLOCKED = (moved == false)
-""")
-check(bool(rt.eval("MBP_DRAG_BLOCKED == true")),
-      "manual shift-drag disabled outside Anchor Mode (position is anchored)")
-
-# -- ma in Anchor Mode la posizione scelta a mano vince -------------------
-rt.execute("""
-    MB = RLSuite.macrobar
-    RLSuite.db.profile.anchorMode = true
-    MB:CaptureManualPosition()
-    local ov = MB._anchorOverride
-    MBP_OV = (ov ~= nil)
-    MB:ApplyLayout()
-    local mp4 = MB.frame._points[1] or {}
-    MBP_OV_USED = (mp4[2] == UIParent)
-    -- uscendo dall'Anchor Mode torna l'ancoraggio alla barretta
-    RLSuite.db.profile.anchorMode = false
-    MB:SetAnchorMode(false)
-    local mp5 = MB.frame._points[1] or {}
-    MBP_BACK = (mp5[2] == RLSuite.mainWindow.titleBar and MB._anchorOverride == nil)
-""")
-check(bool(rt.eval("MBP_OV == true and MBP_OV_USED == true")),
-      "in Anchor Mode a manually chosen position wins")
-check(bool(rt.eval("MBP_BACK == true")),
-      "leaving Anchor Mode forgets it and re-anchors the matrix right of the bar")
+check(bool(rt.eval("RC_OPEN == true and RC_RIGHT == true")),
+      "'Raid Control' opens the panel, and it appears right of the bar (dx 4)")
 
 # -- Barretta: "Raid Control" = solo pannello; close = tutto chiuso
 rt.execute("""

@@ -498,16 +498,22 @@ function MW:ApplyLayout()
     self.frame:SetSize(w, h)
     self.frame:SetScale(L.scale or 1)
 
-    -- ANCORAGGIO FISSO: bordo ALTO dello schermo, a distanza dal lato
-    -- SINISTRO pari alla larghezza del Raid Frame (food/flask + barra player +
-    -- CD, senza i buff): la barra parte subito a destra del Raid Frame.
-    -- La barretta sta sopra il pannello, quindi e' la sua sommita' a toccare
-    -- il bordo alto: si compensa altezza barretta + gap.
-    local tbH = (self.titleBar and self.titleBar:GetHeight()) or 20
-    local tbGapPx = 2
+    -- ANCORAGGIO FISSO: la BARRETTA (barra in alto) sta sul bordo ALTO dello
+    -- schermo a una distanza dal lato SINISTRO pari alla larghezza del Raid
+    -- Frame (food/flask + barra player + CD, senza i buff): parte subito a
+    -- destra del Raid Frame.
+    if self.titleBar then
+        self.titleBar:ClearAllPoints()
+        self.titleBar:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth(), 0)
+    end
+    -- LA MATRICE DEI PULSANTI SI APRE A DESTRA DELLA BARRETTA: il pannello e'
+    -- ancorato al suo bordo destro, sommita' allineate (dx 4 di distacco).
     self.frame:ClearAllPoints()
-    self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT",
-        self:RaidFrameWidth(), -(tbH + tbGapPx))
+    if self.titleBar then
+        self.frame:SetPoint("TOPLEFT", self.titleBar, "TOPRIGHT", 4, 0)
+    else
+        self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth(), 0)
+    end
 
     -- Bottoni matrice: colonne x righe configurabili dalla Config.
     -- La coppia MT/OT sta SOTTO il tasto "Raid Frame" (cella
@@ -561,8 +567,6 @@ function MW:ApplyLayout()
     -- sinistra sopra il pannello (non piu' stirata sulla larghezza della
     -- matrice: con la matrice larga restava un vuoto enorme in mezzo).
     if self.titleBar then
-        self.titleBar:ClearAllPoints()
-        self.titleBar:SetPoint("BOTTOMLEFT", self.frame, "TOPLEFT", 0, 2)
         self.titleBar:SetWidth(titleW)
     end
     if self.phaseBtn then

@@ -41,7 +41,6 @@ function MB:Toggle()
             RLSuite.utils:Print(L["Macrobar is disabled in Config."])
             return
         end
-        self:ApplyLayout()
         self.frame:Show()
     end
     -- Sincronizza l'evidenziazione del bottone Macrobar nella barra
@@ -68,16 +67,6 @@ function MB:KeypadSize()
     return w, h
 end
 
--- Posizione decisa a mano dall'utente (Anchor Mode / shift-drag): vince
--- sull'ancoraggio a destra della barretta finche' resta attiva. /reload ->
--- si torna all'ancoraggio (comportamento prevedibile).
-function MB:CaptureManualPosition()
-    local f = self.frame
-    if not f then return end
-    local point, _, relPoint, x, y = f:GetPoint()
-    self._anchorOverride = { point = point, relPoint = relPoint, x = x, y = y }
-end
-
 function MB:SaveHolderPosition()
     local f = self.frame
     if not f then return end
@@ -98,15 +87,11 @@ function MB:EndShiftDrag()
         RLSuite.utils:ClampWindowToScreen(self.frame)
     end
     self:SaveHolderPosition()
-    self:CaptureManualPosition()
     self._shiftDrag = false
 end
 
 function MB:BeginShiftDrag()
     local p = self:PhaseSettings()
-    -- Posizione ANCORATA a destra della barretta: lo spostamento a mano si fa
-    -- solo con "Toggle Anchors" attivo (da li' in poi vale la posizione scelta).
-    if not (RLSuite.db and RLSuite.db.profile.anchorMode) then return end
     if p and p.locked and not (RLSuite.db and RLSuite.db.profile.anchorMode) then return end
     if not self.frame then return end
     self._shiftDrag = true
@@ -143,13 +128,6 @@ function MB:SetAnchorMode(on)
         -- come tutte le finestre: non puo' restare fuori schermo
         RLSuite.utils:ClampWindowToScreen(self2)
         MB:SaveHolderPosition()
-        MB:CaptureManualPosition()
-    end
-    if not on then
-        -- fuori dall'Anchor Mode la posizione manuale e' dimenticata: la
-        -- matrice torna ancorata a destra della barretta.
-        self._anchorOverride = nil
-        MB:ApplyLayout()
     end
     if on then
         f:SetMovable(true)
@@ -380,24 +358,10 @@ function MB:ApplyLayout()
     self.frame:SetSize(hostW, holderH)
     self.frame:SetScale(p.scale or 1)
 
-    -- POSIZIONE: la matrice dei pulsanti si apre A DESTRA DELLA BARRETTA
-    -- (title bar della main bar). La barretta e' un'ancora viva: se cambia la
-    -- larghezza del Raid Frame (e quindi la main bar si sposta), la matrice la
-    -- segue senza ricalcoli. Un eventuale spostamento a mano ("Toggle
-    -- Anchors" in Config) vince finche' non si esce da quel modo.
-    local ov = self._anchorOverride
-    local tb = RLSuite.mainWindow and RLSuite.mainWindow.titleBar
+    local point = p.point or "CENTER"
+    local rel = p.relPoint or point
     self.frame:ClearAllPoints()
-    if ov then
-        self.frame:SetPoint(ov.point or "TOPLEFT", UIParent,
-            ov.relPoint or ov.point or "TOPLEFT", ov.x or 0, ov.y or 0)
-    elseif tb then
-        self.frame:SetPoint("TOPLEFT", tb, "TOPRIGHT", 4, 0)
-    else
-        local point = p.point or "CENTER"
-        local rel = p.relPoint or point
-        self.frame:SetPoint(point, UIParent, rel, p.x or 0, p.y or 0)
-    end
+    self.frame:SetPoint(point, UIParent, rel, p.x or 0, p.y or 0)
 
     if self.macroHost then
         self.macroHost:ClearAllPoints()
