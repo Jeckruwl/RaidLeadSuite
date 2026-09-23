@@ -7,7 +7,39 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.75**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.76**.
+
+## 1.11.76 — Barra HP e CD FUORI dalla riga (update grafico del drag)
+
+Report in gioco della 1.11.75: **il drop funziona** (il giocatore si sposta),
+ma l'update grafico no: *"vedo solo le icone di flask/food mentre barra
+giocatore e CD sono invisibili"*.
+
+Diagnosi: e' la stessa malattia delle icone consumabili, su altri pezzi.
+
+- le icone flask/food sono figlie di `content` (spostate li' in una fix
+  precedente, proprio per questo motivo) -> restano visibili;
+- **barra HP e texture dei CD erano figlie della RIGA** -> se la riga non viene
+  renderizzata (in combat la riga di destinazione di un move non lo e'), loro
+  spariscono con lei. Sintomo esatto: icons visibili, barra e CD no.
+
+Rimedio:
+
+- la barra (StatusBar) e le icone CD ora vivono su `content`, come le icone
+  consumabili: barra a `content+20`, supporto CD a `content+21`. Le coordinate
+  NON cambiano: tutto resta ancorato allo slot (`SetPoint(..., slot, ...)`).
+- `ClearSlot` spegne ESPLICITAMENTE la barra (non sparisce piu' da sola: non e'
+  piu' figlia della riga).
+- `FillSlot` rimette SEMPRE i CD (`ApplySlotCDs`), non solo al cambio di
+  classe: prima, svuotando e riempiendo lo stesso slot con la stessa classe, i
+  CD restavano spenti.
+- anche il tag MT/OT e' fuori dalla riga.
+
+La riga adesso e' solo una zona di click/target: la grafica del player non
+dipende piu' dalla sua visibilita'. Stessa filosofia dei piani di rilascio
+(1.11.75) e delle icone consumabili.
+
+Test: **1058 check** totali (5 nuovi).
 
 ## 1.11.75 — Drag in combat, seconda parte: PIANI DI RILASCIO
 

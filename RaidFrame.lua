@@ -515,7 +515,8 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
     -- Left: flask / Well Fed missing-consumable icons.
     -- Le barre TANK non li hanno: al loro posto il tag MT/OT dorato.
     if row.isTank then
-        local tag = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        -- Anche il tag MT/OT fuori dalla riga (stessa regola della barra).
+        local tag = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         -- Posizionato in LayoutSlotGeometry: ATTACCATO a sinistra della barra.
         tag:SetText(tankTag)
         tag:SetTextColor(1, 0.82, 0)
@@ -542,7 +543,13 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
     end
 
     -- HP bar (name + % inside), fill = HP%, color = class color.
-    local bar = CreateFrame("StatusBar", nil, row)
+    -- FIGLIA DI CONTENT, NON DELLA RIGA (v1.11.76): come le icone consumabili.
+    -- Se la riga non si mostra (in combat puo' succedere: riga invisibile =
+    -- figli invisibili) la barra spariva mentre le icone restavano: la
+    -- grafica del player NON deve dipendere dalla visibilita' della riga,
+    -- perche' la riga serve solo come zona di click.
+    local bar = CreateFrame("StatusBar", nil, self.content)
+    bar:SetFrameLevel((self.content.GetFrameLevel and self.content:GetFrameLevel() or 1) + 20)
     bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     bar:SetMinMaxValues(0, 100)
     bar:SetValue(0)
@@ -565,11 +572,21 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
     -- Niente percentuale HP: la barra mostra solo il nome del player.
 
     -- Class key cooldowns (up to 4, pooled; filled per class in ApplySlotCDs).
+    -- Anche questi FUORI dalla riga: le texture stanno su un supporto figlio
+    -- di content, sopra le righe (content+21), cosi' restano visibili anche
+    -- quando la riga non si mostra (stesso motivo della barra HP).
     row.cdIcons = {}
+    local cdHolder = CreateFrame("Frame", nil, self.content)
+    cdHolder:SetFrameLevel((self.content.GetFrameLevel and self.content:GetFrameLevel() or 1) + 21)
+    cdHolder:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    cdHolder:SetSize(1, 1)
+    cdHolder:EnableMouse(false)
+    row.cdHolder = cdHolder
     for j = 1, RF_MAX_CDS do
-        local cd = row:CreateTexture(nil, "OVERLAY")
+        local cd = cdHolder:CreateTexture(nil, "OVERLAY")
         cd:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        local timer = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        cd:Hide() -- le barre tank non li usano mai (restano spenti)
+        local timer = cdHolder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         timer:SetPoint("CENTER", cd, "CENTER", 0, 0)
         timer:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
         timer:SetText("")
@@ -898,9 +915,9 @@ function RF:FillSlot(slot, member)
         slot.bar:Show()
     end
 
-    if slot._cdClass ~= member.class then
-        self:ApplySlotCDs(slot, member.class)
-    end
+    -- I CD si rimettono SEMPRE (non solo al cambio di classe): ClearSlot li
+    -- spegne, quindi svuotare e riempire lo stesso slot lasciava i CD spenti.
+    self:ApplySlotCDs(slot, member.class)
 
     self:UpdateRow(slot)
 end
@@ -919,6 +936,7 @@ function RF:ClearSlot(slot)
     if slot.bar then
         slot.bar:SetValue(0)
         if slot.bar.nameText then slot.bar.nameText:SetText("") end
+        slot.bar:Hide() -- fuori dalla riga: non sparisce da sola
     end
     self:SetConsumable(slot.flaskIcon, "off")
     self:SetConsumable(slot.foodIcon, "off")

@@ -6343,6 +6343,107 @@ RLSuite:ResetDebugRaid()
 check(bool(rt.eval("UW_P7_ARMED == true")), "v1.11.75: il watchdog del drag si arma anche in combat (rete di sicurezza sul rilascio)")
 check(bool(rt.eval("UW_P7_MOVED == UW_P7_SRC and UW_P7_SRC_EMPTY == true")), "v1.11.75: il rilascio visto dal WATCHDOG (righe bloccate, slot invisibile) sposta comunque il player (%s)" % rt.eval("UW_P7_SRC"))
 check(bool(rt.eval("UW_P7_CLEAN == true and UW_P7_PLANES_OFF == true")), "v1.11.75: dopo il drop del watchdog lo stato e' pulito e i piani sono spenti")
+rt.execute("""
+-- =====================================================================
+-- v1.11.76: barra HP e icone CD FUORI dalla riga (visibili anche quando
+-- la riga non si mostra): l'update grafico non deve dipendere dalla riga
+-- =====================================================================
+local RF = RLSuite.raidFrame
+RLSuite:ResetDebugRaid()
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+for i = 1, 5 do RLSuite:DebugInviteAccept("B" .. i, "WARRIOR") end
+RLSuite:SetContextPhase("infight")
+
+-- A) dove vivono i pezzi: barra e CD fuori dalla riga, come le icone
+local row = RF.rows[1]
+local tr = RF.tankSlots[1]
+UW_P8_PARENT = {
+    bar = (row.bar:GetParent() == RF.content),
+    cd  = (row.cdIcons[1] and row.cdIcons[1]._parent == row.cdHolder and row.cdHolder._parent == RF.content),
+    tankBar = (tr.bar:GetParent() == RF.content),
+    icon = (row.flaskIcon:GetParent() == RF.content),
+}
+
+-- B) GUASTO SIMULATO: la riga si nasconde (row:Hide()) come in combat.
+--    Barra e CD devono restare visibili: non sono piu' suoi figli.
+local dst = nil
+for i, sl in ipairs(RF.slots) do
+    if not sl.member and not dst then dst = sl end
+end
+-- riempio lo slot vuoto con un member di prova (stessa strada di FillSlot)
+local fakeMember = { name = "Prova", class = "WARRIOR", unit = nil, fake = true, raidIndex = nil }
+RF:FillSlot(dst, fakeMember)
+dst:Hide() -- la riga "non si mostra" (simulazione del guasto in combat)
+UW_P8_FILLED = { bar = dst.bar:IsShown(), cd1 = (dst.cdIcons[1] and dst.cdIcons[1]:IsShown()) or false }
+
+-- C) slot VUOTO: la barra deve restare spenta (nessun rettangolo vuoto)
+local emptySlot = nil
+for i, sl in ipairs(RF.slots) do
+    if not sl.member and sl ~= dst and not emptySlot then emptySlot = sl end
+end
+UW_P8_CLEAR = (emptySlot.bar:IsShown() == false)
+
+-- D) svuoto e riempio lo STESSO slot con la stessa classe: i CD tornano
+RF:ClearSlot(dst)
+local cdAfterClear = (dst.cdIcons[1] and dst.cdIcons[1]:IsShown()) or false
+RF:FillSlot(dst, fakeMember)
+UW_P8_REFILL = { afterClear = cdAfterClear, afterRefill = (dst.cdIcons[1] and dst.cdIcons[1]:IsShown()) or false }
+RF:ClearSlot(dst)
+RF:Rebuild()
+
+-- E) scenario vero: in combat, con le righe bloccate, il player si sposta e
+--    la riga di destinazione mostra barra e CD
+local SAVED_ICL, SAVED_ISD, SAVED_GCP = InCombatLockdown, IsShiftKeyDown, GetCursorPosition
+local SAVED_SHOW, SAVED_HIDE = {}, {}
+InCombatLockdown = function() return true end
+IsShiftKeyDown = function() return true end
+for i, sl in ipairs(RF.slots) do
+    SAVED_SHOW[i], SAVED_HIDE[i] = sl.Show, sl.Hide
+    sl.Show = function() end
+    sl.Hide = function() end
+end
+local src, dst2 = nil, nil
+for i, sl in ipairs(RF.slots) do
+    if sl.member and not src then src = sl end
+    if src and not sl.member and not dst2 and sl ~= src then dst2 = sl end
+end
+UW_P8_SRC = (src and src.member and src.member.name) or "?"
+src._manualDrag = nil; src._pendingRowClick = nil; src:SetScript("OnUpdate", nil); src._targetT = nil
+src._scripts.OnMouseDown(src, "LeftButton")
+for i, sl in ipairs(RF.slots) do
+    if sl ~= dst2 then
+        sl.GetLeft = function() return 500 + i end
+        sl.GetRight = function() return 501 + i end
+        sl.GetBottom = function() return 500 end
+        sl.GetTop = function() return 501 end
+    end
+end
+dst2.GetLeft = function() return 100 end; dst2.GetRight = function() return 120 end
+dst2.GetBottom = function() return 60 end; dst2.GetTop = function() return 80 end
+GetCursorPosition = function() return 105, 70 end
+dst2.dropPlane._scripts.OnMouseUp(dst2.dropPlane, "LeftButton")
+UW_P8_MOVED = (dst2.member and dst2.member.name) or "?"
+UW_P8_AFTER = {
+    bar = dst2.bar:IsShown(),
+    cd1 = (dst2.cdIcons[1] and dst2.cdIcons[1]:IsShown()) or false,
+    rowHidden = (dst2:IsShown() == false),
+}
+for i, sl in ipairs(RF.slots) do
+    sl.Show, sl.Hide = SAVED_SHOW[i], SAVED_HIDE[i]
+    sl.GetLeft, sl.GetRight, sl.GetBottom, sl.GetTop = nil, nil, nil, nil
+end
+InCombatLockdown, IsShiftKeyDown, GetCursorPosition = SAVED_ICL, SAVED_ISD, SAVED_GCP
+RLSuite:SetContextPhase("preraid")
+RLSuite:ResetDebugRaid()
+""")
+
+
+check(bool(rt.eval("UW_P8_PARENT.bar == true and UW_P8_PARENT.cd == true and UW_P8_PARENT.tankBar == true and UW_P8_PARENT.icon == true")), "v1.11.76: barra HP e icone CD vivono su CONTENT (come le icone consumabili), non dentro la riga")
+check(bool(rt.eval("UW_P8_FILLED.bar == true and UW_P8_FILLED.cd1 == true")), "v1.11.76: con la riga NON mostrata (guasto simulato) barra e CD restano visibili")
+check(bool(rt.eval("UW_P8_CLEAR == true")), "v1.11.76: uno slot VUOTO resta senza barra (nessun rettangolo vuoto in giro)")
+check(bool(rt.eval("UW_P8_REFILL.afterClear == false and UW_P8_REFILL.afterRefill == true")), "v1.11.76: svuotando e riempiendo lo stesso slot (stessa classe) i CD tornano visibili")
+check(bool(rt.eval("UW_P8_MOVED == UW_P8_SRC and UW_P8_AFTER.bar == true and UW_P8_AFTER.cd1 == true")), "v1.11.76: in combat, dopo lo spostamento la riga di destinazione mostra barra e CD anche con la riga nascosta (%s -> %s)" % (rt.eval("UW_P8_SRC"), rt.eval("UW_P8_MOVED")))
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
