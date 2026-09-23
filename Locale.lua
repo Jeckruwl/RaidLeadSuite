@@ -205,7 +205,7 @@ L["Combat log"] = true
     L["Health"] = true
     L["Total DPS"] = true
     L["Step, sec."] = true
-    L["drag: zoom, click: reset"] = true
+    L["drag: zoom, click: reset, hover: values"] = true
 
     -- MacroBar
     L["Macrobar is disabled in Config."] = true

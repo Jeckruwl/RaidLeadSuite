@@ -3646,7 +3646,80 @@ check(bool(rt.eval("I_ITXT == 'KickerOne interrupt Lord Marrowgar with Kick (Fro
 check(bool(rt.eval("I_PSP >= 3")), "player list of the fight enumerated from GUID flags")
 check(bool(rt.eval("I_DPSMAX >= 6000")), "DPS series buckets spike over 6000 on the nuke second")
 
-# --- I.6 UI: tab presenti, liste, selezione, grafico ---
+# --- I.5b v1.11.58: il grafico e' una CURVA CONTINUA, non barrette --------
+# Il vecchio disegno tentava di tracciare una polilinea con texture ruotate:
+# Texture:SetRotation ruota il DISEGNO dentro la texture, non il rettangolo,
+# quindi su colore pieno non cambia nulla e i tratti restano orizzontali
+# ("accrocchio di barrette"). Ora: colonne che riempiono l'area + linea sopra.
+_cl_src = open("CombatLog.lua", encoding="utf-8").read()
+_cl_code = "\n".join(l for l in _cl_src.split("\n") if not l.strip().startswith("--"))
+check('SetRotation' not in _cl_code, "no rotated textures left in the drawing code (rotation never worked on a flat texture)")
+check('g.ValueAt = function' in _cl_src, "graph exposes ValueAt (interpolated value at any x, used by draw + mouse readout)")
+
+rt.execute("""
+    G = RLSuite.combatLog.graph
+    -- serie sintetica a rampa: 0 -> 10000 in 10 passi
+    SYN = {}
+    for i = 0, 10 do SYN[#SYN + 1] = { i, i * 1000 } end
+    G:SetData(SYN, {})
+    SYN_FILLS, SYN_CAPS, SYN_H, SYN_YMAX = 0, 0, 0, G._yMax
+    prevCapTop, CONT = nil, true
+    for i, t in ipairs(G._linePool) do
+        if t:IsShown() then
+            SYN_FILLS = SYN_FILLS + 1
+            local p = t._points[1] or {}
+            local top = (p[5] or 0) + (t._h or 0)
+            if prevCapTop and math.abs(top - prevCapTop) > 60 then CONT = false end
+            prevCapTop = top
+        end
+    end
+    for i, t in ipairs(G._capPool) do if t:IsShown() then SYN_CAPS = SYN_CAPS + 1 end end
+    -- altezza massima del riempimento = altezza del grafico (valore di picco)
+    local hi = 0
+    for i, t in ipairs(G._linePool) do
+        if t:IsShown() and (t._h or 0) > hi then hi = t._h end
+    end
+    SYN_H = hi
+    SYN_PLOTH = G.height - 4
+""")
+check(bool(rt.eval("SYN_FILLS > 200 and SYN_CAPS == SYN_FILLS")),
+      "curve drawn as %d columns, each with its own line cap" % rt.eval("SYN_FILLS"))
+check(bool(rt.eval("CONT == true")),
+      "adjacent columns never jump: the curve is CONTINUOUS (no more dashes)")
+check(bool(rt.eval("SYN_H >= SYN_PLOTH - 2 and SYN_YMAX == 10000")),
+      "column heights follow the values (peak = full plot height)")
+rt.execute("""
+    V1 = G:ValueAt(2.5)
+    V2 = G:ValueAt(7.5)
+    V3 = G:ValueAt(0)
+    V4 = G:ValueAt(10)
+    GRID = 0
+    for i, t in ipairs(G._gridPool) do if t:IsShown() then GRID = GRID + 1 end end
+""")
+check(rt.eval("V1") == 2500 and rt.eval("V2") == 7500, "ValueAt interpolates linearly between samples (mouse readout values)")
+check(rt.eval("V3") == 0 and rt.eval("V4") == 10000, "ValueAt clamps at the series ends")
+check(bool(rt.eval("GRID") == 3), "horizontal grid lines at 25/50/75%% of the scale")
+
+# -- il tooltip legge tempo + valore (con l'unita' del modo attivo) --------
+rt.execute("""
+    TIP_OK = false
+    if GameTooltip and G.ValueAt then
+        G.series = SYN
+        G.xMin, G.xMax, G._hoverOn = 0, 10, true
+        TOOLTIP_LINES = {}
+        local tip = GameTooltip
+        local oldAdd, oldClear = tip.AddLine, tip.ClearLines
+        tip.AddLine = function(self2, txt) TOOLTIP_LINES[#TOOLTIP_LINES + 1] = tostring(txt) return self2 end
+        tip.ClearLines = function(self2) return self2 end
+        G:GetScript("OnUpdate")(G, 0.2)
+        tip.AddLine, tip.ClearLines = oldAdd, oldClear
+        G._hoverOn = false
+        TIP_OK = (#TOOLTIP_LINES >= 1)
+    end
+""")
+check(bool(rt.eval("TIP_OK == true")), "hovering the graph opens a readout tooltip (time + value)")
+
+# --- I.6 UI: tab presenti, liste, selezione, grafico ---# --- I.6 UI: tab presenti, liste, selezione, grafico ---
 rt.execute("""
 local cl = RLSuite.combatLog
 ROSTER_MOCK = { { 'PlayerOne', 1, 1, 80, 80, 'WARRIOR' } }

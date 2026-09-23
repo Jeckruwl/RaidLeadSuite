@@ -689,19 +689,67 @@ function CL:NewGraph(parent, w, h)
     g.maxText:SetPoint("TOPRIGHT", g.axisY, "TOPLEFT", -2, -2)
     g.maxText:SetText("")
 
-    g._linePool = {}
+    g._linePool = {}          -- colonne del riempimento (area sotto la curva)
+    g._capPool = {}           -- "linea" luminosa sopra ogni colonna
+    g._gridPool = {}          -- righe di griglia orizzontali
     g._vlinePool = {}
+
+    -- Valore della serie interpolato in un punto x (usata sia dal disegno sia
+    -- dal tooltip del mouse). Le serie sono ordinate per x.
+    g.ValueAt = function(s, xv)
+        local pts = s.series
+        if not pts or #pts == 0 then return nil end
+        if xv <= (pts[1][1] or 0) then return pts[1][2] or 0 end
+        local n = #pts
+        if xv >= (pts[n][1] or 0) then return pts[n][2] or 0 end
+        local lo, hi = 1, n
+        while hi - lo > 1 do
+            local mid = math.floor((lo + hi) / 2)
+            if (pts[mid][1] or 0) <= xv then lo = mid else hi = mid end
+        end
+        local x1, v1 = pts[lo][1] or 0, pts[lo][2] or 0
+        local x2, v2 = pts[hi][1] or 0, pts[hi][2] or 0
+        if x2 <= x1 then return v2 end
+        local t = (xv - x1) / (x2 - x1)
+        return v1 + (v2 - v1) * t
+    end
+
     g:EnableMouse(true)
-    g:SetScript("OnUpdate", function(s)
-        if not s._hoverOn or not s.series or #s.series == 0 then return end
-        if not (GetCursorPosition and IsMouseButtonDown) then
-            s._showTip = false
+    -- Lettura al passaggio del mouse (come negli addon seri): tempo + valore
+    -- nel punto sotto il cursore.
+    g:SetScript("OnUpdate", function(s, elapsed)
+        if not s._hoverOn then return end
+        s._tipT = (s._tipT or 0) + (elapsed or 0)
+        if s._tipT < 0.08 then return end
+        s._tipT = 0
+        if not (GetCursorPosition and s.series and #s.series > 0 and GameTooltip) then return end
+        local scale = (s.GetEffectiveScale and s:GetEffectiveScale()) or 1
+        local mx = (select(1, GetCursorPosition()) or 0) / scale
+        local px = mx - (s:GetLeft() or 0) - 2
+        local plotW = s.width - 4
+        if px < 0 or px > plotW then
+            s._tipX = nil
             GameTooltip:Hide()
             return
         end
+        local x0, x1 = s.xMin or 0, s.xMax or 1
+        local xv = x0 + (x1 - x0) * (px / plotW)
+        local v = s:ValueAt(xv)
+        s._tipX = xv
+        local unit = (s.opts and s.opts.unit) or "DPS"
+        local total = math.floor(xv)
+        GameTooltip:SetOwner(s, "ANCHOR_CURSOR")
+        if GameTooltip.ClearLines then GameTooltip:ClearLines() end
+        GameTooltip:AddLine(string.format("%d:%02d", math.floor(total / 60), total % 60))
+        GameTooltip:AddLine(CL:ShortNum(v) .. " " .. unit, 1, 0.82, 0)
+        GameTooltip:Show()
     end)
     g:SetScript("OnEnter", function(s) s._hoverOn = true end)
-    g:SetScript("OnLeave", function(s) s._hoverOn = false; if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end end)
+    g:SetScript("OnLeave", function(s)
+        s._hoverOn = false
+        s._tipX = nil
+        if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+    end)
     g:SetScript("OnMouseDown", function(s)
         local x = select(1, GetCursorPosition()) or 0
         local scale = (s.GetEffectiveScale and s:GetEffectiveScale()) or 1
@@ -742,54 +790,128 @@ function CL:NewGraph(parent, w, h)
         s:Reload()
     end
 
+    -- ------------------------------------------------------------
+    -- DISEGNO. Prima qui si provava a tracciare una POLILINEA: ogni tratto
+    -- era una texture ruotata con Texture:SetRotation. Ma SetRotation ruota
+    -- il DISEGNO dentro la texture, non il rettangolo: su un colore pieno
+    -- (WHITE8x8) non cambia assolutamente niente, quindi tutti i tratti
+    -- restavano orizzontali -> "l'accrocchio di barrette" invece della linea.
+    -- Ora si disegna come fanno Recount/Skada: colonne verticali che
+    -- riempiono l'area sotto la curva, con una linea luminosa sul bordo
+    -- superiore. Nessuna rotazione richiesta, e la curva e' CONTINUA.
+    -- ------------------------------------------------------------
+    local COL_W = 2                     -- larghezza di una colonna (px)
+    local PADX, PADY = 2, 2
+
     g.Reload = function(s)
         for _, t in ipairs(s._linePool) do t:Hide() end
+        for _, t in ipairs(s._capPool) do t:Hide() end
+        for _, t in ipairs(s._gridPool) do t:Hide() end
         for _, t in ipairs(s._vlinePool) do t:Hide() end
+
         local x0, x1 = s.xMin or 0, s.xMax or 1
         local span = x1 - x0
         if span <= 0 then span = 1 end
+        local plotW = s.width - 2 * PADX
+        local plotH = s.height - 2 * PADY
+
+        -- massimo nel range visibile (scala Y)
         local yMax = 0
         for _, p in ipairs(s.series) do
             local x, y = p[1] or 0, p[2] or 0
             if x >= x0 and x <= x1 and y > yMax then yMax = y end
         end
+        -- ai bordi conta anche il valore interpolato (la curva puo' salire
+        -- subito dopo l'inizio del range)
+        local vA, vB = s:ValueAt(x0), s:ValueAt(x1)
+        if (vA or 0) > yMax then yMax = vA end
+        if (vB or 0) > yMax then yMax = vB end
         if yMax <= 0 then yMax = 1 end
         s.maxText:SetText(CL:ShortNum(yMax))
+        s._yMax, s._yScale = yMax, plotH / yMax
+
+        -- griglia orizzontale al 25/50/75% (100% e' il massimo)
+        local gi = 0
+        for q = 1, 3 do
+            gi = gi + 1
+            local tex = s._gridPool[gi]
+            if not tex then
+                tex = s:CreateTexture(nil, "BACKGROUND")
+                s._gridPool[gi] = tex
+            end
+            SetSolidColor(tex, 0.6, 0.6, 1, 0.12)
+            local y = (q / 4) * plotH
+            tex:ClearAllPoints()
+            tex:SetSize(plotW + PADX, 1)
+            tex:SetPoint("BOTTOMLEFT", s, "BOTTOMLEFT", PADX, PADY + y)
+            tex:Show()
+        end
+
+        -- CURVA: una colonna ogni COL_W px, dal basso fino al valore
+        local cols = math.floor(plotW / COL_W)
         local used = 0
-        local prevX, prevY
-        for _, p in ipairs(s.series) do
-            local x, y = p[1] or 0, p[2] or 0
-            if x >= x0 and x <= x1 then
-                local px = (x - x0) / span * (s.width - 4) + 2
-                local py = (y / yMax) * (s.height - 6) + 2
-                if prevX then
-                    local dx, dy = px - prevX, py - prevY
-                    local len = math.sqrt(dx * dx + dy * dy)
-                    if len > 0.5 then
-                        used = used + 1
-                        local tex = s._linePool[used]
-                        if not tex then
-                            tex = s:CreateTexture(nil, "ARTWORK")
-                            s._linePool[used] = tex
-                            -- ancoriamo le linee al grafico: rotate texture
-                        end
-                        SetSolidColor(tex, 0.2, 0.9, 0.35, 0.9)
-                        tex:ClearAllPoints()
-                        -- segmento come texture ruotata tra prev e cur
-                        local cx, cy = (prevX + px) / 2, (prevY + py) / 2
-                        tex:SetSize(len, 2)
-                        tex:SetPoint("CENTER", s, "BOTTOMLEFT", cx, cy)
-                        if tex.SetRotation then
-                            tex:SetRotation(math.atan2(dy, dx))
-                        end
-                        tex:Show()
-                        tex._segFrom, tex._segTo = { prevX, prevY }, { px, py }
-                    end
+        if cols > 0 and s.series and #s.series > 0 then
+            for i = 0, cols - 1 do
+                local xa = x0 + span * (i / cols)
+                local xb = x0 + span * ((i + 1) / cols)
+                -- valore interpolato al centro della colonna E ai due bordi:
+                -- l'inviluppo [min..max] rende la linea continua (nessun
+                -- gradino visibile, anche con serie crescenti ripide)
+                local vc = s:ValueAt((xa + xb) / 2) or 0
+                local vb2 = s:ValueAt(xb) or 0
+                local vTop = vc > vb2 and vc or vb2
+                local vBot = vc < vb2 and vc or vb2
+                local hTop = vTop * s._yScale
+                local hBot = vBot * s._yScale
+                if hTop < 1 then hTop = 1 end
+
+                used = used + 1
+                local fill = s._linePool[used]
+                if not fill then
+                    fill = s:CreateTexture(nil, "ARTWORK")
+                    s._linePool[used] = fill
                 end
-                prevX, prevY = px, py
+                SetSolidColor(fill, 0.16, 0.75, 0.32, 0.45)
+                fill:ClearAllPoints()
+                fill:SetSize(COL_W, hTop)
+                fill:SetPoint("BOTTOMLEFT", s, "BOTTOMLEFT",
+                    PADX + i * COL_W, PADY)
+                fill:Show()
+
+                -- "linea": span verticale fra i due estremi della colonna,
+                -- cosi' il bordo superiore e' la curva vera (interpolata)
+                local cap = s._capPool[used]
+                if not cap then
+                    cap = s:CreateTexture(nil, "OVERLAY")
+                    s._capPool[used] = cap
+                end
+                SetSolidColor(cap, 0.35, 1, 0.55, 0.95)
+                cap:ClearAllPoints()
+                cap:SetSize(COL_W, math.max(2, hTop - hBot))
+                cap:SetPoint("BOTTOMLEFT", s, "BOTTOMLEFT",
+                    PADX + i * COL_W, PADY + hBot)
+                cap:Show()
             end
         end
         for i = used + 1, #s._linePool do s._linePool[i]:Hide() end
+        for i = used + 1, #s._capPool do s._capPool[i]:Hide() end
+
+        -- lens verticale sotto il cursore (lettura del grafico)
+        if s._tipX and s._hoverOn then
+            local gi2 = #s._gridPool + 1
+            local tex = s._gridPool[gi2]
+            if not tex then
+                tex = s:CreateTexture(nil, "OVERLAY")
+                s._gridPool[gi2] = tex
+            end
+            SetSolidColor(tex, 1, 1, 1, 0.45)
+            local px = (s._tipX - x0) / span * plotW + PADX
+            tex:ClearAllPoints()
+            tex:SetSize(1, plotH)
+            tex:SetPoint("BOTTOMLEFT", s, "BOTTOMLEFT", px, PADY)
+            tex:Show()
+        end
+
         -- vline eventi (morti, ecc.)
         for i, vt in ipairs(s.vlines) do
             local x = vt[1] or 0
@@ -800,10 +922,10 @@ function CL:NewGraph(parent, w, h)
                     s._vlinePool[i] = tex
                 end
                 SetSolidColor(tex, 1, 0.25, 0.25, 0.65)
-                local px = (x - x0) / span * (s.width - 4) + 2
+                local px = (x - x0) / span * plotW + PADX
                 tex:ClearAllPoints()
-                tex:SetSize(2, s.height - 4)
-                tex:SetPoint("BOTTOMLEFT", s, "BOTTOMLEFT", px, 2)
+                tex:SetSize(2, plotH)
+                tex:SetPoint("BOTTOMLEFT", s, "BOTTOMLEFT", px, PADY)
                 tex:Show()
             end
         end
@@ -1346,8 +1468,9 @@ function CL:RefreshGraph()
             end
         end
     end
-    self.graphHint:SetText(label .. "(" .. L["drag: zoom, click: reset"] .. ")")
-    self.graph:SetData(series, vlines)
+    self.graphHint:SetText(label .. "(" .. L["drag: zoom, click: reset, hover: values"] .. ")")
+    local unit = (mode == "dps") and "DPS" or (mode == "health" and "HP%" or "Power%")
+    self.graph:SetData(series, vlines, { unit = unit })
 end
 
 -- Report top-5 del pannello sinistro corrente in raid chat.

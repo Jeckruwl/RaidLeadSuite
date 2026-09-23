@@ -7,7 +7,41 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.57**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.58**.
+
+## 1.11.58 — grafico del combat log: da "barrette" a CURVA DPS continua
+
+Segnalato dall'utente (screenshot del tab Graphs): "crea una barra ogni secondo
+col danno totale ... perche' non mi esce una linea continua ma sto accrocchio di
+barrette?".
+
+**Causa**: il disegno tentava una POLILINEA: ogni tratto era una texture-ruota
+con `Texture:SetRotation`. Ma SetRotation ruota il DISEGNO *dentro* la texture
+(mappa UV), non il rettangolo del widget: su un colore piatto (WHITE8x8) non
+cambia assolutamente niente, quindi ogni tratto restava una barretta
+ORIZZONTALE della lunghezza del segmento -> il "pettine" nello screenshot.
+
+**Rimedio** (come fanno Recount/Skada, nessuna rotazione richiesta):
+- la curva e' fatta di **colonne larghe 2px** che riempiono l'area sotto il
+  valore (verde tenue) con sopra il **cap luminoso** che va dal valore minimo al
+  massimo della colonna: il bordo superiore e' la curva interpolata, quindi
+  **continua** anche nei tratti ripidi;
+- `graph:ValueAt(x)` = valore interpolato linearmente in qualunque punto della
+  serie (usato dal disegno e dal tooltip);
+- **griglia** al 25/50/75%% dello scale + massimo in cima all'asse Y;
+- **lettura col mouse**: passando sul grafico compare un tooltip con
+  `m:ss` e valore nell'unita' del modo attivo (DPS / HP%% / Power%%); la linea
+  verticale bianca segue il cursore;
+- il testo d'aiuto ora dice "drag: zoom, click: reset, hover: values".
+
+Nota: la serie NON cambia: e' gia' DPS (danno del bucket diviso i secondi del
+bucket). Con "Step 1s" e' il DPS di quel secondo; il picco nell'etichetta in alto
+a sinistra (es. 18.1k) e' il massimo del range visibile.
+
+Test: **880 check** totali (9 nuovi nella 1.11.58: nessuna texture ruotata nel
+codice di disegno, ValueAt interpolato/clampato, 318 colonne con cap,
+continuita' fra colonne adiacenti, altezze proporzionali ai valori, 3 righe di
+griglia, tooltip di lettura).
 
 ## 1.11.57 — main bar: tasti aderenti, "Raid Control", larghezza fissa, ancoraggio dal Raid Frame
 
@@ -185,7 +219,7 @@ sessione, poi l'ultimo con progressione registrata.
 NON registra** (i pull finti del debug non devono sporcare la progressione vera). `MacroBar:OnBossProgressChanged` riallinea la barra quando il counter avanza (guardia di rientranza perche'
 passa da `CurrentBossInfo` -> `InferLinearKills` -> di nuovo `OnBossProgressChanged`).
 
-Test: **871 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
+Test: **880 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
 counter su Gunship e Faction Champions, precedenza del target, inferenza lineare su ICC e ToC,
 kill dal combat log con e senza debug, riallineo automatico della barra al variare del counter,
 guardia di rientranza sempre rilasciata e robustezza a un errore di riconoscimento).
