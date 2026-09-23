@@ -88,6 +88,20 @@ end
 -- detection euristica. I flask e il "Well Fed" arrivano dalle liste gia'
 -- curate in RLSuite.buffData (Core); pozioni/elisir si riconoscono dal nome
 -- della spell (client inglese) perche' i loro id cambiano fra item e rank.
+-- Consumabili riconosciuti per SPELL ID (non per nome): funzionano con
+-- qualunque client e coprono gli item il cui nome della SPELL e' diverso da
+-- quello dell'item (il caso piu' importante: "Potion of Speed" usa la spell
+-- "Speed" -> il match per nome la perdeva del tutto).
+-- Aggiungere una voce = una riga. L'id si legge nel tab "Spells" del pannello
+-- con l'opzione showSpellIds attiva, oppure nella pagina Wowhead dell'item
+-- (campo "Use:").
+local CL_CONSUM_IDS = {
+    [53908] = "potion",   -- "Speed"      -> Potion of Speed
+    [53909] = "potion",   -- "Wild Magic" -> Potion of Wild Magic
+    [53763] = "elixir",   -- "Protection" -> Elixir of Protection
+}
+CL_CONSUM_IDS = CL_CONSUM_IDS
+
 local CL_CONSUM_PATTERNS = {
     "potion", "elixir", "flask", "well fed", "feast", "rum", "firecracker",
     "kibler", "sashimi", "biscuit", "tequila", "mammoth", "shoveltusk",
@@ -966,14 +980,29 @@ function CL:AggConsumables(f)
                 bump(auras, ev[CL_E.DST], sid, sname or "Flask", "flask")
             elseif foodIds[sid] then
                 bump(auras, ev[CL_E.DST], sid, sname or "Well Fed", "food")
-            elseif self:IsConsumableName(sname) then
-                bump(auras, ev[CL_E.DST], sid, sname, "other")
+            else
+                local kid = CL_CONSUM_IDS[sid]
+                if kid then
+                    bump(auras, ev[CL_E.DST], sid, sname or "Consumable", kid)
+                elseif self:IsConsumableName(sname) then
+                    bump(auras, ev[CL_E.DST], sid, sname, "other")
+                end
             end
         elseif sub == "SPELL_CAST_SUCCESS" and self:IsRaidGroupFlag(ev[CL_E.SRCF]) then
-            if self:IsConsumableName(sname) then bump(casts, ev[CL_E.SRC], sid, sname, "potion") end
+            local kid = CL_CONSUM_IDS[sid]
+            if kid then
+                bump(casts, ev[CL_E.SRC], sid, sname or "Consumable", kid)
+            elseif self:IsConsumableName(sname) then
+                bump(casts, ev[CL_E.SRC], sid, sname, "potion")
+            end
         elseif (sub == "SPELL_HEAL" or sub == "SPELL_PERIODIC_HEAL")
-            and ev[CL_E.SRC] == ev[CL_E.DST] and self:IsConsumableName(sname) then
-            bump(auras, ev[CL_E.SRC], sid, sname, "potion")
+            and ev[CL_E.SRC] == ev[CL_E.DST] then
+            local kid = CL_CONSUM_IDS[sid]
+            if kid then
+                bump(auras, ev[CL_E.SRC], sid, sname or "Consumable", kid)
+            elseif self:IsConsumableName(sname) then
+                bump(auras, ev[CL_E.SRC], sid, sname, "potion")
+            end
         end
     end
     local cells, totals = {}, {}

@@ -7,7 +7,31 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.71**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.72**.
+
+## 1.11.72 — Passata 3: consumabili per SPELL ID
+
+Direttiva: *"implementa lo spell id per le funzioni necessarie"*.
+
+**Difetto trovato verificando gli id (non ipotizzato):** il nome della SPELL di
+un consumabile non e' il nome dell'item. `Potion of Speed` usa la spell
+**"Speed"**, `Potion of Wild Magic` usa **"Wild Magic"**: il match per nome
+("potion", "elixir") **non le contava affatto**, su qualunque client. Quindi la
+tab Consumables perdeva la pozione piu' usata del gioco.
+
+- `CL_CONSUM_IDS` = id -> categoria, con gli id **verificati** su 3.3.5:
+  53908 "Speed" (Potion of Speed), 53909 "Wild Magic" (Potion of Wild Magic),
+  53763 "Protection" (Elixir of Protection).
+- Il rilevamento per id viene PRIMA; i pattern per nome restano come fallback
+  per gli id non in tabella; flask/food restano dalle liste curate (gia' per id).
+- Un buff qualunque non viene contato (verificato: "Arcane Intellect" fuori).
+- Il dedup cast+aura continua a valere (Potion of Speed con cast e aura = 1 uso
+  per player, non 2).
+- Come aggiungere una voce: una riga in `CL_CONSUM_IDS`. L'id si legge nel tab
+  "Spells" del pannello con l'opzione `showSpellIds`, o nella pagina Wowhead
+  dell'item (campo "Use:").
+
+Test: **1025 check** totali (7 nuovi).
 
 ## 1.11.71 — Passata 2: lista boss UNICA + bersaglio principale + trash-first
 
@@ -127,7 +151,7 @@ Due problemi reali:
    il nome sotto l'icona + icona accanto al nome nella lista del tab "Spells"
    (riga con texture + testo).
 
-Test: **1018 check** totali (10 nuovi nella 1.11.71); 988 nella 1.11.68 (risoluzione icona, fallback GetSpellInfo,
+Test: **1025 check** totali (7 nuovi nella 1.11.72); 988 nella 1.11.68 (risoluzione icona, fallback GetSpellInfo,
 nessuna spell = nessuna icona, "vuote=0" per Consumables/Auras/Powers, altezza
 intestazione, icona+nome nell'header, nome al posto dell'icona se manca, icona
 nella lista Spells).

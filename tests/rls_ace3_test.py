@@ -5969,6 +5969,55 @@ check(bool(rt.eval("UW_P2_HOOK == true and UW_P2_RIGHT == true")), "v1.11.71: il
 check(bool(rt.eval("UW_P2_OVR_CUR == true")), "v1.11.71: il pull IN CORSO non si puo' riclassificare (avviso, nessuna modifica)")
 check(bool(rt.eval("UW_P2_STATUS:find('1 boss') ~= nil and UW_P2_STATUS:find('1 trash') ~= nil")), "v1.11.71: la riga di stato conta boss e trash coi flag nuovi: \"%s\"" % rt.eval("UW_P2_STATUS"))
 
+rt.execute("""
+-- =====================================================================
+-- v1.11.72: consumabili per SPELL ID (il nome della spell non basta:
+-- "Potion of Speed" usa la spell "Speed")
+-- =====================================================================
+local cl = RLSuite.combatLog
+local f = { boss = "Test", events = {}, count = 0, duration = 60, samples = { health = {}, power = {} } }
+local function ev(sub, sid, sname, src, dst, srcf, dstf)
+    local e = {}
+    e[1] = 1; e[2] = sub
+    e[3] = src or "PlayerOne"; e[4] = srcf or (1024+16+1)
+    e[5] = dst or "PlayerOne"; e[6] = dstf or (1024+16+1)
+    e[7] = sid; e[8] = sname
+    f.events[#f.events + 1] = e
+end
+-- A) potion of speed: aura con id 53908 e nome "Speed" (nessun pattern matcha)
+ev("SPELL_AURA_APPLIED", 53908, "Speed")
+-- B) wild magic: cast con id 53909 e nome "Wild Magic"
+ev("SPELL_CAST_SUCCESS", 53909, "Wild Magic")
+-- C) elisir per id: 53763 "Protection"
+ev("SPELL_AURA_APPLIED", 53763, "Protection")
+-- D) potion of speed con cast + aura: NON deve contare due volte
+ev("SPELL_CAST_SUCCESS", 53908, "Speed", "PlayerTwo")
+ev("SPELL_AURA_APPLIED", 53908, "Speed", "PlayerTwo", "PlayerTwo")
+-- E) fallback per nome: una pozione non in tabella
+ev("SPELL_AURA_APPLIED", 999999, "Runic Healing Potion")
+-- F) buff qualunque: NON e' un consumabile
+ev("SPELL_AURA_APPLIED", 12345, "Arcane Intellect")
+-- G) flask per id (dalle liste curate) come prima
+ev("SPELL_AURA_APPLIED", 53755, "Flask of the Frost Wyrm")
+local agg = cl:AggConsumables(f)
+UW_P3 = { kinds = {}, byName = {} }
+for _, c in ipairs(agg.cols) do
+    UW_P3.kinds[#UW_P3.kinds + 1] = tostring(c.name) .. "=" .. tostring(c.kind) .. "x" .. tostring(c.amt)
+    UW_P3.byName[tostring(c.name)] = { kind = c.kind, amt = c.amt }
+end
+UW_P3.list = table.concat(UW_P3.kinds, " | ")
+UW_P3.speed = UW_P3.byName["Speed"]
+UW_P3.total = agg.total and agg.total.PlayerOne
+""")
+
+
+check(bool(rt.eval("UW_P3.speed ~= nil and UW_P3.speed.kind == 'potion' and UW_P3.speed.amt == 2")), "v1.11.72: \"Speed\" (Potion of Speed, id 53908) ora viene contata come pozione: cast+aura = %r" % rt.eval("UW_P3.speed and UW_P3.speed.amt"))
+check(bool(rt.eval("UW_P3.byName['Wild Magic'] ~= nil and UW_P3.byName['Wild Magic'].kind == 'potion'")), "v1.11.72: \"Wild Magic\" (Potion of Wild Magic, id 53909) contata come pozione")
+check(bool(rt.eval("UW_P3.byName['Protection'] ~= nil and UW_P3.byName['Protection'].kind == 'elixir'")), "v1.11.72: \"Protection\" (Elixir of Protection, id 53763) contata come elisir")
+check(bool(rt.eval("UW_P3.byName['Runic Healing Potion'] ~= nil")), "v1.11.72: il riconoscimento per NOME resta come fallback per gli id non in tabella")
+check(bool(rt.eval("UW_P3.byName['Arcane Intellect'] == nil")), "v1.11.72: un buff qualunque NON viene contato come consumabile")
+check(bool(rt.eval("UW_P3.byName['Flask of the Frost Wyrm'] ~= nil and UW_P3.byName['Flask of the Frost Wyrm'].kind == 'flask'")), "v1.11.72: il flask (id dalle liste curate) continua a funzionare")
+check(bool(rt.eval("tostring(UW_P3.list):find('Speed=potion') ~= nil")), "v1.11.72: colonne della tab Consumables -> %s" % rt.eval("UW_P3.list"))
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
