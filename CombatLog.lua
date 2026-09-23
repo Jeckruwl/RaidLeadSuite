@@ -226,12 +226,19 @@ function CL:Init()
     self.graphStep = 0
     self.showGraph = true
     self.liveUpdate = false
-    self:CreateFrame()
+    -- La finestra si costruisce dentro un pcall: un errore di UI (es. un
+    -- CreateFrame che esplode in 3.3.5) NON deve impedire il caricamento
+    -- dell'addon — la cattura dei pull resta attiva anche senza pannello.
+    local ok, err = pcall(function() CL:CreateFrame() end)
+    if not ok and RLSuite.utils and RLSuite.utils.Print then
+        RLSuite.utils:Print("Log window error: " .. tostring(err))
+    end
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnRegenDisabled")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnRegenEnabled")
 end
 
 function CL:Toggle()
+    if not self.frame then return end
     if RLSuite.mainWindow and RLSuite.mainWindow.ShowTab then
         RLSuite.mainWindow:ShowTab("log")
         return
@@ -1484,14 +1491,18 @@ end
 -- scrollabili. cols = { {label=, w=, fix=, align=, kind=, ic=, tip=}, ... }
 -- rows[i] = { {t=, r=,g=,b=, frac=, barR=,barG=,barB=, tip=}, ... , name= }
 -- ==================================================================
-function CL:NewGrid(parent)
+function CL:NewGrid(parent, name)
     local g = CreateFrame("Frame", nil, parent)
     g:SetAllPoints(parent)
     g.hdr = CreateFrame("Frame", nil, g)
     g.hdr:SetPoint("TOPLEFT", g, "TOPLEFT", 4, 0)
     g.hdr:SetPoint("TOPRIGHT", g, "TOPRIGHT", -26, 0)
     g.hdr:SetHeight(24)
-    g.scroll = CreateFrame("ScrollFrame", nil, g, "UIPanelScrollFrameTemplate")
+    -- NOME OBBLIGATORIO: in 3.3.5 ScrollFrame_OnLoad fa
+    -- self:GetName().."ScrollBar", quindi uno ScrollFrame SENZA nome con
+    -- UIPanelScrollFrameTemplate va in errore ("attempt to concatenate a nil
+    -- value", UIPanelTemplates.lua:255) e blocca il load dell'addon.
+    g.scroll = CreateFrame("ScrollFrame", name, g, "UIPanelScrollFrameTemplate")
     g.scroll:SetPoint("TOPLEFT", g, "TOPLEFT", 4, -24)
     g.scroll:SetPoint("BOTTOMRIGHT", g, "BOTTOMRIGHT", -26, 4)
     g.content = CreateFrame("Frame", nil, g.scroll)
@@ -2160,7 +2171,7 @@ function CL:CreateFrame()
     self.gridPane:SetPoint("TOPLEFT", f, "TOPLEFT", CL_PAD, CL_CONTENT_Y)
     self.gridPane:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -CL_PAD, CL_FOOTER_H)
     RLSuite.utils:SkinBox(self.gridPane)
-    self.grid = self:NewGrid(self.gridPane)
+    self.grid = self:NewGrid(self.gridPane, "RLSuiteCombatLogGrid")
     self.grid.hint = self.gridPane:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     self.grid.hint:SetPoint("BOTTOMLEFT", self.gridPane, "BOTTOMLEFT", 6, 4)
     self.grid.hint:SetTextColor(0.8, 0.8, 0.8)
@@ -2235,7 +2246,7 @@ function CL:CreateFrame()
     self.deathDetailBox:SetPoint("TOPLEFT", self.deathPane, "TOPLEFT", 180, -18)
     self.deathDetailBox:SetPoint("BOTTOMRIGHT", self.deathPane, "BOTTOMRIGHT", 0, 0)
     RLSuite.utils:SkinBox(self.deathDetailBox)
-    self.deathGrid = self:NewGrid(self.deathDetailBox)
+    self.deathGrid = self:NewGrid(self.deathDetailBox, "RLSuiteCombatLogDeathGrid")
     self.deathGrid.hint = self.deathDetailBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     self.deathGrid.hint:SetPoint("BOTTOMLEFT", self.deathDetailBox, "BOTTOMLEFT", 6, 4)
     self.deathGrid.hint:SetTextColor(0.8, 0.8, 0.8)
@@ -2442,6 +2453,7 @@ end
 
 function CL:RefreshUI()
     if not self.frame then return end
+    if not (self.titleText and self.gridPane) then return end
     self:RefreshHeader()
     self:EnsureLiveTicker()
     self:RefreshLists()

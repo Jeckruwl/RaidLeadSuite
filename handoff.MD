@@ -7,7 +7,38 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.63**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.64**.
+
+## 1.11.64 — fix crash: ScrollFrame senza nome (pannello Log, v1.11.63)
+
+Errore segnalato in game:
+
+```
+..\FrameXML\UIPanelTemplates.lua line 255: attempt to concatenate a nil value
+   ScrollFrame_OnLoad() <- CreateFrame()
+   RaidLeadSuite\CombatLog.lua:1494: NewGrid() <- 2163: CreateFrame() <- 229: Init()
+```
+
+Causa: in 3.3.5 `ScrollFrame_OnLoad` fa `self:GetName() .. "ScrollBar"`, quindi uno
+`CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")` va in
+errore. Le due griglie nuove (tabella principale + recap dei morti) erano create
+senza nome -> **il load dell'addon si interrompeva** (Count: 2 = i due NewGrid).
+
+Fix:
+- `CL:NewGrid(parent, name)` ora PRETENDE il nome globale; le griglie sono
+  `RLSuiteCombatLogGrid` e `RLSuiteCombatLogDeathGrid` (gli ScrollFrame storici
+  Left/Right/Deaths erano gia' nominati);
+- `CL:Init` costruisce la finestra dentro un `pcall`: un errore di UI non
+  blocca piu' il caricamento dell'addon (la cattura dei pull resta attiva e
+  l'errore viene stampato in chat), + guardie in `Toggle`/`RefreshUI`;
+- audit di tutto l'addon: nessun altro ScrollFrame/DropDownMenu/FauxScrollFrame
+  creato senza nome;
+- **harness**: il mock ora riproduce il crash reale (errore se uno ScrollFrame
+  con template non ha nome) -> 5 check nuovi: nomi delle griglie, barre del
+  template, nominati anche gli storici, harness che rifiuta il caso, scan di
+  tutti i file per `CreateFrame("ScrollFrame", nil`.
+
+Test: **957 check** totali.
 
 ## 1.11.63 — pannello Log rifatto: layout e viste stile UwU Logs
 
@@ -96,7 +127,7 @@ non cambia MAI dimensione: la y di una barra dipende solo dal suo gruppo.
 - accendere/spegnere il tasto "Raid Buffs" non muove nulla (era gia' cosi'):
   ora vale anche per il passaggio roster vuoto <-> roster pieno.
 
-Test: **952 check** totali (45 nuovi nella 1.11.63): altezza costante con raid
+Test: **957 check** totali (5 nuovi nella 1.11.64): altezza costante con raid
 vuoto/1 player/pieno, G6 in fondo anche a raid vuoto, y uguali fra roster pieno
 e quasi vuoto, banda fra gruppi costante, icone del buff check visibili con G1
 vuoto e alla stessa y, celle della matrice allineate alla riga del gruppo,

@@ -489,6 +489,13 @@ function methods:SetHighlightTexCoord(...) return self end
 -- Synthesize the child regions that XML templates would normally create.
 local _origCreateFrame = CreateFrame
 local function _templateChildren(o, name, template)
+    -- 3.3.5: ScrollFrame_OnLoad fa self:GetName().."ScrollBar" -> con un
+    -- ScrollFrame SENZA nome il client va in errore (UIPanelTemplates.lua:255)
+    -- e il load dell'addon si blocca. L'harness lo riproduce: cosi' il bug
+    -- non puo' passare inosservato come e' successo in v1.11.63.
+    if template == "UIPanelScrollFrameTemplate" and not name then
+        error("attempt to concatenate a nil value (UIPanelTemplates.lua:255: ScrollFrame_OnLoad)", 2)
+    end
     if not name then return end
     if template == "UIDropDownMenuTemplate" then
         local suffixes = {"Left", "Middle", "Right", "Button", "Text", "Icon", "NormalTexture", "HighlightTexture", "DisabledTexture", "List", "Menu"}
@@ -5352,6 +5359,43 @@ check(bool(rt.eval("UW_LAYOUT.title_anchor == 'TOPLEFT' and UW_LAYOUT.dd_pt == '
 check(bool(rt.eval("UW_LAYOUT.stepn == 6 and UW_LAYOUT.steps[1] == 'Avg whole fight' and UW_LAYOUT.steps[6] == 'Avg every 10 seconds'")), "v1.11.63 layout: discretizzazioni del grafico identiche al terzo screen (%r voci)" % rt.eval("UW_LAYOUT.stepn"))
 check(bool(rt.eval("UW_LAYOUT.tabs[1] == 'damage' and UW_LAYOUT.tabs[2] == 'targets' and UW_LAYOUT.tabs[3] == 'consumables' and UW_LAYOUT.tabs[4] == 'auras' and UW_LAYOUT.tabs[5] == 'deaths' and UW_LAYOUT.tabs[6] == 'powers'")), "v1.11.63 layout: tab group nell'ordine di UwU (Damage/Targets/Consumables/Auras/Deaths/Powers) e poi gli storici")
 check(bool(rt.eval("UW_LAYOUT.deaths_left == true and UW_LAYOUT.deaths_right == true")), "v1.11.63 layout: tab Deaths = lista dei morti a sinistra + tabella di dettaglio a destra")
+
+rt.execute("""
+-- ---- v1.11.64: regressione del crash ScrollFrame senza nome ----
+UW_NAMES = {
+    grid = (_G["RLSuiteCombatLogGrid"] ~= nil),
+    dgrid = (_G["RLSuiteCombatLogDeathGrid"] ~= nil),
+    left = (_G["RLSuiteCombatLogLeft"] ~= nil),
+    right = (_G["RLSuiteCombatLogRight"] ~= nil),
+    deaths = (_G["RLSuiteCombatLogDeaths"] ~= nil),
+    gridbar = (_G["RLSuiteCombatLogGridScrollBar"] ~= nil),
+    dgridbar = (_G["RLSuiteCombatLogDeathGridScrollBar"] ~= nil),
+    gridparent = (RLSuite.combatLog.grid and RLSuite.combatLog.grid.scroll._parent ~= nil),
+}
+-- l'harness ora RIFIUTA uno ScrollFrame senza nome (crash reale del client)
+UW_STRICT = false
+local ok = pcall(function()
+    CreateFrame("ScrollFrame", nil, UIParent, "UIPanelScrollFrameTemplate")
+end)
+UW_STRICT = (ok == false)
+""")
+
+
+check(bool(rt.eval("UW_NAMES.grid == true and UW_NAMES.dgrid == true")), "v1.11.64: gli ScrollFrame delle griglie hanno un NOME globale (rlSuiteCombatLogGrid / ...DeathGrid)")
+check(bool(rt.eval("UW_NAMES.gridbar == true and UW_NAMES.dgridbar == true")), "v1.11.64: il template UIPanelScrollFrameTemplate trova le sue barre (<nome>ScrollBar)")
+check(bool(rt.eval("UW_NAMES.left == true and UW_NAMES.right == true and UW_NAMES.deaths == true")), "v1.11.64: anche gli ScrollFrame storici sono nominati")
+check(bool(rt.eval("UW_STRICT == true")), "v1.11.64: l'harness riproduce il crash del client (ScrollFrame senza nome = errore), cosi' non ricapita")
+_uw_scroll = ["CombatLog.lua", "Config.lua", "GroupMaking.lua", "LootManager.lua", "MSManager.lua", "RaidProfile.lua", "RaidFrame.lua", "MacroBar.lua", "Core.lua", "Utils.lua"]
+UW_BADNAME = []
+for _f in _uw_scroll:
+    try:
+        _t = open(_f, encoding="utf-8").read()
+    except Exception:
+        continue
+    for _line in _t.split("\n"):
+        if 'CreateFrame("ScrollFrame", nil' in _line:
+            UW_BADNAME.append(_f)
+check(not UW_BADNAME, "v1.11.64: nessuno ScrollFrame senza nome in tutto l'addon (%s)" % (UW_BADNAME or "ok"))
 
 print()
 if fails:
