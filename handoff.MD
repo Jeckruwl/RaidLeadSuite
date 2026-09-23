@@ -7,7 +7,34 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.79**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.80**.
+
+## 1.11.80 — Diagnostica INSTALLAZIONE (`/rls diag`) + versione vera
+
+Indizio dal campo: l'addon in chat diceva **1.11.52** mentre nel client girava
+l'ultima build. Motivo: la versione era cercata con un NOME FISSO
+(`GetAddOnMetadata("RaidLeadSuite", "Version")`), quindi con una cartella
+storica `RLSuite` in giro - o con un `.toc` vecchio rimasto nella copia del
+client - la stampa riportava la versione della copia SBAGLIATA.
+
+Rimedio:
+
+* `RLSuite:RefreshVersionFromFolder()` legge la versione dal .toc della cartella
+  **davvero caricata** (`baseName` dall'ADDON_LOADED); la stampa all'avvio ora
+  include anche il nome cartella: `v1.11.80 loaded (RLSuite)`.
+* `RLSuite:AddonCopiesInfo()` / `AddonCopiesWarning()`: elenca le copie trovate
+  in `Interface\\AddOns` (per i nomi `RaidLeadSuite` e `RLSuite`) con versione
+  e stato caricata/no, e **avvisa in chat** se ce n'e' piu' di una. Due copie
+  dell'addon insieme registrano gli stessi eventi e creano frame con gli stessi
+  nomi: e' il primo sospetto quando "una cosa non funziona ma il codice e'
+  giusto".
+* **`/rls diag`** (alias `/rls version`): stampa cartella caricata, versione in
+  uso, tutte le copie trovate e l'avviso. E' il comando da chiedere per primo
+  a un tester.
+
+Test: **1077 check** (4 nuovi): versione presa dalla cartella caricata (non dal
+nome fisso), elenco copie con versione/stato, avviso che nomina la copia
+vecchia e dice quale e' caricata, nessun avviso con una sola copia.
 
 ## 1.11.79 — Drag: tracce in chat + pannello Raid Group sul poller
 

@@ -6895,6 +6895,59 @@ check(bool(rt.eval("UW_P12_PANEL_POLLER.exists == true and UW_P12_PANEL_POLLER.m
 check(bool(rt.eval("UW_P13_D1_START == true and UW_P13_D1.at11 ~= '?' and UW_P13_D1.at1_free == true and UW_P13_D1.bar11 ~= '?' and UW_P13_D1.clean == true")), "v1.11.79: pannello Raid Group - drag+drop SENZA la macchina drag del client (%s -> barra 11)" % rt.eval("UW_P13_D1.at11"))
 check(bool(rt.eval("UW_P13_D2_START == true and UW_P13_D2.at3 == UW_PLAYER and UW_P13_D2.at11 ~= 'nil' and UW_P13_D2.bar3 == UW_PLAYER and UW_P13_D2.bar11 == UW_P13_D2.at11")), "v1.11.79: pannello Raid Group - un player GIA' spostato si sposta ANCORA e su barra piena SCAMBIA (%s -> barra 3, barra 11 = %s)" % (rt.eval("UW_P13_D2.at3"), rt.eval("UW_P13_D2.at11")))
 check(bool(rt.eval("UW_P13_EMPTY == true")), "v1.11.79: pannello Raid Group - pressione su una barra vuota = nessun drag (barra 26 vuota=bar26=%s)" % rt.eval("GM.wlGroupSlots[26].playerName"))
+rt.execute("""
+-- =====================================================================
+-- v1.11.80: la versione mostrata deve venire dalla cartella DAVVERO
+-- caricata, e le copie multiple dell'addon devono essere DENUNCIATE.
+-- (Caso reale: l'addon in chat diceva 1.11.52 mentre girava l'ultima
+-- build -> la versione era cercata nella cartella fissa "RaidLeadSuite".)
+-- =====================================================================
+local SAVED_GAM, SAVED_IAL = GetAddOnMetadata, IsAddOnLoaded
+local SAVED_FOLDER, SAVED_VER = RLSuite.addonFolder, RLSuite.version
+
+GetAddOnMetadata = function(name, field)
+    if name == "RaidLeadSuite" then return "1.11.52" end   -- copia vecchia rimasta
+    if name == "RLSuite" then return "1.11.80" end          -- cartella vera
+    return nil
+end
+IsAddOnLoaded = function(name) return name == "RLSuite" end
+
+RLSuite.baseName = "RLSuite"
+RLSuite.addonFolder = "RLSuite"
+RLSuite:RefreshVersionFromFolder()
+UW_P14_VERSION = RLSuite.version
+
+local info = RLSuite:AddonCopiesInfo()
+UW_P14_COPIES = { n = #info, a = info[1] and (info[1].name .. "/" .. tostring(info[1].version) .. "/" .. tostring(info[1].loaded)) or "?",
+                  b = info[2] and (info[2].name .. "/" .. tostring(info[2].version) .. "/" .. tostring(info[2].loaded)) or "?" }
+local warn = RLSuite:AddonCopiesWarning()
+UW_P14_WARN = { has = (warn ~= nil), n = warn and #warn or 0,
+                mentionsOld = false, mentionsNew = false }
+if warn then
+    local all = table.concat(warn, " | ")
+    UW_P14_WARN.mentionsOld = (all:find("1.11.52", 1, true) ~= nil)
+    UW_P14_WARN.mentionsNew = (all:find("CARICATA", 1, true) ~= nil)
+end
+
+-- Una sola copia: nessun avviso.
+GetAddOnMetadata = function(name, field)
+    if name == "RLSuite" then return "1.11.80" end
+    return nil
+end
+UW_P14_SINGLE_WARN = (RLSuite:AddonCopiesWarning() == nil)
+UW_P14_SINGLE_N = #RLSuite:AddonCopiesInfo()
+
+GetAddOnMetadata, IsAddOnLoaded = SAVED_GAM, SAVED_IAL
+RLSuite.baseName = nil
+RLSuite.addonFolder = SAVED_FOLDER
+RLSuite.version = SAVED_VER
+""")
+
+
+check(bool(rt.eval("UW_P14_VERSION == '1.11.80'")), "v1.11.80: la versione viene letta dal .toc della cartella caricata (%s), non da un nome fisso" % rt.eval("UW_P14_VERSION"))
+check(bool(rt.eval("UW_P14_COPIES.n == 2 and UW_P14_COPIES.a == 'RaidLeadSuite/1.11.52/false' and UW_P14_COPIES.b == 'RLSuite/1.11.80/true'")), "v1.11.80: con DUE copie installate le elenca entrambe con versione e stato (%s, %s)" % (rt.eval("UW_P14_COPIES.a"), rt.eval("UW_P14_COPIES.b")))
+check(bool(rt.eval("UW_P14_WARN.has == true and UW_P14_WARN.n >= 3 and UW_P14_WARN.mentionsOld == true and UW_P14_WARN.mentionsNew == true")), "v1.11.80: l'avviso nomina la copia vecchia (1.11.52) e dice quale e' CARICATA")
+check(bool(rt.eval("UW_P14_SINGLE_WARN == true and UW_P14_SINGLE_N == 1")), "v1.11.80: con UNA sola copia nessun avviso (una voce in elenco)")
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

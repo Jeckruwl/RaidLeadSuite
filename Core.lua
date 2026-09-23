@@ -7,13 +7,63 @@ RLSuite = RLSuite or {}
 -- nel codice, rimasta indietro (1.11.48 mentre il .toc era 1.11.68): i tester
 -- avrebbero riportato la versione sbagliata e ogni segnalazione sarebbe stata
 -- inutile. La costante qui sotto e' solo il fallback se la metadata non c'e'.
-local function TocVersion()
-    if not GetAddOnMetadata then return nil end
-    local ok, v = pcall(GetAddOnMetadata, "RaidLeadSuite", "Version")
+-- Nomi con cui l'addon puo' trovarsi installato: il canonico e lo storico.
+-- Serve perche' GetAddOnMetadata cerca una CARTELLA: se il nome e' fisso e nel
+-- client c'e' una copia vecchia con l'altro nome, la versione stampata e'
+-- quella della copia sbagliata (e' successo: "l'addon dice 1.11.52" mentre
+-- girava l'ultima).
+RLSuite.addonNames = { "RaidLeadSuite", "RLSuite" }
+
+local function TocVersion(name)
+    if not GetAddOnMetadata or not name then return nil end
+    local ok, v = pcall(GetAddOnMetadata, name, "Version")
     if ok and type(v) == "string" and v ~= "" then return v end
     return nil
 end
-RLSuite.version = TocVersion() or "1.11.79"
+
+-- Versione letta dal .toc della cartella DAVVERO caricata (baseName arriva
+-- dall'ADDON_LOADED). Chiamata di nuovo a ogni OnInitialize.
+function RLSuite:RefreshVersionFromFolder()
+    local folder = self.baseName or self.addonFolder
+    local v = TocVersion(folder)
+    if v then self.version = v end
+    return self.version
+end
+
+-- Copie dell'addon presenti in Interface/AddOns: per ogni nome candidato dice
+-- se la cartella esiste (metadata) e se e' caricata. Due copie insieme sono
+-- il primo sospetto quando "una cosa non funziona ma il codice e' giusto":
+-- l'altra copia registra gli stessi eventi e crea frame con gli stessi nomi.
+function RLSuite:AddonCopiesInfo()
+    local out = {}
+    for _, name in ipairs(self.addonNames or { "RaidLeadSuite" }) do
+        local ver = TocVersion(name)
+        local loaded = false
+        if IsAddOnLoaded then
+            local ok, l = pcall(IsAddOnLoaded, name)
+            if ok then loaded = l and true or false end
+        end
+        if ver or loaded then
+            out[#out + 1] = { name = name, version = ver, loaded = loaded }
+        end
+    end
+    return out
+end
+
+-- Righe di avviso se in AddOns c'e' piu' di una copia dell'addon.
+function RLSuite:AddonCopiesWarning()
+    local info = self:AddonCopiesInfo()
+    if #info <= 1 then return nil end
+    local lines = { "Piu' di una copia dell'addon in Interface\\AddOns:" }
+    for _, c in ipairs(info) do
+        lines[#lines + 1] = string.format("  %s  v%s  %s",
+            c.name, tostring(c.version or "?"), c.loaded and "CARICATA" or "presente ma non caricata")
+    end
+    lines[#lines + 1] = "Tienine UNA sola (quella aggiornata) e cancella l'altra: due copie insieme danno gesti imprevedibili."
+    return lines
+end
+
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.80"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -209,11 +259,17 @@ function RLSuite:OnInitialize()
     -- Folder name is the addon name. Canonical: RaidLeadSuite (RLSuite kept
     -- for backward compatibility). AceAddon stores it on baseName.
     self.addonFolder = self.baseName or "RaidLeadSuite"
+    self:RefreshVersionFromFolder()
 
     self:RegisterChatCommand("rls", "ChatCommand")
     self:RegisterChatCommand("rlsuite", "ChatCommand")
 
-    self.utils:Print(string.format(L["v%s loaded. Type /rls to open."], RLSuite.version))
+    self.utils:Print(string.format(L["v%s loaded (%s). Type /rls to open."],
+        RLSuite.version, tostring(self.addonFolder)))
+    local warn = self:AddonCopiesWarning()
+    if warn then
+        for _, line in ipairs(warn) do self.utils:Print(line) end
+    end
 end
 
 function RLSuite:OnEnable()
@@ -1071,6 +1127,7 @@ function RLSuite:PrintHelp()
     p(L["Available commands:"])
     p(L["  /rls              Tab bar"])
     p(L["  /rls help         This list"])
+    p(L["  /rls diag         Install diagnostic (folder, version, duplicate copies)"])
     p(L["  /rls group        Groupmaking tab"])
     p(L["  /rls inviteengine InviteEngine panel (whisper + auto-invite)"])
     p(L["  /rls whisplist    InviteEngine panel (alias)"])
@@ -1132,6 +1189,8 @@ function RLSuite:ChatCommand(input)
         else
             self.utils:Print(L["Raid frame not initialized yet."])
         end
+    elseif msg == "diag" or msg == "version" then
+        self:PrintAddonDiag()
     elseif msg == "config" then
         if self.config then self.config:Toggle() end
     elseif msg == "" then
@@ -1139,6 +1198,32 @@ function RLSuite:ChatCommand(input)
     else
         self.utils:Print(L["Unknown command. Type /rls help for the list."])
         self:PrintHelp()
+    end
+end
+
+-- /rls diag — diagnostica INSTALLAZIONE: quale cartella e' caricata, che
+-- versione dice il suo .toc, e quali altre copie dell'addon esistono in
+-- Interface/AddOns. E' il primo comando da chiedere quando "una cosa non
+-- funziona ma il codice e' giusto".
+function RLSuite:PrintAddonDiag()
+    local p = function(t) self.utils:Print(t) end
+    p("RLSuite - diagnostica installazione")
+    p(string.format("  cartella caricata: %s", tostring(self.addonFolder or self.baseName or "?")))
+    p(string.format("  versione in uso:   %s", tostring(self.version or "?")))
+    local info = self:AddonCopiesInfo()
+    if #info == 0 then
+        p("  copie trovate:     nessuna metadata leggibile (GetAddOnMetadata assente)")
+    else
+        p("  copie trovate in Interface\\AddOns:")
+        for _, c in ipairs(info) do
+            p(string.format("    %s  v%s  %s", c.name, tostring(c.version or "?"),
+                c.loaded and "CARICATA" or "presente ma NON caricata"))
+        end
+    end
+    local warn = self:AddonCopiesWarning()
+    if warn then
+        for i = 2, #warn - 1 do p("  " .. warn[i]:gsub("^%s+", "")) end
+        p("  ATTENZIONE: " .. warn[#warn])
     end
 end
 
