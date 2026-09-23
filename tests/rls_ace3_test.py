@@ -3533,6 +3533,10 @@ print("== Scenario I: Combat Log (parser 3.3.5, segmentazione pull, store, aggre
 
 # --- I.1 wiring: tab, finestra, defaults ---
 check(bool(rt.eval("RLSuite.combatLog ~= nil and RLSuite.combatLog.frame ~= nil")), "combat log module and window exist")
+_toc_ver = open("RaidLeadSuite.toc", encoding="utf-8").read().split("## Version:")[1].split("\n")[0].strip()
+_ver = rt.eval("RLSuite.version")
+check(_ver == _toc_ver, "v1.11.69: la versione mostrata in chat coincide col .toc (%r vs %r) — un tester deve poter dire quale build ha" % (_ver, _toc_ver))
+check("GetAddOnMetadata" in open("Core.lua", encoding="utf-8").read(), "v1.11.69: la versione e' letta dal .toc (niente piu' costanti che restano indietro)")
 check(rt.eval("RLSuite.combatLog._initError") is None, "v1.11.66: la finestra del Log si e' costruita SENZA errori (nessun errore ingoiato dal pcall): %r" % rt.eval("RLSuite.combatLog._initError"))
 check(bool(rt.eval("RLSuite.combatLog.gridPane ~= nil and RLSuite.combatLog.deathPane ~= nil and RLSuite.combatLog.tabGroup ~= nil")), "v1.11.66: tutti i pannelli del Log esistono (griglia, morti, tab group)")
 check(bool(rt.eval("RLSuite.mainWindow:PaneForTab('log') == RLSuite.combatLog.frame")), "main window 'log' tab pane is the combat log window")

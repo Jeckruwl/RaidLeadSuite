@@ -3,7 +3,17 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.11.48"
+-- Versione: letta dal .toc (UNICA fonte di verita'). Prima era una costante
+-- nel codice, rimasta indietro (1.11.48 mentre il .toc era 1.11.68): i tester
+-- avrebbero riportato la versione sbagliata e ogni segnalazione sarebbe stata
+-- inutile. La costante qui sotto e' solo il fallback se la metadata non c'e'.
+local function TocVersion()
+    if not GetAddOnMetadata then return nil end
+    local ok, v = pcall(GetAddOnMetadata, "RaidLeadSuite", "Version")
+    if ok and type(v) == "string" and v ~= "" then return v end
+    return nil
+end
+RLSuite.version = TocVersion() or "1.11.69"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
