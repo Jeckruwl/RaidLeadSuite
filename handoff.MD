@@ -7,7 +7,39 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.78**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.79**.
+
+## 1.11.79 — Drag: tracce in chat + pannello Raid Group sul poller
+
+Report dopo la 1.11.78: *"non mi fa ancora spostare piu' volte"*. La causa NON
+e' riproducibile in laboratorio (la simulazione fedele del gesto passa anche
+con gli handler di riga spenti), quindi questa release fa due cose:
+
+1. **Il gesto diventa DIAGNOSTICABILE in game.** In debug mode OGNI gesto
+   lascia una riga in chat (via `rfDbg`/`wlDbg`):
+   - HUD, Shift+sinistra: `RF shift+left: barra 8 (Onyxia)` /
+     `RF shift+left: barra 8 VUOTA (nessun player sulla riga)` /
+     `RF shift+left: cursore sull'HUD ma NESSUNA barra sotto (x,y)`;
+   - rilascio: `RF drag: rilascio sullo slot 12` /
+     `RF drag: rilascio senza bersaglio (annullo)`;
+   - rifiuti: `RF move(debug): slot N vuoto, niente da spostare`.
+   Cosi' "non si muove" non e' piu' muto: o manca la pressione, o la barra
+   sotto il cursore non ha un player, o il rilascio non trova il bersaglio.
+2. **Pannello Raid Group sullo stesso poller dell'HUD**
+   (`GM:_InitWlDragPoller`): prima il suo drag era affidato in toto al
+   drag&drop del CLIENT (`RegisterForDrag` + `OnDragStart/OnDragStop`), la
+   stessa macchina che in 3.3.5 digerisce pressioni e rilasci e che ci ha
+   mangiato i click per 4 release. Ora il gesto (pressione -> barra sotto il
+   cursore -> rilascio) e' letto dall'addon; gli handler del client restano
+   come rete (`_wlDragSource` e' condiviso e chi arriva primo consuma, quindi
+   non c'e' mai un doppio spostamento). Traccia: `RG drag: barra 11 (Onyxia)`,
+   `RG drag: rilascio -> barra 3`, `RG drag: barra 11 VUOTA`.
+
+Test: **1073 check** (6 nuovi): tracciato coerente su barra piena/vuota,
+poller del pannello presente e a mouse spento, drag+drop del pannello SENZA la
+macchina del client (spostamento su slot vuoto e SCAMBIO su slot pieno),
+secondo trascinamento consecutivo dello stesso player, pressione su barra
+vuota = nessun drag.
 
 ## 1.11.78 — Il drag giocatore non dipende piu' da chi riceve gli eventi
 

@@ -13,7 +13,7 @@ local function TocVersion()
     if ok and type(v) == "string" and v ~= "" then return v end
     return nil
 end
-RLSuite.version = TocVersion() or "1.11.78"
+RLSuite.version = TocVersion() or "1.11.79"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 

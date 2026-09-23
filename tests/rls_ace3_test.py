@@ -6698,6 +6698,203 @@ check(bool(rt.eval("UW_P11_START1 == true and UW_P11_PLANES > 20 and UW_P11_D1.a
 check(bool(rt.eval("UW_P11_START2 == true and UW_P11_D2.at3 ~= '?' and UW_P11_D2.at8_free == true and UW_P11_D2.row3 ~= '?' and UW_P11_D2.clean == true")), "v1.11.78: un player GIA' spostato si sposta ANCORA, anche con gli handler spenti (%s -> slot 3)" % rt.eval("UW_P11_D2.at3"))
 check(bool(rt.eval("UW_P11_LATE_NODRAG == true and UW_P11_LATE_START == true")), "v1.11.78: se lo shift arriva DOPO la pressione il drag parte lo stesso")
 check(bool(rt.eval("UW_P11_OUT.still3 ~= '?' and UW_P11_OUT.clean == true and UW_P11_OUT.planesOff == true")), "v1.11.78: rilascio fuori dalle barre = annullo (nessuno spostamento, stato e piani puliti)")
+rt.execute("""
+-- =====================================================================
+-- v1.11.79: DIAGNOSTICA del drag (HUD + pannello Raid Group).
+-- Il press viene tracciato SEMPRE (in debug mode): se un gesto non fa
+-- niente, la chat dice se la barra era piena, vuota o se il cursore non
+-- era su una barra. Qui si verifica che il tracciato sia coerente e che
+-- il pannello Raid Group si muova con il SUO poller, senza la macchina
+-- drag del client (RegisterForDrag + OnDragStart/Stop).
+-- =====================================================================
+local RF = RLSuite.raidFrame
+local GM = RLSuite.groupmaking
+local SAVED_IMBD, SAVED_GCP = IsMouseButtonDown, GetCursorPosition
+local SAVED_ISD = IsShiftKeyDown
+IsShiftKeyDown = function() return true end
+local DOWN = false
+IsMouseButtonDown = function(b) return DOWN and b == "LeftButton" end
+local CUR_X, CUR_Y = 0, 0
+GetCursorPosition = function() return CUR_X, CUR_Y end
+
+-- ---------------------------------------------------------------- HUD
+RLSuite:ResetDebugRaid()          -- solo il player
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+RLSuite:SetContextPhase("infight")
+RF:Rebuild()
+
+local ROW_W, ROW_H = 120, 14
+local function setRect(f, x0, x1, y0, y1)
+    f.GetLeft = function() return x0 end
+    f.GetRight = function() return x1 end
+    f.GetBottom = function() return y0 end
+    f.GetTop = function() return y1 end
+end
+local function hudRect(i)
+    local col = (i - 1) % 5
+    local rw = math.floor((i - 1) / 5)
+    local x0 = 100 + col * 130
+    local y1 = 600 - rw * 20
+    return x0, x0 + ROW_W, y1 - ROW_H, y1
+end
+for i, sl in ipairs(RF.slots) do
+    local x0, x1, y0, y1 = hudRect(i)
+    setRect(sl, x0, x1, y0, y1)
+    if sl.dropPlane then setRect(sl.dropPlane, x0, x1, y0, y1) end
+    if sl.secTarget then setRect(sl.secTarget, x0, x1, y0, y1) end
+end
+RF.frame.GetLeft = function() return 0 end
+RF.frame.GetRight = function() return 1000 end
+RF.frame.GetBottom = function() return 0 end
+RF.frame.GetTop = function() return 1000 end
+
+local function hudTick()
+    if RF._dragPoller and RF._dragPoller._scripts and RF._dragPoller._scripts.OnUpdate then
+        RF._dragPoller._scripts.OnUpdate(RF._dragPoller, 0.05)
+    end
+end
+
+-- pressione su una barra PIENA (slot 1: il player)
+local function hudCenter(i)
+    local x0, x1, y0, y1 = hudRect(i)
+    return (x0 + x1) / 2, (y0 + y1) / 2
+end
+CUR_X, CUR_Y = hudCenter(1)
+DOWN = true
+hudTick()
+UW_P12_FULL = {
+    press = (RF._dragPressSlot == RF.slots[1]),
+    started = (RF._rfDragSource == RF.slots[1]),
+    over = RF:IsCursorOverFrame(),
+    txt = RF:CursorText(),
+}
+DOWN = false
+hudTick()
+
+-- pressione su una barra VUOTA (slot 5): nessun drag, ma il tracciato c'e'
+CUR_X, CUR_Y = hudCenter(5)
+DOWN = true
+hudTick()
+UW_P12_EMPTY = {
+    press = (RF._dragPressSlot == nil),
+    started = (RF._rfDragSource == nil),
+}
+DOWN = false
+hudTick()
+RF.frame.GetLeft, RF.frame.GetRight, RF.frame.GetBottom, RF.frame.GetTop = nil, nil, nil, nil
+for i, sl in ipairs(RF.slots) do
+    sl.GetLeft, sl.GetRight, sl.GetBottom, sl.GetTop = nil, nil, nil, nil
+    if sl.dropPlane then sl.dropPlane.GetLeft, sl.dropPlane.GetRight, sl.dropPlane.GetBottom, sl.dropPlane.GetTop = nil, nil, nil, nil end
+    if sl.secTarget then sl.secTarget.GetLeft, sl.secTarget.GetRight, sl.secTarget.GetBottom, sl.secTarget.GetTop = nil, nil, nil, nil end
+end
+
+-- ------------------------------------------------- PANNELLO RAID GROUP
+RLSuite:ResetDebugRaid()
+for i = 1, 6 do RLSuite:DebugInviteAccept("Mv" .. i, "WARRIOR") end
+GM:UpdateWLGroups()
+
+UW_P12_PANEL_POLLER = {
+    exists = (GM._wlDragPoller ~= nil),
+    mouseOff = (GM._wlDragPoller and GM._wlDragPoller._enabledMouse == false),
+}
+
+local function barRect(i)
+    local col = math.floor((i - 1) / 5)
+    local row = (i - 1) % 5
+    local x0 = 200 + col * 60
+    local y1 = 400 - row * 20
+    return x0, x0 + 50, y1 - 14, y1
+end
+for i, bar in ipairs(GM.wlGroupSlots) do
+    local x0, x1, y0, y1 = barRect(i)
+    setRect(bar, x0, x1, y0, y1)
+end
+local function barCenter(i)
+    local x0, x1, y0, y1 = barRect(i)
+    return (x0 + x1) / 2, (y0 + y1) / 2
+end
+local function panelTick()
+    if GM._wlDragPoller and GM._wlDragPoller._scripts and GM._wlDragPoller._scripts.OnUpdate then
+        GM._wlDragPoller._scripts.OnUpdate(GM._wlDragPoller, 0.05)
+    end
+end
+
+-- Via la macchina drag del CLIENT (come se il client non consegnasse nulla).
+local muted = {}
+for i, bar in ipairs(GM.wlGroupSlots) do
+    muted[#muted + 1] = { f = bar, start = bar._scripts.OnDragStart,
+        stop = bar._scripts.OnDragStop, recv = bar._scripts.OnReceiveDrag }
+    bar:SetScript("OnDragStart", nil)
+    bar:SetScript("OnDragStop", nil)
+    bar:SetScript("OnReceiveDrag", nil)
+end
+
+-- DRAG 1: barra 1 (player) -> barra 11 (G3, vuota)
+CUR_X, CUR_Y = barCenter(1)
+DOWN = true
+panelTick()
+UW_P13_D1_START = (GM._wlDragSource == GM.wlGroupSlots[1])
+UW_PLAYER = (RLSuite:DebugRoster()[1] and RLSuite:DebugRoster()[1].name) or "?"
+CUR_X, CUR_Y = barCenter(11)
+DOWN = false
+panelTick()
+local slots = RLSuite:DebugRaidSlots()
+UW_P13_D1 = {
+    at11 = (slots[11] and slots[11].name) or "?",
+    at1_free = (slots[1] == nil),
+    bar11 = GM.wlGroupSlots[11].playerName or "?",
+    clean = (GM._wlDragSource == nil),
+}
+
+-- DRAG 2: di nuovo lo stesso giocatore, barra 11 -> barra 3
+CUR_X, CUR_Y = barCenter(11)
+DOWN = true
+panelTick()
+UW_P13_D2_START = (GM._wlDragSource == GM.wlGroupSlots[11])
+CUR_X, CUR_Y = barCenter(3)
+DOWN = false
+panelTick()
+slots = RLSuite:DebugRaidSlots()
+UW_P13_D2 = {
+    at3 = (slots[3] and slots[3].name) or "?",
+    at11 = (slots[11] and slots[11].name) or "nil",
+    bar3 = GM.wlGroupSlots[3].playerName or "?",
+    bar11 = GM.wlGroupSlots[11].playerName or "nil",
+}
+
+-- pressione su una barra VUOTA (barra 26, fuori dal roster): nessun drag
+CUR_X, CUR_Y = barCenter(26)
+DOWN = true
+panelTick()
+UW_P13_EMPTY = (GM._wlDragSource == nil)
+DOWN = false
+panelTick()
+
+-- Ripristino
+for _, m in ipairs(muted) do
+    m.f:SetScript("OnDragStart", m.start)
+    m.f:SetScript("OnDragStop", m.stop)
+    m.f:SetScript("OnReceiveDrag", m.recv)
+end
+for i, bar in ipairs(GM.wlGroupSlots) do
+    bar.GetLeft, bar.GetRight, bar.GetBottom, bar.GetTop = nil, nil, nil, nil
+end
+IsMouseButtonDown, GetCursorPosition = SAVED_IMBD, SAVED_GCP
+IsShiftKeyDown = SAVED_ISD
+RLSuite:SetContextPhase("preraid")
+RLSuite:ResetDebugRaid()
+RF:Rebuild()
+GM:UpdateWLGroups()
+""")
+
+
+check(bool(rt.eval("UW_P12_FULL.press == true and UW_P12_FULL.started == true and UW_P12_FULL.over == true and UW_P12_FULL.txt ~= '?'")), "v1.11.79: pressione con shift su una barra PIENA = drag avviato, e il tracciato sa dire che il cursore e' sull'HUD (%s)" % rt.eval("UW_P12_FULL.txt"))
+check(bool(rt.eval("UW_P12_EMPTY.press == true and UW_P12_EMPTY.started == true")), "v1.11.79: pressione su una barra VUOTA = nessun drag (ma il tracciato lo dice: 'barra N VUOTA')")
+check(bool(rt.eval("UW_P12_PANEL_POLLER.exists == true and UW_P12_PANEL_POLLER.mouseOff == true")), "v1.11.79: anche il pannello Raid Group ha il suo poller del drag, a mouse spento")
+check(bool(rt.eval("UW_P13_D1_START == true and UW_P13_D1.at11 ~= '?' and UW_P13_D1.at1_free == true and UW_P13_D1.bar11 ~= '?' and UW_P13_D1.clean == true")), "v1.11.79: pannello Raid Group - drag+drop SENZA la macchina drag del client (%s -> barra 11)" % rt.eval("UW_P13_D1.at11"))
+check(bool(rt.eval("UW_P13_D2_START == true and UW_P13_D2.at3 == UW_PLAYER and UW_P13_D2.at11 ~= 'nil' and UW_P13_D2.bar3 == UW_PLAYER and UW_P13_D2.bar11 == UW_P13_D2.at11")), "v1.11.79: pannello Raid Group - un player GIA' spostato si sposta ANCORA e su barra piena SCAMBIA (%s -> barra 3, barra 11 = %s)" % (rt.eval("UW_P13_D2.at3"), rt.eval("UW_P13_D2.at11")))
+check(bool(rt.eval("UW_P13_EMPTY == true")), "v1.11.79: pannello Raid Group - pressione su una barra vuota = nessun drag (barra 26 vuota=bar26=%s)" % rt.eval("GM.wlGroupSlots[26].playerName"))
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

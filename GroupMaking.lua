@@ -14,6 +14,15 @@ local GROUP_LABEL_H = 17
 -- Raid Group panel (InviteEngine rib): the REAL raid, one vertical column
 -- per raid group, each holding up to 5 class-colored name bars.
 local WL_GROUPS = 6
+
+-- Diagnostica del drag del pannello (solo in debug mode): ogni gesto lascia
+-- una riga in chat, cosi' un punto morto e' visibile in game.
+local function wlDbg(fmt, ...)
+    if RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.debug then
+        local ok, txt = pcall(string.format, fmt, ...)
+        RLSuite.utils:Print("RG " .. (ok and txt or tostring(fmt)))
+    end
+end
 local WL_BAR_H = 16
 local WL_BAR_GAP = 2
 local WL_COL_GAP = 4
@@ -3260,13 +3269,19 @@ function GM:BuildWLGroupColumns()
             -- Trascina un giocatore su un altro slot per riorganizzare i
             -- gruppi: trascina dallo slot di partenza e rilascia su quello
             -- di arrivo. Slot vuoto = spostamento, slot pieno = scambio.
-            -- Uso il drag&drop classico (RegisterForDrag + OnDragStart/
-            -- OnDragStop): durante un drag il mouse-up NON viene consegnato
-            -- al frame sotto il cursore (resta al frame di partenza), quindi
-            -- OnDragStop calcola il bersaglio dalle coordinate del cursore.
-            -- OnReceiveDrag resta come percorso parallelo: qualunque dei due
-            -- scatti per primo consuma GM._wlDragSource, quindi non c'e'
-            -- mai un doppio spostamento/scambio.
+            -- Il gesto NON usa piu' il drag&drop del client (RegisterForDrag
+            -- + OnDragStart/OnDragStop): in 3.3.5 quella macchina digerisce
+            -- pressioni e rilasci (e' la stessa che ci ha mangiato i click
+            -- per 4 release) e dopo il primo trascinamento la pressione
+            -- successiva poteva non arrivare a nessuno -> "si sposta un
+            -- giocatore una volta sola". Ora comanda il poller
+            -- (GM:_InitWlDragPoller): stato del tasto + posizione del
+            -- cursore, bersaglio risolto geometricamente (WlSlotAtCursor).
+            -- Il poller GM:_InitWlDragPoller e' la via PRIMARIA (leggi lo
+            -- stato del tasto e il cursore): il client puo' mangiarsi
+            -- pressione o rilascio, l'addon no. Qui sotto la vecchia via
+            -- resta come RETE: qualunque delle due arrivi prima azzera
+            -- _wlDragSource, quindi non c'e' mai un doppio spostamento.
             -- Mentre il drag e' attivo, lo slot sotto il cursore viene
             -- evidenziato con un BORDINO DORATO (StartWLDragTracking).
             bar:RegisterForDrag("LeftButton")
@@ -3316,6 +3331,7 @@ function GM:BuildWLGroupColumns()
         end
     end
     self:UpdateWLGroups()
+    self:_InitWlDragPoller()
 end
 
 -- Popola il pannello Raid Group dal raid REALE (non dalla comp di
@@ -3553,6 +3569,66 @@ end
 
 -- Un singolo passo di highlight: colora d'oro lo slot sotto il cursore e
 -- ripristina gli altri. Chiamata dal tracker (o direttamente dai test).
+-- ============================================================
+-- DRAG del pannello Raid Group: stesso meccanismo dell'HUD.
+-- Prima qui c'era il drag&drop del CLIENT (RegisterForDrag + OnDragStart/
+-- OnDragStop): in 3.3.5 quella macchina e' la stessa che ci ha mangiato i
+-- click per 4 release (si "sente" il tasto ma non parte nulla, e dopo il
+-- primo trascinamento la pressione successiva puo' restare digerita ->
+-- "posso spostare un giocatore una volta sola"). Ora il gesto e' letto
+-- DALL'ADDON: stato del tasto + posizione del cursore, bersaglio risolto
+-- geometricamente. Gli handler del client restano solo come rete, senza
+-- registrazione.
+function GM:_InitWlDragPoller()
+    if self._wlDragPoller or not self.wlGroupBox then return end
+    local p = CreateFrame("Frame", nil, self.wlGroupBox)
+    p:SetSize(1, 1)
+    p:SetPoint("TOPLEFT", self.wlGroupBox, "TOPLEFT", 0, 0)
+    p:EnableMouse(false)     -- non deve rubare niente
+    p:Show()
+    self._wlBtnDown = false
+    self._wlPressBar = nil
+    local acc = 0
+    p:SetScript("OnUpdate", function(_, elapsed)
+        acc = acc + (elapsed or 0)
+        if acc < 0.03 then return end
+        acc = 0
+        local down = (IsMouseButtonDown and IsMouseButtonDown("LeftButton")) and true or false
+        if down and not GM._wlBtnDown then
+            GM._wlBtnDown = true
+            local bar = GM:WlSlotAtCursor()
+            GM._wlPressBar = bar
+            if bar then
+                if bar.playerName then
+                    wlDbg("drag: barra %s (%s)", tostring(bar.index), tostring(bar.playerName))
+                    if not GM._wlDragSource then
+                        GM._wlDragSource = bar
+                        GM:StartWLDragTracking()
+                    end
+                else
+                    wlDbg("drag: barra %s VUOTA", tostring(bar.index))
+                end
+            end
+        elseif (not down) and GM._wlBtnDown then
+            GM._wlBtnDown = false
+            GM._wlPressBar = nil
+            local src = GM._wlDragSource
+            if src then
+                local target = GM:WlSlotAtCursor()
+                GM._wlDragSource = nil
+                if target and target ~= src then
+                    wlDbg("drag: rilascio -> barra %s", tostring(target.index))
+                    GM:MoveWLSlot(src, target)
+                else
+                    wlDbg("drag: rilascio senza bersaglio (annullo)")
+                end
+            end
+            GM:StopWLDragTracking()
+        end
+    end)
+    self._wlDragPoller = p
+end
+
 function GM:WlDragTick()
     if not self._wlDragSource then
         self:StopWLDragTracking()

@@ -1644,7 +1644,28 @@ function RF:_InitDragPoller()
         local down = (IsMouseButtonDown and IsMouseButtonDown("LeftButton")) and true or false
         if down and not RF._dragBtnDown then
             RF._dragBtnDown = true
-            RF._dragPressSlot = RF:SlotAtCursor(true) -- solo righe con un player
+            -- Diagnostica (debug mode): la pressione su una barra dice SUBITO
+            -- cosa vede l'addon - barra piena, barra vuota, o nessuna barra.
+            -- Serve a non restare mai piu' con un gesto che "non fa niente".
+            local hull = RF:SlotAtCursor()
+            if hull then
+                if hull.member then
+                    RF._dragPressSlot = hull
+                    if IsShiftKeyDown and IsShiftKeyDown() then
+                        rfDbg("shift+left: barra %s (%s)", tostring(hull.slot), tostring(hull.name))
+                    end
+                else
+                    RF._dragPressSlot = nil
+                    if IsShiftKeyDown and IsShiftKeyDown() then
+                        rfDbg("shift+left: barra %s VUOTA (nessun player sulla riga)", tostring(hull.slot))
+                    end
+                end
+            else
+                RF._dragPressSlot = nil
+                if IsShiftKeyDown and IsShiftKeyDown() and RF:IsCursorOverFrame() then
+                    rfDbg("shift+left: cursore sull'HUD ma NESSUNA barra sotto (%s)", RF:CursorText())
+                end
+            end
         elseif (not down) and RF._dragBtnDown then
             RF._dragBtnDown = false
             RF._dragPressSlot = nil
@@ -1657,6 +1678,25 @@ function RF:_InitDragPoller()
         if RF._rfDragSource then RF:UpdateDropGlow() end
     end)
     self._dragPoller = p
+end
+
+-- Il cursore e' sopra la finestra dell'HUD? (solo per la diagnostica: se non
+-- succede niente, si distingue "non e' la zona giusta" da "la barra non
+-- risponde").
+function RF:IsCursorOverFrame()
+    if not (self.frame and GetCursorPosition) then return false end
+    local x, y = GetCursorPosition()
+    if not x then return false end
+    local l, r = self.frame:GetLeft(), self.frame:GetRight()
+    local b, t = self.frame:GetBottom(), self.frame:GetTop()
+    if not (l and r and b and t) then return false end
+    return x >= l and x <= r and y >= b and y <= t
+end
+
+function RF:CursorText()
+    if not GetCursorPosition then return "?" end
+    local x, y = GetCursorPosition()
+    return string.format("%d,%d", tonumber(x) or -1, tonumber(y) or -1)
 end
 
 function RF:UpdateDragState()
