@@ -5581,6 +5581,74 @@ check(bool(rt.eval("UW_STACK.tabs[1]:find('damage:6col') ~= nil and UW_STACK.tab
 check(bool(rt.eval("UW_STACK.tabs[6] == UW_STACK.tabs[1]")), "v1.11.67: tornando su Damage la tabella e' identica (stesse colonne, stesse righe visibili)")
 check(bool(rt.eval("UW_STACK.death1 == UW_STACK.death2 and UW_STACK.death2 == UW_STACK.death_rows")), "v1.11.67: tornando sulla tab Deaths la tabella mostra solo le sue righe (%r visibili / %r righe)" % (rt.eval("UW_STACK.death2"), rt.eval("UW_STACK.death_rows")))
 
+rt.execute("""
+-- =====================================================================
+-- v1.11.68: ICONE e NOMI delle spell visibili nelle tabelle
+-- =====================================================================
+CLT = RLSuite.combatLog
+CLT.selFight = UW_F
+UW_ICON = {}
+-- la risoluzione dell'icona usa GetSpellTexture e, se fallisce, GetSpellInfo
+local realGST = GetSpellTexture
+GetSpellTexture = function(id) if id == 48230 then return "ICON_FIREBOLT" end return nil end
+CLT.spellIconCache[48230] = nil
+CLT.spellIconCache[99999] = nil
+UW_ICON.tex = CLT:SpellIcon(48230)
+UW_ICON.fallback = CLT:SpellIcon(99999)   -- GetSpellInfo mock -> icona
+GetSpellTexture = realGST
+UW_ICON.none = CLT:SpellIcon(nil)
+
+-- tab a icone: ogni colonna ha icona E nome
+UW_ICON.cols = {}
+for _, tab in ipairs({ "consumables", "auras", "powers" }) do
+    CLT:SelectTab(tab)
+    local has_icon, has_name, blank = 0, 0, 0
+    for _, c in ipairs(CLT.grid.cols or {}) do
+        if c.ic then has_icon = has_icon + 1 end
+        if c.label and c.label ~= "" then has_name = has_name + 1 end
+        if (not c.ic) and (not c.label or c.label == "") then blank = blank + 1 end
+    end
+    UW_ICON.cols[tab] = string.format("icone=%d nomi=%d vuote=%d", has_icon, has_name, blank)
+end
+CLT:SelectTab("auras")
+UW_ICON.hdr_h = CLT.grid.hdr._h
+local hb = CLT.grid.hdrPool[#(CLT.grid.cols or {})]
+UW_ICON.hdr_shown = hb and hb.btn.fs:IsShown() and (hb.btn.fs:GetText() ~= "")
+UW_ICON.hdr_text = hb and hb.btn.fs:GetText()
+UW_ICON.hdr_icon = hb and hb.btn.icon:IsShown()
+-- intestazione SENZA icona: deve restare il nome (mai vuota)
+local cols2 = { { label = "Spell Name", w = 100, fix = true, align = "CENTER", ic = nil } }
+CLT:GridRender(CLT.grid, cols2, { { { t = "x" } } }, {})
+local h2 = CLT.grid.hdrPool[1]
+UW_ICON.noicon_text = h2.btn.fs:GetText()
+UW_ICON.noicon_icon = h2.btn.icon:IsShown()
+UW_ICON.noicon_shown = h2.btn.fs:IsShown()
+-- lista Spells: icona sulla riga
+CLT:SelectTab("spells")
+CLT.selSource = "Alpha"
+CLT:RefreshLists()
+local anyIcon = false
+for _, r in ipairs(CLT._rRows or {}) do
+    if r.spellIcon and r.spellIcon:IsShown() then anyIcon = true end
+end
+UW_ICON.rows = anyIcon
+CLT.selSource = nil
+CLT.selFight = nil
+CLT:SelectTab("damage")
+""")
+
+
+check(bool(rt.eval("tostring(UW_ICON.tex) == 'ICON_FIREBOLT'")), "v1.11.68: l'icona della spell viene risolta da GetSpellTexture (%r)" % rt.eval("UW_ICON.tex"))
+check(bool(rt.eval("UW_ICON.fallback ~= nil")), "v1.11.68: se GetSpellTexture fallisce si usa l'icona di GetSpellInfo (3o valore, catalogo locale)")
+check(bool(rt.eval("UW_ICON.none == nil")), "v1.11.68: nessuna spell = nessuna icona (nessun errore)")
+check(bool(rt.eval("UW_ICON.cols.consumables and UW_ICON.cols.consumables:find('vuote=0') ~= nil")), "v1.11.68 tab Consumables: ogni colonna ha icona e NOME (%s)" % rt.eval("UW_ICON.cols.consumables"))
+check(bool(rt.eval("UW_ICON.cols.auras and UW_ICON.cols.auras:find('vuote=0') ~= nil")), "v1.11.68 tab Auras: ogni colonna ha icona e NOME (%s)" % rt.eval("UW_ICON.cols.auras"))
+check(bool(rt.eval("UW_ICON.cols.powers and UW_ICON.cols.powers:find('vuote=0') ~= nil")), "v1.11.68 tab Powers: ogni colonna ha icona e NOME (%s)" % rt.eval("UW_ICON.cols.powers"))
+check(bool(rt.eval("UW_ICON.hdr_h == 34")), "v1.11.68: intestazione alta 34px (icona sopra, nome sotto)")
+check(bool(rt.eval("UW_ICON.hdr_icon == true and UW_ICON.hdr_shown == true")), "v1.11.68: nell'intestazione si vedono icona E nome della spell (\"%s\")" % rt.eval("UW_ICON.hdr_text"))
+check(bool(rt.eval("UW_ICON.noicon_shown == true and UW_ICON.noicon_text == 'Spell Name' and UW_ICON.noicon_icon == false")), "v1.11.68: senza icona l'intestazione mostra il NOME (mai una colonna vuota)")
+check(bool(rt.eval("UW_ICON.rows == true")), "v1.11.68 tab Spells: l'icona compare anche accanto al nome di ogni spell nella lista")
+
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

@@ -1488,6 +1488,28 @@ local function Trunc(s, n)
 end
 
 -- ==================================================================
+-- Icona di una spell: prima GetSpellTexture, poi l'icona di GetSpellInfo
+-- (3o valore in 3.3.5). Con cache: le intestazioni si ridisegnano a ogni
+-- refresh e non vogliamo chiamare l'API decine di volte.
+local CL_ICON_CACHE = {}
+function CL:SpellIcon(sid)
+    if not sid then return nil end
+    local c = CL_ICON_CACHE[sid]
+    if c ~= nil then return c ~= false and c or nil end
+    local tex
+    if GetSpellTexture then
+        local ok, t = pcall(GetSpellTexture, sid)
+        if ok and type(t) == "string" and t ~= "" then tex = t end
+    end
+    if not tex and GetSpellInfo then
+        local ok, _, _, t = pcall(GetSpellInfo, sid)
+        if ok and type(t) == "string" and t ~= "" then tex = t end
+    end
+    CL_ICON_CACHE[sid] = tex or false
+    return tex
+end
+CL.spellIconCache = CL_ICON_CACHE
+
 -- Testo che sta DENTRO la larghezza della colonna: niente word wrap (andando
 -- a capo il testo usciva dall'altezza riga e si sovrapponeva alla riga sotto,
 -- da cui le tabelle "incasinate" della v1.11.63) e troncamento misurato.
@@ -1562,13 +1584,13 @@ function CL:NewGrid(parent, name)
     g.hdr = CreateFrame("Frame", nil, g)
     g.hdr:SetPoint("TOPLEFT", g, "TOPLEFT", 4, 0)
     g.hdr:SetPoint("TOPRIGHT", g, "TOPRIGHT", -26, 0)
-    g.hdr:SetHeight(24)
+    g.hdr:SetHeight(34)
     -- NOME OBBLIGATORIO: in 3.3.5 ScrollFrame_OnLoad fa
     -- self:GetName().."ScrollBar", quindi uno ScrollFrame SENZA nome con
     -- UIPanelScrollFrameTemplate va in errore ("attempt to concatenate a nil
     -- value", UIPanelTemplates.lua:255) e blocca il load dell'addon.
     g.scroll = CreateFrame("ScrollFrame", name, g, "UIPanelScrollFrameTemplate")
-    g.scroll:SetPoint("TOPLEFT", g, "TOPLEFT", 4, -24)
+    g.scroll:SetPoint("TOPLEFT", g, "TOPLEFT", 4, -34)
     g.scroll:SetPoint("BOTTOMRIGHT", g, "BOTTOMRIGHT", -26, 4)
     g.content = CreateFrame("Frame", nil, g.scroll)
     g.content:SetWidth(400)
@@ -1648,9 +1670,12 @@ function CL:GridRender(g, cols, rows, opt)
         if not h then
             local btn = CreateFrame("Button", nil, g.hdr)
             btn:EnableMouse(true)
-            btn:SetHeight(24)
+            btn:SetHeight(34)
             btn.icon = btn:CreateTexture(nil, "ARTWORK")
             btn.fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            -- nome della spell SOTTO l'icona (l'utente deve poter leggere
+            -- quale spell e' la colonna, non solo vederne il simbolo)
+            btn.sub = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             -- pelo verticale sul bordo sinistro della colonna: separa le
             -- colonne e rende immediato accorgersi di un disallineamento
             btn.sep = btn:CreateTexture(nil, "BACKGROUND")
@@ -1672,10 +1697,10 @@ function CL:GridRender(g, cols, rows, opt)
         btn._tip = c.tip or c.label
         btn:ClearAllPoints()
         btn:SetPoint("TOPLEFT", g.hdr, "TOPLEFT", c.x, 0)
-        btn:SetSize(math.max(18, c.px), 24)
+        btn:SetSize(math.max(18, c.px), 34)
         if i > 1 then
             btn.sep:ClearAllPoints()
-            btn.sep:SetSize(1, 20)
+            btn.sep:SetSize(1, 30)
             btn.sep:SetPoint("TOPLEFT", btn, "TOPLEFT", -1, -2)
             btn.sep:Show()
         else
@@ -1685,21 +1710,41 @@ function CL:GridRender(g, cols, rows, opt)
             btn.icon:SetTexture(c.ic)
             btn.icon:ClearAllPoints()
             btn.icon:SetSize(18, 18)
-            btn.icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+            btn.icon:SetPoint("TOP", btn, "TOP", 0, -2)
             btn.icon:Show()
-            btn.fs:SetText("")
-            btn.fs:Hide()
+            -- nome sotto l'icona (se c'e'): mai una colonna anonima
+            btn.fs:ClearAllPoints()
+            btn.fs:SetPoint("TOP", btn, "TOP", 0, -22)
+            btn.fs:SetJustifyH("CENTER")
+            btn.fs:SetWidth(math.max(18, c.px - 4))
+            btn.fs:SetTextColor(0.85, 0.85, 0.85)
+            btn.fs:Show()
+            TruncTo(btn.fs, c.label or "", math.max(18, c.px - 4))
+            local lblB, lwB = c.label or "", math.max(18, c.px - 4)
+            if not btn._fitHooked2 then
+                btn._fitHooked2 = true
+                local fB = CreateFrame("Frame")
+                fB:SetScript("OnUpdate", function(self2, el)
+                    self2._t = (self2._t or 0) + (el or 0)
+                    if self2._t >= 0.15 then
+                        TruncTo(btn.fs, lblB, lwB)
+                        self2:SetScript("OnUpdate", nil)
+                    end
+                end)
+            end
+            if btn.sub then btn.sub:Hide() end
         else
             btn.icon:Hide()
+            if btn.sub then btn.sub:Hide() end
             btn.fs:ClearAllPoints()
             if c.align == "RIGHT" then
-                btn.fs:SetPoint("RIGHT", btn, "RIGHT", -4, 0)
+                btn.fs:SetPoint("RIGHT", btn, "RIGHT", -4, -4)
                 btn.fs:SetJustifyH("RIGHT")
             elseif c.align == "CENTER" then
-                btn.fs:SetPoint("CENTER", btn, "CENTER", 0, 0)
+                btn.fs:SetPoint("CENTER", btn, "CENTER", 0, -4)
                 btn.fs:SetJustifyH("CENTER")
             else
-                btn.fs:SetPoint("LEFT", btn, "LEFT", 4, 0)
+                btn.fs:SetPoint("LEFT", btn, "LEFT", 4, -4)
                 btn.fs:SetJustifyH("LEFT")
             end
             btn.fs:SetWidth(math.max(18, c.px - 8))
@@ -1978,13 +2023,9 @@ function CL:BuildConsumablesTab(f)
     }
     for i = 1, n do
         local c = ag.cols[i]
-        local tex
-        if GetSpellTexture and c.sid then
-            local ok, t = pcall(GetSpellTexture, c.sid)
-            if ok then tex = t end
-        end
-        cols[#cols + 1] = { label = "", w = w, fix = true, align = "CENTER", ic = tex,
-            tip = c.name .. (c.kind and ("  [" .. tostring(c.kind) .. "]") or "") }
+        local tex = self:SpellIcon(c.sid)
+        cols[#cols + 1] = { label = Trunc(c.name or "?", 12), w = w, fix = true,
+            align = "CENTER", ic = tex, tip = c.name or "?" }
     end
     local rows = {}
     for i, p in ipairs(ag.players) do
@@ -2021,13 +2062,9 @@ function CL:BuildAurasTab(f)
     local cols = { { label = "Name", w = nameW, fix = true, tip = "Giocatore" } }
     for i = 1, n do
         local c = am.cols[i]
-        local tex
-        if GetSpellTexture and c.sid then
-            local ok, t = pcall(GetSpellTexture, c.sid)
-            if ok then tex = t end
-        end
-        cols[#cols + 1] = { label = "", w = w, fix = true, align = "CENTER", ic = tex,
-            tip = (c.name or "?") .. "  (applicazioni / uptime)" }
+        local tex = self:SpellIcon(c.sid)
+        cols[#cols + 1] = { label = Trunc(c.name or "?", 12), w = w, fix = true,
+            align = "CENTER", ic = tex, tip = (c.name or "?") .. "  (applicazioni / uptime)" }
     end
     local rows = {}
     for i, p in ipairs(am.players) do
@@ -2067,13 +2104,9 @@ function CL:BuildPowersTab(f)
     local cols = { { label = "Name", w = nameW, fix = true, tip = "Giocatore" } }
     for i = 1, n do
         local c = pm.cols[i]
-        local tex
-        if GetSpellTexture and c.sid then
-            local ok, t = pcall(GetSpellTexture, c.sid)
-            if ok then tex = t end
-        end
-        cols[#cols + 1] = { label = "", w = w, fix = true, align = "RIGHT", ic = tex,
-            tip = (c.name or "?") .. (c.ptype and ("  (" .. c.ptype .. ")") or "") }
+        local tex = self:SpellIcon(c.sid)
+        cols[#cols + 1] = { label = Trunc(c.name or "?", 12), w = w, fix = true,
+            align = "RIGHT", ic = tex, tip = (c.name or "?") .. (c.ptype and ("  (" .. c.ptype .. ")") or "") }
     end
     cols[#cols + 1] = { label = "TOTAL", w = totW, fix = true, align = "RIGHT", tip = "Risorsa totale generata" }
     local rows = {}
@@ -2733,6 +2766,25 @@ function CL:RefreshLegacyLists(f)
             local srows, stotal = self:AggSpells(f, cat, sel)
             self.rightHeader:SetText(sel .. " — " .. ((cat == "cast") and L["Spells list"] or L["By cast"]))
             self:_FillRows(self.rightContent, "_rRows", srows, function(row, d, i)
+                -- icona della spell accanto al nome (prima non c'era)
+                if not row.spellIcon then
+                    row.spellIcon = row:CreateTexture(nil, "ARTWORK")
+                    row.spellIcon:SetSize(14, 14)
+                    row.spellIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+                end
+                local tex = CL:SpellIcon(d.sid)
+                if tex then
+                    row.spellIcon:SetTexture(tex)
+                    row.spellIcon:ClearAllPoints()
+                    row.spellIcon:SetPoint("LEFT", row, "LEFT", 4, 0)
+                    row.spellIcon:Show()
+                    row.txt1:ClearAllPoints()
+                    row.txt1:SetPoint("LEFT", row, "LEFT", 22, 0)
+                else
+                    row.spellIcon:Hide()
+                    row.txt1:ClearAllPoints()
+                    row.txt1:SetPoint("LEFT", row, "LEFT", 4, 0)
+                end
                 if cat == "cast" then
                     local sidTxt = (self.db.options and self.db.options.showSpellIds and d.sid) and (" [" .. d.sid .. "]") or ""
                     row.txt1:SetText(i .. ". " .. d.name .. sidTxt)

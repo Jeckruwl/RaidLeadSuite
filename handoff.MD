@@ -7,7 +7,31 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.67**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.68**.
+
+## 1.11.68 — Log: icone E nomi delle spell visibili (non solo tooltip)
+
+Domanda dell'utente: *"perche' non vedo le icone o i nomi delle spell?"*.
+Due problemi reali:
+
+1. `GetSpellTexture(sid)` in 3.3.5 puo' non risolvere l'id (spell non in
+   cache): l'icona restava `nil` e, siccome per le colonne a icona il `label`
+   era **vuoto**, l'intestazione diventava **completamente vuota** (ne' icona
+   ne' nome). Ora:
+   - `CL:SpellIcon(sid)` prova `GetSpellTexture` e poi l'icona di
+     `GetSpellInfo` (3o valore), con **cache** (`CL_ICON_CACHE`);
+   - le colonne di Consumables/Auras/Powers passano SEMPRE anche il nome
+     (`label = Trunc(name, 12)`);
+   - l'intestazione e' alta **34px**: ICONA sopra (18x18) + NOME sotto;
+   - se l'icona non c'e', resta il nome: **mai una colonna anonima**.
+2. I nomi delle spell erano visibili solo al passaggio del mouse: risolto con
+   il nome sotto l'icona + icona accanto al nome nella lista del tab "Spells"
+   (riga con texture + testo).
+
+Test: **988 check** totali (10 nuovi: risoluzione icona, fallback GetSpellInfo,
+nessuna spell = nessuna icona, "vuote=0" per Consumables/Auras/Powers, altezza
+intestazione, icona+nome nell'header, nome al posto dell'icona se manca, icona
+nella lista Spells).
 
 ## 1.11.67 — Log: FINE delle tabelle impilate fra le tab
 
@@ -222,7 +246,7 @@ non cambia MAI dimensione: la y di una barra dipende solo dal suo gruppo.
 - accendere/spegnere il tasto "Raid Buffs" non muove nulla (era gia' cosi'):
   ora vale anche per il passaggio roster vuoto <-> roster pieno.
 
-Test: **978 check** totali (4 nuovi nella 1.11.67): altezza costante con raid
+Test: **988 check** totali (10 nuovi nella 1.11.68): altezza costante con raid
 vuoto/1 player/pieno, G6 in fondo anche a raid vuoto, y uguali fra roster pieno
 e quasi vuoto, banda fra gruppi costante, icone del buff check visibili con G1
 vuoto e alla stessa y, celle della matrice allineate alla riga del gruppo,
