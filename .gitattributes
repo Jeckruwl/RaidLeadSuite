@@ -1,5 +1,2 @@
-# _dev/ e' materiale di SVILUPPO (handoff, smoke test, log di esempio, test):
-# sta nel repo perche' agenti e nuove sessioni lo trovino subito, ma NON deve
-# finire nei pacchetti: con export-ignore lo ZIP fatto con "git archive" e'
-# solo addon, pulito.
-_dev/* export-ignore
+# materiale di sviluppo: nel repo per gli agenti, fuori dai pacchetti (git archive)
+_dev/ export-ignore
