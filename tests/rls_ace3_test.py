@@ -4274,6 +4274,87 @@ check(bool(rt.eval("RC_W >= RC_TEXT_W + 8")),
 check(bool(rt.eval("PHASE_RESERVE >= 40 and PHASE_RESERVE <= 90")),
       "phase name reserve is measured on the real labels (%d px), not a magic number" % rt.eval("PHASE_RESERVE"))
 
+# -- v1.11.60: la matrice MacroBar si apre A DESTRA DELLA BARRETTA ---------
+rt.execute("""
+    MW = RLSuite.mainWindow
+    MB = RLSuite.macrobar
+    MW.frame:Show(); MW.titleBar:Show(); MB.frame:Show()
+    MB:ApplyLayout()
+    local mf = MB.frame
+    local mp = mf._points[1] or {}
+    MBP_ARGS = tostring(mp[1]) .. ' ' .. tostring(mp[3]) .. ' dx=' .. tostring(mp[4]) .. ' dy=' .. tostring(mp[5])
+    MBP_ANCHORED_TO_TITLE = (mp[2] == MW.titleBar)
+    MBP_ONLY_ONE = (mf:GetNumPoints() == 1)
+    MBP_TITLE_W = MW.titleBar._w
+    MBP_TITLE_H = MW.titleBar._h
+    MBP_SCALE = mf:GetScale()
+""")
+check(bool(rt.eval("MBP_ANCHORED_TO_TITLE == true and MBP_ONLY_ONE == true")),
+      "macro button matrix opens ANCHORED to the title bar (%s)" % rt.eval("MBP_ARGS"))
+check(bool(rt.eval("MBP_ARGS:find('TOPLEFT') ~= nil and MBP_ARGS:find('TOPRIGHT') ~= nil")),
+      "it sits at the RIGHT of the title bar, tops aligned (TOPLEFT -> TOPRIGHT)")
+
+# -- segue la barretta: se la main bar si sposta, la matrice la segue ------
+rt.execute("""
+    MW = RLSuite.mainWindow
+    MB = RLSuite.macrobar
+    local app = RLSuite.raidFrame.db.appearance
+    local old = app.barWidth
+    app.barWidth = 260
+    RLSuite.raidFrame:ApplyLayout()
+    local _, _, _, xMoved = MW.frame:GetPoint(1)
+    local mp2 = MB.frame._points[1] or {}
+    MBP_SAME_ANCHOR = (mp2[2] == MW.titleBar)
+    app.barWidth = old
+    RLSuite.raidFrame:ApplyLayout()
+""")
+check(bool(rt.eval("MBP_SAME_ANCHOR == true")),
+      "the matrix keeps following the title bar when the Raid Frame (and the bar) move")
+
+# -- resta a destra della barretta anche dopo un toggle chiuso/aperto -------
+rt.execute("""
+    MB = RLSuite.macrobar
+    MB:Toggle()   -- chiude
+    MB:Toggle()   -- riapre: ApplyLayout viene rieseguito
+    local mp3 = MB.frame._points[1] or {}
+    MBP_AFTER_TOGGLE = (mp3[2] == RLSuite.mainWindow.titleBar and #MB.frame._points == 1)
+""")
+check(bool(rt.eval("MBP_AFTER_TOGGLE == true")), "closing and reopening the matrix keeps it anchored there")
+
+# -- fuori dall'Anchor Mode non ci si sposta a mano (combatterebbe l'ancora)
+rt.execute("""
+    MB = RLSuite.macrobar
+    RLSuite.db.profile.anchorMode = false
+    local moved = false
+    MB:BeginShiftDrag()
+    moved = (MB._shiftDrag == true)
+    MB._shiftDrag = false
+    MBP_DRAG_BLOCKED = (moved == false)
+""")
+check(bool(rt.eval("MBP_DRAG_BLOCKED == true")),
+      "manual shift-drag disabled outside Anchor Mode (position is anchored)")
+
+# -- ma in Anchor Mode la posizione scelta a mano vince -------------------
+rt.execute("""
+    MB = RLSuite.macrobar
+    RLSuite.db.profile.anchorMode = true
+    MB:CaptureManualPosition()
+    local ov = MB._anchorOverride
+    MBP_OV = (ov ~= nil)
+    MB:ApplyLayout()
+    local mp4 = MB.frame._points[1] or {}
+    MBP_OV_USED = (mp4[2] == UIParent)
+    -- uscendo dall'Anchor Mode torna l'ancoraggio alla barretta
+    RLSuite.db.profile.anchorMode = false
+    MB:SetAnchorMode(false)
+    local mp5 = MB.frame._points[1] or {}
+    MBP_BACK = (mp5[2] == RLSuite.mainWindow.titleBar and MB._anchorOverride == nil)
+""")
+check(bool(rt.eval("MBP_OV == true and MBP_OV_USED == true")),
+      "in Anchor Mode a manually chosen position wins")
+check(bool(rt.eval("MBP_BACK == true")),
+      "leaving Anchor Mode forgets it and re-anchors the matrix right of the bar")
+
 # -- Barretta: "Raid Control" = solo pannello; close = tutto chiuso
 rt.execute("""
 f = RLSuite.mainWindow.frame

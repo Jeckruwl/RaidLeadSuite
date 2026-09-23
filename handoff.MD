@@ -7,7 +7,29 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.59**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.60**.
+
+## 1.11.60 — la matrice della MacroBar si apre A DESTRA DELLA BARRETTA
+
+Richiesta: "la matrice dei pulsanti di macro bar deve aprirsi a destra della barretta".
+
+`MacroBar:ApplyLayout` ora ancora il contenitore a
+`TOPLEFT -> TOPRIGHT della barretta` con 4px di gap (sommita' allineate).
+La barretta e' un'ancora VIVA: se cambia la larghezza del Raid Frame (e quindi
+la main bar si sposta), la matrice la segue senza ricalcoli; lo stesso per il
+toggle chiuso/aperto (ApplyLayout viene rieseguito).
+
+Spostamento a mano: fuori dall'"Anchor Mode" lo shift-drag e' disattivato
+(combatterebbe con l'ancoraggio: `MB:BeginShiftDrag` esce subito).
+In Anchor Mode la posizione scelta vince (`MB._anchorOverride`, catturata in
+`MB:CaptureManualPosition`) e in memoria fa da override; uscendo dall'Anchor
+Mode l'override viene dimenticato e la matrice torna a destra della barretta.
+Il dropdown "Anchor Point" in Config resta come ripiego se la barretta non
+esiste.
+
+Test: **890 check** totali (6 nuovi nella 1.11.60: ancoraggio TOPLEFT->TOPRIGHT
+dx 4, inseguimento della barretta, tenuta dopo toggle, shift-drag bloccato fuori
+Anchor Mode, override in Anchor Mode, ritorno all'ancoraggio uscendo).
 
 ## 1.11.59 — barretta: larghezza = SOMMA DEI SUOI ELEMENTI + ancoraggio dal SINISTRO
 
@@ -31,7 +53,7 @@ Due richieste dell'utente (la 1.11.57 le aveva interpretate male):
 Il pannello resta largo `2*PAD + max(matrice, barretta)` = 213 px con 2 colonne,
 cosi' nessun tasto sporge dal bordo (i tasti restano a 4 px dal bordo sinistro).
 
-Test: **883 check** totali sul branch (6 aggiornati nella 1.11.59: barretta = somma elementi con
+Test: **890 check** totali sul branch (6 aggiornati nella 1.11.59: barretta = somma elementi con
 ancoraggio singolo, larghezza costante 1 vs 8 colonne, ancoraggio TOPLEFT con
 x = +larghezza Raid Frame, spostamento a destra quando il Raid Frame si allarga).
 
