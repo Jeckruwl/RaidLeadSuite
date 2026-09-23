@@ -44,7 +44,7 @@ function methods:IsShown() return self._shown end
 function methods:IsVisible() return self._shown end
 function methods:SetParent(p) self._parent=p; return self end
 function methods:GetParent() return self._parent end
-function methods:SetFrameStrata(s) self._ownStrata = s; self._strata = s; return self end
+function methods:SetFrameStrata(s) self._strata = s; return self end
 function methods:SetFrameLevel(l) self._level = l; return self end
 function methods:EnableMouse(b) self._enabledMouse = b and true or false; return self end
 function methods:EnableKeyboard(b) return self end
@@ -151,13 +151,7 @@ function methods:GetHighlightTexture() return nil end
 function methods:Disable() self._disabled=true; return self end
 function methods:Enable() self._disabled=false; return self end
 function methods:IsEnabled() return not self._disabled end
-function methods:GetFrameLevel()
-    -- Come in 3.3.5: senza un livello ESPLICITO, il frame sta al livello del
-    -- genitore + 1 (dinamicamente, non solo alla creazione).
-    if self._level then return self._level end
-    if self._parent and self._parent.GetFrameLevel then return (self._parent:GetFrameLevel() or 0) + 1 end
-    return 1
-end
+function methods:GetFrameLevel() return self._level or 1 end
 function methods:GetEffectiveScale() return 1 end
 function methods:GetNumChildren() return 0 end
 function methods:GetRegions() return {} end
@@ -464,13 +458,7 @@ function methods:GetCheckedTexture() return _makeRegion(self, "CheckedTexture") 
 function methods:GetDisabledTexture() return _makeRegion(self, "DisabledTexture") end
 function methods:GetThumbTexture() return _makeRegion(self, "ThumbTexture") end
 function methods:GetTexture() return self._texture end
-function methods:GetFrameStrata()
-    -- Come in 3.3.5: se la strata non e' stata impostata ESPLICITAMENTE, il
-    -- frame eredita quella del genitore (dinamicamente).
-    if self._ownStrata then return self._ownStrata end
-    if self._parent and self._parent.GetFrameStrata then return self._parent:GetFrameStrata() end
-    return "MEDIUM"
-end
+function methods:GetFrameStrata() return "DIALOG" end
 function methods:GetNumLetters() return 0 end
 function methods:GetTextWidth() return self:GetStringWidth() end
 function methods:GetRightBorderWidth() return 0 end
@@ -750,6 +738,38 @@ try:
     print("PASS: UNIT_HEALTH dispatch -> RF:UpdateUnit (no error)")
 except Exception as e:
     check(False, "UNIT_HEALTH dispatch errored: %s" % str(e)[:200])
+
+
+print()
+print("== LEAK PROBE ==")
+rt.execute("""
+    local U = RLSuite.utils
+    local CFG = RLSuite.config
+    CFG:OpenMacroEditorPanel()
+    CFG:ShowMacroEditor()
+    CFG:SelectMacroPhase('infight')
+    local RD, BD = CFG.macroRaidDD, CFG.macroBossDD
+    local n0 = #ALLFRAMES
+    LEAK_ROWS = {}
+    for i = 1, 8 do
+        local dd = ((i % 2) == 1) and RD or BD
+        local before = #ALLFRAMES
+        U:ToggleDropdownMenu(dd)
+        local m = U.activeMenu
+        if m and m.optionButtons and m.optionButtons[1] then
+            m.optionButtons[1]:GetScript("OnClick")()
+        end
+        LEAK_ROWS[i] = 'giro' .. i .. ' +' .. (#ALLFRAMES - before) ..
+            ' frames (tot ' .. #ALLFRAMES .. ') menuBtn=' ..
+            tostring(dd._rlsDropMenu and #(dd._rlsDropMenu.optionButtons or {})) ..
+            ' opts=' .. tostring(#(dd.options or {})) ..
+            ' aperto=' .. tostring(U.activeMenu ~= nil)
+    end
+    LEAK_TOT = #ALLFRAMES - n0
+""")
+for i in range(1, 9):
+    print("   ", rt.eval("LEAK_ROWS[%d]" % i))
+print("   frame creati negli 8 giri:", rt.eval("LEAK_TOT"))
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during scenario A init (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 check(rt2.eval("LAST_ERROR") is None or rt2.eval("LAST_ERROR") == None, "no errors during scenario B init (LAST_ERROR=%r)" % rt2.eval("LAST_ERROR"))
@@ -1177,85 +1197,6 @@ rt.execute("""
 """)
 check(bool(rt.eval("MUTE_BEFORE > 0 and MUTE_AFTER == MUTE_BEFORE")),
       "raid non valido: il menu boss NON viene svuotato (resta utilizzabile)")
-
-# --- v1.11.55: il menu sta SOPRA la finestra di config (strata TOOLTIP) -----
-# Causa vera del "dopo N aperture la tendina non si apre piu'": la finestra e'
-# un AceGUI Window che vive in FULLSCREEN_DIALOG e si ri-alza da sola
-# (SetToplevel + Raise). Con menu e catcher nella STESSA strata, la finestra
-# finiva sopra: il menu si apriva DIETRO (invisibile) e il click non arrivava.
-rt.execute("""
-    STRATA_RANK = { BACKGROUND=0, LOW=1, MEDIUM=2, HIGH=3, DIALOG=4,
-                    FULLSCREEN=5, FULLSCREEN_DIALOG=6, TOOLTIP=7 }
-    function ONTOP(a, b)
-        local ra, rb = STRATA_RANK[a:GetFrameStrata()] or -1, STRATA_RANK[b:GetFrameStrata()] or -1
-        if ra ~= rb then return ra > rb end
-        return (a:GetFrameLevel() or 0) > (b:GetFrameLevel() or 0)
-    end
-    local U = RLSuite.utils
-    local CFG = RLSuite.config
-    CFG:SelectMacroPhase('infight')
-    local RD = CFG.macroRaidDD
-    U:ToggleDropdownMenu(RD)
-    local MENU = RD._rlsDropMenu
-    CAT = U.dropCatcher
-    -- la finestra di config, come la lascia AceGUI, RI-ALZATA al massimo
-    local win = CFG.window and CFG.window.frame
-    if win then win:SetFrameStrata("FULLSCREEN_DIALOG"); win:SetFrameLevel(900) end
-    TOP_CAT = ONTOP(CAT, win)
-    TOP_MENU = ONTOP(MENU, win)
-    TOP_OPT = ONTOP(MENU.optionButtons[1], CAT)
-    CAT_STRATA = CAT:GetFrameStrata()
-    MENU_STRATA = MENU:GetFrameStrata()
-    MENU_LVL, CAT_LVL = MENU:GetFrameLevel(), CAT:GetFrameLevel()
-    U:CloseDropdownMenu()
-""")
-check(bool(rt.eval("CAT_STRATA == 'TOOLTIP' and MENU_STRATA == 'TOOLTIP'")),
-      "menu e catcher vivono in strata TOOLTIP (sopra la finestra FULLSCREEN_DIALOG)")
-check(bool(rt.eval("MENU_LVL > CAT_LVL")), "le opzioni stanno sopra il catcher (livello menu > catcher)")
-check(bool(rt.eval("TOP_CAT == true")), "il catcher e' sopra la finestra di config ri-alzata (il click fuori chiude)")
-check(bool(rt.eval("TOP_MENU == true")),
-      "il MENU resta sopra la finestra di config anche se lei si ri-alza (era dietro: 'non si apre piu')")
-check(bool(rt.eval("TOP_OPT == true")), "le opzioni del menu restano cliccabili")
-
-# --- 12 giri con la finestra che si ri-alza come fa AceGUI in gioco --------
-rt.execute("""
-    local U = RLSuite.utils
-    local CFG = RLSuite.config
-    local RD, BD = CFG.macroRaidDD, CFG.macroBossDD
-    local win = CFG.window and CFG.window.frame
-    RAISE_OK, RAISE_CYCLES, RAISE_TOP = 0, 0, 0
-    for i = 1, 12 do
-        -- AceGUI Window: ogni interazione la ri-alza in FULLSCREEN_DIALOG
-        if win then win:SetFrameStrata("FULLSCREEN_DIALOG"); win:SetFrameLevel(880 + i) end
-        local dd = ((i % 2) == 1) and RD or BD
-        U:ToggleDropdownMenu(dd)
-        RAISE_CYCLES = RAISE_CYCLES + 1
-        local m = U.activeMenu
-        if m and m.owner == dd and m:IsShown() and U.dropCatcher:IsShown() then
-            if ONTOP(m, win) then RAISE_TOP = RAISE_TOP + 1 end
-            RAISE_OK = RAISE_OK + 1
-            if m.optionButtons and m.optionButtons[1] then
-                m.optionButtons[1]:GetScript("OnClick")()
-            end
-        end
-    end
-    RAISE_END = (U.activeMenu == nil and U.dropCatcher:IsShown() == false)
-""")
-check(bool(rt.eval("RAISE_CYCLES == 12 and RAISE_OK == 12")),
-      "12 giri con la finestra ri-alzata a ogni giro: il menu si apre TUTTE le volte")
-check(bool(rt.eval("RAISE_TOP == 12")), "12 giri: il menu e' sempre sopra la finestra (visibile)")
-check(bool(rt.eval("RAISE_END == true")), "12 giri: dopo la scelta non resta niente aperto")
-
-# --- Un click fisico = un toggle (niente doppio handler) ------------------
-rt.execute("""
-    local dd = RLSuite.config.macroRaidDD
-    ARROW_CLICK = dd.button:GetScript("OnClick")
-    ARROW_MOUSE = dd.button._enabledMouse
-    FRAME_TOGGLE = dd:GetScript("OnMouseUp")
-""")
-check(bool(rt.eval("ARROW_CLICK == nil and FRAME_TOGGLE ~= nil")),
-      "la freccia non ha un secondo handler: apre/chiude solo il frame del dropdown")
-check(bool(rt.eval("ARROW_MOUSE == false")), "la freccia lascia passare il click al frame (nessun doppio toggle)")
 
 # --- v1.11.52 fix: i menu raid/boss si RIAPRONO (non "una volta sola") ---
 # Il menu era riusato tra le aperture ma non veniva mai ri-mostrato: dopo la

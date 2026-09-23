@@ -644,7 +644,12 @@ function Utils:CreateDropdown(parent, name, width, height)
         Utils:ToggleDropdownMenu(dd)
     end
     dd:SetScript("OnMouseUp", toggle)
-    dd.button:SetScript("OnClick", toggle)
+    -- La freccia NON e' un secondo punto di click: il click passa al frame del
+    -- dropdown (OnMouseUp) che e' l'UNICO che apre/chiude. Con due handler sullo
+    -- stesso click (OnMouseUp del frame + OnClick del bottone, che in 3.3.5
+    -- arrivano entrambi) il menu si apriva e si richiudeva nello stesso istante.
+    if dd.button.EnableMouse then dd.button:EnableMouse(false) end
+    if dd.button.SetScript then dd.button:SetScript("OnClick", nil) end
     -- Guardia "pannello invisibile" (fstack): il catcher a tutto schermo e
     -- il menu NON devono mai sopravvivere alla propria finestra. Quando la
     -- finestra (o il dropdown stesso) viene nascosta senza che il menu sia
@@ -701,7 +706,13 @@ function Utils:OpenDropdownMenu(dd, options)
     if not self.dropCatcher then
         local catcher = CreateFrame("Button", "RLSuiteDropCatcher", UIParent)
         catcher:SetAllPoints(UIParent)
-        catcher:SetFrameStrata("FULLSCREEN_DIALOG")
+        -- STRATA PIU' ALTA ESISTENTE ("TOOLTIP"): la finestra di configurazione
+        -- e' un AceGUI Window che vive in FULLSCREEN_DIALOG e si ri-alza da sola
+        -- a ogni click (SetToplevel). Menu e catcher DEVONO stare sopra di lei,
+        -- altrimenti il menu si apre DIETRO la finestra (invisibile) e il click
+        -- "fuori" non chiude niente. E' la stessa scelta che fa AceConfigDialog
+        -- per i propri popup (AceConfigDialog-3.0.lua: SetFrameStrata("TOOLTIP")).
+        catcher:SetFrameStrata("TOOLTIP")
         catcher:SetFrameLevel(1)
         catcher:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         catcher:SetScript("OnClick", function() Utils:CloseDropdownMenu() end)
@@ -726,8 +737,10 @@ function Utils:OpenDropdownMenu(dd, options)
     -- 3.3.5 (il registro dei nomi tiene solo l'ultimo frame creato).
     local menu = dd._rlsDropMenu or CreateFrame("Frame", nil, UIParent)
     dd._rlsDropMenu = menu
-    menu:SetFrameStrata("FULLSCREEN_DIALOG")
-    menu:SetFrameLevel(10)
+    -- Vedi il catcher: TOOLTIP + livello sopra il catcher, cosi' il menu e'
+    -- SEMPRE sopra la finestra di config, in qualunque punto dello stack sia.
+    menu:SetFrameStrata("TOOLTIP")
+    menu:SetFrameLevel(20)
     -- Se il menu svanisce per QUALUNQUE ragione (finestra padre nascosta,
     -- cambio tab, /rls, Hide diretto), IL CATCHER MUORE SEMPRE CON LUI:
     -- e' l'unica difesa affidabile contro lo zombie full-screen invisibile

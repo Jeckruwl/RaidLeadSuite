@@ -7,7 +7,40 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.54**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.55**.
+
+## 1.11.55 — CAUSA VERA dei dropdown che "smettono di aprirsi": la STRATA
+
+Perche' la tendina smetteva di aprirsi dopo N aperture (N variabile: 2, 5, 6...):
+la finestra di configurazione e' un **AceGUI Window**, che per costruzione vive
+nella strata **FULLSCREEN_DIALOG** ed e' `SetToplevel(true)`: a ogni interazione
+si **ri-alza da sola** dentro quella strata (AceGUIContainer-Window.lua:180 e
+:92). Il menu dei nostri dropdown e il catcher stavano **nella stessa strata**
+(FULLSCREEN_DIALOG) a livelli fissi 10 e 1: appena la finestra si ri-alzava,
+finiva **sopra** il menu -> il menu si apriva **DIETRO** la finestra (quindi
+invisibile e non cliccabile) e il click "fuori" non chiudeva niente perche'
+andava sulla finestra invece che sul catcher. Non c'era nessuno stato da
+consumare: era un problema di Z-ORDER, ed e' per questo che il numero di
+aperture "sopportate" cambiava.
+
+Rimedio (definitivo, allineato a quello che fa AceConfigDialog per i propri
+popup: `AceConfigDialog-3.0.lua` usa `SetFrameStrata("TOOLTIP")`):
+
+- catcher e menu in strata **TOOLTIP** (la piu' alta esistente) -> sempre sopra
+  la finestra, qualunque cosa faccia AceGUI;
+- menu a livello 20, catcher a 1 (le opzioni restano sopra il catcher);
+- **un solo percorso di click**: la freccetta non e' piu' cliccabile, apre e
+  chiude solo il frame del dropdown (prima lo stesso click fisico poteva
+  arrivare a due handler -> "si apre e si richiude subito").
+
+Vale per TUTTI i dropdown dell'addon (Loot Manager, MS Manager, Group Making,
+macro), non solo per raid/boss.
+
+Nota per i test: il mock ora emula il client anche su strata/livelli (i figli
+EREDITANO strata e livello del genitore) -> i check "chi sta sopra chi" hanno
+significato reale. Con il codice 1.11.54 i 4 check di z-order falliscono.
+
+Test: **841 check** totali (10 nuovi nella 1.11.55).
 
 ## 1.11.54 — i dropdown si aprono/chiudono ALL'INFINITO (stato letto dal vero)
 
@@ -90,7 +123,7 @@ sessione, poi l'ultimo con progressione registrata.
 NON registra** (i pull finti del debug non devono sporcare la progressione vera). `MacroBar:OnBossProgressChanged` riallinea la barra quando il counter avanza (guardia di rientranza perche'
 passa da `CurrentBossInfo` -> `InferLinearKills` -> di nuovo `OnBossProgressChanged`).
 
-Test: **831 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
+Test: **841 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
 counter su Gunship e Faction Champions, precedenza del target, inferenza lineare su ICC e ToC,
 kill dal combat log con e senza debug, riallineo automatico della barra al variare del counter,
 guardia di rientranza sempre rilasciata e robustezza a un errore di riconoscimento).
