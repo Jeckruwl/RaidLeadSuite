@@ -153,12 +153,14 @@ function MW:CreateFrame()
     RLSuite.utils:SkinFrame(f)
     RLSuite.utils:ClampWindow(f)
 
-    -- === Barretta titolo 20px SOPRA la main bar ======================
+    -- === Barretta titolo (bassa, 20px) SOPRA la main bar =============
     -- Eredita la larghezza della main bar (anchor a tutti e due gli
-    -- angoli). A sinistra: "RLS"; a destra: arrowup.tga (mostra/nasconde
-    -- il pannello sotto alla barretta) e close.tga (chiude la main bar).
+    -- angoli). A sinistra: ICONA DI FASE + nome della fase (niente piu'
+    -- il testo "RLS": l'icona di fase dice gia' a che punto sei, e il
+    -- clic la fa avanzare). A destra: arrowup.tga (mostra/nasconde il
+    -- pannello sotto alla barretta) e close.tga (chiude la main bar).
     local tb = CreateFrame("Frame", "RLSuiteMainTitleBar", UIParent)
-    tb:SetHeight(30)
+    tb:SetHeight(20)
     -- gap 2px: barretta STACCATA dalla main bar (non incollata)
     tb:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 2)
     tb:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 2)
@@ -191,11 +193,8 @@ function MW:CreateFrame()
         RLSuite.utils:PersistFramePos(f, "main")
     end)
 
-    local tbTitle = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    tbTitle:SetPoint("LEFT", tb, "LEFT", 8, 0)
-    tbTitle:SetText("RLS")
-    tbTitle:SetTextColor(1, 0.82, 0)
-    tb.title = tbTitle
+    -- Niente piu' la scritta "RLS": al suo posto (creati piu' sotto) l'icona
+    -- di fase e il nome della fase, cosi' la barretta dice qualcosa di utile.
 
     -- X bianca + freccia dai TGA dell'utente in media/, DIMEZZATE (11px).
     local crashBtn = CreateFrame("Button", nil, tb)
@@ -360,14 +359,16 @@ function MW:CreateFrame()
             file = "Interface\\CharacterFrame\\UI-StateIcon",
             static = { 0.5, 1.0, 0, 0.5 } },
     }
-    self.phaseBtn = CreateFrame("Button", "RLSuitePhaseBtn", f)
-    self.phaseBtn:SetSize(26, 26)
+    -- L'icona di fase vive NELLA BARRETTA del titolo (al posto di "RLS"):
+    -- 16px per stare comoda nei 20px della barretta.
+    self.phaseBtn = CreateFrame("Button", "RLSuitePhaseBtn", tb)
+    self.phaseBtn:SetSize(16, 16)
     self.phaseBtn:EnableMouse(true)
     self.phaseBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     RLSuite.utils:SkinBox(self.phaseBtn)
     local phaseIcon = self.phaseBtn:CreateTexture(nil, "ARTWORK")
-    phaseIcon:SetPoint("TOPLEFT", self.phaseBtn, "TOPLEFT", 3, -3)
-    phaseIcon:SetPoint("BOTTOMRIGHT", self.phaseBtn, "BOTTOMRIGHT", -3, 3)
+    phaseIcon:SetPoint("TOPLEFT", self.phaseBtn, "TOPLEFT", 2, -2)
+    phaseIcon:SetPoint("BOTTOMRIGHT", self.phaseBtn, "BOTTOMRIGHT", -2, 2)
     self.phaseBtn.icon = phaseIcon
     self.phaseBtn:SetScript("OnClick", function(s, button)
         if not RLSuite.CycleContextPhase then return end
@@ -388,32 +389,34 @@ function MW:CreateFrame()
 
     -- Testo con il nome della fase, mostrato accanto all'icona fase
     -- quando c'e' spazio sufficiente fino alla X di chiusura.
-    self.phaseText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.phaseText = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     self.phaseText:SetTextColor(1, 0.82, 0)
     self.phaseText:SetJustifyH("LEFT")
     self.phaseText:Hide()
+    tb.title = self.phaseText
 
 
     -- Config: accessibile dal clic destro sull'icona della minimappa e da
     -- /rls config (niente piu' icona rotellina nella barra principale).
 
-    -- SaveRaid: icona salvataggio a sinistra dell'icona fase
-    self.saveRaidBtn = CreateFrame("Button", "RLSuiteSaveRaidBtn", f)
-    self.saveRaidBtn:SetSize(26, 26)
-    RLSuite.utils:SkinBox(self.saveRaidBtn)
-    local saveIcon = self.saveRaidBtn:CreateTexture(nil, "ARTWORK")
-    saveIcon:SetPoint("TOPLEFT", self.saveRaidBtn, "TOPLEFT", 3, -3)
-    saveIcon:SetPoint("BOTTOMRIGHT", self.saveRaidBtn, "BOTTOMRIGHT", -3, 3)
-    saveIcon:SetTexture(RLSuite:AddonTexture("media\\save.blp"))
-    self.saveRaidBtn:EnableMouse(true)
+    -- SaveRaid: TORNA A ESSERE UN PULSANTE (non un'icona): stesso stile e
+    -- stessa taglia dei tasti della matrice, entra nella griglia come settimo
+    -- tasto (la riga di icone in alto non esiste piu').
+    self.saveRaidBtn = CreateFrame("Button", "RLSuiteSaveRaidBtn", f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.saveRaidBtn)
+    self.saveRaidBtn:SetSize(90, 22)
+    self.saveRaidBtn:SetText("SaveRaid")
     self.saveRaidBtn:RegisterForClicks("LeftButtonUp")
     self.saveRaidBtn:SetScript("OnClick", function() self:OnSaveRaid() end)
     self.saveRaidBtn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
         GameTooltip:SetText("SaveRaid")
+        GameTooltip:AddLine(L["Saves the current setup (Comp, MacroBar, Config)."], 1, 1, 1)
         GameTooltip:Show()
     end)
     self.saveRaidBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- entra nella matrice insieme ai tab (tabKey nil: non e' una tab)
+    table.insert(self.matrixButtons, self.saveRaidBtn)
 
     self:ApplyLayout()
 end
@@ -434,26 +437,17 @@ function MW:ApplyLayout()
     end
 
     -- Bottoni matrice: colonne x righe configurabili dalla Config.
+    -- La vecchia RIGA DI ICONE in alto non esiste piu': l'icona di fase sta
+    -- nella barretta del titolo e "SaveRaid" e' tornato un pulsante della
+    -- matrice. Quindi la barra e' PIU' BASSA di tutta quella riga.
     local bw, bh, gapX, gapY = 90, 22, 8, 4
     local PAD = 12
-    local iconSize = 26                       -- icone (save/fase)
-    local iconGap = 4                         -- spazio tra le icone
-    local xSize = 32                          -- X di chiusura
-    local rowGap = 6                          -- spazio tra riga icone e matrice
 
     local matrixW = cols * bw + (cols - 1) * gapX
     local matrixH = rows * bh + (rows - 1) * gapY
 
-    -- Riga icone in alto, larga quanto la matrice: le 2 icone a sinistra,
-    -- spazio vuoto, X rossa a destra. Se la matrice e' piu' stretta delle
-    -- icone, riga e barra si allargano al minimo per contenerle.
-    local iconRowH = math.max(iconSize, xSize)
-    local iconsW = 2 * iconSize + 1 * iconGap
-    local minRowW = iconsW + iconGap + xSize
-    local contentW = math.max(matrixW, minRowW)
-
-    local h = 2 * PAD + iconRowH + rowGap + matrixH
-    local w = 2 * PAD + contentW
+    local h = 2 * PAD + matrixH
+    local w = 2 * PAD + matrixW
 
     self.frame:SetSize(w, h)
     self.frame:SetScale(L.scale or 1)
@@ -465,7 +459,7 @@ function MW:ApplyLayout()
     -- Altrimenti (colonne troppe larghe) la coppia finisce nella cella
     -- subito dopo l'ultimo tasto, come prima.
     local x0 = PAD
-    local topY = -PAD - iconRowH - rowGap
+    local topY = -PAD
     local totalCells = nButtons + extraCells
     local rfIdx = nil
     for i, btn in ipairs(self.matrixButtons or {}) do
@@ -506,31 +500,29 @@ function MW:ApplyLayout()
         self.otBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX + halfW + halfGap, cellY)
     end
 
-    -- riga icone in alto: save -> fase a sinistra, X a destra
-    local iconY = -(iconRowH - iconSize) / 2
-    if self.saveRaidBtn then
-        self.saveRaidBtn:ClearAllPoints()
-        self.saveRaidBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", PAD, -PAD + iconY)
-    end
+    -- BARRETTA DEL TITOLO: icona di fase + nome della fase a sinistra
+    -- (al posto della vecchia scritta "RLS"); freccia e X restano a destra.
     if self.phaseBtn then
         self.phaseBtn:ClearAllPoints()
-        self.phaseBtn:SetPoint("TOPLEFT", self.saveRaidBtn or self.frame, "TOPRIGHT", iconGap, 0)
+        self.phaseBtn:SetPoint("LEFT", self.titleBar or self.frame, "LEFT", 6, 0)
     end
-    if self.closeBtn then
-        self.closeBtn:ClearAllPoints()
-        self.closeBtn:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", -PAD, -PAD)
-    end
-
-    -- nome della fase accanto all'icona, solo se c'e' spazio fino alla X
     if self.phaseText and self.phaseBtn then
         self.phaseText:ClearAllPoints()
-        self.phaseText:SetPoint("LEFT", self.phaseBtn, "RIGHT", iconGap + 2, 0)
-        local available = contentW - iconsW - xSize - iconGap
-        if available >= 58 then
+        self.phaseText:SetPoint("LEFT", self.phaseBtn, "RIGHT", 5, 0)
+        -- spazio libero = larghezza barretta - icona - margini - (freccia+X).
+        -- La barretta e' ancorata ai due angoli della finestra, quindi la sua
+        -- larghezza E' la larghezza della barra (niente GetWidth: con gli
+        -- ancoraggi il valore non e' disponibile nell'istante del calcolo).
+        local available = w - 6 - 16 - 5 - 44
+        if available >= 48 then
             self.phaseText:Show()
         else
             self.phaseText:Hide()
         end
+    end
+    if self.closeBtn then
+        self.closeBtn:ClearAllPoints()
+        self.closeBtn:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", -PAD, -PAD)
     end
 
     RLSuite.utils:SkinFrame(self.frame)

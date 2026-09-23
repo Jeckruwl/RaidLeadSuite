@@ -7,7 +7,34 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.55**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.56**.
+
+## 1.11.56 — barretta piu' bassa, icona di fase al posto di "RLS", SaveRaid pulsante
+
+Tre richieste dell'utente, tutte sul "muso" della main bar:
+
+1. **Barretta del titolo piu' bassa**: 30 -> **20 px**.
+2. **Via la scritta "RLS"**: al suo posto, a sinistra, l'**icona di fase (16x16)
+   con il nome della fase** accanto ("Pre-raid" / "Pre-boss" / "In-fight").
+   L'icona resta quella cliccabile di prima (clic sinistro = fase successiva,
+   clic destro = precedente) e continua ad animarsi (occhio LFG, spade).
+   Se la barra e' stretta il NOME si nasconde e resta l'icona.
+   `mainWindow.phaseText` e' anche `titleBar.title` (il vecchio campo "RLS").
+3. **SaveRaid torna un PULSANTE**: era un'icona 26x26 con save.blp, ora e' un
+   tasto di testo `UIPanelButtonTemplate` "SaveRaid" **90x22**, identico agli
+   altri tasti, e sta **nella matrice come settimo tasto** (la Config, le
+   stringhe e i tooltip sono aggiornati di conseguenza).
+
+Conseguenza: **la riga di icone in alto al pannello non esiste piu'** (conteneva
+solo save + fase), quindi la main bar e' piu' bassa di quella riga: altezza =
+`2*PAD + matrice` (con 2 colonne x 4 righe = **124 px**, prima 156). Larghezza
+invariata (segue la matrice). La coppia MT/OT resta appesa alla cella sotto
+"Raid Frame"; la matrice ora e' 6 tab + SaveRaid (7 celle + la cella MT/OT).
+
+Test: **855 check** totali (14 nuovi nella 1.11.56: barretta 20px, icona/nome
+fase nella barretta, niente "RLS", SaveRaid pulsante di testo 90x22 settimo
+della matrice, altezza barra = solo matrice, click -> OnSaveRaid, nome fase
+nascosto sulle barre strette).
 
 ## 1.11.55 — CAUSA VERA dei dropdown che "smettono di aprirsi": la STRATA
 
@@ -123,7 +150,7 @@ sessione, poi l'ultimo con progressione registrata.
 NON registra** (i pull finti del debug non devono sporcare la progressione vera). `MacroBar:OnBossProgressChanged` riallinea la barra quando il counter avanza (guardia di rientranza perche'
 passa da `CurrentBossInfo` -> `InferLinearKills` -> di nuovo `OnBossProgressChanged`).
 
-Test: **841 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
+Test: **855 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
 counter su Gunship e Faction Champions, precedenza del target, inferenza lineare su ICC e ToC,
 kill dal combat log con e senza debug, riallineo automatico della barra al variare del counter,
 guardia di rientranza sempre rilasciata e robustezza a un errore di riconoscimento).

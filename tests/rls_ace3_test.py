@@ -3964,16 +3964,95 @@ rt.execute("RLSuite.context = 'preboss'; RLSuite.macrobar:UpdatePhase()")
 check(rt.eval("RLSuite.macrobar.phaseText:GetText()") == "PH:PRE-BOSS", "phase text updates to PH:PRE-BOSS")
 rt.execute("RLSuite.context = 'preraid'; RLSuite.macrobar:UpdatePhase()")
 
-# -- Barretta titolo main bar: 20px, sopra la finestra, larghezza ereditata
+# -- Barretta titolo main bar: bassa (20px), sopra la finestra, larghezza ereditata
 rt.execute("TB = RLSuite.mainWindow.titleBar")
 check(bool(rt.eval("TB ~= nil")), "main title bar exists")
-check(rt.eval("TB._h") == 30, "title bar height is exactly 30px")
+check(rt.eval("TB._h") == 20, "title bar is LOW: height 20px (was 30)")
 rt.execute("TB_P1 = TB._points[1] or {}; TB_P2 = TB._points[2] or {}")
 check(bool(rt.eval("TB_P1[1] == 'BOTTOMLEFT' and TB_P1[3] == 'TOPLEFT' and TB_P2[1] == 'BOTTOMRIGHT' and TB_P2[3] == 'TOPRIGHT'")), "title bar spans the full main-bar width (anchored to both top corners)")
 check(rt.eval("TB_P1[5]") == 2 and rt.eval("TB_P2[5]") == 2, "title bar is DETACHED (2px gap above the main bar)")
-check(bool(rt.eval("TB.title ~= nil and TB.title:GetText() == 'RLS'")), "title shows 'RLS' on the left")
+check(bool(rt.eval("TB.title ~= nil and tostring(TB.title:GetText()):find('RLS') == nil")),
+      "no more 'RLS' text in the title bar")
 check(bool(rt.eval("TB.arrowBtn ~= nil and TB.arrowBtn.icon ~= nil and tostring(TB.arrowBtn.icon._texture):find('arrowup.tga', 1, true) ~= nil")), "arrowup.tga button present on the right (ARTWORK texture, renders)")
 check(bool(rt.eval("TB.closeBtn ~= nil and TB.closeBtn.icon ~= nil and tostring(TB.closeBtn.icon._texture):find('close.tga', 1, true) ~= nil")), "close.tga button present on the right (ARTWORK texture, renders)")
+
+# -- v1.11.56: icona di fase DENTRO la barretta + SaveRaid tornato pulsante --
+rt.execute("""
+    MW = RLSuite.mainWindow
+    TB = MW.titleBar
+    PB = MW.phaseBtn
+    PT = MW.phaseText
+    PB_PARENT = (PB:GetParent() == TB)
+    PT_PARENT = (PT:GetParent() == TB)
+    PB_SIZE = PB._w .. 'x' .. PB._h
+    PT_LEFT = PT._points[1] and PT._points[1][2] == PB
+    PH_LABEL = PT:GetText()
+    SAVE_BTN = MW.saveRaidBtn
+    SAVE_TXT = (SAVE_BTN.SetText and SAVE_BTN:GetText()) or ''
+    SAVE_W = SAVE_BTN._w
+    SAVE_H = SAVE_BTN._h
+    SAVE_IS_MATRIX = false
+    for i, b in ipairs(MW.matrixButtons or {}) do
+        if b == SAVE_BTN then SAVE_IS_MATRIX = true SAVE_IDX = i end
+    end
+    SAVE_HAS_ICON = (SAVE_BTN.icon ~= nil)
+""")
+check(bool(rt.eval("PB_PARENT == true")), "phase icon lives IN the title bar (was in the main bar)")
+check(bool(rt.eval("PT_PARENT == true")), "phase name lives IN the title bar, next to the icon")
+check(bool(rt.eval("PB_SIZE == '16x16'")), "phase icon is 16x16 (fits the 20px title bar)")
+check(bool(rt.eval("PT_LEFT == true")), "phase name is anchored to the RIGHT of the phase icon")
+check(bool(rt.eval("PH_LABEL == 'Pre-raid' or PH_LABEL == 'Pre-boss' or PH_LABEL == 'In-fight'")),
+      "phase name shows the current phase ('%s')" % rt.eval("PH_LABEL"))
+check(bool(rt.eval("SAVE_TXT == 'SaveRaid'")), "SaveRaid is a TEXT BUTTON showing 'SaveRaid'")
+check(bool(rt.eval("SAVE_W == 90 and SAVE_H == 22")), "SaveRaid button has the same size as the matrix buttons (90x22)")
+check(bool(rt.eval("SAVE_IS_MATRIX == true and SAVE_IDX == 7")), "SaveRaid joins the button matrix as the 7th button")
+check(bool(rt.eval("SAVE_HAS_ICON == false")), "SaveRaid is no longer an icon button")
+
+# -- la barra e' piu' bassa: la vecchia riga di icone non esiste piu'
+rt.execute("""
+    MW = RLSuite.mainWindow
+    local L = RLSuite.db.profile.layout.main or {}
+    local cols = math.max(1, math.min(8, tonumber(L.matrixCols) or 2))
+    local rows = math.max(1, math.min(8, tonumber(L.matrixRows) or 4))
+    local n = #(MW.matrixButtons or {})
+    rows = math.max(rows, math.ceil(n / cols))
+    EXPECT_H = 2 * 12 + rows * 22 + (rows - 1) * 4
+    EXPECT_W = 2 * 12 + cols * 90 + (cols - 1) * 8
+    BAR_H = MW.frame._h
+    BAR_W = MW.frame._w
+""")
+check(bool(rt.eval("BAR_H == EXPECT_H")),
+      "main bar height = padding + matrix only (icon row removed): %d px" % rt.eval("BAR_H"))
+check(bool(rt.eval("BAR_W == EXPECT_W")), "main bar width still follows the matrix")
+
+# -- il click sul pulsante salva davvero (OnSaveRaid) ---------------------
+rt.execute("""
+    MW = RLSuite.mainWindow
+    SAVED_CALLS = 0
+    local orig = MW.OnSaveRaid
+    MW.OnSaveRaid = function() SAVED_CALLS = SAVED_CALLS + 1 end
+    MW.saveRaidBtn._scripts.OnClick(MW.saveRaidBtn)
+    MW.OnSaveRaid = orig
+""")
+check(bool(rt.eval("SAVED_CALLS == 1")), "clicking SaveRaid calls OnSaveRaid (still works as a button)")
+
+# -- barretta stretta: il nome della fase sparisce, l'icona resta ---------
+rt.execute("""
+    MW = RLSuite.mainWindow
+    local layout = RLSuite.db.profile.layout
+    layout.main = layout.main or {}
+    local oldCols = layout.main.matrixCols
+    layout.main.matrixCols = 1
+    MW:ApplyLayout()
+    NARROW_TEXT = MW.phaseText:IsShown()
+    NARROW_BTN = MW.phaseBtn:IsShown()
+    layout.main.matrixCols = oldCols
+    MW:ApplyLayout()
+    WIDE_TEXT = MW.phaseText:IsShown()
+""")
+check(bool(rt.eval("NARROW_TEXT == false and NARROW_BTN == true")),
+      "narrow bar: the phase icon stays, only the phase NAME hides")
+check(bool(rt.eval("WIDE_TEXT == true")), "wide bar: the phase name is shown again")
 
 # -- Barretta: arrow = solo pannello; close = tutto chiuso
 rt.execute("""
