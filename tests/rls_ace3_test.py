@@ -5831,6 +5831,144 @@ check(bool(rt.eval("UW_F_RECOVERY:find('watchdog') ~= nil")), "v1.11.70 riga di 
 check(bool(rt.eval("UW_F_ERR:find('Window error') ~= nil and UW_F_ERR:find('boom') ~= nil")), "v1.11.70 riga di stato con finestra rotta: \"%s\"" % rt.eval("UW_F_ERR"))
 check(bool(rt.eval("UW_G_LABEL ~= nil and UW_G_TITLE ~= nil")), "v1.11.70: i pull salvati con il formato vecchio (senza campi nuovi) si aprono ancora: \"%s\"" % rt.eval("UW_G_TITLE"))
 
+rt.execute("""
+-- =====================================================================
+-- v1.11.71: lista boss UNICA (dalle macro) + pull etichettato col
+--           bersaglio principale + sfratto trash-first + override manuale
+-- =====================================================================
+local cl = RLSuite.combatLog
+cl:EnsureBossIndex()
+cl.current = nil
+cl.selFight = nil
+local CAP0 = cl.db.saveFights
+cl.db.fights = {}
+
+-- A) l'indice copre TUTTO quello che c'e' in bossUnits (una sola fonte)
+local total, missing = 0, 0
+for _, bosses in pairs(RLSuite.bossUnits or {}) do
+    for _, info in pairs(bosses) do
+        for _, id in ipairs(info.npcs or {}) do
+            total = total + 1
+            if not cl:BossNameForNpc(id) then missing = missing + 1 end
+        end
+    end
+end
+UW_P2_TOTAL, UW_P2_MISSING = total, missing
+-- i 4 boss dei raid da un solo boss (non erano coperti dal mio parser di prova)
+UW_P2_SINGLE = {
+    tostring(cl:BossNameForNpc(10184)), tostring(cl:BossNameForNpc(28859)),
+    tostring(cl:BossNameForNpc(28860)), tostring(cl:BossNameForNpc(39863)),
+}
+UW_P2_ICC = tostring(cl:BossNameForNpc(36853))
+UW_P2_UNKNOWN = (cl:BossNameForNpc(123456) == nil)
+UW_P2_BYNAME = tostring(cl:BossNameForName("lord marrowgar"))
+
+-- helper: GUID di NPC come li manda il client
+function UW_GUID(id) return string.format("0xF13000%04X0000AA", id) end
+
+local function openTrash(dstName)
+    cl:OnRegenDisabled()
+    cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
+        UW_GUID(555555), dstName, 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
+    cl:CloseFight("test")
+    return cl.db.fights[1]
+end
+
+-- B) TRASH: etichettato col bersaglio principale, classificato trash
+local tr = openTrash("Skybreaker Sorcerer")
+UW_P2_TRASH = { name = tr.name, target = tr.target, isBoss = tr.isBoss }
+
+-- C) BOSS: riconosciuto dall'id (lista completa) e classificato boss
+cl:OnRegenDisabled()
+cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
+    UW_GUID(36853), 'Sindragosa', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
+cl:CloseFight("test")
+local bo = cl.db.fights[1]
+UW_P2_BOSS = { name = bo.name, target = bo.target, isBoss = bo.isBoss, boss = bo.boss }
+
+-- D) boss SOLO come sorgente (colpisce il raid) + danno nostro su trash:
+--    resta un pull di boss (conservativo: non si perde un pull di boss)
+cl:OnRegenDisabled()
+cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', UW_GUID(36612), 'Lord Marrowgar', 2048+64,
+    '0x0p', 'PlayerOne', 1024+16+1, 100, 'Bone Slice', 4, 4000, 0, 0, 0, 0, 0, 0)
+cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
+    UW_GUID(555556), 'Trash Mob', 2048+64, 100, 'Fireball', 4, 9000, 0, 0, 0, 0, 0, 1)
+cl:CloseFight("test")
+local mixF = cl.db.fights[1]
+UW_P2_MIX = { name = mixF.name, isBoss = mixF.isBoss, target = mixF.target }
+
+-- E) SFRATTO TRASH-FIRST: con cap 3 il boss sopravvive a 3 trash
+cl.db.saveFights = 3
+cl.db.fights = {}
+cl:OnRegenDisabled()
+cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
+    UW_GUID(36612), 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
+cl:CloseFight("test")
+openTrash("Trash One")
+openTrash("Trash Two")
+openTrash("Trash Three")
+UW_P2_EVICT = { n = #cl.db.fights, names = {}, bossLeft = false }
+for i, x in ipairs(cl.db.fights) do
+    UW_P2_EVICT.names[#UW_P2_EVICT.names + 1] = (x.isBoss and "BOSS:" or "trash:") .. tostring(x.name)
+    if x.isBoss then UW_P2_EVICT.bossLeft = true end
+end
+UW_P2_EVICT.names = table.concat(UW_P2_EVICT.names, " | ")
+cl.db.saveFights = CAP0
+
+-- F) OVERRIDE MANUALE (click destro sul selettore)
+cl.db.fights = {}
+local t2 = openTrash("Skybreaker Sorcerer")
+cl.selFight = t2
+UW_P2_OVR0 = t2.isBoss
+cl:ToggleFightKind(t2)
+UW_P2_OVR1 = t2.isBoss
+cl:ToggleFightKind(t2)
+UW_P2_OVR2 = t2.isBoss
+-- il pull in corso non si tocca
+cl:OnRegenDisabled()
+local cur0 = cl.current.isBoss
+cl:ToggleFightKind(cl.current)
+UW_P2_OVR_CUR = (cl.current.isBoss == cur0 and cl.current ~= nil)
+cl:CloseFight("test")
+-- il click destro arriva davvero dall'handler del dropdown
+if cl.fightDropdown and cl.fightDropdown._scripts and cl.fightDropdown._scripts.OnMouseUp then
+    cl.selFight = cl.db.fights[1]
+    local before = cl.selFight.isBoss
+    cl.fightDropdown._scripts.OnMouseUp(cl.fightDropdown, "RightButton")
+    UW_P2_RIGHT = (cl.selFight.isBoss ~= before)
+else
+    UW_P2_RIGHT = false
+end
+UW_P2_HOOK = (type(cl.fightDropdown.onRightClick) == "function")
+
+-- G) riga di stato: conteggio boss/trash dai flag nuovi
+cl.db.fights = {}
+openTrash("Trash One")
+cl:OnRegenDisabled()
+cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
+    UW_GUID(36612), 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
+cl:CloseFight("test")
+cl.current = nil
+cl:RefreshInfo(nil)
+UW_P2_STATUS = tostring(cl.infoText:GetText())
+cl.db.fights = {}
+cl.selFight = nil
+cl:RefreshInfo(nil)
+""")
+
+
+check(bool(rt.eval("UW_P2_TOTAL > 45 and UW_P2_MISSING == 0")), "v1.11.71: l'indice boss del Log copre TUTTI i %r id delle macro (0 mancanti)" % rt.eval("UW_P2_TOTAL"))
+check(bool(rt.eval("UW_P2_SINGLE[1] == 'Onyxia' and UW_P2_SINGLE[2] == 'Malygos' and UW_P2_SINGLE[3] == 'Sartharion' and UW_P2_SINGLE[4] == 'Halion'")), "v1.11.71: anche i boss dei raid da un solo boss (%s)" % ", ".join(rt.eval("UW_P2_SINGLE").values()))
+check(bool(rt.eval("UW_P2_ICC == 'Sindragosa' and UW_P2_BYNAME == 'Lord Marrowgar' and UW_P2_UNKNOWN == true")), "v1.11.71: risoluzione per id (%r) e per nome (%r), e un id ignoto resta ignoto" % (rt.eval("UW_P2_ICC"), rt.eval("UW_P2_BYNAME")))
+check(bool(rt.eval("UW_P2_TRASH.name == 'Skybreaker Sorcerer' and UW_P2_TRASH.target == 'Skybreaker Sorcerer' and UW_P2_TRASH.isBoss == false")), "v1.11.71: il pull di TRASH e' etichettato col bersaglio principale (%r) ed e' classificato trash" % rt.eval("UW_P2_TRASH.name"))
+check(bool(rt.eval("UW_P2_BOSS.name == 'Sindragosa' and UW_P2_BOSS.isBoss == true and UW_P2_BOSS.target == 'Sindragosa'")), "v1.11.71: il pull di BOSS e' riconosciuto dall'id e classificato boss (%r)" % rt.eval("UW_P2_BOSS.name"))
+check(bool(rt.eval("UW_P2_MIX.isBoss == true and UW_P2_MIX.name == 'Lord Marrowgar'")), "v1.11.71: boss che colpisce il raid (sorgente) + danno nostro su trash = pull di BOSS (non si perde un pull di boss)")
+check(bool(rt.eval("UW_P2_EVICT.n == 3 and UW_P2_EVICT.bossLeft == true")), "v1.11.71: sfratto trash-first con cap 3: %s" % rt.eval("UW_P2_EVICT.names"))
+check(bool(rt.eval("UW_P2_OVR0 == false and UW_P2_OVR1 == true and UW_P2_OVR2 == false")), "v1.11.71: override manuale boss/trash (click destro sul selettore) - %r -> %r -> %r" % (rt.eval("UW_P2_OVR0"), rt.eval("UW_P2_OVR1"), rt.eval("UW_P2_OVR2")))
+check(bool(rt.eval("UW_P2_HOOK == true and UW_P2_RIGHT == true")), "v1.11.71: il tasto destro sul selettore passa dall'handler del dropdown e cambia la classificazione")
+check(bool(rt.eval("UW_P2_OVR_CUR == true")), "v1.11.71: il pull IN CORSO non si puo' riclassificare (avviso, nessuna modifica)")
+check(bool(rt.eval("UW_P2_STATUS:find('1 boss') ~= nil and UW_P2_STATUS:find('1 trash') ~= nil")), "v1.11.71: la riga di stato conta boss e trash coi flag nuovi: \"%s\"" % rt.eval("UW_P2_STATUS"))
+
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

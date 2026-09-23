@@ -39,47 +39,50 @@ local CL_FLAG_NPC = 2048
 local CL_FLAG_PET = 4096
 local CL_FLAG_FRIENDLY = 16
 
--- Boss noti WotLK (NPC id -> nome): usati per nome pull e kill/wipe.
-local CL_BOSS_NPC = {
-    -- Icecrown Citadel
-    [36612] = "Lord Marrowgar", [36855] = "Lady Deathwhisper",
-    [37813] = "Deathbringer Saurfang", [36627] = "Rotface",
-    [36626] = "Festergut", [36678] = "Professor Putricide",
-    [37970] = "Blood Prince Council", [37972] = "Blood Prince Council",
-    [37973] = "Blood Prince Council", [37955] = "Blood-Queen Lana'thel",
-    [36789] = "Valithria Dreamwalker", [36853] = "Sindragosa",
-    [36597] = "The Lich King",
-    -- Ruby Sanctum
-    [39863] = "Halion",
-    -- Trial of the Crusader
-    [34796] = "Gormok the Impaler", [35144] = "Acidmaw",
-    [34799] = "Dreadscale", [34797] = "Icehowl",
-    [34780] = "Lord Jaraxxus", [34497] = "Fjola Lightbane",
-    [34496] = "Eydis Darkbane", [34564] = "Anub'arak",
-    -- Ulduar
-    [33113] = "Flame Leviathan", [33118] = "Ignis the Furnace Master",
-    [33186] = "Razorscale", [33293] = "XT-002 Deconstructor",
-    [32930] = "Kologarn", [33515] = "Auriaya",
-    [32845] = "Hodir", [32865] = "Thorim", [32906] = "Freya",
-    [33350] = "Mimiron", [33271] = "General Vezax",
-    [33288] = "Yogg-Saron", [32871] = "Algalon the Observer",
-    -- Naxxramas
-    [15956] = "Anub'Rekhan", [15953] = "Grand Widow Faerlina",
-    [15952] = "Maexxna", [15954] = "Noth the Plaguebringer",
-    [15936] = "Heigan the Unclean", [16011] = "Loatheb",
-    [16028] = "Patchwerk", [15931] = "Grobbulus", [15932] = "Gluth",
-    [15928] = "Thaddius", [16061] = "Instructor Razuvious",
-    [16060] = "Gothik the Harvester", [15989] = "Sapphiron",
-    [15990] = "Kel'Thuzad",
-    -- Singoli
-    [10184] = "Onyxia", [28860] = "Sartharion", [28859] = "Malygos",
-    [31125] = "Archavon the Stone Watcher", [33993] = "Emalon the Storm Watcher",
-    [35013] = "Koralon the Flame Watcher", [38433] = "Toravon the Ice Watcher",
-}
+-- Boss noti WotLK: UNA SOLA FONTE DI VERITA'. La lista e' quella delle
+-- macro (RLSuite.bossUnits, 9 raid, ~150 NPC id con i nomi), non piu' una
+-- tabella ridotta scritta qui: la lista ridotta (56 id) faceva finire i pull
+-- di 93 boss come "Combat" con 0 danno utile.
+-- CL_BOSS_SET  = id -> nome del boss (test rapido "questo e' un boss?")
+-- CL_BOSS_BYNAME = nome minuscolo -> nome del boss (fallback per il client EN)
+local CL_BOSS_SET, CL_BOSS_BYNAME = {}, {}
+local CL_BOSS_SRC = nil
 
--- Set di id per il test rapido "questo bersaglio e' un boss?" (danno utile).
-local CL_BOSS_SET = {}
-for id in pairs(CL_BOSS_NPC) do CL_BOSS_SET[id] = true end
+function CL:EnsureBossIndex()
+    local units = RLSuite.bossUnits
+    if not units or CL_BOSS_SRC == units then return end
+    local set, byName = {}, {}
+    for _, bosses in pairs(units) do
+        for boss, info in pairs(bosses) do
+            for _, id in ipairs(info.npcs or {}) do
+                if set[id] == nil then set[id] = boss end
+            end
+            for _, n in ipairs(info.names or {}) do
+                byName[string.lower(n)] = byName[string.lower(n)] or boss
+            end
+            byName[string.lower(boss)] = byName[string.lower(boss)] or boss
+        end
+    end
+    for k in pairs(CL_BOSS_SET) do CL_BOSS_SET[k] = nil end
+    for k in pairs(CL_BOSS_BYNAME) do CL_BOSS_BYNAME[k] = nil end
+    for k, v in pairs(set) do CL_BOSS_SET[k] = v end
+    for k, v in pairs(byName) do CL_BOSS_BYNAME[k] = v end
+    CL_BOSS_SRC = units
+end
+
+-- Nome del boss dall'NPC id (nil se non e' un boss noto).
+function CL:BossNameForNpc(id)
+    if not id then return nil end
+    self:EnsureBossIndex()
+    return CL_BOSS_SET[id]
+end
+
+-- Nome del boss dal nome del target (fallback: client inglese).
+function CL:BossNameForName(name)
+    if not name or name == "" then return nil end
+    self:EnsureBossIndex()
+    return CL_BOSS_BYNAME[string.lower(name)]
+end
 
 -- Consumabili tracciati dal tab "Consumables": solo NOMI/ID noti, nessuna
 -- detection euristica. I flask e il "Well Fed" arrivano dalle liste gia'
@@ -234,6 +237,7 @@ function CL:Init()
     if self._initError and RLSuite.utils and RLSuite.utils.Print then
         RLSuite.utils:Print("Log window error: " .. self._initError)
     end
+    pcall(function() CL:EnsureBossIndex() end)
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnRegenDisabled")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnRegenEnabled")
     -- Re-arm dopo un /reload o un rientro nel mondo: se siamo in combat
@@ -322,6 +326,33 @@ function CL:TrackVitals(f)
     end
 end
 
+-- BERSAGLIO PRINCIPALE del pull = l'NPC che ha preso piu' danno dai membri
+-- del raid. Serve a due cose (direttiva): etichettare il pull anche quando NON
+-- e' un boss, e decidere boss/trash guardando il bersaglio (non "un boss
+-- compare ovunque": cosi' un trash con un boss come sorgente resta trash).
+function CL:MainTarget(f)
+    if not (f and f.events) then return nil, false end
+    local dmg, hits, bossDmg = {}, {}, {}
+    for _, ev in ipairs(f.events) do
+        if CL_CATS[ev[CL_E.SUB]] == "damage" and ev[CL_E.DST] and self:IsNPCFlag(ev[CL_E.DSTF]) then
+            local d = ev[CL_E.DST]
+            dmg[d] = (dmg[d] or 0) + (ev[CL_E.AMT] or 0)
+            hits[d] = (hits[d] or 0) + 1
+            if ev[CL_E.BOSS] then bossDmg[d] = (bossDmg[d] or 0) + (ev[CL_E.AMT] or 0) end
+        end
+    end
+    local best, bestV
+    for name, v in pairs(dmg) do
+        if not bestV or v > bestV then best, bestV = name, v end
+    end
+    if not best then -- nessun danno (pull di solo heal): usa il piu' bersagliato
+        for name, v in pairs(hits) do
+            if not bestV or v > bestV then best, bestV = name, v end
+        end
+    end
+    return best, (best and (bossDmg[best] or 0) > 0) or false
+end
+
 function CL:ClockLabel()
     if not date then return "" end
     local ok, t = pcall(date, "%H:%M")
@@ -331,6 +362,7 @@ end
 function CL:OpenFight(recovered)
     if not (self.db and self.db.enabled) then return end
     if self.current then return end -- gia' in corso
+    self:EnsureBossIndex()
     self.current = {
         startTime = GetTime(),
         startUTC = time(),
@@ -365,20 +397,36 @@ function CL:CloseFight(reason)
     self:TrackVitals(f) -- ultima annotazione (se si chiude da morti)
     f.duration = GetTime() - f.startTime
     f.kill = f.kill and true or false
-    f.name = f.boss or "Combat"
     f.player = UnitName and UnitName("player") or "?"
     f.closeReason = reason or "encounter-end"
+    -- ETICHETTA + CLASSIFICAZIONE dal bersaglio principale del pull
+    local target, targetIsBoss = self:MainTarget(f)
+    f.target = target
+    if not f.boss and target then
+        -- fallback per nome (il client e' inglese): copre i boss che
+        -- compaiono solo come sorgente o con id non utile
+        f.boss = self:BossNameForName(target)
+        if f.boss then targetIsBoss = true end
+    end
+    f.isBoss = (f.boss or targetIsBoss) and true or false
+    f.name = f.boss or target or "Combat"
     -- Chiudi le aure aperte alla durata del fight (per gli uptime).
     f.auraOpen = nil
     self.current = nil
     self.sessionLost = (self.sessionLost or 0) + (f.dropped or 0)
     -- Ring buffer dei pull salvati: in testa il piu' recente.
+    -- SFRATTO TRASH-FIRST: quando serve spazio esce il trash piu' vecchio,
+    -- mai un pull di boss (prima una serata di trash cacciava fuori i boss).
     if self.db and self.db.fights then
         table.insert(self.db.fights, 1, f)
         local cap = tonumber(self.db.saveFights) or 15
         if cap < 1 then cap = 1 end
         while #self.db.fights > cap do
-            table.remove(self.db.fights)
+            local victim = #self.db.fights
+            for i = #self.db.fights, 1, -1 do
+                if not self.db.fights[i].isBoss then victim = i break end
+            end
+            table.remove(self.db.fights, victim)
         end
     end
     self:RefreshUI()
@@ -397,6 +445,24 @@ end
 
 function CL:OnEnteringWorld()
     self:WatchTick("zone")
+end
+
+-- Override manuale (click destro sul selettore dei pull): marca il pull
+-- selezionato come boss o trash. Serve per i casi che nessuna lista copre
+-- (Gunship Battle, Faction Champions, un boss nuovo).
+function CL:ToggleFightKind(f)
+    if not f then return end
+    if f == self.current then
+        RLSuite.utils:Print(L["Close the pull first."])
+        return
+    end
+    f.isBoss = not (f.isBoss and true or false)
+    if f.isBoss and not f.boss then
+        f.boss = self:BossNameForName(f.target) or f.target
+    end
+    if f.boss then f.name = f.boss end
+    RLSuite.utils:Print(string.format(L["Pull marked as %s."], f.isBoss and L["boss"] or L["trash"]))
+    self:RefreshUI()
 end
 
 -- Tick da 1 Hz: campioni quando c'e' un pull, WATCHDOG sempre.
@@ -441,8 +507,9 @@ function CL:OnCLEU(_, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dst
     if not f.boss then
         for _, g in ipairs({ dstGUID, srcGUID }) do
             local id = self:NpcIdFromGUID(g)
-            if id and CL_BOSS_NPC[id] then
-                f.boss = CL_BOSS_NPC[id]
+            local bn = id and self:BossNameForNpc(id)
+            if bn then
+                f.boss = bn
                 if g == srcGUID and not f.bossGUID then f.bossGUID = g end
                 if g == dstGUID then f.bossGUID = g end
                 break
@@ -452,8 +519,9 @@ function CL:OnCLEU(_, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dst
     -- Kill: un boss noto muore durante il pull.
     if sub == "UNIT_DIED" then
         local id = self:NpcIdFromGUID(dstGUID)
-        if id and CL_BOSS_NPC[id] then
-            f.boss = CL_BOSS_NPC[id]
+        local bn = id and self:BossNameForNpc(id)
+        if bn then
+            f.boss = bn
             f.kill = true
             -- Counter di progressione (macro in-fight per boss): in debug NO,
             -- i pull finti del debug non devono sporcare la progressione vera.
@@ -2459,6 +2527,17 @@ function CL:CreateFrame()
     self.fightDropdown:ClearAllPoints()
     -- bordo destro a -28: lascia libera la X di chiusura (11px a -4)
     self.fightDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -28, -8)
+    -- Click destro = segna il pull selezionato come boss/trash (override
+    -- manuale per i casi fuori lista). Il sinistro apre il menu, come sempre.
+    self.fightDropdown.onRightClick = function() CL:ToggleFightKind(CL.selFight) end
+    self.fightDropdown:SetScript("OnEnter", function(s2)
+        GameTooltip:SetOwner(s2, "ANCHOR_BOTTOM")
+        pcall(function()
+            GameTooltip:SetText(L["Right-click: mark this pull as boss/trash"])
+            GameTooltip:Show()
+        end)
+    end)
+    self.fightDropdown:SetScript("OnLeave", function() GameTooltip:Hide() end)
     self.subText:SetPoint("RIGHT", self.fightDropdown, "LEFT", -10, -4)
 
     -- ---- riga 2: controllo del grafico
@@ -2858,7 +2937,7 @@ function CL:RefreshInfo(f)
     local fights = (self.db and self.db.fights) or {}
     local nBoss, nTrash = 0, 0
     for _, x in ipairs(fights) do
-        if x.boss then nBoss = nBoss + 1 else nTrash = nTrash + 1 end
+        if x.isBoss then nBoss = nBoss + 1 else nTrash = nTrash + 1 end
     end
     local txt
     if #fights > 0 then

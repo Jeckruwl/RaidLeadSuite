@@ -7,7 +7,46 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.70**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.71**.
+
+## 1.11.71 — Passata 2: lista boss UNICA + bersaglio principale + trash-first
+
+Direttiva: *"il target per etichettare il pull … usa il target anche per
+filtrare i trash. Usa la lista completa delle macro"*.
+
+**Correzione di una mia misura sbagliata.** In audit avevo scritto che il Log
+riconosceva 56 id e ne mancavano 93 rispetto alle macro: era un errore di
+misura (una regex troppo larga usata nei miei script di analisi). La verifica
+corretta: la lista delle macro (`RLSuite.bossUnits`) ha **56 id** e la vecchia
+lista del Log li copriva **tutti**. L'unificazione resta giusta (una sola
+fonte: se domani aggiungi un boss alle macro, il Log lo riconosce da solo), ma
+NON era un bug con 93 boss a zero danno utile.
+
+Cosa cambia:
+- `CL:EnsureBossIndex()` costruisce l'indice dei boss **da `RLSuite.bossUnits`**
+  (id -> nome, nome minuscolo -> nome). La tabella scritta a mano nel Log e'
+  sparita: `CL_BOSS_SET`/`CL_BOSS_BYNAME` sono riempiti dall'indice.
+- `CL:MainTarget(f)` = NPC che ha preso **piu' danno** dai membri del raid (con
+  ripiego sul bersaglio piu' colpito se il pull e' di soli heal).
+- `CL:CloseFight`: il pull viene **etichettato col bersaglio principale**
+  (`f.target`) e classificato `f.isBoss`. Un boss che compare ovunque nel pull
+  (anche solo come sorgente) tiene il pull come BOSS: meglio un trash marcato
+  boss che un boss perso.
+- `f.name = f.boss or f.target or "Combat"`: niente piu' `Combat` x N nel
+  dropdown, ogni pull di trash porta il nome del mob che hai ucciso.
+- **SFRATTO TRASH-FIRST**: a cap raggiunto esce il trash piu' vecchio, mai un
+  boss (verificato: cap 3 con 1 boss + 3 trash -> il boss resta).
+- **Override manuale**: click destro sul selettore dei pull -> il pull
+  selezionato passa boss <-> trash (copre Gunship Battle, Faction Champions e
+  qualunque caso fuori lista). Il pull in corso non si tocca (avviso).
+- Nel log il **counter di progressione NON si usa**: durante il progress
+  qualunque trash verrebbe marcato come il boss "prossimo" (Gunship). Per i due
+  buchi vale l'override manuale, approvato dall'utente.
+
+Test: **1018 check** totali (10 nuovi: copertura completa dell'indice, raid da
+un solo boss, id ignoto, etichetta trash, etichetta boss, boss-sorgente,
+sfratto trash-first, override manuale, click destro sull'handler, pull in corso
+non riclassificabile, conteggi boss/trash nella riga di stato).
 
 ## 1.11.70 — Passata 1: pull legato all'ENCOUNTER + watchdog + riga di stato
 
@@ -88,7 +127,7 @@ Due problemi reali:
    il nome sotto l'icona + icona accanto al nome nella lista del tab "Spells"
    (riga con texture + testo).
 
-Test: **1008 check** totali (18 nuovi nella 1.11.70); 988 nella 1.11.68 (risoluzione icona, fallback GetSpellInfo,
+Test: **1018 check** totali (10 nuovi nella 1.11.71); 988 nella 1.11.68 (risoluzione icona, fallback GetSpellInfo,
 nessuna spell = nessuna icona, "vuote=0" per Consumables/Auras/Powers, altezza
 intestazione, icona+nome nell'header, nome al posto dell'icona se manca, icona
 nella lista Spells).

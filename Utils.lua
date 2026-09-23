@@ -640,7 +640,14 @@ function Utils:CreateDropdown(parent, name, width, height)
     dd.value = nil
     dd.onSelect = nil
 
-    local function toggle()
+    local function toggle(_, button)
+        -- Il tasto DESTRO e' un'azione opzionale del chiamante (es. nel Log
+        -- segna il pull come boss/trash): se non la usa, resta un click
+        -- normale. Il tasto SINISTRO apre/chiude sempre il menu.
+        if button == "RightButton" and type(dd.onRightClick) == "function" then
+            dd.onRightClick(dd)
+            return
+        end
         Utils:ToggleDropdownMenu(dd)
     end
     dd:SetScript("OnMouseUp", toggle)
