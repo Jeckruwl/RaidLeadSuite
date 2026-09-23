@@ -6535,80 +6535,169 @@ check(bool(rt.eval("UW_P9_D2.started == true and UW_P9_D2.hit == true")), "v1.11
 check(bool(rt.eval("UW_P9_D2.at3 ~= '?' and UW_P9_D2.at8_gone == true and UW_P9_D2.row3 ~= '?'")), "v1.11.77: un player GIA' spostato si sposta ANCORA (%s -> slot 3)" % rt.eval("UW_P9_D2.at3"))
 rt.execute("""
 -- =====================================================================
--- v1.11.77: anche le barre TANKS (MT/OT) si trascinano - con un roster
--- corto la barra MT e' il "player" piu' visibile dell'HUD
+-- v1.11.78: il DRAG non dipende piu' da chi riceve gli eventi.
+-- Il gesto e' retto dal poller di RLSuite.raidFrame (stato del tasto +
+-- POSIZIONE del cursore), quindi funziona anche se il client non consegna
+-- pressione/rilascio alle righe: e' il caso del report "un player si
+-- sposta una volta e poi non si muove piu'".
 -- =====================================================================
 local RF = RLSuite.raidFrame
-RLSuite:ResetDebugRaid()          -- 1 solo membro: il player
+RLSuite:ResetDebugRaid()
 RLSuite.db.profile.debug = true
 RLSuite:ApplyDebugMode()
 RLSuite:SetContextPhase("infight")
 RF:Rebuild()
 
-local mt = RF.tankSlots[1]
-UW_P10_MIRROR = {
-    has = (mt.member ~= nil),
-    name = (mt.member and mt.member.name) or "?",
-    isTank = (mt.isTank == true),
-    slot = mt.slot,
-}
-
 local SAVED_ISD, SAVED_GCP = IsShiftKeyDown, GetCursorPosition
-IsShiftKeyDown = function() return true end
+local SAVED_IMBD, SAVED_ICL = IsMouseButtonDown, InCombatLockdown
+local SHIFT = true
+IsShiftKeyDown = function() return SHIFT end
+InCombatLockdown = function() return true end      -- siamo in pull
+local DOWN = false
+IsMouseButtonDown = function(b) return DOWN and b == "LeftButton" end
+local CUR_X, CUR_Y = 0, 0
+GetCursorPosition = function() return CUR_X, CUR_Y end
 
-local dst = RF.slots[8]
+-- Geometria a griglia (il client la fornisce per ogni riga).
+local ROW_W, ROW_H = 120, 14
+local function rectFor(i)
+    local col = (i - 1) % 5
+    local rw = math.floor((i - 1) / 5)
+    local x0 = 100 + col * 130
+    local y1 = 600 - rw * 20
+    return x0, x0 + ROW_W, y1 - ROW_H, y1
+end
+local function setRect(f, x0, x1, y0, y1)
+    f.GetLeft = function() return x0 end
+    f.GetRight = function() return x1 end
+    f.GetBottom = function() return y0 end
+    f.GetTop = function() return y1 end
+end
 for i, sl in ipairs(RF.slots) do
-    if sl ~= dst then
-        sl.GetLeft = function() return 500 + i end
-        sl.GetRight = function() return 501 + i end
-        sl.GetBottom = function() return 500 end
-        sl.GetTop = function() return 501 end
+    local x0, x1, y0, y1 = rectFor(i)
+    setRect(sl, x0, x1, y0, y1)
+    if sl.dropPlane then setRect(sl.dropPlane, x0, x1, y0, y1) end
+    if sl.secTarget then setRect(sl.secTarget, x0, x1, y0, y1) end
+end
+local function centerOf(i)
+    local x0, x1, y0, y1 = rectFor(i)
+    return (x0 + x1) / 2, (y0 + y1) / 2
+end
+local function tick(el)
+    if RF._dragPoller and RF._dragPoller._scripts and RF._dragPoller._scripts.OnUpdate then
+        RF._dragPoller._scripts.OnUpdate(RF._dragPoller, el or 0.05)
     end
 end
-dst.GetLeft = function() return 100 end; dst.GetRight = function() return 120 end
-dst.GetBottom = function() return 60 end; dst.GetTop = function() return 80 end
-GetCursorPosition = function() return 105, 70 end
 
-mt._manualDrag = nil; mt._pendingRowClick = nil; mt._targetT = nil
-mt:SetScript("OnUpdate", nil)
-mt._scripts.OnMouseDown(mt, "LeftButton")
-UW_P10_START = (RF._rfDragSource == mt)
-UW_P10_TARGETS = dst.dropPlane:IsShown()
-dst.dropPlane._scripts.OnMouseUp(dst.dropPlane, "LeftButton")
+UW_P11_POLLER = {
+    exists = (RF._dragPoller ~= nil),
+    mouseOff = (RF._dragPoller and RF._dragPoller._enabledMouse == false),
+}
+
+-- IL CLIENT "MANGIA" TUTTI GLI EVENTI DELLE RIGHE: nessun handler.
+local muted = {}
+local function mute(f)
+    if not f then return end
+    muted[#muted + 1] = { f = f, down = f._scripts and f._scripts.OnMouseDown,
+                          up = f._scripts and f._scripts.OnMouseUp }
+    f:SetScript("OnMouseDown", nil)
+    f:SetScript("OnMouseUp", nil)
+end
+for i, sl in ipairs(RF.slots) do
+    mute(sl)
+    mute(sl.dropPlane)
+    mute(sl.secTarget)
+end
+
+-- DRAG 1: player (slot 1) -> slot 8
+CUR_X, CUR_Y = centerOf(1)
+DOWN = true
+tick()
+UW_P11_START1 = (RF._rfDragSource == RF.slots[1])
+UW_P11_PLANES = 0
+for i, sl in ipairs(RF.slots) do
+    if sl.dropPlane and sl.dropPlane:IsShown() and sl ~= RF.slots[1] then
+        UW_P11_PLANES = UW_P11_PLANES + 1
+    end
+end
+CUR_X, CUR_Y = centerOf(8)
+DOWN = false
+tick()
 local slots = RLSuite:DebugRaidSlots()
-UW_P10_AFTER = {
+UW_P11_D1 = {
     at8 = (slots[8] and slots[8].name) or "?",
     at1_free = (slots[1] == nil),
     row8 = (RF.slots[8].member and RF.slots[8].member.name) or "?",
-    mt_mirror = (RF.tankSlots[1].member and RF.tankSlots[1].member.name) or "?",
+}
+
+-- DRAG 2: lo STESSO player, slot 8 -> slot 3 (nessun reset a mano)
+CUR_X, CUR_Y = centerOf(8)
+DOWN = true
+tick()
+UW_P11_START2 = (RF._rfDragSource == RF.slots[8])
+CUR_X, CUR_Y = centerOf(3)
+DOWN = false
+tick()
+slots = RLSuite:DebugRaidSlots()
+UW_P11_D2 = {
+    at3 = (slots[3] and slots[3].name) or "?",
+    at8_free = (slots[8] == nil),
+    row3 = (RF.slots[3].member and RF.slots[3].member.name) or "?",
+    clean = (RF._rfDragSource == nil and RF._dragBtnDown == false),
+}
+
+-- SHIFT ARRIVA DOPO LA PRESSIONE: il drag parte comunque.
+SHIFT = false
+CUR_X, CUR_Y = centerOf(3)
+DOWN = true
+tick()
+UW_P11_LATE_NODRAG = (RF._rfDragSource == nil)
+SHIFT = true
+tick()
+UW_P11_LATE_START = (RF._rfDragSource == RF.slots[3])
+DOWN = false
+tick()
+
+-- RILASCIO FUORI DALLE RIGHE: annullo, nessuno spostamento, stato pulito.
+CUR_X, CUR_Y = centerOf(3)
+DOWN = true
+tick()
+CUR_X, CUR_Y = 5, 5       -- fuori da ogni barra
+DOWN = false
+tick()
+slots = RLSuite:DebugRaidSlots()
+UW_P11_OUT = {
+    still3 = (slots[3] and slots[3].name) or "?",
     clean = (RF._rfDragSource == nil),
+    planesOff = true,
 }
+for i, sl in ipairs(RF.slots) do
+    if sl.dropPlane and sl.dropPlane:IsShown() then UW_P11_OUT.planesOff = false end
+end
 
--- indice raid risolto per nome (serve a SetRaidSubgroup nei raid veri)
-local S_NRM, S_GRRI = GetNumRaidMembers, GetRaidRosterInfo
-GetNumRaidMembers = function() return 3 end
-GetRaidRosterInfo = function(i) return ({ "Alfa", "Beta", "Gamma" })[i], nil, 1 end
-UW_P10_IDX = {
-    beta = RF:MemberRaidIndex({ name = "Beta" }),
-    zeta = RF:MemberRaidIndex({ name = "Zeta" }),
-    direct = RF:MemberRaidIndex({ name = "Beta", raidIndex = 3 }),
-}
-GetNumRaidMembers, GetRaidRosterInfo = S_NRM, S_GRRI
-
+-- Ripristino
+for _, m in ipairs(muted) do
+    m.f:SetScript("OnMouseDown", m.down)
+    m.f:SetScript("OnMouseUp", m.up)
+end
 for i, sl in ipairs(RF.slots) do
     sl.GetLeft, sl.GetRight, sl.GetBottom, sl.GetTop = nil, nil, nil, nil
+    if sl.dropPlane then sl.dropPlane.GetLeft, sl.dropPlane.GetRight, sl.dropPlane.GetBottom, sl.dropPlane.GetTop = nil, nil, nil, nil end
+    if sl.secTarget then sl.secTarget.GetLeft, sl.secTarget.GetRight, sl.secTarget.GetBottom, sl.secTarget.GetTop = nil, nil, nil, nil end
 end
 IsShiftKeyDown, GetCursorPosition = SAVED_ISD, SAVED_GCP
+IsMouseButtonDown, InCombatLockdown = SAVED_IMBD, SAVED_ICL
 RLSuite:SetContextPhase("preraid")
 RLSuite:ResetDebugRaid()
 RF:Rebuild()
 """)
 
 
-check(bool(rt.eval("UW_P10_MIRROR.has == true and UW_P10_MIRROR.isTank == true and UW_P10_MIRROR.slot == nil")), "v1.11.77: la barra MT rispecchia il player (roster da uno) e non sta nella griglia dei gruppi (%s)" % rt.eval("UW_P10_MIRROR.name"))
-check(bool(rt.eval("UW_P10_START == true and UW_P10_TARGETS == true")), "v1.11.77: anche la barra Tanks si trascina - Shift+click avvia il drag e i bersagli compaiono")
-check(bool(rt.eval("UW_P10_AFTER.at8 == UW_P10_MIRROR.name and UW_P10_AFTER.at1_free == true and UW_P10_AFTER.row8 == UW_P10_MIRROR.name and UW_P10_AFTER.mt_mirror == UW_P10_MIRROR.name and UW_P10_AFTER.clean == true")), "v1.11.77: trascinando la barra MT il player si sposta DAVVERO di gruppo e la barra MT continua a rispecchiarlo")
-check(bool(rt.eval("UW_P10_IDX.beta == 2 and UW_P10_IDX.zeta == nil and UW_P10_IDX.direct == 3")), "v1.11.77: l'indice raid dei tank si risolve per nome (Beta = %r) e resta invariato quando c'e' gia'" % rt.eval("UW_P10_IDX.beta"))
+check(bool(rt.eval("UW_P11_POLLER.exists == true and UW_P11_POLLER.mouseOff == true")), "v1.11.78: il poller del drag esiste ed e' a mouse SPENTO (non ruba click)")
+check(bool(rt.eval("UW_P11_START1 == true and UW_P11_PLANES > 20 and UW_P11_D1.at8 ~= '?' and UW_P11_D1.at1_free == true and UW_P11_D1.row8 ~= '?'")), "v1.11.78: drag+drop con TUTTI gli handler delle righe spenti (%s -> slot 8, %s bersagli)" % (rt.eval("UW_P11_D1.at8"), rt.eval("UW_P11_PLANES")))
+check(bool(rt.eval("UW_P11_START2 == true and UW_P11_D2.at3 ~= '?' and UW_P11_D2.at8_free == true and UW_P11_D2.row3 ~= '?' and UW_P11_D2.clean == true")), "v1.11.78: un player GIA' spostato si sposta ANCORA, anche con gli handler spenti (%s -> slot 3)" % rt.eval("UW_P11_D2.at3"))
+check(bool(rt.eval("UW_P11_LATE_NODRAG == true and UW_P11_LATE_START == true")), "v1.11.78: se lo shift arriva DOPO la pressione il drag parte lo stesso")
+check(bool(rt.eval("UW_P11_OUT.still3 ~= '?' and UW_P11_OUT.clean == true and UW_P11_OUT.planesOff == true")), "v1.11.78: rilascio fuori dalle barre = annullo (nessuno spostamento, stato e piani puliti)")
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

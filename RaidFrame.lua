@@ -203,7 +203,7 @@ function RF:CreateFrame()
     -- Groups + slots (G1..G6) live in this container.
     self.content = CreateFrame("Frame", nil, f)
     self.content:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-
+    self:_InitDragPoller()
 
 end
 
@@ -428,15 +428,12 @@ local function RowBodyOnMouseDown(self2, button)
         end
         if IsShiftKeyDown and IsShiftKeyDown() then
             self2._pressBtn = nil
-            -- Anche le barre Tanks (MT/OT) si trascinano: spostare un tank di
-            -- gruppo e' una necessita' vera, e con un roster corto la barra MT
-            -- (che rispecchia il player) e' la barra piu' visibile dell'HUD.
-            if button == "LeftButton" and RF:IsDragEnabled() and self2.member then
-                -- SHIFT+sinistro = drag player MANUALE: source + mostra vuoti.
-                RF._rfDragSource = self2
-                self2._manualDrag = true
-                RF:RefreshDropTargets()
-                RF:_ArmManualDragWatchdog()
+            -- SHIFT+sinistro = drag player MANUALE. Le barre Tanks (MT/OT)
+            -- restano FUORI dal drag (come prima): si trascinano solo le barre
+            -- giocatore dei gruppi.
+            if button == "LeftButton" and RF:IsDragEnabled() and self2.member
+                and not self2.isTank then
+                RF:_StartDragFromSlot(self2)
             end
             return -- gesti con shift: mai click/icone/target
         end
@@ -473,16 +470,7 @@ local function RowBodyOnMouseUp(self2, button)
         -- Completamento drag player MANUALE: al release, slot sotto il
         -- cursore → move/swap. Serve anche se lo shift e' gia' rilasciato.
         if button == "LeftButton" and RF._rfDragSource then
-            local src = RF._rfDragSource
-            RF._rfDragSource = nil
-            if src then src._manualDrag = nil end
-            if src and src.member then
-                local t = RF:SlotAtCursor()
-                if t and t ~= src then
-                    RF:MoveSlot(src, t)
-                end
-            end
-            RF:RefreshDropTargets()
+            RF:_FinishDrag()
             return -- era un drag: NON un click-icona, NON un target
         end
         if IsShiftKeyDown and IsShiftKeyDown() then return end -- gesti con shift: NO messaggi
@@ -1158,21 +1146,37 @@ function RF:Rebuild()
     local m = self:LayoutMetrics()
     local groups = self:GetGroupedRoster()
 
+    -- Ogni riga e' protetta SINGOLARMENTE: un errore su una riga non deve
+    -- piu' congelare tutto l'HUD (senza questo, una fill andata male in
+    -- combat lasciava le righe vecchie in giro e ogni spostamento successivo
+    -- sembrava non fare nulla).
     self.rows = {}
+    local failed = 0
     for g = 1, RF_GROUPS do
         for s = 1, RF_PER_GROUP do
             local slot = self.slots[(g - 1) * RF_PER_GROUP + s]
             local member = groups[g][s]
+            local ok, err
             if member then
-                self:FillSlot(slot, member)
-                self.rows[#self.rows + 1] = slot
+                ok, err = pcall(self.FillSlot, self, slot, member)
+                if ok then self.rows[#self.rows + 1] = slot end
             else
-                self:ClearSlot(slot)
+                ok, err = pcall(self.ClearSlot, self, slot)
+            end
+            if not ok then
+                failed = failed + 1
+                rfDbg("rebuild: slot %s non aggiornato (%s)", tostring(slot and slot.slot), tostring(err))
             end
         end
     end
+    if failed > 0 then
+        -- Riprova da sola al prossimo giro (0.5s): se il blocco era di combat,
+        -- al termine del combat l'HUD si rimette in pari senza /reload.
+        self._rebuildDirty = true
+    end
 
-    self:RebuildTanks()
+    local okT, errT = pcall(self.RebuildTanks, self)
+    if not okT then rfDbg("rebuild: barre Tanks non aggiornate (%s)", tostring(errT)) end
     self:UpdateDragState()
     -- Header e blocchi vuoti: gestiti insieme (blocchi solo durante il drag).
     self:RefreshDropTargets()
@@ -1197,6 +1201,10 @@ function RF:UpdateUnit(unit)
 end
 
 function RF:UpdateAll()
+    if self._rebuildDirty then
+        self._rebuildDirty = false
+        self:Rebuild()
+    end
     for _, row in ipairs(self.rows) do
         self:UpdateRow(row)
     end
@@ -1565,6 +1573,92 @@ function RF:IsDragEnabled()
     return true
 end
 
+-- ======================================================================
+-- DRAG GIOCATORE: il gesto NON dipende piu' da CHI riceve gli eventi.
+-- ======================================================================
+-- Storia (costata 3 release): in 3.3.5 la consegna del mouse e' fragile -
+-- il drag manager divora rilasci, i frame sicuri/figli possono mangiare la
+-- pressione, e un errore in un punto solo faceva "morire" il gesto senza
+-- dire niente (sintomo: un player si sposta una volta, poi basta).
+-- Qui la REGIA e' di un poller su frame dedicato: legge lo STATO del tasto
+-- (IsMouseButtonDown) e la POSIZIONE del cursore, e risolve sorgente e
+-- destinazione GEOMETRICAMENTE (hit-test sui rettangoli delle barre).
+-- Gli handler delle righe restano come via secondaria: chi arriva primo
+-- esegue, l'altro vede _rfDragSource gia' pulito e non fa nulla (nessun
+-- doppio spostamento).
+function RF:_StartDragFromSlot(slot)
+    if not slot or not slot.member or slot.isTank then return end
+    if self._rfDragSource == slot then return end
+    self._rfDragSource = slot
+    slot._manualDrag = true
+    rfDbg("drag: parto dallo slot %s (%s)", tostring(slot.slot), tostring(slot.name))
+    self:RefreshDropTargets()
+    self:_ArmManualDragWatchdog()
+end
+
+-- Chiusura del drag (rilascio): risolve il bersaglio sotto il cursore e
+-- sposta. Chiamata da TUTTE le vie (mouse-up di riga/piano, watchdog,
+-- poller): idempotente perche' azzera _rfDragSource alla prima esecuzione.
+function RF:_FinishDrag()
+    local src = self._rfDragSource
+    if not src then return end
+    -- Bersaglio calcolato PRIMA di azzerare la sorgente (l'hit-test conta
+    -- sulla geometria, non sulla visibilita' delle righe).
+    local t = self:SlotAtCursor()
+    self._rfDragSource = nil
+    src._manualDrag = nil
+    -- Un click nudo rimasto appeso sulla riga di partenza non deve suonare
+    -- come "target" dopo un drag.
+    src._pendingRowClick = nil
+    if src._scripts and src._scripts.OnUpdate then src:SetScript("OnUpdate", nil) end
+    if src.member then
+        if t and t ~= src then
+            rfDbg("drag: rilascio sullo slot %s", tostring(t.slot))
+            self:MoveSlot(src, t)
+        else
+            rfDbg("drag: rilascio senza bersaglio (annullo)")
+        end
+    end
+    self._dropActive = nil
+    self:RefreshDropTargets()
+end
+
+-- Poller del drag: 20 Hz, spento se la finestra non c'e'. Rising edge del
+-- tasto sinistro = possibile inizio; falling edge = rilascio (anche fuori
+-- dalle righe). SHIFT puo' arrivare anche DOPO la pressione: se la pressione
+-- e' partita su una barra giocatore, il drag parte appena lo shift c'e'.
+function RF:_InitDragPoller()
+    if self._dragPoller or not self.frame then return end
+    local p = CreateFrame("Frame", nil, self.frame)
+    p:SetSize(1, 1)
+    p:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, 0)
+    p:EnableMouse(false)   -- non deve rubare niente
+    p:Show()
+    self._dragBtnDown = false
+    self._dragPressSlot = nil
+    local acc = 0
+    p:SetScript("OnUpdate", function(_, elapsed)
+        acc = acc + (elapsed or 0)
+        if acc < 0.03 then return end
+        acc = 0
+        local down = (IsMouseButtonDown and IsMouseButtonDown("LeftButton")) and true or false
+        if down and not RF._dragBtnDown then
+            RF._dragBtnDown = true
+            RF._dragPressSlot = RF:SlotAtCursor(true) -- solo righe con un player
+        elseif (not down) and RF._dragBtnDown then
+            RF._dragBtnDown = false
+            RF._dragPressSlot = nil
+            if RF._rfDragSource then RF:_FinishDrag() end
+        end
+        if down and not RF._rfDragSource and RF._dragPressSlot
+            and IsShiftKeyDown and IsShiftKeyDown() then
+            RF:_StartDragFromSlot(RF._dragPressSlot)
+        end
+        if RF._rfDragSource then RF:UpdateDropGlow() end
+    end)
+    self._dragPoller = p
+end
+
 function RF:UpdateDragState()
     -- Drag delle righe = MANUALE (nessun RegisterForDrag, manco per fase):
     -- le righe restano SEMPRE con mouse attivo e click liberi; il drag del
@@ -1599,16 +1693,7 @@ function RF:_ArmManualDragWatchdog()
         end
         RF:UpdateDropGlow() -- il bordino dorato insegue il cursore
         if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
-            local src = RF._rfDragSource
-            RF._rfDragSource = nil
-            if src then src._manualDrag = nil end
-            if src and src.member then
-                local t = RF:SlotAtCursor()
-                if t and t ~= src then
-                    RF:MoveSlot(src, t)
-                end
-            end
-            RF:RefreshDropTargets()
+            RF:_FinishDrag()
         end
     end)
 end
@@ -1616,7 +1701,8 @@ end
 -- Slot under the mouse cursor (nil if none). Mirrors GroupMaking's
 -- WlSlotAtCursor: computes the target from the cursor coordinates because
 -- OnReceiveDrag is not always delivered on nested frames.
-function RF:SlotAtCursor()
+-- requireMember: usato per la SORGENTE del drag (solo barre con un player).
+function RF:SlotAtCursor(requireMember)
     if not GetCursorPosition then return nil end
     local x, y = GetCursorPosition()
     if not x or not y then return nil end
@@ -1642,7 +1728,9 @@ function RF:SlotAtCursor()
             local top = slot:GetTop()
             if left and right and bottom and top
                 and cx >= left and cx <= right and cy >= bottom and cy <= top then
-                return slot
+                if (not requireMember) or slot.member then
+                    return slot
+                end
             end
         end
     end
@@ -1668,10 +1756,13 @@ function RF:MoveSlot(src, dst)
         RLSuite.utils:Print(L["Only the raid leader can rearrange groups."])
         return
     end
-    local srcIdx = src.raidIndex or self:MemberRaidIndex(src.member)
-    if not srcIdx then return end
-    local dstIdx = (dst.member and (dst.raidIndex or self:MemberRaidIndex(dst.member))) or nil
-    if dstIdx then
+    local srcIdx = src.raidIndex
+    if not srcIdx then
+        rfDbg("move: nessun indice raid per %s", tostring(src.name))
+        return
+    end
+    if dst.member and dst.raidIndex then
+        local dstIdx = dst.raidIndex
         -- Swap: SwapRaidSubgroup exchanges the two players.
         pcall(SwapRaidSubgroup, srcIdx, dstIdx)
     else
@@ -1680,38 +1771,20 @@ function RF:MoveSlot(src, dst)
     end
 end
 
--- Indice raid di un membro. Le barre Tanks (MT/OT) prendono il roster da
--- GetPartyAssignment e NON hanno raidIndex: si risolve per nome, cosi' anche
--- un tank si sposta di gruppo come qualunque altro player.
-function RF:MemberRaidIndex(member)
-    if not member then return nil end
-    if member.raidIndex then return member.raidIndex end
-    local num = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-    for i = 1, num do
-        local name = GetRaidRosterInfo and select(1, GetRaidRosterInfo(i))
-        if name and name == member.name then return i end
-    end
-    return nil
-end
-
 -- Reorders the simulated roster in debug: swaps two members (occupied slot)
 -- or moves a member exactly into the empty destination slot. The slots are
 -- SPARSE, so a move leaves a hole in the source slot (shown by both the
 -- InviteEngine Raid Group panel and this HUD).
 function RF:MoveSlotDebug(src, dst)
     local slots = RLSuite:DebugRaidSlots()
-    -- Le barre Tanks hanno slot = nil (non stanno nella griglia dei gruppi):
-    -- il player da spostare si risolve per NOME nello slot dove si trova.
     local srcSlot = tonumber(src.slot)
-    if not srcSlot then
-        for i, m in ipairs(slots) do
-            if m and m.name == src.name then srcSlot = i break end
-        end
-    end
     if not srcSlot then return end
     local srcMember = slots[srcSlot]
     local dstMember = slots[dst.slot]
-    if not srcMember then return end
+    if not srcMember then
+        rfDbg("move(debug): slot %s vuoto, niente da spostare", tostring(srcSlot))
+        return
+    end
 
     if dstMember then
         slots[srcSlot], slots[dst.slot] = dstMember, srcMember

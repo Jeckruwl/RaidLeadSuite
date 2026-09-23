@@ -7,9 +7,60 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.77**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.78**.
 
-## 1.11.77 — Barre TANKS trascinabili (il "player" che non si muoveva piu')
+## 1.11.78 — Il drag giocatore non dipende piu' da chi riceve gli eventi
+
+Report (1.11.76/1.11.77): *"con solo me in raid in debug posso spostare solo un
+giocatore: un giocatore che ho spostato non lo posso piu' muovere; con Fill Raid
+invece posso spostare chiunque"*.
+
+Cosa ho provato PRIMA di toccare il codice: simulazioni fedeli del gesto
+(pressione/rilascio consegnati al frame che il client sceglierebbe per livello
+e mouse, InCombatLockdown = true, roster sparso con il solo player). **In tutte
+il secondo spostamento riesce**: il percorso dati (slot sparso -> MoveSlotDebug
+-> Rebuild -> riga aggiornata) e' corretto. Quindi il punto fragile non e' il
+roster: e' la CONSEGNA degli eventi del mouse, che in 3.3.5 e' storicamente
+inaffidabile (e' la stessa famiglia del bug dei click che ha richiesto 4
+release: drag manager che divora i rilasci, frame figli/sicuri che si mangiano
+la pressione).
+
+Per questo il gesto e' stato RISC RITTO senza dipendere dagli eventi:
+
+* **Poller del drag** (`RF:_InitDragPoller`): frame 1x1, mouse SPENTO, tick a
+  20 Hz (solo se la finestra c'e'). Legge lo STATO del tasto sinistro
+  (`IsMouseButtonDown`) e la POSIZIONE del cursore:
+  - rising edge = inizio: se il cursore e' su una barra giocatore piena → drag;
+  - falling edge = rilascio: bersaglio risolto **geometricamente** (rettangoli
+    delle barre) e spostamento;
+  - lo SHIFT puo' arrivare anche DOPO la pressione (basta che la pressione sia
+    partita su una barra giocatore).
+* **Handler di riga/piano e watchdog** restano come via secondaria, ma non sono
+  piu' necessari: chi arriva primo esegue, gli altri vedono la sorgente gia'
+  pulita (`_StartDragFromSlot`/`_FinishDrag` sono idempotenti).
+* Le barre **Tanks MT/OT tornano NON trascinabili** (comportamento 1.11.76).
+* **Rebuild a prova di errore**: ogni riga e' protetta singolarmente
+  (`pcall`) e un fallimento marca `_rebuildDirty` → l'HUD si rimette in pari da
+  solo al giro successivo (0.5 s). Prima, un errore su una sola riga in combat
+  poteva congelare tutto l'HUD: da fuori si vedeva esattamente "non si sposta
+  piu' niente".
+* **Tracce di debug**: in debug mode ogni drag scrive in chat
+  `RF drag: parto dallo slot N (Nome)`, `RF drag: rilascio sullo slot M`,
+  `RF drag: rilascio senza bersaglio (annullo)`, `RF move(debug): slot N vuoto`.
+  Se il problema si ripresenta, quelle righe dicono in un colpo dove si rompe.
+
+Test: **1067 check** (5 nuovi): drag+drop con TUTTI gli handler delle righe
+spenti, doppio spostamento consecutivo senza reset manuale, shift arrivato dopo
+la pressione, rilascio fuori dalle barre = annullo, poller a mouse spento.
+
+## 1.11.77 — (SUPERATA dalla 1.11.78) Barre TANKS trascinabili
+
+> **ATTENZIONE — questa modifica e' stata ANNULLATA in 1.11.78.** Il report
+> parlava delle BARRE GIOCATORE NEI GRUPPI, non delle barre MT/OT: il drag
+> delle barre Tanks NON c'era prima e non c'e' adesso (comportamento
+> ripristinato identico alla 1.11.76). La causa vera e' descritta in 1.11.78.
+> Resta valida solo la suite deterministica (math.randomseed).
+
 
 Report in gioco della 1.11.76: *"ora si vede tutto ma posso spostare solo UN
 giocatore... un giocatore che ho spostato non lo posso piu' muovere. Sono in
