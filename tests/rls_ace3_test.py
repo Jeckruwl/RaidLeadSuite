@@ -137,7 +137,8 @@ function methods:SetBlendMode(...) return self end
 function methods:SetVertexColor(...) self._vertex = {...} return self end
 function methods:SetColorTexture(...) return self end
 function methods:SetHitRectInsets(...) return self end
-function methods:SetID(...) return self end
+function methods:SetID(id) self._id = id; return self end
+function methods:GetID() return self._id end
 function methods:SetScale(...) return self end
 function methods:SetClipsChildren(...) return self end
 function methods:GetName() return self._name end
@@ -161,6 +162,7 @@ end
 function methods:GetEffectiveScale() return 1 end
 function methods:GetNumChildren() return 0 end
 function methods:GetRegions() return {} end
+function methods:GetFontString() return self._fontString or nil end
 function methods:GetChildren() local U = (table and table.unpack) or unpack; return U(self._children or {}) end
 function methods:SetFormattedText(...) return self end
 
@@ -373,6 +375,19 @@ GetDesaturation = function() return false end
 PanelTemplates_TabResize = function() end
 PanelTemplates_SetDisabledTabState = function() end
 PanelTemplates_SelectTab = function() end
+-- API dei tab di Blizzard (3.3.5): il gruppo dei tab del Log le usa davvero
+function PanelTemplates_SetNumTabs(frame, n) frame.numTabs = n end
+function PanelTemplates_GetSelectedTab(frame) return frame.selectedTab end
+function PanelTemplates_UpdateTabs(frame) end
+function PanelTemplates_TabResize(btn, pad) return btn end
+function PanelTemplates_SetTab(frame, id, ...)
+    frame.selectedTab = id
+    PanelTemplates_UpdateTabs(frame)
+    return id
+end
+function PanelTemplates_Tab_OnClick(btn, button)
+    PanelTemplates_SetTab(btn:GetParent(), btn:GetID())
+end
 PanelTemplates_DeselectTab = function() end
 PanelTemplates_GetTabWidth = function() return 64 end
 PanelTemplates_DisableTab = function() end
@@ -511,6 +526,10 @@ local function _templateChildren(o, name, template)
         _G[name .. "ScrollBar"] = newFrame({ _name = name .. "ScrollBar", _parent = o })
         _G[name .. "ScrollBarScrollUpButton"] = newFrame({ _name = name .. "ScrollBarScrollUpButton", _parent = o })
         _G[name .. "ScrollBarScrollDownButton"] = newFrame({ _name = name .. "ScrollBarScrollDownButton", _parent = o })
+    elseif template == "CharacterFrameTabButtonTemplate" then
+        -- il tab di Blizzard ha la sua FontString "$parentText"
+        _G[name .. "Text"] = newFrame({ _name = name .. "Text", _parent = o, _isFontString = true })
+        o._fontString = _G[name .. "Text"]
     elseif template == "OptionsListButtonTemplate" then
         -- AceGUI TreeGroup buttons: Blizzard's OptionsListButtonTemplate
         -- exposes a `text` FontString and a `toggle` expand/collapse button
@@ -5396,6 +5415,98 @@ for _f in _uw_scroll:
         if 'CreateFrame("ScrollFrame", nil' in _line:
             UW_BADNAME.append(_f)
 check(not UW_BADNAME, "v1.11.64: nessuno ScrollFrame senza nome in tutto l'addon (%s)" % (UW_BADNAME or "ok"))
+
+rt.execute("""
+-- =====================================================================
+-- v1.11.65: TAB GROUP vero + griglia che non si incasina (no wrap)
+-- =====================================================================
+local cl = RLSuite.combatLog
+UW_TAB = {
+    isGroup = (cl.tabGroup ~= nil),
+    parent_ok = true, same_width = true, contiguous = true,
+    overlap = cl.tabGroup and cl.tabGroup._tabOverlap,
+    w = cl.tabGroup and cl.tabGroup._tabW,
+    n = #(cl.tabOrder or {}),
+    nbtns = 0,
+}
+for _, _ in pairs(cl.tabBtns or {}) do UW_TAB.nbtns = UW_TAB.nbtns + 1 end
+for i, def in ipairs(cl.tabOrder or {}) do
+    local b = cl.tabBtns[def.key]
+    if b._parent ~= cl.tabGroup then UW_TAB.parent_ok = false end
+    if b._w ~= UW_TAB.w then UW_TAB.same_width = false end
+    local p = b._points[1]
+    if i == 1 then
+        if p[2] ~= cl.tabGroup or p[4] ~= 0 then UW_TAB.contiguous = false end
+    else
+        local prev = cl.tabBtns[cl.tabOrder[i - 1].key]
+        if p[2] ~= prev or p[4] ~= -UW_TAB.overlap then UW_TAB.contiguous = false end
+    end
+end
+UW_TAB.id = cl.tabBtns.targets and cl.tabBtns.targets:GetID()
+cl:SelectTab("auras")
+UW_TAB.sel_auras = (cl.tabBtns.auras._sel:IsShown() == true)
+UW_TAB.sel_damage = (cl.tabBtns.damage._sel:IsShown() == true)
+UW_TAB.pt = cl.tabGroup.selectedTab
+cl:SelectTab("damage")
+UW_TAB.back = (cl.tabBtns.damage._sel:IsShown() == true and cl.tabBtns.auras._sel:IsShown() == false)
+
+-- troncamento: il testo non esce MAI dalla colonna
+local probe = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+if probe.SetWordWrap then probe:SetWordWrap(false) end
+RLSuite.combatLog.FitText(probe, string.rep("Lunghissimo", 6), 100)
+UW_FIT = { text = probe:GetText(), len = #probe:GetText(), w = probe:GetStringWidth() }
+
+-- celle della griglia: niente word wrap, larghezza rispettata
+cl.selFight = UW_F
+cl:SelectTab("damage")
+local g = cl.grid
+local cols = g.cols or {}
+local rows = g.pool[#cols] or {}
+UW_CELL = { wrap = {}, ok = true, maxw = 0, colw = 0 }
+for ci, c in ipairs(cols) do
+    local cell = rows[1].cells[ci]
+    local fs = cell.fs
+    UW_CELL.wrap[#UW_CELL.wrap + 1] = (fs._wordWrap == false) and "n" or "y"
+    local cw = math.max(18, c.px - 8)
+    if (fs:GetStringWidth() or 0) > cw then UW_CELL.ok = false end
+    if cw > UW_CELL.maxw then UW_CELL.maxw = cw end
+    UW_CELL.colw = UW_CELL.colw + c.px
+end
+UW_CELL.wrap = table.concat(UW_CELL.wrap, "")
+UW_CELL.headers_wrap = (g.hdrPool[1].btn.fs._wordWrap == false)
+
+-- larghezza VIVA: se la finestra viene ridimensionata le colonne si rifanno
+local before = cols[1].px
+g._w = 1200
+cl:RefreshLists()
+local cols2 = cl.grid.cols or {}
+UW_LIVE = { before = before, after = cols2[1] and cols2[1].px, content = cl.grid.content._w }
+cl.grid._w = 0
+cl:RefreshLists()
+-- senza pull registrati: nessun tab deve andare in errore (era un crash)
+UW_NOFIGHT = { ok = true }
+cl.selFight = nil
+for _, tab in ipairs({ "damage", "targets", "consumables", "auras", "powers", "deaths", "healing" }) do
+    local ok2 = pcall(function() cl:SelectTab(tab) end)
+    if not ok2 then UW_NOFIGHT.ok = false; UW_NOFIGHT.fail = tab end
+end
+cl:SelectTab("damage")
+""")
+
+
+check(bool(rt.eval("UW_TAB.isGroup == true and UW_TAB.n == UW_TAB.nbtns")), "v1.11.65: i tab stanno in UN SOLO gruppo (RLSuiteCombatLogTabs), non in pulsanti sparsi (%r tab)" % rt.eval("UW_TAB.n"))
+check(bool(rt.eval("UW_TAB.parent_ok == true")), "v1.11.65: ogni tab e' figlio del gruppo dei tab")
+check(bool(rt.eval("UW_TAB.same_width == true and UW_TAB.w > 40")), "v1.11.65: tab di larghezza identica (%r px) che riempiono il gruppo" % rt.eval("UW_TAB.w"))
+check(bool(rt.eval("UW_TAB.contiguous == true and UW_TAB.overlap == 16")), "v1.11.65: tab ATTACCATI l'uno all'altro (overlap %r px, niente buchi da pulsanti sciolti)" % rt.eval("UW_TAB.overlap"))
+check(bool(rt.eval("UW_TAB.id == 2")), "v1.11.65: ogni tab ha il suo ID (per PanelTemplates): targets = 2")
+check(bool(rt.eval("UW_TAB.sel_auras == true and UW_TAB.sel_damage == false and UW_TAB.pt == 4")), "v1.11.65: un solo tab selezionato (PanelTemplates.selectedTab = %r)" % rt.eval("UW_TAB.pt"))
+check(bool(rt.eval("UW_TAB.back == true")), "v1.11.65: cambiando tab l'evidenza si sposta (auras -> damage)")
+check(bool(rt.eval("UW_FIT.len < 72 and UW_FIT.w <= 100")), "v1.11.65 FitText: il testo viene troncato per stare nella larghezza (\"%s\" = %rpx)" % (rt.eval("UW_FIT.text"), rt.eval("UW_FIT.w")))
+check(bool(rt.eval("UW_CELL.wrap == 'nnnnnn'")), "v1.11.65: NESSUNA cella della tabella va a capo (word wrap OFF, era la causa delle tabelle incasinate: %s)" % rt.eval("UW_CELL.wrap"))
+check(bool(rt.eval("UW_CELL.ok == true")), "v1.11.65: ogni testo sta dentro la sua colonna (nessuna sovrapposizione fra celle/righe)")
+check(bool(rt.eval("UW_CELL.headers_wrap == true")), "v1.11.65: anche le intestazioni non vanno a capo")
+check(bool(rt.eval("UW_LIVE.after > UW_LIVE.before and UW_LIVE.content > 1000")), "v1.11.65: la larghezza delle colonne usa quella VERA della finestra (%r -> %r px a finestra larga)" % (rt.eval("UW_LIVE.before"), rt.eval("UW_LIVE.after")))
+check(bool(rt.eval("UW_NOFIGHT.ok == true")), "v1.11.65: senza pull registrati ogni tab si apre senza errori (crash su colonna senza larghezza: %r)" % rt.eval("UW_NOFIGHT.fail"))
 
 print()
 if fails:

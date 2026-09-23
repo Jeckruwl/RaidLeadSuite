@@ -7,7 +7,43 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.64**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.65**.
+
+## 1.11.65 — Log: tabelle non piu' "incasinate" + TAB GROUP vero
+
+Due difetti visti in game nella v1.11.63/64:
+
+1. **tabelle illeggibili** (testo mescolato fra le righe). Causa: le celle
+   avevano il **word wrap attivo** e una larghezza forzata: i testi piu' lunghi
+   andavano a capo, la FontString cresceva in altezza oltre la riga (20px) e la
+   seconda riga finiva SOPRA la riga successiva -> numeri e nomi mescolati.
+   Inoltre le colonne erano misurate su una larghezza FISSA (838px) mentre la
+   finestra si puo' ridimensionare (nel caso reale era ~1400px): intestazioni e
+   celle non erano allineate.
+   Fix: `CL.FitText` (testo troncato misurando `GetStringWidth`, max 8 passi),
+   `SetWordWrap(false)` + `SetNonSpaceWrap(false)` + `SetMaxLines(1)` su OGNI
+   cella e su OGNI intestazione, larghezza colonne presa dalla griglia VERA
+   (`g:GetWidth() - 30`) con fallback al valore di progetto, intestazioni
+   allineate come la colonna (LEFT/RIGHT/CENTER).
+2. **tab = pulsanti sparsi**. Ora c'e' un vero **TAB GROUP**: contenitore unico
+   `RLSuiteCombatLogTabs` con strip di sfondo, tab nominati
+   `RLSuiteCombatLogTabsTab<i>` (cosi' funziona `PanelTemplates`, che cerca
+   `<parent>Tab<id>`), template `CharacterFrameTabButtonTemplate` con ripiego su
+   `UIPanelButtonTemplate` (flag `_plainTab`), larghezza UNIFORME che riempie il
+   gruppo, tab ATTACCATI (overlap 16px col template, 0 col ripiego),
+   `PanelTemplates_SetNumTabs`/`SetTab` + evidenza propria (`_sel` +
+   LockHighlight) perche' la selezione si veda in entrambi i percorsi.
+   Etichette dei tab anch'esse senza wrap (FitText).
+3. Bug trovato dai test: aprendo Targets/Consumables/Auras/Powers **senza pull
+   registrati** `GridMeasure` faceva aritmetica su `w = nil` -> errore Lua.
+   Ora colonne di ripiego valide + `c.w = tonumber(c.w) or 60` (difensivo).
+4. Testata: il sottotitolo (data + player) e' ancorato a SINISTRA del dropdown
+   dei fight (prima finiva sotto/dentro il selettore a finestra larga) e il
+   nome del fight nel dropdown e' troncato a 24 caratteri.
+
+Test: **970 check** totali (13 nuovi: gruppo unico, tab contigui e di pari
+larghezza, selezione singola, ID dei tab, FitText, zero wrap nelle celle,
+testo dentro la colonna, larghezza viva, nessun crash senza dati).
 
 ## 1.11.64 — fix crash: ScrollFrame senza nome (pannello Log, v1.11.63)
 
@@ -127,7 +163,7 @@ non cambia MAI dimensione: la y di una barra dipende solo dal suo gruppo.
 - accendere/spegnere il tasto "Raid Buffs" non muove nulla (era gia' cosi'):
   ora vale anche per il passaggio roster vuoto <-> roster pieno.
 
-Test: **957 check** totali (5 nuovi nella 1.11.64): altezza costante con raid
+Test: **970 check** totali (13 nuovi nella 1.11.65): altezza costante con raid
 vuoto/1 player/pieno, G6 in fondo anche a raid vuoto, y uguali fra roster pieno
 e quasi vuoto, banda fra gruppi costante, icone del buff check visibili con G1
 vuoto e alla stessa y, celle della matrice allineate alla riga del gruppo,

@@ -1436,7 +1436,7 @@ end
 --   [Send report][Clear][Live]  info
 -- ------------------------------------------------------------------
 local CL_ROW_H = 18
-local CL_GRID_ROW_H = 18
+local CL_GRID_ROW_H = 20
 local CL_WIN_W, CL_WIN_H = 900, 660
 local CL_PAD = 14
 local CL_TAB_W, CL_TAB_GAP = 78, 5
@@ -1487,6 +1487,25 @@ local function Trunc(s, n)
 end
 
 -- ==================================================================
+-- Testo che sta DENTRO la larghezza della colonna: niente word wrap (andando
+-- a capo il testo usciva dall'altezza riga e si sovrapponeva alla riga sotto,
+-- da cui le tabelle "incasinate" della v1.11.63) e troncamento misurato.
+local function FitText(fs, text, w)
+    fs:SetText(text or "")
+    if not fs.GetStringWidth or not w or w < 8 then return end
+    local sw = fs:GetStringWidth() or 0
+    if sw <= w then return end
+    local t = tostring(text or "")
+    local n = math.max(1, math.floor(#t * w / sw) - 1)
+    for _ = 1, 8 do
+        fs:SetText(t:sub(1, n) .. "..")
+        sw = fs:GetStringWidth() or 0
+        if sw <= w or n <= 1 then break end
+        n = n - 1
+    end
+end
+CL.FitText = FitText
+
 -- GRIGLIA riutilizzabile: header (testo o icona, con tooltip) + righe
 -- scrollabili. cols = { {label=, w=, fix=, align=, kind=, ic=, tip=}, ... }
 -- rows[i] = { {t=, r=,g=,b=, frac=, barR=,barG=,barB=, tip=}, ... , name= }
@@ -1520,6 +1539,7 @@ function CL:GridMeasure(g, cols, width)
     local avail = (width or CL_GRID_W) - 6
     local fixed, flex = 0, 0
     for _, c in ipairs(cols) do
+        c.w = tonumber(c.w) or 60          -- mai aritmetica su nil
         if c.fix then fixed = fixed + c.w else flex = flex + c.w end
     end
     local free = avail - fixed
@@ -1546,6 +1566,11 @@ function CL:MakeGridRow(g, n, rownum)
         c.bar = row:CreateTexture(nil, "BACKGROUND")
         c.fill = row:CreateTexture(nil, "ARTWORK")
         c.fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        -- una riga, sempre: mai testo a capo dentro una cella
+        if c.fs.SetWordWrap then c.fs:SetWordWrap(false) end
+        if c.fs.SetNonSpaceWrap then c.fs:SetNonSpaceWrap(false) end
+        if c.fs.SetMaxLines then c.fs:SetMaxLines(1) end
+        if c.fs.SetJustifyV then c.fs:SetJustifyV("MIDDLE") end
         c.bar:Hide(); c.fill:Hide()
         row.cells[i] = c
     end
@@ -1561,7 +1586,12 @@ function CL:GridRender(g, cols, rows, opt)
     if not (g and cols) then return end
     opt = opt or {}
     rows = rows or {}
-    local width = opt.width or CL_GRID_W
+    -- Larghezza = quella VERA della griglia a schermo (la finestra si puo'
+    -- ridimensionare): se non e' ancora nota si usa il valore di progetto.
+    local width = opt.width
+    local live = (g.GetWidth and g:GetWidth()) or 0
+    if live and live > 200 then width = live - 30 end   -- barra di scorrimento
+    if not width or width < 200 then width = CL_GRID_W end
     local totalW = self:GridMeasure(g, cols, width)
     g.content:SetWidth(math.max(1, totalW))
     g.cols = cols
@@ -1604,12 +1634,20 @@ function CL:GridRender(g, cols, rows, opt)
         else
             btn.icon:Hide()
             btn.fs:ClearAllPoints()
-            btn.fs:SetPoint("LEFT", btn, "LEFT", 4, 0)
-            btn.fs:SetJustifyH("LEFT")
+            if c.align == "RIGHT" then
+                btn.fs:SetPoint("RIGHT", btn, "RIGHT", -4, 0)
+                btn.fs:SetJustifyH("RIGHT")
+            elseif c.align == "CENTER" then
+                btn.fs:SetPoint("CENTER", btn, "CENTER", 0, 0)
+                btn.fs:SetJustifyH("CENTER")
+            else
+                btn.fs:SetPoint("LEFT", btn, "LEFT", 4, 0)
+                btn.fs:SetJustifyH("LEFT")
+            end
             btn.fs:SetWidth(math.max(18, c.px - 8))
-            btn.fs:SetText(Trunc(c.label or "", 24))
             btn.fs:SetTextColor(1, 0.82, 0)
             btn.fs:Show()
+            FitText(btn.fs, c.label or "", math.max(18, c.px - 8))
         end
         btn:Show()
     end
@@ -1653,9 +1691,9 @@ function CL:GridRender(g, cols, rows, opt)
                     cell.fs:SetPoint("LEFT", row, "LEFT", c.x + 4, 0)
                     cell.fs:SetJustifyH("LEFT")
                 end
-                if c.fsWidth == nil then c.fsWidth = math.max(18, c.px - 8) end
-                cell.fs:SetWidth(c.fsWidth)
-                cell.fs:SetText(d.t or "")
+                local cw = math.max(18, c.px - 8)
+                cell.fs:SetWidth(cw)
+                FitText(cell.fs, d.t or "", cw)
                 cell.fs:SetTextColor(d.r or 1, d.g or 1, d.b or 1)
                 cell.fs:Show()
                 if c.kind == "bar" then
@@ -2072,6 +2110,85 @@ function CL:_FillRows(content, poolName, rows, paintFn, clickFn)
 end
 
 -- ==================================================================
+-- TAB GROUP: un contenitore unico con i tab ATTACCATI (stile Blizzard).
+-- Nomi: RLSuiteCombatLogTabs / RLSuiteCombatLogTabsTab<i> -> cosi' funziona
+-- anche PanelTemplates (che cerca <parent>Tab<id> per evidenziare l'attivo).
+-- ==================================================================
+function CL:BuildTabGroup(parent)
+    local group = CreateFrame("Frame", "RLSuiteCombatLogTabs", parent)
+    group:SetPoint("TOPLEFT", parent, "TOPLEFT", CL_PAD, CL_TABS_Y)
+    group:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -CL_PAD, CL_TABS_Y)
+    group:SetHeight(26)
+    -- strip unica sotto i tab: il gruppo si legge come UNA barra di tab
+    local bg = group:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(group)
+    bg:SetTexture(0.06, 0.06, 0.10, 0.9)
+    self.tabGroup = group
+    self.tabBtns = {}
+    self.tabOrder = {}
+    for i, def in ipairs(CL_UI_TABS) do
+        local name = "RLSuiteCombatLogTabsTab" .. i
+        local ok, btn = pcall(CreateFrame, "Button", name, group, "CharacterFrameTabButtonTemplate")
+        if not ok or type(btn) ~= "table" then
+            -- template dei tab non disponibile: ripiego su un pulsante (il
+            -- gruppo resta unico e i tab restano attaccati: overlap 0)
+            btn = CreateFrame("Button", name, group, "UIPanelButtonTemplate")
+            RLSuite.utils:SkinButton(btn)
+            btn._plainTab = true
+        end
+        btn:SetID(i)
+        btn:SetText(L[def.label])
+        btn.tabKey = def.key
+        btn._sel = btn:CreateTexture(nil, "OVERLAY")
+        btn._sel:SetAllPoints(btn)
+        btn._sel:SetTexture(0.25, 0.5, 1, 0.30)
+        btn._sel:Hide()
+        btn:SetScript("OnClick", function() CL:SelectTab(def.key) end)
+        self.tabBtns[def.key] = btn
+        self.tabOrder[i] = def
+    end
+    if PanelTemplates_SetNumTabs then pcall(PanelTemplates_SetNumTabs, group, #self.tabOrder) end
+    group:SetScript("OnSizeChanged", function() CL:LayoutTabs() end)
+    self:LayoutTabs()
+    return group
+end
+
+-- I tab riempiono ESATTAMENTE la larghezza del gruppo e si toccano (con il
+-- template di Blizzard si sovrappongono di 16px, come i tab del client).
+function CL:LayoutTabs()
+    local group = self.tabGroup
+    if not (group and self.tabOrder and #self.tabOrder > 0) then return end
+    local n = #self.tabOrder
+    local first = self.tabBtns[self.tabOrder[1].key]
+    local ov = (first and first._plainTab) and 0 or 16
+    local w = (group.GetWidth and group:GetWidth()) or 0
+    if not w or w < 100 then w = CL_WIN_W - 2 * CL_PAD end
+    local tabW = math.floor((w + ov * (n - 1)) / n)
+    local prev
+    for i, def in ipairs(self.tabOrder) do
+        local b = self.tabBtns[def.key]
+        b:ClearAllPoints()
+        if i == 1 then
+            b:SetPoint("LEFT", group, "LEFT", 0, 0)
+        else
+            b:SetPoint("LEFT", prev, "RIGHT", -ov, 0)
+        end
+        b:SetWidth(tabW)
+        if not b._plainTab then b:SetHeight(26) end
+        -- anche l'etichetta del tab non deve mai andare a capo
+        local fst = b.GetFontString and b:GetFontString()
+        if fst then
+            if fst.SetWordWrap then fst:SetWordWrap(false) end
+            if fst.SetNonSpaceWrap then fst:SetNonSpaceWrap(false) end
+            FitText(fst, L[def.label], math.max(20, tabW - 16))
+        end
+        prev = b
+    end
+    group._tabW = tabW
+    group._tabOverlap = ov
+end
+
+-- ==================================================================
 -- FINESTRA
 -- ==================================================================
 function CL:CreateFrame()
@@ -2097,14 +2214,16 @@ function CL:CreateFrame()
     self.titleText:SetText(L["Combat log"])
 
     self.subText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.subText:SetPoint("TOPRIGHT", f, "TOPRIGHT", -CL_PAD - 252, -12)
     self.subText:SetJustifyH("RIGHT")
     self.subText:SetText("")
+    -- ancorato a SINISTRA del dropdown: data/player non finiscono mai
+    -- sotto o dentro il selettore dei fight (era il caso a finestra larga)
 
     self.fightDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteCombatLogFightDD", 244, 20)
     self.fightDropdown:ClearAllPoints()
     -- bordo destro a -28: lascia libera la X di chiusura (11px a -4)
     self.fightDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -28, -8)
+    self.subText:SetPoint("RIGHT", self.fightDropdown, "LEFT", -10, -4)
 
     -- ---- riga 2: controllo del grafico
     self.showGraphCheck = CreateFrame("CheckButton", "RLSuiteCombatLogShowGraph", f, "UICheckButtonTemplate")
@@ -2151,20 +2270,8 @@ function CL:CreateFrame()
     self.graph = self:NewGraph(self.graphPane, CL_WIN_W - 2 * CL_PAD - 44, CL_GRAPH_H - 22)
     self.graph:SetPoint("TOPLEFT", self.graphPane, "TOPLEFT", 30, -14)
 
-    -- ---- tab
-    self.tabBtns = {}
-    local tx = CL_PAD
-    for _, def in ipairs(CL_UI_TABS) do
-        local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        RLSuite.utils:SkinButton(b)
-        b:SetSize(CL_TAB_W, 20)
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", tx, CL_TABS_Y)
-        b:SetText(L[def.label])
-        b.tabKey = def.key
-        b:SetScript("OnClick", function() CL:SelectTab(def.key) end)
-        self.tabBtns[def.key] = b
-        tx = tx + CL_TAB_W + CL_TAB_GAP
-    end
+    -- ---- TAB GROUP (un solo gruppo di tab, non pulsanti sparsi)
+    self:BuildTabGroup(f)
 
     -- ---- contenuto: griglia / due liste storiche / morti
     self.gridPane = CreateFrame("Frame", nil, f)
@@ -2350,9 +2457,8 @@ function CL:FightSizeTag(f)
 end
 
 function CL:FightLabel(f, idx)
-    local when = (f.startUTC and date) and date("%d %b %y, %H:%M", f.startUTC) or "??:??"
-    return string.format("%s | %s  %s", self:FightDurationLabel(f),
-        (f.kill and "Kill") or (f.kill == false and "Wipe") or "", f.name or "Combat")
+    local tag = (f.kill and "Kill") or (f.kill == false and "Wipe") or ""
+    return string.format("%s | %s  %s", self:FightDurationLabel(f), tag, Trunc(f.name or "Combat", 24))
 end
 
 -- Titolo grande in alto a sinistra: "0:02:31.994  10N Gunship  Wipe"
@@ -2412,11 +2518,26 @@ function CL:SelectTab(key)
         self.gridPane:Hide(); self.legacyPane:Hide(); self.deathPane:Hide()
         self.legacyPane:Show()
     end
-    for _, def in ipairs(CL_UI_TABS) do
+    -- stato del TAB GROUP: uno solo selezionato (PanelTemplates + evidenza
+    -- nostra, cosi' si vede anche col template di ripiego)
+    local idx
+    for i, def in ipairs(self.tabOrder or {}) do
         local b = self.tabBtns[def.key]
+        if def.key == key then idx = i end
         if b then
-            if def.key == key then b:LockHighlight() else b:UnlockHighlight() end
+            if def.key == key then
+                if b._sel then b._sel:Show() end
+                b:LockHighlight()
+                if b.SetChecked then pcall(b.SetChecked, b, true) end
+            else
+                if b._sel then b._sel:Hide() end
+                b:UnlockHighlight()
+                if b.SetChecked then pcall(b.SetChecked, b, false) end
+            end
         end
+    end
+    if idx and PanelTemplates_SetTab and self.tabGroup then
+        pcall(PanelTemplates_SetTab, self.tabGroup, idx)
     end
     self:RefreshUI()
 end
@@ -2502,7 +2623,7 @@ function CL:RefreshDeathPane(f)
     local sel = deaths[self.deathSel]
     local cols, drows = self:BuildDeathDetail(f, sel)
     self.deathDetailHeader:SetText(sel and string.format("%s  (killer: %s)", sel.name, sel.killer or "?") or "")
-    self:GridRender(self.deathGrid, cols, drows, { width = CL_GRID_W - 180 })
+    self:GridRender(self.deathGrid, cols, drows, {})  -- larghezza viva del pannello
 end
 
 -- Tab storici (Healing / Players spells / Entities / Interrupts): due liste.
@@ -2601,20 +2722,19 @@ function CL:RefreshLists()
     if not f then
         local tab0 = self.selTab
         if CL_GRID_TABS[tab0] then
-            local cols, rows = { { label = "Name" } }, { { { t = L["No fights recorded"] } } }
-            if tab0 == "damage" then
-                cols, rows = self:BuildDamageTab({
-                    events = {}, count = 0, duration = 1, samples = { health = {}, power = {} },
-                })
-                rows = { { { t = L["No fights recorded"], r = 1, g = 0.82, b = 0 } } }
-            end
+            -- colonne valide anche senza dati (prima mancava "w": crash)
+            local cols = {
+                { label = "Name", w = 200, fix = true },
+                { label = "", w = 120, fix = true },
+            }
+            local rows = { { { t = L["No fights recorded"], r = 1, g = 0.82, b = 0 } } }
             self:GridRender(self.grid, cols, rows, { width = CL_GRID_W })
         elseif tab0 == "deaths" then
             self.deathHeader:SetText(L["Deaths"])
             self.deathDetailHeader:SetText("")
             self:_FillRows(self.deathContent, "_dRows", {}, function() end)
             local cols, drows = self:BuildDeathDetail(nil, nil)
-            self:GridRender(self.deathGrid, cols, drows, { width = CL_GRID_W - 180 })
+            self:GridRender(self.deathGrid, cols, drows, {})  -- larghezza viva del pannello
         else
             self.leftHeader:SetText(L["No fights recorded"])
             self.rightHeader:SetText("")
