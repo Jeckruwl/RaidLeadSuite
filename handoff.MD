@@ -7,7 +7,40 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.53**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.54**.
+
+## 1.11.54 — i dropdown si aprono/chiudono ALL'INFINITO (stato letto dal vero)
+
+L'utente segnala che dopo DUE scelte ("un boss, un altro") la tendina non si apre
+piu'. Riprodotto in test con lo stesso identico profilo: ciclo 1 e 2 aprono, dal 3
+in poi `activeMenu` resta valorizzato ma il menu e' NASCOSTO e il catcher a
+schermo intero mangia i click (la UI sembra morta).
+
+Riscrittura del meccanismo (vale per TUTTI i dropdown: Loot/MS Manager, Group
+Making, macro):
+
+- `Utils:OpenDropdownMenu(dd, options)` = costruzione + `menu:Show()`; il toggle
+  esegue l'apertura dentro `pcall`: un errore non puo' piu' lasciare il catcher
+  a schermo (era la via principale per cui "la tendina non si apre piu'").
+- Il toggle NON si fida piu' dello stato memorizzato: calcola se il menu e'
+  DAVVERO visibile (`menu:IsShown()`), chiude sempre tutto e poi apre. Nessuno
+  stato che si "consuma" dopo N aperture, e funziona anche se un terzo ha
+  nascosto il menu a mano.
+- `CloseDropdownMenu` azzera lo stato PRIMA di nascondere (niente riferimenti
+  sporchi anche se un OnHide fallisce).
+- WATCHDOG sul catcher (`OnUpdate` -> `AssertNoZombieCatcher`): se il menu non
+  c'e' piu', il catcher si spegne da solo entro un frame. Il cadavere invisibile
+  a schermo intero non puo' piu' esistere.
+- Menu SENZA nome globale: prima ogni dropdown creava un frame chiamato
+  `RLSuiteDropMenu` (nome duplicato, in 3.3.5 il registro tiene solo l'ultimo).
+- Bottoni-opzione RIUSATI e ri-testualizzati (prima se ne creava un set nuovo a
+  ogni apertura: crescita illimitata di frames figli del menu).
+- `PopulateMacroRaid/BossDropdown`: una lista vuota non svuota piu' il menu
+  (tendina "muta" che non apriva piu' niente).
+
+Test: **831 check** (10 nuovi nella 1.11.54). Con il codice 1.11.53 lo stress a 12
+giri alternati passa ma 4 check di robustezza falliscono (menu nascosto da terzi,
+errore in apertura, watchdog).
 
 ## 1.11.53 (fix dei dropdown del config) — "le dropdown si aprono UNA VOLTA SOLA"
 
@@ -57,7 +90,7 @@ sessione, poi l'ultimo con progressione registrata.
 NON registra** (i pull finti del debug non devono sporcare la progressione vera). `MacroBar:OnBossProgressChanged` riallinea la barra quando il counter avanza (guardia di rientranza perche'
 passa da `CurrentBossInfo` -> `InferLinearKills` -> di nuovo `OnBossProgressChanged`).
 
-Test: **821 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
+Test: **831 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
 counter su Gunship e Faction Champions, precedenza del target, inferenza lineare su ICC e ToC,
 kill dal combat log con e senza debug, riallineo automatico della barra al variare del counter,
 guardia di rientranza sempre rilasciata e robustezza a un errore di riconoscimento).

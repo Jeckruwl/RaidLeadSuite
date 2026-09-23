@@ -542,11 +542,12 @@ function Utils:SkinAllWindows()
 end
 
 function Utils:CloseDropdownMenu()
+    -- Lo stato si azzera PRIMA di nascondere: cosi' anche se l'OnHide del menu
+    -- dovesse fallire non resta nessun riferimento sporco in giro.
+    local m = self.activeMenu
+    self.activeMenu = nil
     if self.dropCatcher then self.dropCatcher:Hide() end
-    if self.activeMenu then
-        self.activeMenu:Hide()
-        self.activeMenu = nil
-    end
+    if m then m:Hide() end
 end
 
 -- Richiesta esplicita: niente cadaveri invisibili sopra i moduli.
@@ -692,16 +693,11 @@ function Utils:SetupDropdown(dd, options, currentValue, onSelect)
     end
 end
 
-function Utils:ToggleDropdownMenu(dd)
-    if self.activeMenu and self.activeMenu.owner == dd then
-        self:CloseDropdownMenu()
-        return
-    end
-    self:CloseDropdownMenu()
-
-    local options = dd.options or {}
-    if #options == 0 then return end
-
+-- Apre il menu di un dropdown. Separata dal toggle perche' il chiamante la
+-- esegue dentro pcall: un errore qui non deve MAI lasciare in giro il catcher
+-- (che e' a schermo intero e mangerebbe ogni click successivo: era una delle
+-- vie per cui la dropdown "smetteva di aprirsi").
+function Utils:OpenDropdownMenu(dd, options)
     if not self.dropCatcher then
         local catcher = CreateFrame("Button", "RLSuiteDropCatcher", UIParent)
         catcher:SetAllPoints(UIParent)
@@ -709,6 +705,14 @@ function Utils:ToggleDropdownMenu(dd)
         catcher:SetFrameLevel(1)
         catcher:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         catcher:SetScript("OnClick", function() Utils:CloseDropdownMenu() end)
+        -- WATCHDOG (auto-riparazione): finche' il catcher e' visibile, a ogni
+        -- frame si controlla che il menu esista DAVVERO. Se per qualunque
+        -- ragione (errore, Hide di un antenato, cambio pannello) il menu non
+        -- c'e' piu', il catcher si spegne da solo: il "cadavere invisibile a
+        -- schermo intero" che ruba i click non puo' piu' sopravvivere.
+        catcher:SetScript("OnUpdate", function()
+            Utils:AssertNoZombieCatcher()
+        end)
         self.dropCatcher = catcher
     end
     self.dropCatcher:Show()
@@ -717,7 +721,10 @@ function Utils:ToggleDropdownMenu(dd)
     -- Riutilizza il menu del dropdown: CREARE un frame nuovo a ogni toggle
     -- (tra l'altro sempre con lo stesso nome globale) lasciava cadaveri in
     -- giro per la UI (memoria + incertezze sullo z-order/FX dell'fstack).
-    local menu = dd._rlsDropMenu or CreateFrame("Frame", "RLSuiteDropMenu", UIParent)
+    -- SENZA nome globale: ogni dropdown ha il SUO menu, e creare piu' frame
+    -- con lo stesso nome ("RLSuiteDropMenu") e' la classica fonte di guai in
+    -- 3.3.5 (il registro dei nomi tiene solo l'ultimo frame creato).
+    local menu = dd._rlsDropMenu or CreateFrame("Frame", nil, UIParent)
     dd._rlsDropMenu = menu
     menu:SetFrameStrata("FULLSCREEN_DIALOG")
     menu:SetFrameLevel(10)
@@ -733,10 +740,6 @@ function Utils:ToggleDropdownMenu(dd)
             Utils.activeMenu = nil
         end
     end)
-    -- pulisce i vecchi pulsanti-opzione del rebuild precedente
-    if menu.optionButtons then
-        for _, ob in ipairs(menu.optionButtons) do ob:Hide() end
-    end
     menu:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -769,34 +772,71 @@ function Utils:ToggleDropdownMenu(dd)
         hops = hops + 1
     end
 
-    menu.optionButtons = {}
+    -- I pulsanti-opzione vengono RIUSATI (e ri-testualizzati) a ogni apertura:
+    -- creare bottoni nuovi a ogni click accumulava frames figli del menu per
+    -- sempre e, dopo tante aperture, rendeva il menu pesante e inaffidabile.
+    menu.optionButtons = menu.optionButtons or {}
     for i, opt in ipairs(options) do
-        local btn = CreateFrame("Button", nil, menu)
-        menu.optionButtons[i] = btn
-        btn:SetSize(width - 8, 18)
-        btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - (i - 1) * 20)
-        local txt = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        txt:SetAllPoints(btn)
-        txt:SetJustifyH("LEFT")
-        txt:SetText(opt.text)
-        if dd.value == opt.value then
-            txt:SetTextColor(1, 0.82, 0)
+        local btn = menu.optionButtons[i]
+        if not btn then
+            btn = CreateFrame("Button", nil, menu)
+            menu.optionButtons[i] = btn
+            btn:SetSize(width - 8, 18)
+            btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - (i - 1) * 20)
+            btn.txt = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            btn.txt:SetAllPoints(btn)
+            btn.txt:SetJustifyH("LEFT")
+            btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
         end
-        btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+        btn.optValue = opt.value
+        btn.optText = opt.text
+        btn.txt:SetText(opt.text)
+        if dd.value == opt.value then
+            btn.txt:SetTextColor(1, 0.82, 0)
+        else
+            btn.txt:SetTextColor(1, 1, 1)
+        end
+        -- il click legge SEMPRE l'opzione corrente del bottone (riusato)
         btn:SetScript("OnClick", function()
-            dd.value = opt.value
-            dd.text:SetText(opt.text)
+            dd.value = btn.optValue
+            dd.text:SetText(btn.optText)
             Utils:CloseDropdownMenu()
             if dd.onSelect then
-                dd.onSelect(opt.value, opt.text)
+                dd.onSelect(btn.optValue, btn.optText)
             end
         end)
+        btn:Show()
+    end
+    -- liste piu' corte della volta precedente: nasconde i bottoni in eccesso
+    for i = #options + 1, #menu.optionButtons do
+        menu.optionButtons[i]:Hide()
     end
 
     menu:Show()
     self.activeMenu = menu
+    return true
 end
 
+-- Apri/chiudi di un dropdown: A OGNI click si riparte da zero, quindi non
+-- esiste uno stato interno che possa "consumarsi" dopo N aperture.
+function Utils:ToggleDropdownMenu(dd)
+    if type(dd) ~= "table" then return end
+    local menu = dd._rlsDropMenu
+    local wasOpen = (menu ~= nil and menu:IsShown() and self.activeMenu == menu)
+    -- chiude SEMPRE ed incondizionatamente (menu, catcher e stato sporco)
+    self:CloseDropdownMenu()
+    if wasOpen then return end
+
+    local options = dd.options or {}
+    if #options == 0 then return end
+
+    local ok = pcall(function() self:OpenDropdownMenu(dd, options) end)
+    if not ok then
+        -- niente zombie: se l'apertura e' fallita, si spegne tutto e si
+        -- riprovera' al prossimo click
+        self:CloseDropdownMenu()
+    end
+end
 -- ============================================================
 -- Window layout helpers (finestre staccabili / anchors)
 -- ============================================================

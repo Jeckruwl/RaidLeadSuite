@@ -1063,6 +1063,109 @@ rt.execute("MB_PRE_DB_SAME = (RLSuite.config:GetMacroDB() == RLSuite.db.profile.
 check(bool(rt.eval("MB_PRE_DB_SAME == true")),
       "fase pre-raid: l'editor torna a scrivere nel set di fase")
 
+# --- v1.11.54: aprire/chiudere i menu ALL'INFINITO, in qualunque stato -----
+# Ogni toggle riparte dallo stato REALE (menu visibile o no) e chiude sempre
+# tutto prima di aprire: nessuno stato interno che si "consumi" dopo N giri.
+rt.execute("""
+    local U = RLSuite.utils
+    local CFG = RLSuite.config
+    CFG:SelectMacroPhase('infight')
+    local RD, BD = CFG.macroRaidDD, CFG.macroBossDD
+    CYCLES, CYC_OK, CYC_SELOK, CYC_MAXBTN = 0, 0, 0, 0
+    for i = 1, 12 do
+        local dd = ((i % 2) == 1) and RD or BD
+        U:ToggleDropdownMenu(dd)
+        CYCLES = CYCLES + 1
+        if U.activeMenu ~= nil and U.activeMenu.owner == dd
+            and dd._rlsDropMenu:IsShown() == true and U.dropCatcher:IsShown() == true then
+            CYC_OK = CYC_OK + 1
+        end
+        local m = U.activeMenu
+        if m and m.optionButtons and m.optionButtons[1] then
+            m.optionButtons[1]:GetScript("OnClick")()
+        end
+        if U.activeMenu == nil and U.dropCatcher:IsShown() == false then
+            CYC_SELOK = CYC_SELOK + 1
+        end
+        local nb = #(dd._rlsDropMenu.optionButtons or {})
+        if nb > CYC_MAXBTN then CYC_MAXBTN = nb end
+    end
+    CYC_RD_SHOWN = RD._rlsDropMenu:IsShown()
+    CYC_BD_SHOWN = BD._rlsDropMenu:IsShown()
+""")
+check(bool(rt.eval("CYCLES == 12 and CYC_OK == 12")),
+      "12 giri alternati raid/boss: il menu si apre TUTTE le volte")
+check(bool(rt.eval("CYC_SELOK == 12")),
+      "12 giri: dopo ogni scelta menu e catcher sono chiusi (nessun blocco residuo)")
+check(bool(rt.eval("CYC_RD_SHOWN == false and CYC_BD_SHOWN == false")),
+      "a fine stress nessun menu resta aperto")
+rt.execute("CYC_MSG = ('i bottoni-opzione vengono riusati dopo 6 aperture: max %d bottoni'):format(CYC_MAXBTN)")
+check(bool(rt.eval("CYC_MAXBTN <= 15")), str(rt.eval("CYC_MSG")))
+
+# --- Stato sporco: catcher zombie, menu nascosto a mano, errore in apertura -
+rt.execute("""
+    local U = RLSuite.utils
+    local RD = RLSuite.config.macroRaidDD
+    -- (1) catcher visibile senza menu (il classico cadavere che mangia i click)
+    U.dropCatcher:Show()
+    U.activeMenu = nil
+    U:ToggleDropdownMenu(RD)
+    ZOMB_OK = (U.activeMenu ~= nil and RD._rlsDropMenu:IsShown() == true)
+    U:CloseDropdownMenu()
+    -- (2) menu nascosto a mano ma ancora "attivo": il toggle deve riaprire
+    U:ToggleDropdownMenu(RD)
+    RD._rlsDropMenu:Hide()
+    U:ToggleDropdownMenu(RD)
+    HIDDEN_OK = (U.activeMenu ~= nil and RD._rlsDropMenu:IsShown() == true)
+    U:CloseDropdownMenu()
+    -- (3) errore durante l'apertura: mai un catcher senza menu
+    local saved = U.OpenDropdownMenu
+    U.OpenDropdownMenu = function() error("boom") end
+    U:ToggleDropdownMenu(RD)
+    ERR_CAT = U.dropCatcher:IsShown()
+    ERR_MENU = U.activeMenu
+    U.OpenDropdownMenu = saved
+    U:ToggleDropdownMenu(RD)
+    ERR_NEXT = (U.activeMenu ~= nil and RD._rlsDropMenu:IsShown() == true)
+    U:CloseDropdownMenu()
+""")
+check(bool(rt.eval("ZOMB_OK == true")),
+      "catcher zombie presente: il click successivo APRE comunque il menu")
+check(bool(rt.eval("HIDDEN_OK == true")),
+      "menu nascosto da terzi: il click successivo lo riapre (stato letto dal vero)")
+check(bool(rt.eval("ERR_CAT == false and ERR_MENU == nil")),
+      "errore in apertura: nessun catcher lasciato a schermo (niente click rubati)")
+check(bool(rt.eval("ERR_NEXT == true")), "dopo l'errore il menu si riapre normalmente")
+
+# --- Watchdog del catcher: si spegne da solo se il menu non c'e' piu' ------
+rt.execute("""
+    local U = RLSuite.utils
+    U.dropCatcher:Show()
+    U.activeMenu = nil
+    local upd = U.dropCatcher:GetScript("OnUpdate")
+    if upd then upd() end
+    WD_CAT = U.dropCatcher:IsShown()
+""")
+check(bool(rt.eval("WD_CAT == false")),
+      "watchdog: il catcher rimasto senza menu si spegne da solo al frame dopo")
+
+# --- Un menu non resta mai senza opzioni (tendina 'muta') -----------------
+rt.execute("""
+    local CFG = RLSuite.config
+    CFG:SelectMacroPhase('infight')
+    local RD, BD = CFG.macroRaidDD, CFG.macroBossDD
+    local nBefore = #(BD.options or {})
+    CFG.macroRaid = 'Raid Che Non Esiste'
+    CFG:PopulateMacroBossDropdown()
+    MUTE_AFTER = #(BD.options or {})
+    MUTE_BEFORE = nBefore
+    CFG.macroRaid = 'Icecrown Citadel'
+    CFG:PopulateMacroBossDropdown()
+    CFG:SelectMacroPhase('preraid')
+""")
+check(bool(rt.eval("MUTE_BEFORE > 0 and MUTE_AFTER == MUTE_BEFORE")),
+      "raid non valido: il menu boss NON viene svuotato (resta utilizzabile)")
+
 # --- v1.11.52 fix: i menu raid/boss si RIAPRONO (non "una volta sola") ---
 # Il menu era riusato tra le aperture ma non veniva mai ri-mostrato: dopo la
 # prima chiusura restava NASCOSTO e il catcher a schermo intero si mangiava i

@@ -1137,6 +1137,9 @@ function CFG:PopulateMacroRaidDropdown()
     local raids = {}
     for name in pairs(RLSuite.raidDB or {}) do raids[#raids + 1] = name end
     table.sort(raids)
+    -- Mai svuotare un menu gia' popolato: una tendina senza opzioni diventa
+    -- "muta" (il toggle non apre niente) e sembra rotta.
+    if #raids == 0 then return end
     if not (self.macroRaid and RLSuite.raidDB[self.macroRaid]) then
         self.macroRaid, self.macroBoss = self:DefaultMacroBoss()
     end
@@ -1153,6 +1156,9 @@ function CFG:PopulateMacroBossDropdown()
     if not self.macroBossDD then return end
     local info = RLSuite.raidDB[self.macroRaid or ""]
     local bosses = (info and info.bosses) or {}
+    -- Vedi sopra: con una lista vuota si esce SENZA toccare le opzioni gia'
+    -- presenti, cosi' il menu continua a funzionare.
+    if #bosses == 0 then return end
     local valid = false
     for i = 1, #bosses do
         if bosses[i] == self.macroBoss then valid = true end
