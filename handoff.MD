@@ -7,7 +7,45 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.74**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.75**.
+
+## 1.11.75 — Drag in combat, seconda parte: PIANI DI RILASCIO
+
+Report in gioco della 1.11.74: consumabili OK, tag OK; **drag in combat: si
+vedono solo gli header dei gruppi, niente barre, niente bordo dorato, e il drop
+non sposta il player.**
+
+Causa trovata NEL NOSTRO CODICE (non nel client, non nei gate di fase):
+
+- `SlotAtCursor()` pretendeva che la riga fosse visibile (`slot:IsShown()`)
+  **e** che `_rfDragSource` fosse ancora valorizzato. Ma nel rilascio la
+  sorgente viene azzerata PRIMA dell'hit-test: su uno slot vuoto (riga non
+  visibile in combat) il bersaglio non veniva mai trovato -> niente bordo
+  dorato, niente drop. Con gli slot vuoti non trovati, l'unico bersaglio
+  possibile erano le righe piene.
+- I visuali del drag (bordo dorato + slot vuoti) erano figli della RIGA: se la
+  riga non si mostra, non si mostra nemmeno il figlio.
+
+Rimedio (v1.11.75):
+
+- **PIANO DI RILASCIO**: un frame SEMPLICE (nessun template, nessun attributo,
+  quindi mai protetto) per ogni slot di gruppo, sopra tutto (content+40).
+  Fuori dal drag: nascosto e col mouse spento, zero interferenza con click e
+  icone. Durante il drag: bordo tenue + riempimento scuro sugli slot VUOTI
+  (ora si VEDONO), bordo tenue sulle righe piene (li' si scambia), bordo
+  DORATO sul bersaglio sotto il cursore. I piani ricevono OnMouseDown/OnMouseUp
+  con gli stessi handler delle righe: in combat non possono essere bloccati.
+- `_dropActive`: flag di "drag in corso" che sopravvive all'azzeramento della
+  sorgente, usato dall'hit-test geometrico di `SlotAtCursor()`.
+- Il watchdog del rilascio (tasto mollato fuori dalle righe) passa dalla stessa
+  strada: testato anche quello.
+
+Test: **1053 check** totali (9 nuovi: piani, righe bloccate, dorato, drop dal
+piano e dal watchdog).
+
+Diagnostica per il prossimo test in gioco: se il bordo dorato compare ma il
+player NON si muove, allora il blocco e' a valle (chiamata al client rifiutata
+dal core) e va riportato PRIMA di qualunque ripiego.
 
 ## 1.11.74 — Passata 5: drag & drop dei player DURANTE il combat
 

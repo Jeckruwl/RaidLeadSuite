@@ -6183,6 +6183,166 @@ check(bool(rt.eval("UW_P5_LOCKDOWN == true and UW_P5_SRC == true and UW_P5_TARGE
 check(bool(rt.eval("UW_P5_MOVED == UW_P5_ROSTER and UW_P5_SRC_EMPTY == true")), "v1.11.74: il rilascio in combat sposta DAVVERO il player (%s -> posizione vuota)" % rt.eval("UW_P5_ROSTER"))
 check(bool(rt.eval("UW_P5_CLEAN == true and UW_P5_EMPTY_HIDDEN == true")), "v1.11.74: dopo il drop lo stato e' pulito e i blocchi vuoti tornano nascosti")
 check(bool(rt.eval("UW_P5_DST_EMPTY == true and UW_P5_API == 'move:3->2 | swap:3-9'")), "v1.11.74: in combat MoveSlot chiama il client - move = SetRaidSubgroup, swap = SwapRaidSubgroup (%s)" % rt.eval("UW_P5_API"))
+rt.execute("""
+-- =====================================================================
+-- v1.11.75: PIANI DI RILASCIO (frame non protetti) - il drag in combat
+-- deve mostrare i bersagli anche se le righe non si possono mostrare
+-- =====================================================================
+local RF = RLSuite.raidFrame
+RLSuite:ResetDebugRaid()
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+for i = 1, 5 do RLSuite:DebugInviteAccept("P" .. i, "WARRIOR") end
+RLSuite:SetContextPhase("infight")
+
+-- 1) fuori dal drag: piani esistenti, nascosti e col mouse spento
+local n, hid, off = 0, 0, 0
+for _, sl in ipairs(RF.slots) do
+    if sl.dropPlane then
+        n = n + 1
+        if not sl.dropPlane:IsShown() then hid = hid + 1 end
+        if sl.dropPlane._enabledMouse == false then off = off + 1 end
+    end
+end
+UW_P6_PLANES = { n = n, hidden = hid, mouseoff = off }
+UW_P6_TANK_PLANE = (RF.tankSlots[1].dropPlane == nil)
+
+local SAVED_ICL, SAVED_ISD, SAVED_GCP = InCombatLockdown, IsShiftKeyDown, GetCursorPosition
+local SAVED_SHOW, SAVED_HIDE = {}, {}
+InCombatLockdown = function() return true end
+IsShiftKeyDown = function() return true end
+-- SIMULAZIONE del guasto visto in gioco: in combat le righe non si mostrano
+-- piu' (Show/Hide no-op). I piani devono funzionare lo stesso.
+for i, sl in ipairs(RF.slots) do
+    SAVED_SHOW[i], SAVED_HIDE[i] = sl.Show, sl.Hide
+    sl.Show = function() end
+    sl.Hide = function() end
+end
+
+local src, dst = nil, nil
+for i, sl in ipairs(RF.slots) do
+    if sl.member and not src then src = sl end
+    if src and not sl.member and not dst and sl ~= src then dst = sl end
+end
+UW_P6_SRC = (src and src.member and src.member.name) or "?"
+src._manualDrag = nil; src._pendingRowClick = nil; src:SetScript("OnUpdate", nil); src._targetT = nil
+src._scripts.OnMouseDown(src, "LeftButton")
+UW_P6_STARTED = (RF._rfDragSource == src)
+UW_P6_DST_ROW_SHOWN = dst:IsShown()          -- falso = guasto simulato attivo
+UW_P6_DST_PLANE = dst.dropPlane and dst.dropPlane._state
+UW_P6_SRC_PLANE = (src.dropPlane and src.dropPlane:IsShown()) and "shown" or "hidden"
+
+-- 2) cursore sopra lo slot VUOTO (la riga resta invisibile): il bordo dorato
+for i, sl in ipairs(RF.slots) do
+    if sl ~= dst then
+        sl.GetLeft = function() return 500 + i end
+        sl.GetRight = function() return 501 + i end
+        sl.GetBottom = function() return 500 end
+        sl.GetTop = function() return 501 end
+    end
+end
+dst.GetLeft = function() return 100 end; dst.GetRight = function() return 120 end
+dst.GetBottom = function() return 60 end; dst.GetTop = function() return 80 end
+GetCursorPosition = function() return 105, 70 end
+local hit = RF:UpdateDropGlow()
+UW_P6_HIT = (hit == dst)
+UW_P6_GOLD = dst.dropPlane and dst.dropPlane._state
+local golds = 0
+for _, sl in ipairs(RF.slots) do
+    if sl.dropPlane and sl.dropPlane:IsShown() and sl.dropPlane._state == "gold" then golds = golds + 1 end
+end
+UW_P6_GOLD_N = golds
+
+-- 3) il rilascio arriva al PIANO (in gioco e' lui sotto il cursore)
+dst.dropPlane._scripts.OnMouseUp(dst.dropPlane, "LeftButton")
+UW_P6_MOVED = (dst.member and dst.member.name) or "?"
+UW_P6_DST_HAS = (dst.member ~= nil)
+UW_P6_SRC_EMPTY = (src.member == nil)
+UW_P6_CLEAN = (RF._rfDragSource == nil)
+UW_P6_PLANE_AFTER = dst.dropPlane:IsShown()
+UW_P6_MOUSE_AFTER = dst.dropPlane._enabledMouse
+UW_P6_ROW_BACKDROP = dst._backdrop
+
+-- ripristino
+for i, sl in ipairs(RF.slots) do
+    sl.Show, sl.Hide = SAVED_SHOW[i], SAVED_HIDE[i]
+    sl.GetLeft, sl.GetRight, sl.GetBottom, sl.GetTop = nil, nil, nil, nil
+end
+InCombatLockdown, IsShiftKeyDown, GetCursorPosition = SAVED_ICL, SAVED_ISD, SAVED_GCP
+RLSuite:SetContextPhase("preraid")
+RLSuite:ResetDebugRaid()
+""")
+
+
+check(bool(rt.eval("UW_P6_PLANES.n == 30 and UW_P6_PLANES.hidden == 30 and UW_P6_PLANES.mouseoff == 30 and UW_P6_TANK_PLANE == true")), "v1.11.75: ogni slot di gruppo ha un PIANO di rilascio, nascosto e col mouse spento fuori dal drag (le barre tank no: non sono drop target)")
+check(bool(rt.eval("UW_P6_DST_ROW_SHOWN == false and UW_P6_STARTED == true")), "v1.11.75: anche con le righe BLOCCATE (Show/Hide no-op, come in combat) il drag parte lo stesso")
+check(bool(rt.eval("UW_P6_DST_PLANE == 'empty' and UW_P6_SRC_PLANE == 'hidden'")), "v1.11.75: durante il drag lo slot VUOTO si vede (piano 'empty') e sulla sorgente non c'e' nessun piano")
+check(bool(rt.eval("UW_P6_HIT == true and UW_P6_GOLD == 'gold' and UW_P6_GOLD_N == 1")), "v1.11.75: il bordo dorato segue il cursore anche su una riga invisibile: un solo piano dorato (quello sotto il cursore)")
+check(bool(rt.eval("UW_P6_MOVED == UW_P6_SRC and UW_P6_DST_HAS == true and UW_P6_SRC_EMPTY == true and UW_P6_CLEAN == true")), "v1.11.75: rilasciando sul PIANO il player si sposta DAVVERO (%s -> %s | dstHas=%r srcEmpty=%r clean=%r)" % (rt.eval("UW_P6_SRC"), rt.eval("UW_P6_MOVED"), rt.eval("UW_P6_DST_HAS"), rt.eval("UW_P6_SRC_EMPTY"), rt.eval("UW_P6_CLEAN")))
+check(bool(rt.eval("UW_P6_PLANE_AFTER == false and UW_P6_MOUSE_AFTER == false and UW_P6_ROW_BACKDROP == nil")), "v1.11.75: finito il drag i piani spariscono, il mouse torna alle righe e la riga resta senza bordo")
+rt.execute("""
+-- =====================================================================
+-- v1.11.75b: rilascio visto dal WATCHDOG (tasto rilasciato fuori dalle
+-- righe / release mangiato dal client) con le righe bloccate in combat
+-- =====================================================================
+local RF = RLSuite.raidFrame
+RLSuite:ResetDebugRaid()
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+for i = 1, 5 do RLSuite:DebugInviteAccept("W" .. i, "WARRIOR") end
+RLSuite:SetContextPhase("infight")
+
+local SAVED_ICL, SAVED_ISD, SAVED_GCP, SAVED_IMBD = InCombatLockdown, IsShiftKeyDown, GetCursorPosition, IsMouseButtonDown
+local SAVED_SHOW, SAVED_HIDE = {}, {}
+InCombatLockdown = function() return true end
+IsShiftKeyDown = function() return true end
+IsMouseButtonDown = function() return false end
+for i, sl in ipairs(RF.slots) do
+    SAVED_SHOW[i], SAVED_HIDE[i] = sl.Show, sl.Hide
+    sl.Show = function() end
+    sl.Hide = function() end
+end
+
+local src, dst = nil, nil
+for i, sl in ipairs(RF.slots) do
+    if sl.member and not src then src = sl end
+    if src and not sl.member and not dst and sl ~= src then dst = sl end
+end
+UW_P7_SRC = (src and src.member and src.member.name) or "?"
+src._manualDrag = nil; src._pendingRowClick = nil; src:SetScript("OnUpdate", nil); src._targetT = nil
+src._scripts.OnMouseDown(src, "LeftButton")
+for i, sl in ipairs(RF.slots) do
+    if sl ~= dst then
+        sl.GetLeft = function() return 500 + i end
+        sl.GetRight = function() return 501 + i end
+        sl.GetBottom = function() return 500 end
+        sl.GetTop = function() return 501 end
+    end
+end
+dst.GetLeft = function() return 100 end; dst.GetRight = function() return 120 end
+dst.GetBottom = function() return 60 end; dst.GetTop = function() return 80 end
+GetCursorPosition = function() return 105, 70 end
+local watch = RF._dragWatch
+UW_P7_ARMED = (watch ~= nil and RF._dragWatchArmed == true)
+if watch then watch:GetScript("OnUpdate")() end
+UW_P7_MOVED = (dst.member and dst.member.name) or "?"
+UW_P7_SRC_EMPTY = (src.member == nil)
+UW_P7_CLEAN = (RF._rfDragSource == nil and RF._dropActive == nil)
+UW_P7_PLANES_OFF = (dst.dropPlane:IsShown() == false and dst.dropPlane._enabledMouse == false)
+
+for i, sl in ipairs(RF.slots) do
+    sl.Show, sl.Hide = SAVED_SHOW[i], SAVED_HIDE[i]
+    sl.GetLeft, sl.GetRight, sl.GetBottom, sl.GetTop = nil, nil, nil, nil
+end
+InCombatLockdown, IsShiftKeyDown, GetCursorPosition, IsMouseButtonDown = SAVED_ICL, SAVED_ISD, SAVED_GCP, SAVED_IMBD
+RLSuite:SetContextPhase("preraid")
+RLSuite:ResetDebugRaid()
+""")
+
+
+check(bool(rt.eval("UW_P7_ARMED == true")), "v1.11.75: il watchdog del drag si arma anche in combat (rete di sicurezza sul rilascio)")
+check(bool(rt.eval("UW_P7_MOVED == UW_P7_SRC and UW_P7_SRC_EMPTY == true")), "v1.11.75: il rilascio visto dal WATCHDOG (righe bloccate, slot invisibile) sposta comunque il player (%s)" % rt.eval("UW_P7_SRC"))
+check(bool(rt.eval("UW_P7_CLEAN == true and UW_P7_PLANES_OFF == true")), "v1.11.75: dopo il drop del watchdog lo stato e' pulito e i piani sono spenti")
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

@@ -627,6 +627,33 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
     glow:Hide()
     row.dropGlow = glow
 
+    -- PIANO DI RILASCIO (v1.11.75): frame SEMPLICE (nessun template, nessun
+    -- attributo, mai protetto -> in combat il client non puo' bloccarne
+    -- ne' Show/EnableMouse ne' i click). E' quello che si VEDE e che riceve
+    -- il mouse durante un drag player:
+    --   bordo tenue + riempimento scuro = slot vuoto, bersaglio possibile
+    --   bordo tenue senza riempimento = riga occupata (li' si fa lo swap)
+    --   bordo DORATO = bersaglio sotto il cursore (dove atterra il player)
+    -- Fuori dal drag e' nascosto e col mouse spento: i click passano alle
+    -- righe/icone come sempre.
+    -- Perche' non basta la riga: in combat la riga (e i suoi figli, glow
+    -- compreso) poteva restare invisibile -> niente bordo, niente hit-test,
+    -- drop a vuoto. Le barre dei tank non sono drop target: nessun piano.
+    if not row.isTank then
+        local plane = CreateFrame("Frame", nil, self.content)
+        plane:SetAllPoints(row)
+        plane:SetFrameLevel((self.content.GetFrameLevel and self.content:GetFrameLevel() or 1) + 40)
+        plane:SetBackdrop(RF_DROP_GLOW_BACKDROP)
+        plane:SetBackdropColor(0, 0, 0, 0)
+        plane:SetBackdropBorderColor(0.55, 0.55, 0.55, 0.55)
+        plane:EnableMouse(false)
+        plane:Hide()
+        plane.slot = row
+        plane:SetScript("OnMouseDown", function(_, button) RowBodyOnMouseDown(row, button) end)
+        plane:SetScript("OnMouseUp", function(_, button) RowBodyOnMouseUp(row, button) end)
+        row.dropPlane = plane
+    end
+
     row:Hide()
     return row
 end
@@ -910,6 +937,34 @@ end
 -- e' il CURSORE (SlotAtCursor), non gli hover dei frame (inaffidabili
 -- durante il drag manuale, dove il bottone resta premuto e i frame non
 -- risollevano Enter/Leave). Fuori drag → tutto nascosto.
+-- Aspetto del piano di rilascio: "empty" (vuoto), "occupied" (riga piena:
+-- li' il rilascio scambia), "gold" (bersaglio sotto il cursore).
+function RF:StyleDropPlane(slot, state)
+    local p = slot and slot.dropPlane
+    if not p then return end
+    p._state = state
+    if state == "gold" then
+        p:SetBackdropColor(0, 0, 0, 0.18)
+        p:SetBackdropBorderColor(1, 0.82, 0, 1)
+    elseif state == "empty" then
+        p:SetBackdropColor(0.05, 0.05, 0.05, 0.30)
+        p:SetBackdropBorderColor(0.55, 0.55, 0.55, 0.55)
+    else
+        p:SetBackdropColor(0, 0, 0, 0)
+        p:SetBackdropBorderColor(0.55, 0.55, 0.55, 0.35)
+    end
+    p:Show()
+    if p.EnableMouse then p:EnableMouse(true) end
+end
+
+function RF:HideDropPlane(slot)
+    local p = slot and slot.dropPlane
+    if not p then return end
+    p._state = nil
+    if p.EnableMouse then p:EnableMouse(false) end
+    p:Hide()
+end
+
 function RF:UpdateDropGlow()
     local target = nil
     local src = self._rfDragSource
@@ -925,6 +980,17 @@ function RF:UpdateDropGlow()
                 slot.dropGlow:Hide()
             end
         end
+        -- Il piano dice anche DOVE si atterra, e lo dice con un frame che in
+        -- combat nessuno puo' bloccare.
+        if slot.dropPlane and slot.dropPlane:IsShown() then
+            if slot == target then
+                self:StyleDropPlane(slot, "gold")
+            elseif slot.member then
+                self:StyleDropPlane(slot, "occupied")
+            else
+                self:StyleDropPlane(slot, "empty")
+            end
+        end
     end
     return target
 end
@@ -935,6 +1001,12 @@ end
 -- pieni).
 function RF:RefreshDropTargets()
     local dragging = self:IsDragEnabled() and self._rfDragSource ~= nil
+    -- Flag di "drag in corso" che SOPRAVVIVE alla pulizia di _rfDragSource:
+    -- nel drop l'hit-test di SlotAtCursor viene fatto DOPO che la sorgente e'
+    -- stata azzerata, quindi non puo' dipendere da lei (era il motivo per cui
+    -- in combat il rilascio su uno slot vuoto non faceva nulla: riga nascosta
+    -- + sorgente gia' nulla = nessun bersaglio trovato).
+    self._dropActive = dragging and true or nil
     for g = 1, RF_GROUPS do
         local anyMember = false
         for s = 1, RF_PER_GROUP do
@@ -943,14 +1015,21 @@ function RF:RefreshDropTargets()
                 if slot.member then
                     anyMember = true
                 elseif dragging then
-                    -- NIENTE bordo "dialog": lo slot vuoto resta invisibile
-                    -- ma continua a ricevere il drop (il bordino DORATO del
-                    -- dropGlow segna comunque la destinazione sotto il cursore).
+                    -- NIENTE bordo "dialog" sulla RIGA: la rendono visibile e
+                    -- cliccabile i PIANI (v1.11.75), che in combat non possono
+                    -- essere bloccati; la riga resta col suo spazio riservato.
                     slot:SetBackdrop(nil)
                     slot:Show()
                 else
                     slot:SetBackdrop(nil)
                     slot:Hide()
+                end
+                -- Piano di rilascio: attivo durante il drag sugli ALTRI slot
+                -- (mai sulla sorgente: li' non si puo' rilasciare).
+                if dragging and slot ~= self._rfDragSource then
+                    self:StyleDropPlane(slot, slot.member and "occupied" or "empty")
+                else
+                    self:HideDropPlane(slot)
                 end
             end
         end
@@ -1520,8 +1599,12 @@ function RF:SlotAtCursor()
     if not GetCursorPosition then return nil end
     local x, y = GetCursorPosition()
     if not x or not y then return nil end
+    -- Durante un drag l'hit-test e' GEOMETRICO: la visibilita' della riga
+    -- non deve poter decidere se un drop riesce (in combat la riga poteva
+    -- restare invisibile -> SlotAtCursor nil -> nessun rilascio).
+    local dragging = self._dropActive or self._rfDragSource ~= nil
     for _, slot in ipairs(self.slots or {}) do
-        if slot and slot.IsShown and slot:IsShown() then
+        if slot and (slot:IsShown() or (dragging and slot.dropPlane ~= nil)) then
             -- SCALA: GetLeft/GetBottom/... sono nello spazio della scala
             -- EFFETTIVA DELLO SLOT, non di UIParent. Se la finestra RF ha
             -- una scala propria (config "Scale"), il cursore va riportato in
