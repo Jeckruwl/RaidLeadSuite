@@ -1,7 +1,2 @@
 __pycache__/
 *.pyc
-
-# Materiale di SVILUPPO (non fa parte dell'addon): handoff, smoke test, log di
-# esempio, suite di test. Sta qui dentro ma NON nel repo: chi fa git clone /
-# git pull prende solo i file dell'addon.
-_dev/
