@@ -2715,9 +2715,9 @@ check(rt.eval("RP_OT_TXT") == '/mainassist TankyBoss', "OT click assembles /main
 check(bool(rt.eval("RP_NOOFFICER == ''")), "non-leader/assist: no secure macro assembled")
 check(bool(rt.eval("RP_COMBAT == ''")), "in combat: no protected attribute edits, no macro assembled")
 
-# --- non pre-boss: empty slots hidden, drag disabled ---
+# --- in-fight: empty slots hidden, ma il drag resta ABILITATO (v1.11.74) ---
 rt.execute("RLSuite:SetContextPhase('infight')")
-check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == false")), "drag & drop disabled outside pre-boss")
+check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == true")), "drag & drop ENABLED in fighter too (3.3.5 does not protect the subgroup APIs)")
 check(bool(rt.eval("RLSuite.raidFrame.slots[1]._enabledMouse == true and (RLSuite.raidFrame.slots[1]._dragButtons == nil or RLSuite.raidFrame.slots[1]._dragButtons[1] == nil)")), "outside pre-boss: mouse still ENABLED, only the drag registration is removed")
 check(bool(rt.eval("RLSuite.raidFrame.slots[8]:IsShown() == false")), "outside pre-boss empty slots are hidden")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "outside pre-boss empty groups hide their header")
@@ -6103,6 +6103,86 @@ check(bool(rt.eval("UW_P4_F.label:find('25H') ~= nil")), "v1.11.73: riga del sel
 check(bool(rt.eval("UW_P4_F.drop:find('25H') ~= nil")), "v1.11.73: voce salvata nel selettore -> \"%s\"" % rt.eval("UW_P4_F.drop"))
 check(bool(rt.eval("UW_P4_G.tag == '25H' and UW_P4_G.title:find('25H') ~= nil")), "v1.11.73: anche la vista unificata porta il tag -> \"%s\"" % rt.eval("UW_P4_G.title"))
 check(bool(rt.eval("tostring(UW_P4_H.tag) == '' and UW_P4_H.title:find('Sindragosa') ~= nil")), "v1.11.73: un pull vecchio (senza i campi nuovi) si legge ancora e non prende tag falsi -> \"%s\"" % rt.eval("UW_P4_H.title"))
+rt.execute("""
+-- =====================================================================
+-- v1.11.74: drag & drop dei player ANCHE IN COMBAT (gate di fase rimosso)
+-- =====================================================================
+local RF = RLSuite.raidFrame
+-- A) la fase non conta piu': abilitato in tutte e tre
+local ph = {}
+for _, pp in ipairs({ "preraid", "preboss", "infight" }) do
+    RLSuite:SetContextPhase(pp)
+    ph[pp] = RF:IsDragEnabled()
+end
+UW_P5_PRERAID, UW_P5_PREBOSS, UW_P5_INFIGHT = ph.preraid, ph.preboss, ph.infight
+
+-- roster di prova + fase di COMBAT
+RLSuite:ResetDebugRaid()
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+for i = 1, 5 do RLSuite:DebugInviteAccept("F" .. i, "WARRIOR") end
+RLSuite:SetContextPhase("infight")
+local SAVED_ICL, SAVED_ISD, SAVED_GCP = InCombatLockdown, IsShiftKeyDown, GetCursorPosition
+InCombatLockdown = function() return true end
+IsShiftKeyDown = function() return true end
+
+-- sorgente = primo slot occupato non-tank; destinazione = primo slot vuoto dopo
+local src, dst = nil, nil
+for i, sl in ipairs(RF.slots) do
+    if sl.member and not sl.isTank and not src then src = sl end
+    if src and not sl.member and not dst and sl ~= src then dst = sl end
+end
+UW_P5_ROSTER = (src and src.member and src.member.name) or "?"
+UW_P5_DST_EMPTY = (dst ~= nil and dst.member == nil)
+src._manualDrag = nil; src._pendingRowClick = nil; src:SetScript("OnUpdate", nil); src._targetT = nil
+src._scripts.OnMouseDown(src, "LeftButton")
+UW_P5_SRC = (RF._rfDragSource == src)
+UW_P5_TARGETS = dst:IsShown()
+for i, sl in ipairs(RF.slots) do
+    if sl ~= dst then
+        sl.GetLeft = function() return 500 + i end
+        sl.GetRight = function() return 501 + i end
+        sl.GetBottom = function() return 500 end
+        sl.GetTop = function() return 501 end
+    end
+end
+dst.GetLeft = function() return 100 end; dst.GetRight = function() return 120 end
+dst.GetBottom = function() return 60 end; dst.GetTop = function() return 80 end
+GetCursorPosition = function() return 105, 70 end
+dst._scripts.OnMouseUp(dst, "LeftButton")
+UW_P5_MOVED = (dst.member and dst.member.name) or "?"
+UW_P5_SRC_EMPTY = (src.member == nil)
+UW_P5_CLEAN = (RF._rfDragSource == nil)
+UW_P5_EMPTY_HIDDEN = not RF.slots[30]:IsShown()
+
+-- B) percorso API REALE in combat: move e swap partono davvero
+local SAVED_DM, SAVED_IRL = RLSuite.DebugMode, IsRaidLeader
+RLSuite.DebugMode = function() return false end
+IsRaidLeader = function() return true end
+local calls = {}
+SetRaidSubgroup = function(a, b) calls[#calls + 1] = "move:" .. tostring(a) .. "->" .. tostring(b) end
+SwapRaidSubgroup = function(a, b) calls[#calls + 1] = "swap:" .. tostring(a) .. "-" .. tostring(b) end
+RF:MoveSlot({ member = { name = "Alpha" }, raidIndex = 3, group = 1 }, { member = nil, group = 2 })
+RF:MoveSlot({ member = { name = "Alpha" }, raidIndex = 3, group = 1 }, { member = { name = "Beta" }, raidIndex = 9, group = 2 })
+UW_P5_API = table.concat(calls, " | ")
+UW_P5_LOCKDOWN = InCombatLockdown()
+
+-- ripristino
+for _, sl in ipairs(RF.slots) do sl.GetLeft, sl.GetRight, sl.GetBottom, sl.GetTop = nil, nil, nil, nil end
+SetRaidSubgroup, SwapRaidSubgroup = nil, nil
+IsRaidLeader = SAVED_IRL
+RLSuite.DebugMode = SAVED_DM
+InCombatLockdown, IsShiftKeyDown, GetCursorPosition = SAVED_ICL, SAVED_ISD, SAVED_GCP
+RLSuite:SetContextPhase("preraid")
+RLSuite:ResetDebugRaid()
+""")
+
+
+check(bool(rt.eval("UW_P5_PRERAID == true and UW_P5_PREBOSS == true and UW_P5_INFIGHT == true")), "v1.11.74: drag dei player abilitato in TUTTE le fasi (preraid/preboss/infight) - il gate di fase e' stato rimosso")
+check(bool(rt.eval("UW_P5_LOCKDOWN == true and UW_P5_SRC == true and UW_P5_TARGETS == true")), "v1.11.74: IN COMBAT (InCombatLockdown = true) Shift+click avvia il drag e gli slot vuoti diventano bersagli di drop")
+check(bool(rt.eval("UW_P5_MOVED == UW_P5_ROSTER and UW_P5_SRC_EMPTY == true")), "v1.11.74: il rilascio in combat sposta DAVVERO il player (%s -> posizione vuota)" % rt.eval("UW_P5_ROSTER"))
+check(bool(rt.eval("UW_P5_CLEAN == true and UW_P5_EMPTY_HIDDEN == true")), "v1.11.74: dopo il drop lo stato e' pulito e i blocchi vuoti tornano nascosti")
+check(bool(rt.eval("UW_P5_DST_EMPTY == true and UW_P5_API == 'move:3->2 | swap:3-9'")), "v1.11.74: in combat MoveSlot chiama il client - move = SetRaidSubgroup, swap = SwapRaidSubgroup (%s)" % rt.eval("UW_P5_API"))
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

@@ -7,7 +7,36 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.73**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.74**.
+
+## 1.11.74 — Passata 5: drag & drop dei player DURANTE il combat
+
+Direttiva: *"no voglio che sia instant la modifica, se sposto di barra nel raid
+frame un player mentre sono in combat e' per un valido motivo che serve DURANTE
+IL COMBAT non dopo"*.
+
+**Causa vera (verificata, non ipotizzata): il blocco era NOSTRO.** Su 3.3.5
+`SetRaidSubgroup`/`SwapRaidSubgroup` NON sono protette (la protezione arriva
+con Cataclysm 4.0.1); era `RF:IsDragEnabled()` a permettere il drag solo in fase
+"preboss", quindi in infight il drag non partiva nemmeno e sembrava colpa del
+client.
+
+- `RF:IsDragEnabled()` ora torna **sempre true**: nessun gate di fase, nessuna
+  coda, nessun "applico a fine combat". La modifica e' istantanea.
+- Aggiornati i commenti di `UpdateDragState` / `RefreshDropTargets` / `MoveSlot`
+  (i blocchi vuoti restano visibili solo MENTRE si trascina, ora in qualunque
+  fase).
+- Le test v1.11.63 che pretendevano "drag disabilitato fuori da pre-boss" sono
+  state aggiornate al comportamento nuovo (era la documentazione del gate).
+- Resta invariato: solo raid leader/officer possono riordinare (messaggio in
+  chat), drag = Shift+tasto sinistro, il rilascio fuori dall'HUD annulla.
+
+Da provare in gioco (2 minuti): in combat, Shift+click su un player e rilascio
+su un altro gruppo. Se sul core privato la chiamata andasse a vuoto (capita su
+alcuni core), riportare PRIMA di qualunque ripiego: la strada e' il chiamante
+(`MoveSlot`), non un workaround di fase.
+
+Test: **1044 check** totali (5 nuovi).
 
 ## 1.11.73 — Passata 4: TAG taglia+difficolta' ("25H")
 

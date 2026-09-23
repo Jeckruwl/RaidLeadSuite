@@ -930,8 +930,9 @@ function RF:UpdateDropGlow()
 end
 
 -- Mostra/nasconde i blocchi vuoti dei gruppi e gli header dei gruppi
--- vuoti: visibili SOLO in pre-boss mentre un drag e' attivo (servono come
--- drop target); altrimenti l'HUD resta denso (solo player + header pieni).
+-- vuoti: visibili SOLO mentre un drag e' attivo, in qualunque fase (servono
+-- come drop target); altrimenti l'HUD resta denso (solo player + header
+-- pieni).
 function RF:RefreshDropTargets()
     local dragging = self:IsDragEnabled() and self._rfDragSource ~= nil
     for g = 1, RF_GROUPS do
@@ -1452,16 +1453,23 @@ function RF:UpdatePhase()
     self:UpdateDragState()
 end
 
--- Players can be rearranged only in pre-boss phase (like the InviteEngine
--- raid group panel is used while organizing the raid).
+-- I player si spostano SEMPRE, in QUALUNQUE fase: anche DURANTE il combat.
+-- Spostare qualcuno di gruppo mentre si combatte e' una necessita' vera
+-- (meccaniche che prendono 1/2/3 player, soak, "vai in gruppo 3 adesso"),
+-- non un'operazione da rimandare a fine pull.
+-- Su 3.3.5 SetRaidSubgroup/SwapRaidSubgroup NON sono protette: la protezione
+-- arriva con Cataclysm 4.0.1. Fino alla 1.11.73 il blocco era NOSTRO (gate
+-- sulla fase "preboss"), quindi in infight il drag non partiva nemmeno e
+-- sembrava colpa del client.
 function RF:IsDragEnabled()
-    return (RLSuite.context or "preraid") == "preboss"
+    return true
 end
 
 function RF:UpdateDragState()
     -- Drag delle righe = MANUALE (nessun RegisterForDrag, manco per fase):
     -- le righe restano SEMPRE con mouse attivo e click liberi; il drag del
-    -- player parte su Shift+down in pre-boss (OnMouseDown → _rfDragSource).
+    -- player parte su Shift+down in QUALUNQUE fase, combat compreso
+    -- (OnMouseDown → _rfDragSource).
     -- EnableMouse(false) / RegisterForDrag qui in passato rendevano mute le
     -- righe: il tasto premuto veniva divorato dal drag manager di 3.3.5.
     for _, slot in ipairs(self.slots or {}) do
@@ -1538,7 +1546,8 @@ function RF:SlotAtCursor()
 end
 
 -- Reorganizes the groups by dragging a player between slots. src/dst are
--- the two slot frames (source and destination). Empty destination = move,
+-- the two slot frames (source and destination). Vale anche in combat: su
+-- 3.3.5 i due API dei sottogruppi non sono protetti. Empty destination = move,
 -- occupied destination = swap.
 function RF:MoveSlot(src, dst)
     if not src or not dst or src == dst then return end
