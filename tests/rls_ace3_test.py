@@ -3112,9 +3112,70 @@ MTXOF, MTYOF = select(4, mw.mtBtn:GetPoint(1)), select(5, mw.mtBtn:GetPoint(1))
 RFXOF, RFYOF = select(4, mw.tabs['raidframe']:GetPoint(1)), select(5, mw.tabs['raidframe']:GetPoint(1))
 LOOTXOF, LOOTYOF = select(4, mw.tabs['loot']:GetPoint(1)), select(5, mw.tabs['loot']:GetPoint(1))
 """)
-check(bool(rt.eval("MTXOF == RFXOF")), "MT / OT pair shares the Raid Frame column (cell under it)")
-check(bool(rt.eval("MTYOF == RFYOF - (22 + 4)")), "MT / OT sits directly UNDER the Raid Frame button")
-check(bool(rt.eval("LOOTXOF == RFXOF + 90 + 8 and LOOTYOF == MTYOF")), "Loot shifts one cell aside to free the spot under Raid Frame")
+rt.execute("""
+-- posizione attesa dal NUOVO ordine esplicito delle celle
+local cols = math.max(1, math.min(8, tonumber((RLSuite.db.profile.layout.main or {}).matrixCols) or 2))
+local function cellXY(idx)
+    local col = (idx - 1) % cols
+    local row = math.floor((idx - 1) / cols)
+    return 4 + col * (90 + 8), -4 - row * (22 + 4)
+end
+CELL_MT_X, CELL_MT_Y = cellXY(6)      -- MT & OT = 6a cella
+CELL_LOOT_X, CELL_LOOT_Y = cellXY(7)  -- Loot = 7a cella
+""")
+rt.execute("""
+-- ORDINE RICHIESTO, letto dalle celle vere della matrice:
+--   Groupmaking, Raid Frame, MS, Log, Macrobar, MT & OT, Loot, SaveRaid
+local MWo = RLSuite.mainWindow
+local names = {}
+for _, c in ipairs(MWo.matrixOrder or {}) do
+    if c.role then
+        names[#names + 1] = "MT & OT"
+    elseif c.btn == MWo.saveRaidBtn then
+        names[#names + 1] = "SaveRaid"
+    elseif c.btn then
+        names[#names + 1] = tostring(c.btn:GetText())
+    else
+        names[#names + 1] = "?"
+    end
+end
+BAR_ORDER = table.concat(names, " | ")
+BAR_CELLS = #(MWo.matrixOrder or {})
+-- posizioni reali: riga per riga, da sinistra a destra
+local cols = math.max(1, math.min(8, tonumber((RLSuite.db.profile.layout.main or {}).matrixCols) or 2))
+local function cellXY(idx)
+    local col = (idx - 1) % cols
+    local row = math.floor((idx - 1) / cols)
+    return 4 + col * (90 + 8), -4 - row * (22 + 4)
+end
+local EXPECT = { "Groupmaking", "Raid Frame", "MS", "Log", "Macrobar", "MT & OT", "Loot", "SaveRaid" }
+BAR_ORDER_OK = true
+for i, want in ipairs(EXPECT) do
+    local c = MWo.matrixOrder[i]
+    local got
+    if c.role then got = "MT & OT"
+    elseif c.btn == MWo.saveRaidBtn then got = "SaveRaid"
+    elseif c.btn then got = tostring(c.btn:GetText()) end
+    if got ~= want then BAR_ORDER_OK = false end
+end
+-- i tasti stanno davvero nelle celle nell'ordine dichiarato
+local posOK = true
+for i, c in ipairs(MWo.matrixOrder) do
+    local ex, ey = cellXY(i)
+    if c.role then
+        local p = MWo.mtBtn._points[1] or {}
+        if p[4] ~= ex or p[5] ~= ey then posOK = false end
+    elseif c.btn then
+        local p = c.btn._points[1] or {}
+        if p[4] ~= ex or p[5] ~= ey then posOK = false end
+    end
+end
+BAR_POS_OK = posOK
+""")
+check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 8")), "main bar button order is Groupmaking, Raid Frame, MS, Log, Macrobar, MT & OT, Loot, SaveRaid (%s)" % rt.eval("BAR_ORDER"))
+check(bool(rt.eval("BAR_POS_OK == true")), "each button really sits in its cell, row by row (MT & OT in its own cell, SaveRaid last)")
+check(bool(rt.eval("MTXOF == CELL_MT_X and MTYOF == CELL_MT_Y")), "MT / OT pair occupies the 6th cell of the matrix (own cell, no more 'under Raid Frame')")
+check(bool(rt.eval("LOOTXOF == CELL_LOOT_X and LOOTYOF == CELL_LOOT_Y")), "Loot sits in its own 7th cell (no shifting around Raid Frame)")
 # --- I tasti MT/OT sono ora SECURE macro buttons: SetPartyAssignment e' PROTETTA ---
 # --- (forbidden dal client) -> il click assembla "/maintank <nome>" via PreClick. ---
 rt.execute("""
@@ -3924,9 +3985,90 @@ ROW_EDGEOK = (r == nil) or (r._backdrop ~= nil and r._backdrop.edgeFile == nil)
 check(bool(rt.eval("ROW_EDGEOK")), "list rows (loot/whisper/log) lost their dialog border; selection now uses a marked fill")
 
 # --- Debug panel layout: single column, non-draggable, anchored to the main bar ---# --- Debug panel layout: single column, non-draggable, anchored to the main bar ---
-check(bool(rt.eval("""(function() local xs = nil for _, b in ipairs(RLSuite.debugPanel.debugButtons) do local p = b._points[1]; if not p then return false end; if xs == nil then xs = p[4] elseif p[4] ~= xs then return false end end return true end)()""")), "debug panel buttons form a SINGLE column")
+rt.execute("""
+local f = RLSuite.debugPanel
+local cols = f.cols or 0
+local rows, rowX = {}, {}
+local first = f.debugButtons[1]._points[1] or {}
+local second = f.debugButtons[2]._points[1] or {}
+for _, b in ipairs(f.debugButtons) do
+    local p = b._points[1] or {}
+    if p[5] ~= nil then
+        rows[p[5]] = (rows[p[5]] or 0) + 1
+        rowX[p[5]] = math.min(rowX[p[5]] or p[4], p[4])
+    end
+end
+DBG_LAYOUT = { cols = cols, rows = f.rows or 0, n = #f.debugButtons }
+DBG_ROW_COUNT = 0
+DBG_MAX_PER_ROW = 0
+for key in pairs(rows) do
+    DBG_ROW_COUNT = DBG_ROW_COUNT + 1
+    if rows[key] > DBG_MAX_PER_ROW then DBG_MAX_PER_ROW = rows[key] end
+end
+-- il titolo sta nella PRIMA cella (riga 1, colonna 1): il primo tasto e' la
+-- cella subito dopo e la seconda riga riparte dalla stessa colonna
+local tp = f.titleSlot._points[1] or {}
+DBG_TITLE_CELL = { x = tp[4], y = tp[5], parent = tp[2] }
+DBG_TITLE_STYLE = {
+    noBackdrop = (f.titleSlot._backdrop == nil),
+    mouseOff = (f.titleSlot._enabledMouse == false),
+    notClickable = (f.titleSlot._clickButtons == nil),
+}
+DBG_FLOW = {
+    firstAfterTitle = (first[4] ~= nil and tp[4] ~= nil and first[4] > tp[4] and first[5] == tp[5]),
+    secondInRow1 = (second[4] ~= nil and second[5] == tp[5] and second[4] > first[4]),
+    row2FromStart = (rows[tp[5] - 26] ~= nil and rowX[tp[5] - 26] == tp[4]),
+}
+-- righe effettive (valori y distinti) e tasti per riga
+DBG_ROW_COUNT = 0
+DBG_MAX_PER_ROW = 0
+for _ in pairs(rows) do
+    DBG_ROW_COUNT = DBG_ROW_COUNT + 1
+    if rows[_] > DBG_MAX_PER_ROW then DBG_MAX_PER_ROW = rows[_] end
+end
+-- il titolo sta nella PRIMA cella (stessa x/y dei tasti della prima riga)
+local tp = f.titleSlot._points[1] or {}
+DBG_TITLE_CELL = { x = tp[4], y = tp[5], parent = tp[2] }
+DBG_TITLE_STYLE = {
+    noBackdrop = (f.titleSlot._backdrop == nil),
+    mouseOff = (f.titleSlot._enabledMouse == false),
+    notClickable = (f.titleSlot._clickButtons == nil),
+}
+""")
+check(bool(rt.eval("DBG_LAYOUT.rows == 2 and DBG_ROW_COUNT == 2 and DBG_LAYOUT.cols >= 4")), "debug panel is a matrix on TWO rows and N columns (%d x %d for %d buttons + title)" % (rt.eval("DBG_LAYOUT.rows"), rt.eval("DBG_LAYOUT.cols"), rt.eval("DBG_LAYOUT.n")))
+check(bool(rt.eval("DBG_TITLE_CELL.x ~= nil and DBG_TITLE_CELL.parent == RLSuite.debugPanel and DBG_FLOW.firstAfterTitle == true")), "the 'RLS DEBUG' title sits in the FIRST cell of the matrix (first button in the cell right after it)")
+check(bool(rt.eval("DBG_TITLE_STYLE.noBackdrop == true and DBG_TITLE_STYLE.mouseOff == true and DBG_TITLE_STYLE.notClickable == true")), "title slot is a plain cell like the MacroBar phase tile (no backdrop, no border, not clickable)")
+check(bool(rt.eval("DBG_FLOW.secondInRow1 == true and DBG_FLOW.row2FromStart == true")), "buttons fill the grid in reading order; the second row starts from the first column")
 check(bool(rt.eval("""(function() local f = RLSuite.debugPanel return f._points[1] ~= nil and f._points[1][2] == RLSuite.mainWindow.frame end)()""")), "debug panel is anchored to the main bar (moves with it, never saved)")
 check(bool(rt.eval("RLSuite.debugPanel._scripts['OnDragStart'] == nil")), "debug panel is NOT draggable (part of the main bar)")
+
+# --- RLS DEBUG segue il pannello dei tasti (Raid Control) ---
+rt.execute("""
+local MWd = RLSuite.mainWindow
+RLSuite.db.profile.debug = true
+MWd.frame:Hide()                       -- pannello chiuso
+RLSuite:SyncDebugPanel()
+DBG_FOLLOW_CLOSED = RLSuite.debugPanel:IsShown()
+MWd.frame:Show()                       -- apre il pannello (come il tasto)
+RLSuite:SyncDebugPanel()
+DBG_FOLLOW_OPEN = RLSuite.debugPanel:IsShown()
+-- il tasto vero: click su Raid Control -> pannello + debug insieme
+MWd.titleBar.raidControlBtn._scripts.OnClick(MWd.titleBar.raidControlBtn)
+DBG_AFTER_RC_CLOSE = RLSuite.debugPanel:IsShown()
+MWd.titleBar.raidControlBtn._scripts.OnClick(MWd.titleBar.raidControlBtn)
+DBG_AFTER_RC_OPEN = RLSuite.debugPanel:IsShown()
+-- debug spento: il pannello resta aperto ma RLS DEBUG no
+RLSuite.db.profile.debug = false
+RLSuite:SyncDebugPanel()
+DBG_OFF = RLSuite.debugPanel:IsShown()
+RLSuite.db.profile.debug = true
+RLSuite:SyncDebugPanel()
+DBG_BACK_ON = RLSuite.debugPanel:IsShown()
+""")
+check(bool(rt.eval("DBG_FOLLOW_CLOSED == false and DBG_FOLLOW_OPEN == true")), "RLS DEBUG shows ONLY with the main panel open")
+check(bool(rt.eval("DBG_AFTER_RC_CLOSE == false")), "pressing Raid Control to CLOSE the panel closes RLS DEBUG with it")
+check(bool(rt.eval("DBG_AFTER_RC_OPEN == true")), "pressing Raid Control again SHOWS RLS DEBUG (debug mode is on)")
+check(bool(rt.eval("DBG_OFF == false and DBG_BACK_ON == true")), "RLS DEBUG disappears with debug mode off even if the panel stays open, and comes back when it is on again")
 
 # --- Debug mode no longer auto-fills the loot manager ---
 rt.execute("""
@@ -4085,7 +4227,7 @@ rt.execute("RLSuite.context = 'preraid'; RLSuite.macrobar:UpdatePhase()")
 # -- Barretta titolo main bar: bassa (20px), sopra la finestra, larghezza ereditata
 rt.execute("TB = RLSuite.mainWindow.titleBar")
 check(bool(rt.eval("TB ~= nil")), "main title bar exists")
-check(rt.eval("TB._h") == 20, "title bar is LOW: height 20px (was 30)")
+check(rt.eval("TB._h") == 26, "title bar raised to 26px (Raid Control bar height)")
 rt.execute("""
     TB_P1 = TB._points[1] or {}
     TB_POINTS = TB:GetNumPoints()
@@ -4646,8 +4788,8 @@ TB30_H = TB30A._h
 TB30_TEXT = TB30A:GetText()
 """)
 check(bool(rt.eval("TB30C._w == 11 and TB30C._h == 11")), "title bar close icon HALVED (11x11)")
-check(bool(rt.eval("TB30_TEXT == 'Raid Control' and TB30_H == 16")),
-      "the panel toggle is a 16px 'Raid Control' text button (no more arrow)")
+check(bool(rt.eval("TB30_TEXT == 'Raid Control' and TB30_H == 20")),
+      "the panel toggle is a 20px 'Raid Control' text button (grown with the bar)")
 check(bool(rt.eval("HL_CLOSED30 == false and HL_OPEN30 == true")),
       "Raid Control highlight follows the panel state")
 # -- v1.11.31: la barra non esce mai dallo schermo

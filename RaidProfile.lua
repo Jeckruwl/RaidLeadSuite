@@ -154,14 +154,17 @@ function MW:CreateFrame()
     RLSuite.utils:SkinFrame(f)
     RLSuite.utils:ClampWindow(f)
 
-    -- === Barretta titolo (bassa, 20px) SOPRA la main bar =============
+    -- === Barretta titolo (26px) SOPRA la main bar =============
     -- Eredita la larghezza della main bar (anchor a tutti e due gli
     -- angoli). A sinistra: ICONA DI FASE + nome della fase (niente piu'
     -- il testo "RLS": l'icona di fase dice gia' a che punto sei, e il
     -- clic la fa avanzare). A destra: arrowup.tga (mostra/nasconde il
     -- pannello sotto alla barretta) e close.tga (chiude la main bar).
     local tb = CreateFrame("Frame", "RLSuiteMainTitleBar", UIParent)
-    tb:SetHeight(20)
+    -- ALTEZZA ALZATA (era 20px): la barretta di Raid Control aveva i tasti
+    -- schiacciati sul bordo. Icona di fase e X restano centrate, il tasto
+    -- "Raid Control" cresce con lei.
+    tb:SetHeight(26)
     -- gap 2px: barretta STACCATA dalla main bar (non incollata)
     tb:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 2)
     tb:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 2)
@@ -201,7 +204,7 @@ function MW:CreateFrame()
     -- prima: in ogni momento, anche in fight, mai altre finestre).
     local rcBtn = CreateFrame("Button", "RLSuiteRaidControlBtn", tb, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(rcBtn)
-    rcBtn:SetHeight(16)
+    rcBtn:SetHeight(20)   -- cresciuto con la barretta (era 16)
     rcBtn:SetText("Raid Control")
     -- larghezza = testo + margini (mai piu' stretta del testo)
     local probe = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -223,6 +226,9 @@ function MW:CreateFrame()
     local function MW_UpdateArrowDir()
         if not (rcBtn and rcBtn.LockHighlight) then return end
         if f:IsShown() then rcBtn:LockHighlight() else rcBtn:UnlockHighlight() end
+        -- Stesso legame anche quando il pannello si apre/chiude per altre vie
+        -- (X della barretta, /rls, ShowTab): il pannello debug segue sempre.
+        if RLSuite.SyncDebugPanel then RLSuite:SyncDebugPanel() end
     end
     MW._updateArrowDir = MW_UpdateArrowDir
     f:HookScript("OnShow", MW_UpdateArrowDir)
@@ -235,6 +241,9 @@ function MW:CreateFrame()
             f:Show()
         end
         MW_UpdateArrowDir()
+        -- RLS DEBUG vive e muore con il pannello dei tasti: si chiude con lui
+        -- e ricompare a OGNI apertura (se il debug e' attivo).
+        if RLSuite.SyncDebugPanel then RLSuite:SyncDebugPanel() end
     end)
     tb.raidControlBtn = rcBtn
     tb.arrowBtn = rcBtn            -- alias storico (stesso bottone)
@@ -245,13 +254,16 @@ function MW:CreateFrame()
     -- X di chiusura e icona SaveRaid). La Config si apre dalla minimappa
     -- (clic destro) o da /rls config.
 
+    -- ORDINE DEI TASTI DELLA MATRICE (richiesto): Groupmaking, Raid Frame,
+    -- MS, Log, Macrobar, MT & OT, Loot, SaveRaid. I tab si creano in
+    -- quest'ordine e la griglia li dispone riga per riga (vedi matrixOrder).
     self.tabDefs = {
         { key = "group",     label = "Groupmaking" },
-        { key = "macro",     label = "Macrobar" },
         { key = "raidframe", label = "Raid Frame" },
         { key = "ms",        label = "MS" },
-        { key = "loot",      label = "Loot" },
         { key = "log",       label = "Log" },
+        { key = "macro",     label = "Macrobar" },
+        { key = "loot",      label = "Loot" },
     }
     self.tabs = {}
     self.currentTab = nil
@@ -426,8 +438,26 @@ function MW:CreateFrame()
         GameTooltip:Show()
     end)
     self.saveRaidBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    -- entra nella matrice insieme ai tab (tabKey nil: non e' una tab)
-    table.insert(self.matrixButtons, self.saveRaidBtn)
+    -- ORDINE DELLE CELLE DELLA MATRICE: la coppia MT & OT occupa UNA cella e
+    -- sta al 6o posto (prima era "appesa" sotto Raid Frame, con i tasti
+    -- seguenti che scalavano di uno: con un ordine esplicito non serve piu'
+    -- nessun caso particolare).
+    self.matrixOrder = {
+        { btn = self.tabs["group"] },
+        { btn = self.tabs["raidframe"] },
+        { btn = self.tabs["ms"] },
+        { btn = self.tabs["log"] },
+        { btn = self.tabs["macro"] },
+        { role = true },                    -- MT & OT nella stessa cella
+        { btn = self.tabs["loot"] },
+        { btn = self.saveRaidBtn },
+    }
+    -- Elenco piatto dei BOTTONI (senza la cella della coppia): comodo per i
+    -- controlli e per chi conta i tasti.
+    self.matrixButtons = {}
+    for _, c in ipairs(self.matrixOrder) do
+        if c.btn then self.matrixButtons[#self.matrixButtons + 1] = c.btn end
+    end
 
     self:ApplyLayout()
 end
@@ -452,13 +482,15 @@ function MW:ApplyLayout()
     L = L or {}
     local cols = math.max(1, math.min(8, tonumber(L.matrixCols) or 2))
     local rows = math.max(1, math.min(8, tonumber(L.matrixRows) or 4))
-    -- la matrice deve sempre contenere tutti i bottoni (6 tab): la coppia
-    -- MT/OT occupa UNA cella extra; se le colonne sono poche, le righe
-    -- minime crescono per non sforare
-    local nButtons = #(self.matrixButtons or {})
-    local extraCells = (self.mtBtn and self.otBtn) and 1 or 0
-    if nButtons + extraCells > 0 then
-        rows = math.max(rows, math.ceil((nButtons + extraCells) / cols))
+    -- Celle della matrice: una per tasto, una per la coppia MT & OT.
+    local cells = self.matrixOrder
+    if not cells or #cells == 0 then
+        cells = {}
+        for _, b in ipairs(self.matrixButtons or {}) do cells[#cells + 1] = { btn = b } end
+    end
+    local nCells = #cells
+    if nCells > 0 then
+        rows = math.max(rows, math.ceil(nCells / cols))
     end
 
     -- Bottoni matrice: colonne x righe configurabili dalla Config.
@@ -523,44 +555,30 @@ function MW:ApplyLayout()
     -- subito dopo l'ultimo tasto, come prima.
     local x0 = PAD
     local topY = -PAD
-    local totalCells = nButtons + extraCells
-    local rfIdx = nil
-    for i, btn in ipairs(self.matrixButtons or {}) do
-        if btn.tabKey == "raidframe" then rfIdx = i break end
-    end
-    local pinnedIdx = nil
-    if rfIdx and extraCells > 0 then
-        local p = rfIdx + cols
-        if p <= totalCells then pinnedIdx = p end
-    end
-    local pairCell = pinnedIdx or totalCells
-    local cell = 0
-    for i, btn in ipairs(self.matrixButtons or {}) do
-        cell = cell + 1
-        if pinnedIdx and cell == pinnedIdx then cell = cell + 1 end
-        local col = (cell - 1) % cols
-        local row = math.floor((cell - 1) / cols)
-        btn:ClearAllPoints()
-        btn:SetSize(bw, bh)
-        btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", x0 + col * (bw + gapX), topY - row * (bh + gapY))
-    end
-
-    -- Coppia MT / OT nella cella scelta sopra: due mezzi tasti affiancati
-    -- (insieme occupano lo spazio di un tasto solo).
-    if self.mtBtn and self.otBtn then
-        local idx = pairCell
+    -- POSIZIONAMENTO IN ORDINE: riga per riga, da sinistra a destra
+    -- (Groupmaking, Raid Frame / MS, Log / Macrobar, MT & OT / Loot, SaveRaid
+    -- con 2 colonne). La cella della coppia MT & OT ospita i due mezzi tasti.
+    local halfGap = 4
+    local halfW = (bw - halfGap) / 2
+    for idx, c in ipairs(cells) do
         local col = (idx - 1) % cols
         local row = math.floor((idx - 1) / cols)
-        local halfGap = 4
-        local halfW = (bw - halfGap) / 2
         local cellX = x0 + col * (bw + gapX)
         local cellY = topY - row * (bh + gapY)
-        self.mtBtn:ClearAllPoints()
-        self.mtBtn:SetSize(halfW, bh)
-        self.mtBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX, cellY)
-        self.otBtn:ClearAllPoints()
-        self.otBtn:SetSize(bw - halfW - halfGap, bh)
-        self.otBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX + halfW + halfGap, cellY)
+        if c.role then
+            if self.mtBtn and self.otBtn then
+                self.mtBtn:ClearAllPoints()
+                self.mtBtn:SetSize(halfW, bh)
+                self.mtBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX, cellY)
+                self.otBtn:ClearAllPoints()
+                self.otBtn:SetSize(bw - halfW - halfGap, bh)
+                self.otBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX + halfW + halfGap, cellY)
+            end
+        elseif c.btn then
+            c.btn:ClearAllPoints()
+            c.btn:SetSize(bw, bh)
+            c.btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX, cellY)
+        end
     end
 
     -- BARRETTA DEL TITOLO: larghezza = SOMMA DEI SUOI ELEMENTI e ancorata a

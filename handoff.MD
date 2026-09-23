@@ -7,7 +7,39 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.82**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.83**.
+
+## 1.11.83 — Main bar: ordine dei tasti, barretta piu' alta, RLS DEBUG 2xN legato al pannello
+
+Quattro richieste, tutte fatte:
+
+1. **ORDINE DEI TASTI DELLA MATRICE** (era: group, macro, raidframe, ms, loot,
+   log + SaveRaid appeso + la coppia MT/OT "incastrata" sotto Raid Frame con
+   gli altri tasti che scalavano di una cella). Ora l'ordine e' ESPLICITO in
+   `MW.matrixOrder`, una cella per voce:
+   `Groupmaking | Raid Frame | MS | Log | Macrobar | MT & OT | Loot | SaveRaid`.
+   La coppia MT/OT occupa la sesta cella (due mezzi tasti, come sempre) e
+   sparisce ogni caso particolare: `ApplyLayout` scorre le celle riga per riga,
+   `rows` si calcola sul numero di CELLE. Con 2 colonne: r1 Groupmaking/Raid
+   Frame, r2 MS/Log, r3 Macrobar/MT&OT, r4 Loot/SaveRaid.
+2. **Barretta di Raid Control piu' alta**: 20 -> **26 px**, e il tasto "Raid
+   Control" cresce con lei (16 -> 20 px). Icona di fase e X restano centrate.
+3. **RLS DEBUG legato al pannello**: si vede solo se il debug e' ATTIVO **e**
+   il pannello dei tasti e' aperto (`RLSuite:SyncDebugPanel()`), chiamato dal
+   tasto Raid Control, dagli hook OnShow/OnHide della main bar (quindi anche
+   dalla X e da `/rls`) e da ApplyDebugMode. Chiudendo il pannello si chiude
+   anche lui; a OGNI apertura ricompare se il debug e' attivo; con il debug
+   spento sparisce anche se il pannello resta aperto.
+4. **RLS DEBUG su DUE righe e N colonne, titolo nel primo slot**: il pannello
+   ora e' una matrice (`RLSuite:LayoutDebugPanel()`), 2 righe fisse e
+   colonne = ceil((1 + tasti)/2) = 4 oggi; il titolo "RLS DEBUG" sta nella
+   **prima cella** come il tassello di fase nel keypad della MacroBar: cella
+   nuda (nessuno sfondo, nessun bordo, mouse spento, non cliccabile), solo la
+   scritta. I 6 tasti riempiono le celle in ordine di lettura (3 per riga).
+
+Test: **1092 check** (5 controlli aggiornati + nuovi: ordine reale dei tasti,
+posizioni cella per cella, 2 righe x 4 colonne, titolo in prima cella, e il
+ciclo di vita di RLS DEBUG con il tasto Raid Control).
 
 ## 1.11.82 — Barre Tanks inerti (come sempre) + gesto con tolleranza + `/rls rfdump`
 

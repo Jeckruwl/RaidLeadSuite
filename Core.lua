@@ -63,7 +63,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.82"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.83"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -1550,28 +1550,17 @@ end
 
 -- Pannello DEBUG stile main bar: appare solo in debug mode, accanto alla
 -- barra principale. Raccoglie i comandi di simulazione.
-function RLSuite:EnsureDebugPanel()
-    if self.debugPanel then return end
-    -- Colonna singola, NON spostabile e ancorata alla main bar: dove va la
-    -- barra va anche il pannello (punto relativo alla barra, mai salvato).
-    local f = CreateFrame("Frame", "RLSuiteDebugPanel", UIParent)
-    f:SetSize(126, 26 + 6 * 24 + 10)
-    f:SetFrameStrata("HIGH")
-    f:SetMovable(false)
-    f:EnableMouse(true)
-    local bar = self.mainWindow and self.mainWindow.frame
-    if bar then
-        f:SetPoint("TOPLEFT", bar, "TOPRIGHT", 8, 0)
-    else
-        f:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
-    end
-    -- Borderless come la main bar (_noOuterBorder = fill tenuto, bordo via).
-    f._noOuterBorder = true
-    self.utils:SkinFrame(f)
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
-    title:SetText("|cffff9900RLS DEBUG|r")
-    local defs = {
+-- Pannello RLS DEBUG: matrice di tasti su DUE RIGHE, N colonne calcolate
+-- (1 cella per il titolo + 1 per tasto). Il titolo "RLS DEBUG" sta nel PRIMO
+-- slot della matrice, esattamente come il tassello di fase nel keypad della
+-- MacroBar: stessa cella dei tasti, senza sfondo ne' bordo, non cliccabile.
+local DBG_BTN_W, DBG_BTN_H = 90, 22
+local DBG_GAP_X, DBG_GAP_Y = 8, 4
+local DBG_PAD = 4
+local DBG_ROWS = 2
+
+function RLSuite:DebugPanelDefs()
+    return {
         { text = L["Fill Raid"], i = 0, fn = function() RLSuite:DebugFillGroup() end },
         { text = L["Test Loot"],  i = 1, fn = function() RLSuite:DebugFillLoot() end },
         { text = L["Empty Loot"], i = 2, fn = function() RLSuite:DebugClearLoot() end },
@@ -1585,19 +1574,103 @@ function RLSuite:EnsureDebugPanel()
         { text = L["Test MS"], i = 4, fn = function() RLSuite:DebugTestMS() end },
         { text = L["Log Test"], i = 5, fn = function() RLSuite:DebugLogTest() end },
     }
+end
+
+-- Dispone il pannello debug: matrice a DBG_ROWS righe, colonne = quante ne
+-- servono per titolo + tasti. Cella 1 = titolo, poi i tasti in ordine.
+function RLSuite:LayoutDebugPanel()
+    local f = self.debugPanel
+    if not f then return end
+    local defs = self:DebugPanelDefs()
+    local nCells = 1 + #defs
+    local cols = math.ceil(nCells / DBG_ROWS)
+    if cols < 1 then cols = 1 end
+    f:SetSize(2 * DBG_PAD + cols * DBG_BTN_W + (cols - 1) * DBG_GAP_X,
+        2 * DBG_PAD + DBG_ROWS * DBG_BTN_H + (DBG_ROWS - 1) * DBG_GAP_Y)
+    local function cellPos(idx)
+        local col = (idx - 1) % cols
+        local row = math.floor((idx - 1) / cols)
+        return DBG_PAD + col * (DBG_BTN_W + DBG_GAP_X), -DBG_PAD - row * (DBG_BTN_H + DBG_GAP_Y)
+    end
+    if f.titleSlot then
+        local x, y = cellPos(1)
+        f.titleSlot:ClearAllPoints()
+        f.titleSlot:SetSize(DBG_BTN_W, DBG_BTN_H)
+        f.titleSlot:SetPoint("TOPLEFT", f, "TOPLEFT", x, y)
+    end
+    for i, b in ipairs(f.debugButtons or {}) do
+        local x, y = cellPos(i + 1)
+        b:ClearAllPoints()
+        b:SetSize(DBG_BTN_W, DBG_BTN_H)
+        b:SetPoint("TOPLEFT", f, "TOPLEFT", x, y)
+    end
+    f.cols = cols
+    f.rows = DBG_ROWS
+    return cols, DBG_ROWS
+end
+
+function RLSuite:EnsureDebugPanel()
+    if self.debugPanel then return end
+    -- Matrice NON spostabile e ancorata alla main bar: dove va la barra va
+    -- anche il pannello (punto relativo alla barra, mai salvato).
+    local f = CreateFrame("Frame", "RLSuiteDebugPanel", UIParent)
+    f:SetSize(126, 60)
+    f:SetFrameStrata("HIGH")
+    f:SetMovable(false)
+    f:EnableMouse(true)
+    local bar = self.mainWindow and self.mainWindow.frame
+    if bar then
+        f:SetPoint("TOPLEFT", bar, "TOPRIGHT", 8, 0)
+    else
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
+    end
+    -- Borderless come la main bar (_noOuterBorder = fill tenuto, bordo via).
+    f._noOuterBorder = true
+    self.utils:SkinFrame(f)
+
+    -- SLOT DEL TITOLO (cella 1): come il tassello di fase della MacroBar -
+    -- nessuno sfondo, nessun bordo, mouse spento, solo la scritta.
+    local titleSlot = CreateFrame("Button", nil, f)
+    titleSlot:SetBackdrop(nil)
+    titleSlot:EnableMouse(false)
+    titleSlot:SetSize(DBG_BTN_W, DBG_BTN_H)
+    local title = titleSlot:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    title:SetPoint("CENTER", titleSlot, "CENTER", 0, 0)
+    title:SetText("|cffff9900RLS DEBUG|r")
+    f.titleSlot = titleSlot
+    f.title = title
+
     f.debugButtons = {}
-    for _, d in ipairs(defs) do
+    for _, d in ipairs(self:DebugPanelDefs()) do
         local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        b:SetSize(106, 20)
-        -- colonna unica: tutti i tasti uno sotto l'altro
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -26 - d.i * 24)
+        b:SetSize(DBG_BTN_W, DBG_BTN_H)
         self.utils:SkinButton(b)
         b:SetText(d.text)
         b:SetScript("OnClick", d.fn)
         f.debugButtons[#f.debugButtons + 1] = b
     end
+    self.debugPanel = f      -- PRIMA del layout: LayoutDebugPanel legge self.debugPanel
+    self:LayoutDebugPanel()
     f:Hide()
-    self.debugPanel = f
+end
+
+-- Il pannello RLS DEBUG e' legato al pannello dei tasti della main bar: si
+-- vede solo se il debug e' ATTIVO **e** il pannello e' aperto. Cosi' il tasto
+-- "Raid Control" lo apre/chiude insieme al pannello e la X non lo lascia
+-- orfano a schermo; a ogni apertura (con debug attivo) ricompare da solo.
+function RLSuite:SyncDebugPanel()
+    if not self:DebugMode() then
+        if self.debugPanel then self.debugPanel:Hide() end
+        return
+    end
+    self:EnsureDebugPanel()
+    if not self.debugPanel then return end
+    local bar = self.mainWindow and self.mainWindow.frame
+    if bar and bar:IsShown() then
+        self.debugPanel:Show()
+    else
+        self.debugPanel:Hide()
+    end
 end
 
 -- Called whenever the simulated roster changes (invite accepted, debug
@@ -2082,13 +2155,10 @@ function RLSuite:ApplyDebugMode()
     -- restava vuoto finche' non arrivava il primo invito.
     self:DebugRosterChanged()
     self:UpdatePhaseUI()
-    -- Pannello debug: compare vicino alla main bar solo in debug mode.
-    if self:DebugMode() then
-        self:EnsureDebugPanel()
-        if self.debugPanel then self.debugPanel:Show() end
-    elseif self.debugPanel then
-        self.debugPanel:Hide()
-    end
+    -- Pannello debug: compare vicino alla main bar solo con il debug ATTIVO e
+    -- il pannello dei tasti aperto (stesso ciclo di vita del tasto Raid
+    -- Control: si chiude insieme a lui, ricompare a ogni apertura).
+    self:SyncDebugPanel()
 end
 
 function RLSuite:UpdateRaidContext()
