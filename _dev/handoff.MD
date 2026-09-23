@@ -21,8 +21,10 @@ tutti i file non dell'addon in una directory separata e ignorata dai git pull"*.
 * `handoff.MD`, `SMOKE_TEST.md`, `Logexampl/` e `tests/` vivono in **`_dev/`**,
   TRACCIATA ma esclusa dai pacchetti (`.gitattributes` -> `_dev/ export-ignore`):
   - ogni clone/sessione nuova li trova subito (serve agli agenti);
-  - lo ZIP di release NON li contiene:
-    `git archive --prefix=RaidLeadSuite/ -o out.zip HEAD:Release/RaidLeadSuite`;
+  - lo ZIP di release non li contiene: `git archive -o out.zip HEAD` mette la
+    struttura della repo (Release/RaidLeadSuite/...) e _dev/ resta fuori;
+    `git archive --prefix=RaidLeadSuite/ -o out.zip HEAD:Release/RaidLeadSuite`
+    produce invece lo zip "pronto da estrarre in Interface/AddOns";
   - per NON averli nel proprio client: un comando una volta sola
     (`git sparse-checkout set --no-cone '/*' '!/_dev/'`, git >= 2.25), poi
     `git pull` non li materializza piu'; `git sparse-checkout disable` annulla.
