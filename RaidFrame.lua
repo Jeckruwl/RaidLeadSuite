@@ -428,7 +428,10 @@ local function RowBodyOnMouseDown(self2, button)
         end
         if IsShiftKeyDown and IsShiftKeyDown() then
             self2._pressBtn = nil
-            if button == "LeftButton" and RF:IsDragEnabled() and self2.member and not self2.isTank then
+            -- Anche le barre Tanks (MT/OT) si trascinano: spostare un tank di
+            -- gruppo e' una necessita' vera, e con un roster corto la barra MT
+            -- (che rispecchia il player) e' la barra piu' visibile dell'HUD.
+            if button == "LeftButton" and RF:IsDragEnabled() and self2.member then
                 -- SHIFT+sinistro = drag player MANUALE: source + mostra vuoti.
                 RF._rfDragSource = self2
                 self2._manualDrag = true
@@ -1665,14 +1668,30 @@ function RF:MoveSlot(src, dst)
         RLSuite.utils:Print(L["Only the raid leader can rearrange groups."])
         return
     end
-    if not src.raidIndex then return end
-    if dst.member and dst.raidIndex then
+    local srcIdx = src.raidIndex or self:MemberRaidIndex(src.member)
+    if not srcIdx then return end
+    local dstIdx = (dst.member and (dst.raidIndex or self:MemberRaidIndex(dst.member))) or nil
+    if dstIdx then
         -- Swap: SwapRaidSubgroup exchanges the two players.
-        pcall(SwapRaidSubgroup, src.raidIndex, dst.raidIndex)
+        pcall(SwapRaidSubgroup, srcIdx, dstIdx)
     else
         -- Move: SetRaidSubgroup moves the player to the target group.
-        pcall(SetRaidSubgroup, src.raidIndex, dst.group)
+        pcall(SetRaidSubgroup, srcIdx, dst.group)
     end
+end
+
+-- Indice raid di un membro. Le barre Tanks (MT/OT) prendono il roster da
+-- GetPartyAssignment e NON hanno raidIndex: si risolve per nome, cosi' anche
+-- un tank si sposta di gruppo come qualunque altro player.
+function RF:MemberRaidIndex(member)
+    if not member then return nil end
+    if member.raidIndex then return member.raidIndex end
+    local num = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    for i = 1, num do
+        local name = GetRaidRosterInfo and select(1, GetRaidRosterInfo(i))
+        if name and name == member.name then return i end
+    end
+    return nil
 end
 
 -- Reorders the simulated roster in debug: swaps two members (occupied slot)
@@ -1681,15 +1700,24 @@ end
 -- InviteEngine Raid Group panel and this HUD).
 function RF:MoveSlotDebug(src, dst)
     local slots = RLSuite:DebugRaidSlots()
-    local srcMember = slots[src.slot]
+    -- Le barre Tanks hanno slot = nil (non stanno nella griglia dei gruppi):
+    -- il player da spostare si risolve per NOME nello slot dove si trova.
+    local srcSlot = tonumber(src.slot)
+    if not srcSlot then
+        for i, m in ipairs(slots) do
+            if m and m.name == src.name then srcSlot = i break end
+        end
+    end
+    if not srcSlot then return end
+    local srcMember = slots[srcSlot]
     local dstMember = slots[dst.slot]
     if not srcMember then return end
 
     if dstMember then
-        slots[src.slot], slots[dst.slot] = dstMember, srcMember
+        slots[srcSlot], slots[dst.slot] = dstMember, srcMember
     else
         slots[dst.slot] = srcMember
-        slots[src.slot] = nil
+        slots[srcSlot] = nil
     end
     RLSuite:DebugSyncSubgroups()
     RLSuite:DebugRosterChanged()

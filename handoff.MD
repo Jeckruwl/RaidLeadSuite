@@ -7,7 +7,47 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.76**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.77**.
+
+## 1.11.77 — Barre TANKS trascinabili (il "player" che non si muoveva piu')
+
+Report in gioco della 1.11.76: *"ora si vede tutto ma posso spostare solo UN
+giocatore... un giocatore che ho spostato non lo posso piu' muovere. Sono in
+debug mode con solo me presente in raid; se uso Fill Raid invece posso spostare
+chiunque"*.
+
+Perche' (due fatti che insieme spiegano tutto):
+
+1. Le barre Tanks MT/OT **non erano trascinabili per scelta** (drag start con
+   `not self2.isTank`, `t.slot = nil` in `EnsureTanks`, commento "niente drag
+   player su di esse").
+2. Con un roster da UNA persona il player e' **anche** l'MT (auto-fill: MT =
+   primo del roster): l'HUD mostra la stessa persona due volte, la barra MT in
+   alto e la riga di gruppo nella griglia. Trascinando la barra in alto non
+   succedeva **niente, in silenzio**.
+   Dopo il primo spostamento la riga di gruppo se ne va in un altro gruppo e la
+   barra MT resta dov'e': la barra che si prende naturalmente e' quella in
+   alto... e quella non rispondeva. Con Fill Raid si spostano i finti nella
+   griglia -> tutto funzionava, per questo il limite si vedeva solo col roster
+   corto.
+
+Rimedio:
+
+- Anche le barre MT/OT si trascinano (via il veto `isTank` sul drag start).
+- `MoveSlotDebug` risolve lo slot sorgente **per nome** quando la barra tank non
+  ha `slot` (le barre tank non stanno nella griglia dei gruppi).
+- `MoveSlot` risolve l'indice raid con `RF:MemberRaidIndex()` (per nome, via
+  `GetRaidRosterInfo`) quando il membro non ce l'ha: cosi' nei raid veri la
+  mossa di un tank chiama `SetRaidSubgroup` come per chiunque altro.
+- Dopo lo spostamento la barra MT continua a rispecchiare il player (il mirror
+  tank si aggiorna da solo col rebuild).
+
+Extra: la suite ora e' **deterministica** (`math.randomseed` all'avvio): il
+test dei roll di loot era instabile ("two roll cycles..." fallito una volta su
+varie corse) e faceva sembrare rotto altro codice.
+
+Test: **1066 check** totali (8 nuovi: 4 sul roster sparse che si sposta due
+volte, 4 sulle barre tank).
 
 ## 1.11.76 — Barra HP e CD FUORI dalla riga (update grafico del drag)
 

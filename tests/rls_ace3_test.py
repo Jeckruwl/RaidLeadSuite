@@ -7,6 +7,9 @@ from lupa import LuaRuntime
 # ---------------------------------------------------------------------------
 MOCK = r"""
 LOGGED_IN = false
+-- Seme fisso: la suite e' riproducibile (i test con loot/roll casuali non
+-- devono dare esiti diversi tra una corsa e l'altra).
+math.randomseed(20260101)
 CHAT_LOG = {}
 EVENT_REG = {}          -- frame -> {event=true}
 FRAMES = {}             -- name -> frame
@@ -6444,6 +6447,168 @@ check(bool(rt.eval("UW_P8_FILLED.bar == true and UW_P8_FILLED.cd1 == true")), "v
 check(bool(rt.eval("UW_P8_CLEAR == true")), "v1.11.76: uno slot VUOTO resta senza barra (nessun rettangolo vuoto in giro)")
 check(bool(rt.eval("UW_P8_REFILL.afterClear == false and UW_P8_REFILL.afterRefill == true")), "v1.11.76: svuotando e riempiendo lo stesso slot (stessa classe) i CD tornano visibili")
 check(bool(rt.eval("UW_P8_MOVED == UW_P8_SRC and UW_P8_AFTER.bar == true and UW_P8_AFTER.cd1 == true")), "v1.11.76: in combat, dopo lo spostamento la riga di destinazione mostra barra e CD anche con la riga nascosta (%s -> %s)" % (rt.eval("UW_P8_SRC"), rt.eval("UW_P8_MOVED")))
+rt.execute("""
+-- =====================================================================
+-- v1.11.77 (diagnosi): roster SPARSO in debug - un player spostato
+-- deve poter essere spostato ANCORA (membri finti: solo il player)
+-- =====================================================================
+local RF = RLSuite.raidFrame
+RLSuite:ResetDebugRaid()          -- 1 solo membro: il player, slot 1
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+RLSuite:SetContextPhase("infight")
+RF:Rebuild()
+UW_P9_ROSTER0 = #RLSuite:DebugRoster()
+
+local SAVED_ISD, SAVED_GCP = IsShiftKeyDown, GetCursorPosition
+IsShiftKeyDown = function() return true end
+
+-- geometria: solo lo slot passato sta sotto il cursore
+local function cursorOn(target)
+    for i, sl in ipairs(RF.slots) do
+        if sl ~= target then
+            sl.GetLeft = function() return 500 + i end
+            sl.GetRight = function() return 501 + i end
+            sl.GetBottom = function() return 500 end
+            sl.GetTop = function() return 501 end
+        end
+    end
+    target.GetLeft = function() return 100 end
+    target.GetRight = function() return 120 end
+    target.GetBottom = function() return 60 end
+    target.GetTop = function() return 80 end
+    GetCursorPosition = function() return 105, 70 end
+end
+
+local function cleanRow(sl)
+    sl._manualDrag = nil; sl._pendingRowClick = nil; sl._targetT = nil
+    sl:SetScript("OnUpdate", nil)
+end
+
+local s1, s8, s3 = RF.slots[1], RF.slots[8], RF.slots[3]
+
+-- DRAG 1: slot 1 (il player) -> slot 8 (vuoto)
+cleanRow(s1)
+cursorOn(s8)
+s1._scripts.OnMouseDown(s1, "LeftButton")
+UW_P9_D1_START = (RF._rfDragSource == s1 and s1.member ~= nil)
+s8.dropPlane._scripts.OnMouseUp(s8.dropPlane, "LeftButton")
+local slots = RLSuite:DebugRaidSlots()
+UW_P9_D1 = {
+    at8 = (slots[8] and slots[8].name) or "?",
+    at1 = (slots[1] == nil),
+    row8 = (RF.slots[8].member and RF.slots[8].member.name) or "?",
+    row1_empty = (RF.slots[1].member == nil),
+    clean = (RF._rfDragSource == nil),
+}
+
+-- DRAG 2: lo STESSO player, ora in slot 8 -> slot 3 (vuoto)
+local s8b = RF.slots[8]
+cleanRow(s8b)
+cursorOn(s3)
+s8b._scripts.OnMouseDown(s8b, "LeftButton")
+UW_P9_D2_START = (RF._rfDragSource == s8b)
+UW_P9_D2_HIT = (RF:SlotAtCursor() == s3)
+s3.dropPlane._scripts.OnMouseUp(s3.dropPlane, "LeftButton")
+local slots2 = RLSuite:DebugRaidSlots()
+UW_P9_D2 = {
+    started = UW_P9_D2_START,
+    hit = UW_P9_D2_HIT,
+    at3 = (slots2[3] and slots2[3].name) or "?",
+    at8_gone = (slots2[8] == nil),
+    row3 = (RF.slots[3].member and RF.slots[3].member.name) or "?",
+}
+
+for i, sl in ipairs(RF.slots) do
+    sl.GetLeft, sl.GetRight, sl.GetBottom, sl.GetTop = nil, nil, nil, nil
+end
+IsShiftKeyDown, GetCursorPosition = SAVED_ISD, SAVED_GCP
+RLSuite:SetContextPhase("preraid")
+RLSuite:ResetDebugRaid()
+RF:Rebuild()
+""")
+
+
+check(bool(rt.eval("UW_P9_ROSTER0 == 1")), "v1.11.77: partenza con UN solo membro (il player) - roster=%r" % rt.eval("UW_P9_ROSTER0"))
+check(bool(rt.eval("UW_P9_D1.at8 ~= '?' and UW_P9_D1.at1 == true and UW_P9_D1.row8 ~= '?' and UW_P9_D1.row1_empty == true and UW_P9_D1.clean == true")), "v1.11.77: primo spostamento OK (%s -> slot 8, slot 1 libero)" % rt.eval("UW_P9_D1.at8"))
+check(bool(rt.eval("UW_P9_D2.started == true and UW_P9_D2.hit == true")), "v1.11.77: il secondo drag PARTE dalla riga nuova e il cursore trova lo slot di destinazione")
+check(bool(rt.eval("UW_P9_D2.at3 ~= '?' and UW_P9_D2.at8_gone == true and UW_P9_D2.row3 ~= '?'")), "v1.11.77: un player GIA' spostato si sposta ANCORA (%s -> slot 3)" % rt.eval("UW_P9_D2.at3"))
+rt.execute("""
+-- =====================================================================
+-- v1.11.77: anche le barre TANKS (MT/OT) si trascinano - con un roster
+-- corto la barra MT e' il "player" piu' visibile dell'HUD
+-- =====================================================================
+local RF = RLSuite.raidFrame
+RLSuite:ResetDebugRaid()          -- 1 solo membro: il player
+RLSuite.db.profile.debug = true
+RLSuite:ApplyDebugMode()
+RLSuite:SetContextPhase("infight")
+RF:Rebuild()
+
+local mt = RF.tankSlots[1]
+UW_P10_MIRROR = {
+    has = (mt.member ~= nil),
+    name = (mt.member and mt.member.name) or "?",
+    isTank = (mt.isTank == true),
+    slot = mt.slot,
+}
+
+local SAVED_ISD, SAVED_GCP = IsShiftKeyDown, GetCursorPosition
+IsShiftKeyDown = function() return true end
+
+local dst = RF.slots[8]
+for i, sl in ipairs(RF.slots) do
+    if sl ~= dst then
+        sl.GetLeft = function() return 500 + i end
+        sl.GetRight = function() return 501 + i end
+        sl.GetBottom = function() return 500 end
+        sl.GetTop = function() return 501 end
+    end
+end
+dst.GetLeft = function() return 100 end; dst.GetRight = function() return 120 end
+dst.GetBottom = function() return 60 end; dst.GetTop = function() return 80 end
+GetCursorPosition = function() return 105, 70 end
+
+mt._manualDrag = nil; mt._pendingRowClick = nil; mt._targetT = nil
+mt:SetScript("OnUpdate", nil)
+mt._scripts.OnMouseDown(mt, "LeftButton")
+UW_P10_START = (RF._rfDragSource == mt)
+UW_P10_TARGETS = dst.dropPlane:IsShown()
+dst.dropPlane._scripts.OnMouseUp(dst.dropPlane, "LeftButton")
+local slots = RLSuite:DebugRaidSlots()
+UW_P10_AFTER = {
+    at8 = (slots[8] and slots[8].name) or "?",
+    at1_free = (slots[1] == nil),
+    row8 = (RF.slots[8].member and RF.slots[8].member.name) or "?",
+    mt_mirror = (RF.tankSlots[1].member and RF.tankSlots[1].member.name) or "?",
+    clean = (RF._rfDragSource == nil),
+}
+
+-- indice raid risolto per nome (serve a SetRaidSubgroup nei raid veri)
+local S_NRM, S_GRRI = GetNumRaidMembers, GetRaidRosterInfo
+GetNumRaidMembers = function() return 3 end
+GetRaidRosterInfo = function(i) return ({ "Alfa", "Beta", "Gamma" })[i], nil, 1 end
+UW_P10_IDX = {
+    beta = RF:MemberRaidIndex({ name = "Beta" }),
+    zeta = RF:MemberRaidIndex({ name = "Zeta" }),
+    direct = RF:MemberRaidIndex({ name = "Beta", raidIndex = 3 }),
+}
+GetNumRaidMembers, GetRaidRosterInfo = S_NRM, S_GRRI
+
+for i, sl in ipairs(RF.slots) do
+    sl.GetLeft, sl.GetRight, sl.GetBottom, sl.GetTop = nil, nil, nil, nil
+end
+IsShiftKeyDown, GetCursorPosition = SAVED_ISD, SAVED_GCP
+RLSuite:SetContextPhase("preraid")
+RLSuite:ResetDebugRaid()
+RF:Rebuild()
+""")
+
+
+check(bool(rt.eval("UW_P10_MIRROR.has == true and UW_P10_MIRROR.isTank == true and UW_P10_MIRROR.slot == nil")), "v1.11.77: la barra MT rispecchia il player (roster da uno) e non sta nella griglia dei gruppi (%s)" % rt.eval("UW_P10_MIRROR.name"))
+check(bool(rt.eval("UW_P10_START == true and UW_P10_TARGETS == true")), "v1.11.77: anche la barra Tanks si trascina - Shift+click avvia il drag e i bersagli compaiono")
+check(bool(rt.eval("UW_P10_AFTER.at8 == UW_P10_MIRROR.name and UW_P10_AFTER.at1_free == true and UW_P10_AFTER.row8 == UW_P10_MIRROR.name and UW_P10_AFTER.mt_mirror == UW_P10_MIRROR.name and UW_P10_AFTER.clean == true")), "v1.11.77: trascinando la barra MT il player si sposta DAVVERO di gruppo e la barra MT continua a rispecchiarlo")
+check(bool(rt.eval("UW_P10_IDX.beta == 2 and UW_P10_IDX.zeta == nil and UW_P10_IDX.direct == 3")), "v1.11.77: l'indice raid dei tank si risolve per nome (Beta = %r) e resta invariato quando c'e' gia'" % rt.eval("UW_P10_IDX.beta"))
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
