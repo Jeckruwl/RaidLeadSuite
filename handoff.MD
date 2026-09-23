@@ -7,7 +7,44 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.80**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.81**.
+
+## 1.11.81 — La barra Tanks (MT/OT) e' lo SPECCHIO del player: prendendola si trascina il player
+
+Il log in game ha dato la risposta. Con il solo player in raid, due pressioni
+che non facevano **niente**:
+
+```
+RF shift+left: NESSUNA barra sotto (88,614)
+RF shift+left: NESSUNA barra sotto (72,616)
+```
+
+Stessa zona, x piccola, y alta: e' il **blocco Tanks** in cima al Raid Frame -
+la barra **MT**, dove il player compare anche da solo (auto-assegnazione MT =
+primo del roster). Quella barra **non rispondeva per scelta**: il drag
+partiva solo dalle righe della griglia, e con un roster corto la barra
+visibile e' quella in alto. Da qui "posso spostare un giocatore una volta
+sola": dopo il primo spostamento la riga di gruppo se ne va in un'altra
+colonna e la barra che il player prende naturalmente e' il mirror MT.
+
+Rimedio (senza cambiare NIENTE dell'aspetto delle barre Tanks):
+
+* `RF:SlotAtCursor()`/`_SlotUnderCursor()` ora cercano anche fra le barre
+  Tanks: una pressione li' viene **risolta** da `RF:_StartDragFromSlot()` in
+  `RF:GridSlotForMember()` = la RIGA della griglia che mostra lo stesso
+  membro (per tabella o, nel raid vero, per NOME: ogni rebuild ricrea le
+  tabelle dei membri). Destinazione del drop = come sempre uno slot dei
+  gruppi; il mirror non diventa drop target.
+* Le barre Tanks restano identiche: tag MT/OT, barra del target, nessuna
+  icona consumabile, nessun CD, nessun piano di rilascio (test dedicato).
+* Se il player mostrato dalla barra non e' nella griglia: nessun effetto, con
+  traccia in chat.
+* Diagnostica piu' parlante: premendo nel vuoto la chat dice quale barra con
+  un player e' **la piu' vicina e a quanti pixel** (`... piu' vicina: barra MT
+  (Borracciablu) a 8 px`), cosi' un gesto a vuoto dice subito se il cursore e'
+  in un buco o fuori dalle barre.
+
+Test: **1085 check** (8 nuovi).
 
 ## 1.11.80 — Diagnostica INSTALLAZIONE (`/rls diag`) + versione vera
 
