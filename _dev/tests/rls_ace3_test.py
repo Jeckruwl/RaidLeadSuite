@@ -591,16 +591,28 @@ ADDON_FILES = [
     "MSManager.lua", "LootManager.lua", "CombatLog.lua", "Config.lua",
 ]
 
-# La suite vive in _dev/tests/ (materiale di sviluppo, fuori dal repo git):
-# la radice dell'addon e' la cartella piu' in alto che contiene il .toc, cosi'
-# la suite continua a funzionare anche se viene spostata.
+# La suite vive in _dev/tests/ (materiale di sviluppo). L'addon sta in
+# Release/RaidLeadSuite/: la suite cerca verso l'alto quella cartella (o, per
+# compatibilita', una cartella che contenga direttamente il .toc) e si mette
+# li' dentro, cosi' i percorsi relativi (media/, *.lua) restano validi.
 _here = os.path.dirname(os.path.abspath(__file__))
-_root = _here
-while _root != os.path.dirname(_root):
-    if os.path.isfile(os.path.join(_root, "RaidLeadSuite.toc")):
-        break
-    _root = os.path.dirname(_root)
-os.chdir(_root)
+
+def _find_addon_dir(start):
+    cur = start
+    while True:
+        cand = os.path.join(cur, "Release", "RaidLeadSuite")
+        if os.path.isfile(os.path.join(cand, "RaidLeadSuite.toc")):
+            return cand
+        if os.path.isfile(os.path.join(cur, "RaidLeadSuite.toc")):
+            return cur
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return None
+        cur = parent
+
+_addon_dir = _find_addon_dir(_here)
+assert _addon_dir, "cartella dell'addon non trovata (Release/RaidLeadSuite)"
+os.chdir(_addon_dir)
 
 LEGACY = r"""
 _G.RLSuiteDB = {

@@ -9,22 +9,27 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.84**.
 
-## 1.11.84+ — NUOVA STRUTTURA: i file di sviluppo stanno in `_dev/` (fuori dal repo)
+## 1.11.84+ — STRUTTURA DEL REPO: addon in `Release/RaidLeadSuite/`, sviluppo in `_dev/`
 
 Richiesta dell'utente in vista della release per i compagni di gilda: *"sposta
 tutti i file non dell'addon in una directory separata e ignorata dai git pull"*.
 
+* **L'ADDON vive in `Release/RaidLeadSuite/`** (dentro: `*.lua`, il .toc,
+  `Libs/`, `media/`, `README.md`): e' la cartella da copiare in
+  `Interface/AddOns`. Alla radice del repo restano solo `.gitignore`,
+  `.gitattributes`, `Release/` e `_dev/`.
 * `handoff.MD`, `SMOKE_TEST.md`, `Logexampl/` e `tests/` vivono in **`_dev/`**,
-  TRACCIATA ma esclusa dai pacchetti (`.gitattributes` -> `_dev/* export-ignore`):
+  TRACCIATA ma esclusa dai pacchetti (`.gitattributes` -> `_dev/ export-ignore`):
   - ogni clone/sessione nuova li trova subito (serve agli agenti);
-  - lo ZIP di release (`git archive`) NON li contiene: pacchetto addon pulito;
+  - lo ZIP di release NON li contiene:
+    `git archive --prefix=RaidLeadSuite/ -o out.zip HEAD:Release/RaidLeadSuite`;
   - per NON averli nel proprio client: un comando una volta sola
     (`git sparse-checkout set --no-cone '/*' '!/_dev/'`, git >= 2.25), poi
     `git pull` non li materializza piu'; `git sparse-checkout disable` annulla.
 * I file restano anche nella storia git (`git show <commit>:handoff.MD`).
 * La suite si lancia dalla RADICE dell'addon:
-  `python3 _dev/tests/rls_ace3_test.py` (trova la radice cercando il .toc, quindi
-  funziona anche se spostata).
+  `python3 _dev/tests/rls_ace3_test.py` (trova da sola `Release/RaidLeadSuite`,
+  quindi funziona da qualunque cartella).
 * ATTENZIONE per chi ha un checkout: il primo `git pull` dopo questa modifica
   **cancella** dal working copy i vecchi `handoff.MD`, `SMOKE_TEST.md`,
   `Logexampl/`, `tests/` (sono rimossi dal repo). Chi li vuole li copi prima.
