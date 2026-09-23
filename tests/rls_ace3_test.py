@@ -4956,6 +4956,143 @@ check(bool(rt.eval("COMPB_RESTORED")), "v1.11.49 harness restores the aura sourc
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenarios G+H (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 
+rt.execute("""
+-- ================= v1.11.62: GRIGLIA IMMOBILE DEL RAID FRAME ==========
+-- Il bug: a raid vuoto il roster si "ri-compattava" dal fondo e la barra
+-- del player finiva IN CIMA al frame (e la strip del buff check si
+-- agganciava all'header G1, che con G1 vuoto non c'e'). La griglia ora ha
+-- un posto FISSO per ogni gruppo: la y di un player dipende SOLO dal suo
+-- gruppo, qualunque sia il resto del roster.
+_IM_GM = GetNumRaidMembers
+_IM_GR = GetRaidRosterInfo
+_IM_CTX = RLSuite.context
+RLSuite.db.profile.debug = false
+IMRF = RLSuite.raidFrame
+IM_M = IMRF:LayoutMetrics()
+IM_BAND = IM_M.groupHeaderH + 5 * (IM_M.rowHeight + IM_M.rowSpacing) + IM_M.groupSpacing
+function IM_SetRoster(list)
+    IM_RAID = list
+    GetNumRaidMembers = function() return #IM_RAID end
+    GetRaidRosterInfo = function(i)
+        local m = IM_RAID[i]
+        if m then return m.name, 0, m.subgroup, 80, 'Warrior', 'WARRIOR', 'Icecrown', true, false end
+        return nil
+    end
+    IMRF:Rebuild()
+    IMRF:RefreshBuffMatrix()
+end
+function IM_RowY(g)
+    local sl = IMRF.slots[(g - 1) * 5 + 1]
+    local p = sl and sl._points and sl._points[1]
+    return p and p[5]
+end
+function IM_CellY(g)
+    local sl = IMRF.slots[(g - 1) * 5 + 1]
+    local cell = sl and sl._buffCells and sl._buffCells[1]
+    local p = cell and cell._points and cell._points[1]
+    return p and p[5]
+end
+function IM_HdrIcon()
+    local hb = IMRF._buffHdrBtns and IMRF._buffHdrBtns[1]
+    local p = hb and hb._points and hb._points[1]
+    return hb, p and p[5]
+end
+IM_FULL = {}
+for g = 1, 6 do for i = 1, 5 do IM_FULL[#IM_FULL + 1] = {name='P'..g..i, subgroup=g} end end
+
+IMRF.buffMatrixOn = false
+IM_SetRoster({})
+IM_H_EMPTY = IMRF.frame._h
+IM_Y6_EMPTY = IM_RowY(6)
+IM_SetRoster({{name='Me', subgroup=4}})     -- "raid vuoto, mi sposto in un gruppo"
+IM_H_ONE = IMRF.frame._h
+IM_Y4_ONE = IM_RowY(4)
+IM_SetRoster({{name='Me', subgroup=6}})
+IM_Y6_ONE = IM_RowY(6)
+IM_SetRoster(IM_FULL)
+IM_H_FULL = IMRF.frame._h
+IM_Y6_FULL = IM_RowY(6)
+IM_Y5_FULL = IM_RowY(5)
+IM_Y4_FULL = IM_RowY(4)
+IM_Y1_FULL = IM_RowY(1)
+
+-- buff check: matrice accesa, un solo player in G4 -> la strip resta in cima
+IMRF.buffMatrixOn = true
+IM_SetRoster({{name='Me', subgroup=4}})
+local hb1, hy1 = IM_HdrIcon()
+IM_HDR_SHOWN_ONE = hb1 and hb1:IsShown() or false
+IM_HDR_Y_ONE = hy1
+IM_CELL4_ONE = IM_CellY(4)
+IM_SetRoster(IM_FULL)
+local hb2, hy2 = IM_HdrIcon()
+IM_HDR_Y_FULL = hy2
+IM_CELL4_FULL = IM_CellY(4)
+IMRF.buffMatrixOn = false
+IM_SetRoster({{name='Me', subgroup=6}})
+
+-- drag attivo (pre-boss): mostrare gli slot vuoti NON deve spostare niente
+RLSuite.context = 'preboss'
+IMRF._rfDragSource = IMRF.slots[1]
+IMRF:RefreshDropTargets()
+IM_DRAG_H = IMRF.frame._h
+IM_DRAG_Y6 = IM_RowY(6)
+local dragShown = 0
+for _, sl in ipairs(IMRF.slots) do if sl:IsShown() then dragShown = dragShown + 1 end end
+IM_DRAG_SHOWN = dragShown
+IMRF._rfDragSource = nil
+IMRF:RefreshDropTargets()
+IMRF.buffMatrixOn = false
+
+-- toggle della matrice: non deve muovere NIENTE
+IM_SetRoster({{name='Me', subgroup=6}})
+IMRF.buffMatrixOn = false
+IMRF:Rebuild()
+IM_H_MAT_OFF = IMRF.frame._h
+IM_Y6_MAT_OFF = IM_RowY(6)
+IMRF.buffMatrixOn = true
+IMRF:Rebuild()
+IM_H_MAT_ON = IMRF.frame._h
+IM_Y6_MAT_ON = IM_RowY(6)
+IMRF.buffMatrixOn = false
+-- blocco Tanks riservato sempre: la barra MT non si muove col roster
+local mt1 = IMRF.tankSlots[1]
+local mp1 = mt1 and mt1._points and mt1._points[1]
+IM_MT_Y_ONE = mp1 and mp1[5]
+IM_SetRoster({})
+IM_BTN_EMPTY_SHOWN = (IMRF.buffPanelBtn and IMRF.buffPanelBtn:IsShown()) and true or false
+IM_SetRoster(IM_FULL)
+local mt2 = IMRF.tankSlots[1]
+local mp2 = mt2 and mt2._points and mt2._points[1]
+IM_MT_Y_FULL = mp2 and mp2[5]
+IM_BTN_FULL_SHOWN = (IMRF.buffPanelBtn and IMRF.buffPanelBtn:IsShown()) and true or false
+IMRF.buffMatrixOn = false
+IM_SetRoster({{name='Me', subgroup=6}})
+
+GetNumRaidMembers = _IM_GM
+GetRaidRosterInfo = _IM_GR
+RLSuite.context = _IM_CTX
+RLSuite.db.profile.debug = true
+if RLSuite.ApplyDebugMode then pcall(function() RLSuite:ApplyDebugMode() end) end
+RLSuite:ResetDebugRaid()
+IMRF:Rebuild()
+""")
+
+
+check(bool(rt.eval("IM_H_EMPTY == IM_H_ONE and IM_H_ONE == IM_H_FULL")), "v1.11.62: il Raid Frame ha la STESSA altezza con raid vuoto, un player solo e raid pieno (%r/%r/%r)" % (rt.eval("IM_H_EMPTY"), rt.eval("IM_H_ONE"), rt.eval("IM_H_FULL")))
+check(bool(rt.eval("IM_Y6_ONE == IM_Y6_FULL and IM_Y6_EMPTY == IM_Y6_FULL")), "v1.11.62: la barra del player in G6 sta IN FONDO anche a raid vuoto (y=%r, raid pieno y=%r)" % (rt.eval("IM_Y6_ONE"), rt.eval("IM_Y6_FULL")))
+check(bool(rt.eval("IM_Y4_ONE == IM_Y4_FULL")), "v1.11.62: spostarsi in un gruppo a caso non manda la barra in cima (G4 solo: y=%r, raid pieno: y=%r)" % (rt.eval("IM_Y4_ONE"), rt.eval("IM_Y4_FULL")))
+check(bool(rt.eval("IM_Y4_FULL > IM_Y6_FULL and IM_Y1_FULL > IM_Y4_FULL")), "v1.11.62: i gruppi restano in ordine G1..G6 dall'alto verso il basso (mai ricompattati)")
+check(bool(rt.eval("(IM_Y5_FULL - IM_Y6_FULL) == IM_BAND and (IM_Y1_FULL - IM_Y5_FULL) == 4 * IM_BAND")), "v1.11.62: la distanza fra i blocchi dei gruppi e' costante (banda fissa, non dipende dal roster)")
+check(bool(rt.eval("IM_HDR_SHOWN_ONE == true")), "v1.11.62: con G1 vuoto le icone del buff check si vedono lo stesso (prima sparivano)")
+check(bool(rt.eval("IM_HDR_Y_ONE == IM_HDR_Y_FULL")), "v1.11.62: la strip del buff check resta in cima, stessa y con roster pieno o quasi vuoto (%r/%r)" % (rt.eval("IM_HDR_Y_ONE"), rt.eval("IM_HDR_Y_FULL")))
+check(bool(rt.eval("IM_CELL4_ONE == IM_CELL4_FULL")), "v1.11.62: le celle della matrice restano allineate alla riga del loro gruppo")
+check(bool(rt.eval("IM_DRAG_H == IM_H_FULL and IM_DRAG_Y6 == IM_Y6_FULL")), "v1.11.62: mostrare gli slot vuoti durante il drag non sposta le barre (slot visibili: %r)" % rt.eval("IM_DRAG_SHOWN"))
+check(bool(rt.eval("IM_DRAG_SHOWN >= 5")), "v1.11.62: durante il drag gli slot vuoti restano drop target (nessuna regressione)")
+
+check(bool(rt.eval("IM_H_MAT_OFF == IM_H_MAT_ON and IM_Y6_MAT_OFF == IM_Y6_MAT_ON")), "v1.11.62: accendere/spegnere il buff check non muove le barre")
+check(bool(rt.eval("IM_MT_Y_ONE == IM_MT_Y_FULL")), "v1.11.62: il blocco Tanks e' riservato sempre (barra MT ferma: %r / %r)" % (rt.eval("IM_MT_Y_ONE"), rt.eval("IM_MT_Y_FULL")))
+check(bool(rt.eval("IM_BTN_EMPTY_SHOWN == false and IM_BTN_FULL_SHOWN == true")), "v1.11.62: a roster vuoto il tasto 'Raid Buffs' resta nascosto e riappare col roster")
+
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

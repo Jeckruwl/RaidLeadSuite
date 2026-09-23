@@ -1603,9 +1603,13 @@ function RF:ApplyLayout()
     -- Trasparenza complessiva dell'HUD (Config -> Raid Frame -> Layout).
     self.frame:SetAlpha(db.alpha or 1)
 
-    -- Pack group headers + visible slots vertically (Tanks, G1..G6).
+    -- GRIGLIA IMMOBILE (v1.11.62): le posizioni delle barre NON dipendono
+    -- dal roster. Ogni gruppo ha SEMPRE il suo blocco (header + 5 righe), il
+    -- blocco Tanks (header + MT/OT) e la zona strip in alto sono riservati
+    -- sempre, anche se il gruppo e' vuoto o il raid e' vuoto. Cosi' chi sta
+    -- in G6 sta IN FONDO anche a raid vuoto, la griglia non si ri-compatta
+    -- mai e il buff check resta allineato alle righe.
     local y = 0
-    local shown = false
     -- MATRICE "Raid Buffs" attiva? Riga d'intestazione IN CIMA con i nomi
     -- sintetici delle categorie, poi il resto (Tanks compreso) scende.
     local matrixOn = self.buffMatrixOn and self.rows and self.rows[1] ~= nil
@@ -1614,6 +1618,9 @@ function RF:ApplyLayout()
     -- roster. Il tasto accende/spegne SOLO le icone dei player.
     local headersOn = self.rows and self.rows[1] ~= nil
     local mCols = headersOn and self:_MatrixCols() or nil
+    -- Altezza della zona strip (icone di intestazione della matrice):
+    -- RISERVATA SEMPRE nel blocco G1, a matrice accesa o spenta.
+    local stripH = m.cellW + 4
     if headersOn then
         -- Testata a ICONE CUSTOM (BCI_<c-1>.tga): creazione/refresh qui; la
         -- POSIZIONE vera viene fatta nel loop dei gruppi, ALL'ALTEZZA DELL'
@@ -1645,8 +1652,10 @@ function RF:ApplyLayout()
         local gh = self.groupHeaders and self.groupHeaders[g]
         if gh and gh.SetFont then gh:SetFont(ghFont, ghSize, ghFlags) end
     end
-    -- GRUPPO TANKS sopra G1: header + barre MT/OT (sempre 2, piene o vuote).
-    if self.tankHeader and self.tankHeader:IsShown() then
+    -- BLOCCO TANKS (SOPRA G1): header + barre MT/OT (sempre 2, piene o
+    -- vuote). SPAZIO RISERVATO SEMPRE: la griglia non si muove quando il
+    -- roster appare/sparisce (prima il blocco c'era solo con un roster).
+    if self.tankHeader then
         self.tankHeader:ClearAllPoints()
         self.tankHeader:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
         self.tankHeader:SetWidth(m.rowWidth)
@@ -1662,97 +1671,91 @@ function RF:ApplyLayout()
                 if ti == 2 then otSlot = t end -- OT = seconda barra tank
             end
         end
-        -- Lo spazio tra Tanks e G1 = SEMPRE la zona strip (cellW+4 = la
-        -- dimensione delle icone d'intestazione): niente groupSpacing extra
-        -- quando c'e' il roster, cosi' accendere/spegnere i buff non sposta
-        -- MAI nulla.
-        if not headersOn then y = y - m.groupSpacing end
-        shown = true
-        -- Bottone "Raid Buffs": sotto le barre target dei tank, mA ALLINEATO
-        -- COME L'HEADER G1: il suo bordo INFERIORE = fondo della zona strip
-        -- (stessa linea del testo "Gruppo 1"), bordo DESTRO = fine barra.
+        -- Bottone "Raid Buffs": sotto le barre target dei tank, allineato
+        -- come l'header G1: bordo INFERIORE = fondo della zona strip, bordo
+        -- DESTRO = fine barra. (Show/Hide li decide RebuildTanks.)
         if self.buffPanelBtn and otSlot and otSlot.targetBar then
             self.buffPanelBtn:ClearAllPoints()
             if headersOn then
                 self.buffPanelBtn:SetPoint("BOTTOMRIGHT", self.content, "TOPLEFT",
-                    m.rowWidth, y - (m.cellW + 4))
+                    m.rowWidth, y - stripH)
             else
                 self.buffPanelBtn:SetPoint("TOPRIGHT", otSlot.targetBar, "BOTTOMRIGHT", 0, 0)
             end
-            self.buffPanelBtn:Show()
+            -- Show/Hide NON qui: lo decide RebuildTanks (spento a roster vuoto).
         end
     elseif self.buffPanelBtn then
         self.buffPanelBtn:Hide()
     end
+    -- ZONA STRIP tra Tanks e G1: SEMPRE riservata (cellW+4 = dimensione delle
+    -- icone d'intestazione), a matrice accesa o spenta, con o senza roster.
+    local stripTop = y
+    y = y - stripH
     for g = 1, RF_GROUPS do
         local hdr = self.groupHeaders and self.groupHeaders[g]
-        local hdrShown = hdr ~= nil and hdr:IsShown()
-        if hdrShown then
-            shown = true
-            if g == 1 and headersOn and mCols then
-                -- ZONA STRIP SEMPRE RISERVATA (cellW+4 = dimensione delle icone
-                -- d'intestazione) tra Tanks e G1, a matrice accesa o spenta:
-                -- le icone compaiono/scompaiono DENTRO la zona senza spostare
-                -- niente sotto. Header G1: ATTACCATO IN BASSO alla sua riga.
-                local stripH = m.cellW + 4
-                hdr:ClearAllPoints()
-                hdr:SetPoint("BOTTOMLEFT", self.content, "TOPLEFT", 2, y - stripH)
-                hdr:SetWidth(m.rowWidth)
-                if matrixOn then
-                    for c = 1, #mCols do
-                        local btn = self._buffHdrBtns and self._buffHdrBtns[c]
-                        if btn then
-                            btn:ClearAllPoints()
-                            btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
-                                m.rowWidth + 4 + (c - 1) * m.cellW, y)
-                            btn:SetSize(m.cellW, stripH)
-                        end
-                    end
-                    -- Backdrop UNICO della strip: valore del backdrop barre
-                    -- (appearance.matrixBackdrop, Config -> Raid Frame).
-                    local bg = self._buffHdrBg
-                    if not bg then
-                        bg = self.frame:CreateTexture(nil, "BACKGROUND")
-                        self._buffHdrBg = bg
-                    end
-                    local bc = (self.db and self.db.appearance and self.db.appearance.matrixBackdrop) or {}
-                    bg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
-                    bg:ClearAllPoints()
-                    bg:SetPoint("TOPLEFT", self.frame, "TOPLEFT", m.rowWidth + 2, y)
-                    bg:SetSize(#mCols * m.cellW + 6, stripH)
-                    bg:Show()
-                elseif self._buffHdrBg then
-                    self._buffHdrBg:Hide()
-                end
-                y = y - stripH
+        if hdr then
+            hdr:ClearAllPoints()
+            if g == 1 then
+                -- Header G1: ATTACCATO IN BASSO alla sua zona strip (stessa
+                -- linea a matrice accesa e spenta).
+                hdr:SetPoint("BOTTOMLEFT", self.content, "TOPLEFT", 2, stripTop - stripH)
             else
-                if g == 1 and self._buffHdrBg then self._buffHdrBg:Hide() end
-                hdr:ClearAllPoints()
                 hdr:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
-                hdr:SetWidth(m.rowWidth)
-                y = y - m.groupHeaderH
             end
+            hdr:SetWidth(m.rowWidth)
         end
-        local anySlot = false
+        if g == 1 then
+            -- Icone di intestazione + sfondo della strip: DENTRO la zona
+            -- riservata (non spostano niente quando si accendono).
+            if matrixOn and mCols then
+                for c = 1, #mCols do
+                    local btn = self._buffHdrBtns and self._buffHdrBtns[c]
+                    if btn then
+                        btn:ClearAllPoints()
+                        btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
+                            m.rowWidth + 4 + (c - 1) * m.cellW, stripTop)
+                        btn:SetSize(m.cellW, stripH)
+                    end
+                end
+                -- Backdrop UNICO della strip: valore del backdrop barre
+                -- (appearance.matrixBackdrop, Config -> Raid Frame).
+                local bg = self._buffHdrBg
+                if not bg then
+                    bg = self.frame:CreateTexture(nil, "BACKGROUND")
+                    self._buffHdrBg = bg
+                end
+                local bc = (self.db and self.db.appearance and self.db.appearance.matrixBackdrop) or {}
+                bg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
+                bg:ClearAllPoints()
+                bg:SetPoint("TOPLEFT", self.frame, "TOPLEFT", m.rowWidth + 2, stripTop)
+                bg:SetSize(#mCols * m.cellW + 6, stripH)
+                bg:Show()
+            elseif self._buffHdrBg then
+                self._buffHdrBg:Hide()
+            end
+        else
+            -- Header del gruppo: riga sua, riservata sempre.
+            y = y - m.groupHeaderH
+        end
+        -- 5 RIGHE DEL GRUPPO: lo spazio e' RISERVATO SEMPRE (le righe vuote
+        -- restano invisibili ma ognuna al suo posto: niente ri-compattamento).
         for s = 1, RF_PER_GROUP do
             local slot = self.slots and self.slots[(g - 1) * RF_PER_GROUP + s]
-            if slot and slot:IsShown() then
+            if slot then
                 slot:ClearAllPoints()
                 slot:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
                 self:LayoutSlotGeometry(slot, m)
-                if matrixOn and slot.member then
+                if matrixOn and slot.member and slot:IsShown() then
                     self:_LayoutMatrixRow(slot, m, y, mCols)
                 end
-                y = y - m.rowHeight - m.rowSpacing
-                anySlot = true
-                shown = true
             end
+            y = y - m.rowHeight - m.rowSpacing
         end
-        if g < RF_GROUPS and (hdrShown or anySlot) then
-            y = y - m.groupSpacing
-        end
+        if g < RF_GROUPS then y = y - m.groupSpacing end
     end
-    local rowsH = shown and -y or 0
+    -- Altezza della griglia = COSTANTE (non dipende dal roster): la finestra
+    -- non cambia mai dimensione, quindi non si sposta mai.
+    local rowsH = -y
 
     self.content:ClearAllPoints()
     self.content:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, 0)
@@ -2237,11 +2240,13 @@ function RF:RefreshBuffMatrix()
         end
     end
     -- LA RIGA D'INTESTAZIONE si accende/spegne COL TASTO "Raid Buffs":
-    -- stessa visibility della matrice (e solo se c'e' l'header G1 a cui
-    -- ancorarla).
-    local g1Shown = self.groupHeaders and self.groupHeaders[1] and self.groupHeaders[1]:IsShown()
+    -- stessa visibility della matrice. La zona strip e' RISERVATA SEMPRE
+    -- nella griglia fissa (v1.11.62): le icone si mostrano quando c'e' un
+    -- roster, ANCHE se G1 e' vuoto. Prima erano agganciate all'header G1 e
+    -- con G1 vuoto il check spariva (raid con pochi gruppi usati).
+    local stripReady = self.rows and self.rows[1] ~= nil
     for c, btn in ipairs(self._buffHdrBtns or {}) do
-        if on and g1Shown and RLSuite.raidBuffColumns and self:_MatrixCols()[c] then
+        if on and stripReady and RLSuite.raidBuffColumns and self:_MatrixCols()[c] then
             btn:Show()
             -- Stato della categoria (dall'aggregato di questa passata): grigio
             -- se non disponibile con la composizione, rosso se non soddisfatta.

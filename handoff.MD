@@ -7,7 +7,41 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.60**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.62**.
+
+## 1.11.62 — Raid Frame: griglia IMMOBILE (le barre non saltano piu' in cima)
+
+Bug segnalato: *"se il raid e' vuoto e mi sposto in un gruppo a caso, la barra
+viene spostata in cima sminchiando tutto il buff check"*. Due cause, entrambe
+in `RaidFrame.lua`:
+
+1. **impacchettamento elastico** — header/slot dei gruppi vuoti venivano
+   nascosti e la colonna si "ri-compattava" dal fondo: con un roster quasi
+   vuoto, il player di G6 finiva disegnato a `y = -68` (in cima) invece che a
+   `y = -692` (in fondo), e la finestra cambiava altezza (20 / 96 / 792) ->
+   con l'ancora a centro-sinistra si spostava TUTTO;
+2. **strip del buff check agganciata all'header G1** — con G1 vuoto la riga
+   delle icone di categoria non si mostrava affatto (`g1Shown`).
+
+Fix: **griglia fissa** — la geometria di `ApplyLayout` non dipende piu' dal
+roster. Ogni gruppo ha SEMPRE il suo blocco (header + 5 righe), il blocco
+Tanks (header + 2 barre) e la zona strip in alto sono riservati sempre, anche a
+raid vuoto. La finestra ha quindi **altezza costante** (792 px con i default) e
+non cambia MAI dimensione: la y di una barra dipende solo dal suo gruppo.
+- chi sta in **G6 sta sempre in fondo** (`y = -692`), anche da solo in raid;
+- la y di ogni gruppo e' identica a raid pieno (G1 -82, G2 -204, ... G6 -692):
+  nessuna ricompattazione, nemmeno durante il drag (gli slot vuoti che si
+  mostrano come drop target non spostano piu' niente);
+- la strip del buff check resta in cima (`y = -54`) e le icone di categoria si
+  vedono se c'e' un roster, anche con **G1 vuoto**;
+- accendere/spegnere il tasto "Raid Buffs" non muove nulla (era gia' cosi'):
+  ora vale anche per il passaggio roster vuoto <-> roster pieno.
+
+Test: **907 check** totali (13 nuovi nella 1.11.62): altezza costante con raid
+vuoto/1 player/pieno, G6 in fondo anche a raid vuoto, y uguali fra roster pieno
+e quasi vuoto, banda fra gruppi costante, icone del buff check visibili con G1
+vuoto e alla stessa y, celle della matrice allineate alla riga del gruppo,
+drag senza spostamenti, tasto "Raid Buffs" nascosto a roster vuoto.
 
 ## 1.11.61 — la matrice di MAIN BAR si apre a DESTRA DELLA BARRETTA
 
@@ -30,7 +64,7 @@ Cosa fa la 1.11.61:
 - l'ancoraggio segue il Raid Frame: se cambia la larghezza del Raid Frame la
   barretta (e con lei il pannello) si sposta.
 
-Test: **894 check** totali (4 nuovi nella 1.11.61: pannello ancorato alla
+Test: **907 check** totali (4 nuovi nella 1.11.61: pannello ancorato alla
 barretta con dx 4 e dy 0, barretta = somma elementi, MacroBar NON piu' ancorata
 alla barretta e senza override manuale, "Raid Control" che apre il pannello a
 destra).
