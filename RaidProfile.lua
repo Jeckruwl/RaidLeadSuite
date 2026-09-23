@@ -7,6 +7,13 @@ local MW = RLSuite.mainWindow
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
+-- MISURE DELLA BARRETTA IN ALTO (unico posto): alzandola e ingrandendo
+-- l'icona di fase, la larghezza della barretta cresce da sola (e' la somma
+-- dei suoi elementi) e il nome della fase si sposta di conseguenza.
+local TITLE_BAR_H = 26     -- altezza della barretta di Raid Control
+local PHASE_ICON = 22      -- icona di fase (era 16: "allarga la barra e ingrandisci l'icona")
+local PHASE_GAP = 6        -- distacco fra icona e nome della fase
+
 function MW:Init()
     self:CreateFrame()
     self:RegisterAllWindows()
@@ -164,7 +171,7 @@ function MW:CreateFrame()
     -- ALTEZZA ALZATA (era 20px): la barretta di Raid Control aveva i tasti
     -- schiacciati sul bordo. Icona di fase e X restano centrate, il tasto
     -- "Raid Control" cresce con lei.
-    tb:SetHeight(26)
+    tb:SetHeight(TITLE_BAR_H)
     -- gap 2px: barretta STACCATA dalla main bar (non incollata)
     tb:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 2)
     tb:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 2)
@@ -371,9 +378,9 @@ function MW:CreateFrame()
             static = { 0.5, 1.0, 0, 0.5 } },
     }
     -- L'icona di fase vive NELLA BARRETTA del titolo (al posto di "RLS"):
-    -- 16px per stare comoda nei 20px della barretta.
+    -- PHASE_ICON px, ingrandita insieme alla barretta (era 16).
     self.phaseBtn = CreateFrame("Button", "RLSuitePhaseBtn", tb)
-    self.phaseBtn:SetSize(16, 16)
+    self.phaseBtn:SetSize(PHASE_ICON, PHASE_ICON)
     self.phaseBtn:EnableMouse(true)
     self.phaseBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     RLSuite.utils:SkinBox(self.phaseBtn)
@@ -511,7 +518,7 @@ function MW:ApplyLayout()
     -- il posto riservato del nome piu' lungo, quindi la larghezza non cambia
     -- mai al cambio fase) e sta ancorata a sinistra sopra il pannello.
     local tbPad, tbGap = 4, 4
-    local phaseIconW = 16
+    local phaseIconW = PHASE_ICON
     local phaseNameW = self._phaseLabelW or 58
     local rcBtnRef = self.raidControlBtn or (self.titleBar and self.titleBar.raidControlBtn)
     local rcW = (rcBtnRef and rcBtnRef:GetWidth()) or 96
@@ -593,7 +600,7 @@ function MW:ApplyLayout()
     end
     if self.phaseText and self.phaseBtn then
         self.phaseText:ClearAllPoints()
-        self.phaseText:SetPoint("LEFT", self.phaseBtn, "RIGHT", tbGap, 0)
+        self.phaseText:SetPoint("LEFT", self.phaseBtn, "RIGHT", PHASE_GAP, 0)
         -- Il nome della fase ha un posto RISERVATO nel calcolo della
         -- larghezza (phaseNameW): qui si mostra sempre, senza salti.
         self.phaseText:Show()

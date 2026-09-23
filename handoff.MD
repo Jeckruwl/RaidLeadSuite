@@ -7,7 +7,27 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.83**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.84**.
+
+## 1.11.84 — Icona di fase piu' grande (barretta piu' larga) + cella vuota dopo "Empty Loot"
+
+* **Icona di fase 16 -> 22 px** e nome della fase spostato di conseguenza
+  (distacco 6 px, era 4). La barretta in alto e' larga la SOMMA dei suoi
+  elementi, quindi si allarga da sola di +6 px: nessuna misura a mano. Le
+  misure ora sono costanti in un punto solo (`TITLE_BAR_H = 26`,
+  `PHASE_ICON = 22`, `PHASE_GAP = 6`), usate sia alla creazione sia in
+  `ApplyLayout`: cambiare la taglia dell'icona e' una riga sola.
+* **RLS DEBUG: cella vuota dopo "Empty Loot"**. La griglia ora si costruisce
+  da una lista di CELLE (`RLSuite:DebugPanelCells()`): titolo + tasti + le
+  celle vuote richieste (un tasto con `gapAfter = true` ne aggiunge una subito
+  dopo). Oggi sono 8 celle (titolo, Fill Raid, Test Loot, Empty Loot, VUOTA,
+  Test Whisplist, Test MS, Log Test) su 2 righe x 4 colonne: la cella vuota
+  resta libera (nessun frame) e i tasti dopo di lei ripartono dalla colonna
+  successiva.
+
+Test: **1096 check** (aggiornati + nuovi: icona 22x22, barretta +6 px, distacco
+6 px, 8 celle con UNA vuota esattamente dopo "Empty Loot" e nessun tasto
+dentro la cella vuota).
 
 ## 1.11.83 — Main bar: ordine dei tasti, barretta piu' alta, RLS DEBUG 2xN legato al pannello
 

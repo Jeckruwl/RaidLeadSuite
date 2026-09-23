@@ -63,7 +63,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.83"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.84"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -1563,7 +1563,10 @@ function RLSuite:DebugPanelDefs()
     return {
         { text = L["Fill Raid"], i = 0, fn = function() RLSuite:DebugFillGroup() end },
         { text = L["Test Loot"],  i = 1, fn = function() RLSuite:DebugFillLoot() end },
-        { text = L["Empty Loot"], i = 2, fn = function() RLSuite:DebugClearLoot() end },
+        -- gapAfter: dopo questo tasto la matrice lascia una CELLA VUOTA
+        -- (richiesto: "uno spazio vuoto dopo Empty Loot").
+        { text = L["Empty Loot"], i = 2, gapAfter = true,
+          fn = function() RLSuite:DebugClearLoot() end },
         { text = L["Test Whisplist"], i = 3, fn = function()
             -- SOLO questo tasto manda i whisper finti: arrivano subito,
             -- anche senza spammer attivo (GM:DebugWhisperBurst).
@@ -1576,13 +1579,25 @@ function RLSuite:DebugPanelDefs()
     }
 end
 
+-- Celle del pannello debug in ordine: titolo, poi i tasti; un tasto con
+-- gapAfter aggiunge una cella VUOTA subito dopo di se'.
+function RLSuite:DebugPanelCells()
+    local cells = { { title = true } }
+    for i, d in ipairs(self:DebugPanelDefs()) do
+        cells[#cells + 1] = { def = d, index = i }
+        if d.gapAfter then cells[#cells + 1] = { gap = true } end
+    end
+    return cells
+end
+
 -- Dispone il pannello debug: matrice a DBG_ROWS righe, colonne = quante ne
--- servono per titolo + tasti. Cella 1 = titolo, poi i tasti in ordine.
+-- servono per titolo + tasti (+ celle vuote). Cella 1 = titolo, poi i tasti
+-- in ordine; le celle vuote restano libere (niente frame).
 function RLSuite:LayoutDebugPanel()
     local f = self.debugPanel
     if not f then return end
-    local defs = self:DebugPanelDefs()
-    local nCells = 1 + #defs
+    local cells = self:DebugPanelCells()
+    local nCells = #cells
     local cols = math.ceil(nCells / DBG_ROWS)
     if cols < 1 then cols = 1 end
     f:SetSize(2 * DBG_PAD + cols * DBG_BTN_W + (cols - 1) * DBG_GAP_X,
@@ -1598,12 +1613,16 @@ function RLSuite:LayoutDebugPanel()
         f.titleSlot:SetSize(DBG_BTN_W, DBG_BTN_H)
         f.titleSlot:SetPoint("TOPLEFT", f, "TOPLEFT", x, y)
     end
-    for i, b in ipairs(f.debugButtons or {}) do
-        local x, y = cellPos(i + 1)
-        b:ClearAllPoints()
-        b:SetSize(DBG_BTN_W, DBG_BTN_H)
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", x, y)
+    for idx, c in ipairs(cells) do
+        if c.def and f.debugButtons[c.index] then
+            local x, y = cellPos(idx)
+            local b = f.debugButtons[c.index]
+            b:ClearAllPoints()
+            b:SetSize(DBG_BTN_W, DBG_BTN_H)
+            b:SetPoint("TOPLEFT", f, "TOPLEFT", x, y)
+        end
     end
+    f.cells = cells
     f.cols = cols
     f.rows = DBG_ROWS
     return cols, DBG_ROWS

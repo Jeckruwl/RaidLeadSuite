@@ -4017,8 +4017,36 @@ DBG_TITLE_STYLE = {
 DBG_FLOW = {
     firstAfterTitle = (first[4] ~= nil and tp[4] ~= nil and first[4] > tp[4] and first[5] == tp[5]),
     secondInRow1 = (second[4] ~= nil and second[5] == tp[5] and second[4] > first[4]),
-    row2FromStart = (rows[tp[5] - 26] ~= nil and rowX[tp[5] - 26] == tp[4]),
 }
+-- CELLA VUOTA dopo "Empty Loot" (richiesta): la matrice ha 8 celle
+-- (titolo + 6 tasti + 1 vuota) e la cella 5 resta libera.
+local gaps, gapIdx = 0, nil
+for idx, c in ipairs(f.cells or {}) do
+    if c.gap then gaps = gaps + 1 gapIdx = idx end
+end
+local function cellXY(idx)
+    local col = (idx - 1) % cols
+    local row = math.floor((idx - 1) / cols)
+    return 4 + col * (90 + 8), -4 - row * (22 + 4)
+end
+DBG_GAP = { n = gaps, idx = gapIdx or -1, cells = #(f.cells or {}),
+            nameBefore = (gapIdx and f.cells[gapIdx - 1] and f.cells[gapIdx - 1].def and f.cells[gapIdx - 1].def.text) or "?",
+            x = gapIdx and cellXY(gapIdx) or nil,
+            y = gapIdx and select(2, cellXY(gapIdx)) or nil }
+-- nessun tasto nella cella vuota; i tasti dopo la vuota ripartono dalla
+-- colonna successiva (la riga 2 comincia con la cella vuota)
+DBG_GAP.freeCell = true
+for _, b in ipairs(f.debugButtons) do
+    local p = b._points[1] or {}
+    if p[4] == DBG_GAP.x and p[5] == DBG_GAP.y then DBG_GAP.freeCell = false end
+end
+-- primo tasto DOPO la cella vuota (Test Whisplist)
+local afterIdx = gapIdx and f.cells[gapIdx + 1] and f.cells[gapIdx + 1].index or nil
+local afterBtn = afterIdx and f.debugButtons[afterIdx] or nil
+local after = (afterBtn and afterBtn._points[1]) or {}
+DBG_GAP.afterName = (afterBtn and afterBtn:GetText()) or "?"
+DBG_GAP.afterAt = { x = after[4], y = after[5] }
+DBG_GAP.nextColX = DBG_GAP.x and (DBG_GAP.x + 98) or nil
 -- righe effettive (valori y distinti) e tasti per riga
 DBG_ROW_COUNT = 0
 DBG_MAX_PER_ROW = 0
@@ -4038,7 +4066,9 @@ DBG_TITLE_STYLE = {
 check(bool(rt.eval("DBG_LAYOUT.rows == 2 and DBG_ROW_COUNT == 2 and DBG_LAYOUT.cols >= 4")), "debug panel is a matrix on TWO rows and N columns (%d x %d for %d buttons + title)" % (rt.eval("DBG_LAYOUT.rows"), rt.eval("DBG_LAYOUT.cols"), rt.eval("DBG_LAYOUT.n")))
 check(bool(rt.eval("DBG_TITLE_CELL.x ~= nil and DBG_TITLE_CELL.parent == RLSuite.debugPanel and DBG_FLOW.firstAfterTitle == true")), "the 'RLS DEBUG' title sits in the FIRST cell of the matrix (first button in the cell right after it)")
 check(bool(rt.eval("DBG_TITLE_STYLE.noBackdrop == true and DBG_TITLE_STYLE.mouseOff == true and DBG_TITLE_STYLE.notClickable == true")), "title slot is a plain cell like the MacroBar phase tile (no backdrop, no border, not clickable)")
-check(bool(rt.eval("DBG_FLOW.secondInRow1 == true and DBG_FLOW.row2FromStart == true")), "buttons fill the grid in reading order; the second row starts from the first column")
+check(bool(rt.eval("DBG_GAP.n == 1 and DBG_GAP.cells == 8")), "RLS DEBUG grid has ONE empty cell (8 cells: title + 6 buttons + blank)")
+check(bool(rt.eval("DBG_GAP.nameBefore == 'Empty Loot'")), "the blank cell sits right AFTER 'Empty Loot' (%s -> vuota)" % rt.eval("DBG_GAP.nameBefore"))
+check(bool(rt.eval("DBG_GAP.freeCell == true and DBG_GAP.afterAt.y == DBG_GAP.y and DBG_GAP.afterAt.x == DBG_GAP.nextColX")), "no button sits in the blank cell: '%s' starts the cell right after it" % rt.eval("DBG_GAP.afterName"))
 check(bool(rt.eval("""(function() local f = RLSuite.debugPanel return f._points[1] ~= nil and f._points[1][2] == RLSuite.mainWindow.frame end)()""")), "debug panel is anchored to the main bar (moves with it, never saved)")
 check(bool(rt.eval("RLSuite.debugPanel._scripts['OnDragStart'] == nil")), "debug panel is NOT draggable (part of the main bar)")
 
@@ -4275,7 +4305,19 @@ rt.execute("""
 """)
 check(bool(rt.eval("PB_PARENT == true")), "phase icon lives IN the title bar (was in the main bar)")
 check(bool(rt.eval("PT_PARENT == true")), "phase name lives IN the title bar, next to the icon")
-check(bool(rt.eval("PB_SIZE == '16x16'")), "phase icon is 16x16 (fits the 20px title bar)")
+check(bool(rt.eval("PB_SIZE == '22x22'")), "phase icon enlarged to 22x22 (fits the 26px title bar)")
+rt.execute("""
+    -- la barretta e' larga la somma dei suoi elementi: icona piu' grande =
+    -- barretta piu' larga (con l'icona da 16 sarebbe 6 px piu' stretta)
+    local MWp = RLSuite.mainWindow
+    local rcW = MWp.titleBar.raidControlBtn:GetWidth()
+    local clW = MWp.titleBar.closeBtn:GetWidth()
+    GROWTH_OLD = 4 + 16 + 4 + MWp._phaseLabelW + 4 + rcW + 4 + clW + 4
+    BAR_GROWTH = MWp.titleBar:GetWidth() - GROWTH_OLD
+    PHASE_GAP_PX = select(4, MWp.phaseText:GetPoint(1))
+""")
+check(bool(rt.eval("BAR_GROWTH == 6")), "the top bar got WIDER by exactly the icon growth (bar = sum of its elements: +6 px)")
+check(bool(rt.eval("PHASE_GAP_PX == 6")), "phase name moved right of the bigger icon (6 px gap, was 4)")
 check(bool(rt.eval("PT_LEFT == true")), "phase name is anchored to the RIGHT of the phase icon")
 check(bool(rt.eval("PH_LABEL == 'Pre-raid' or PH_LABEL == 'Pre-boss' or PH_LABEL == 'In-fight'")),
       "phase name shows the current phase ('%s')" % rt.eval("PH_LABEL"))
