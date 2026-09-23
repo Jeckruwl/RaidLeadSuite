@@ -7,7 +7,35 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.65**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.66**.
+
+## 1.11.66 — Log: sovrapposizioni vere (misura testo 3.3.5) e celle vuote
+
+Dopo la 1.11.65 le tabelle risultavano ANCORA sovrapposte in game. Due cause
+reali, trovate leggendo il comportamento di 3.3.5:
+
+1. **`GetStringWidth()` in 3.3.5 non vede il `SetText` appena eseguito** (il
+   testo viene misurato solo al frame successivo). Quindi `FitText` misurava
+   il testo VECCHIO (o 0), il troncamento non scattava mai e i testi lunghi
+   uscivano dalla colonna, sopra la colonna vicina.
+   Fix: `TruncTo` usa una **stima per carattere** (`CharW`, misurata una volta
+   su "MMMMMMMMMM" con il font di gioco) come rete di sicurezza, e poi rifinisce
+   con la misura reale quando disponibile; le intestazioni hanno anche una
+   seconda passata differita (150ms via OnUpdate) quando il client ha misurato.
+   Nuovo `CL:FitPass(g)` dopo ogni render per le FontString riciclate.
+2. **Celle vuote non nascoste**: il pool e' per NUMERO di colonne, quindi
+   cambiando tab una riga riusata con meno colonne lasciava visibili i testi
+   della tabella precedente (sovrapposizione fra tabelle diverse).
+   Fix: quando una cella non ha dato -> `cell.fs:Hide()`.
+
+3. Altre difese: pelo verticale fra le colonne nell'intestazione (rendono
+   visibile subito un disallineamento), etichette dei bersagli piu' corte
+   ("*Nome" a 10-12 caratteri, tooltip col nome completo), `_initError` salvato
+   in `CL.Init` (e test che fallisce se la finestra non si e' costruita: il
+   pcall della 1.11.64 aveva nascosto per un attimo un errore vero).
+
+Test: **974 check** totali (4 nuovi: init senza errori, pannelli presenti,
+troncamento con misura "stantia" del client, testi che ci stanno non toccati).
 
 ## 1.11.65 — Log: tabelle non piu' "incasinate" + TAB GROUP vero
 
@@ -163,7 +191,7 @@ non cambia MAI dimensione: la y di una barra dipende solo dal suo gruppo.
 - accendere/spegnere il tasto "Raid Buffs" non muove nulla (era gia' cosi'):
   ora vale anche per il passaggio roster vuoto <-> roster pieno.
 
-Test: **970 check** totali (13 nuovi nella 1.11.65): altezza costante con raid
+Test: **974 check** totali (4 nuovi nella 1.11.66): altezza costante con raid
 vuoto/1 player/pieno, G6 in fondo anche a raid vuoto, y uguali fra roster pieno
 e quasi vuoto, banda fra gruppi costante, icone del buff check visibili con G1
 vuoto e alla stessa y, celle della matrice allineate alla riga del gruppo,

@@ -3533,6 +3533,8 @@ print("== Scenario I: Combat Log (parser 3.3.5, segmentazione pull, store, aggre
 
 # --- I.1 wiring: tab, finestra, defaults ---
 check(bool(rt.eval("RLSuite.combatLog ~= nil and RLSuite.combatLog.frame ~= nil")), "combat log module and window exist")
+check(rt.eval("RLSuite.combatLog._initError") is None, "v1.11.66: la finestra del Log si e' costruita SENZA errori (nessun errore ingoiato dal pcall): %r" % rt.eval("RLSuite.combatLog._initError"))
+check(bool(rt.eval("RLSuite.combatLog.gridPane ~= nil and RLSuite.combatLog.deathPane ~= nil and RLSuite.combatLog.tabGroup ~= nil")), "v1.11.66: tutti i pannelli del Log esistono (griglia, morti, tab group)")
 check(bool(rt.eval("RLSuite.mainWindow:PaneForTab('log') == RLSuite.combatLog.frame")), "main window 'log' tab pane is the combat log window")
 check(bool(rt.eval("RLSuite.mainWindow.tabs.log ~= nil")), "'Log' tab button exists on the main bar")
 check(bool(rt.eval("RLSuite.combatLog.graph ~= nil")), "combat log graph widget created at init")
@@ -5456,6 +5458,20 @@ if probe.SetWordWrap then probe:SetWordWrap(false) end
 RLSuite.combatLog.FitText(probe, string.rep("Lunghissimo", 6), 100)
 UW_FIT = { text = probe:GetText(), len = #probe:GetText(), w = probe:GetStringWidth() }
 
+-- 3.3.5: GetStringWidth NON vede il SetText appena fatto (testo misurato solo
+-- al frame dopo). Senza la stima, il troncamento non scattava MAI e il testo
+-- usciva dalla colonna (le tabelle "sovrapposte" viste in game).
+local probe2 = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+local realW = probe2.GetStringWidth
+probe2.GetStringWidth = function() return 0 end   -- simula la misura "stantia"
+RLSuite.combatLog.FitText(probe2, string.rep("Lunghissimo", 3), 70)
+UW_STALE = { len = #probe2:GetText(), text = probe2:GetText() }
+probe2.GetStringWidth = realW
+local probe3 = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+probe3.GetStringWidth = function() return 0 end
+RLSuite.combatLog.FitText(probe3, "Breve", 200)
+UW_STALE.kept = probe3:GetText()
+
 -- celle della griglia: niente word wrap, larghezza rispettata
 cl.selFight = UW_F
 cl:SelectTab("damage")
@@ -5502,6 +5518,8 @@ check(bool(rt.eval("UW_TAB.id == 2")), "v1.11.65: ogni tab ha il suo ID (per Pan
 check(bool(rt.eval("UW_TAB.sel_auras == true and UW_TAB.sel_damage == false and UW_TAB.pt == 4")), "v1.11.65: un solo tab selezionato (PanelTemplates.selectedTab = %r)" % rt.eval("UW_TAB.pt"))
 check(bool(rt.eval("UW_TAB.back == true")), "v1.11.65: cambiando tab l'evidenza si sposta (auras -> damage)")
 check(bool(rt.eval("UW_FIT.len < 72 and UW_FIT.w <= 100")), "v1.11.65 FitText: il testo viene troncato per stare nella larghezza (\"%s\" = %rpx)" % (rt.eval("UW_FIT.text"), rt.eval("UW_FIT.w")))
+check(bool(rt.eval("UW_STALE.len < 39 and UW_STALE.text:sub(-2) == '..'")), "v1.11.66 FitText: tronca anche quando il client non ha ancora misurato il testo (3.3.5) — \"%s\"" % rt.eval("UW_STALE.text"))
+check(bool(rt.eval("UW_STALE.kept == 'Breve'")), "v1.11.66 FitText: un testo che ci sta non viene toccato")
 check(bool(rt.eval("UW_CELL.wrap == 'nnnnnn'")), "v1.11.65: NESSUNA cella della tabella va a capo (word wrap OFF, era la causa delle tabelle incasinate: %s)" % rt.eval("UW_CELL.wrap"))
 check(bool(rt.eval("UW_CELL.ok == true")), "v1.11.65: ogni testo sta dentro la sua colonna (nessuna sovrapposizione fra celle/righe)")
 check(bool(rt.eval("UW_CELL.headers_wrap == true")), "v1.11.65: anche le intestazioni non vanno a capo")

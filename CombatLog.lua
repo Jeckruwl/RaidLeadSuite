@@ -230,8 +230,9 @@ function CL:Init()
     -- CreateFrame che esplode in 3.3.5) NON deve impedire il caricamento
     -- dell'addon — la cattura dei pull resta attiva anche senza pannello.
     local ok, err = pcall(function() CL:CreateFrame() end)
-    if not ok and RLSuite.utils and RLSuite.utils.Print then
-        RLSuite.utils:Print("Log window error: " .. tostring(err))
+    self._initError = (not ok) and tostring(err) or nil
+    if self._initError and RLSuite.utils and RLSuite.utils.Print then
+        RLSuite.utils:Print("Log window error: " .. self._initError)
     end
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnRegenDisabled")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnRegenEnabled")
@@ -1490,21 +1491,66 @@ end
 -- Testo che sta DENTRO la larghezza della colonna: niente word wrap (andando
 -- a capo il testo usciva dall'altezza riga e si sovrapponeva alla riga sotto,
 -- da cui le tabelle "incasinate" della v1.11.63) e troncamento misurato.
-local function FitText(fs, text, w)
-    fs:SetText(text or "")
-    if not fs.GetStringWidth or not w or w < 8 then return end
+-- Larghezza di UN carattere (media dei font del gioco): serve perche' in
+-- 3.3.5 GetStringWidth() non tiene conto del SetText appena eseguito.
+local CL_CHAR_W = 0
+local function CharW()
+    if CL_CHAR_W <= 0 then
+        local probe = CreateFrame("Frame", nil, UIParent)
+        local fs = probe:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetText("MMMMMMMMMM")
+        CL_CHAR_W = math.max(6, (fs:GetStringWidth() or 60) / 10)
+        probe:Hide()
+    end
+    return CL_CHAR_W
+end
+
+local function FitWidth(fs)
+    if not fs.GetStringWidth then return #tostring(fs:GetText() or "") * CharW() end
     local sw = fs:GetStringWidth() or 0
-    if sw <= w then return end
+    if sw <= 0 then sw = #tostring(fs:GetText() or "") * CharW() end
+    return sw
+end
+
+local function TruncTo(fs, text, w)
+    fs:SetText(text or "")
+    if not w or w < 8 then return end
+    -- stima PRUDENTE (caratteri larghi): scatta sempre, anche prima che il
+    -- client abbia misurato il testo
+    local cw = CharW()
+    if FitWidth(fs) <= w and (#tostring(text or "") * cw * 0.72) <= w then return end
     local t = tostring(text or "")
-    local n = math.max(1, math.floor(#t * w / sw) - 1)
+    local n = math.max(1, math.floor(w / (cw * 0.85)))
+    if n >= #t then n = #t end
+    fs:SetText(t:sub(1, n) .. "..")
     for _ = 1, 8 do
-        fs:SetText(t:sub(1, n) .. "..")
-        sw = fs:GetStringWidth() or 0
-        if sw <= w or n <= 1 then break end
+        if FitWidth(fs) <= w or n <= 1 then break end
         n = n - 1
+        fs:SetText(t:sub(1, n) .. "..")
     end
 end
-CL.FitText = FitText
+
+-- Troncamento per le FontString riciclate (dove SetText avviene dopo):
+-- passa di nuovo su TUTTE le celle della griglia e rifinisce sull'onesta'
+-- misura del client (che a questo punto e' valida).
+function CL:FitPass(g)
+    local cols = g and g.cols
+    if not cols or not g.pool then return end
+    local pool = g.pool[#cols]
+    if not pool then return end
+    for _, row in ipairs(pool) do
+        if row:IsShown() then
+            for ci, c in ipairs(cols) do
+                local cell = row.cells[ci]
+                if cell and cell.fs:IsShown() and (cell.fs:GetText() or "") ~= "" then
+                    TruncTo(cell.fs, cell.fs:GetText(), math.max(18, c.px - 8))
+                end
+            end
+        end
+    end
+end
+
+CL.FitText = TruncTo
 
 -- GRIGLIA riutilizzabile: header (testo o icona, con tooltip) + righe
 -- scrollabili. cols = { {label=, w=, fix=, align=, kind=, ic=, tip=}, ... }
@@ -1605,6 +1651,10 @@ function CL:GridRender(g, cols, rows, opt)
             btn:SetHeight(24)
             btn.icon = btn:CreateTexture(nil, "ARTWORK")
             btn.fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            -- pelo verticale sul bordo sinistro della colonna: separa le
+            -- colonne e rende immediato accorgersi di un disallineamento
+            btn.sep = btn:CreateTexture(nil, "BACKGROUND")
+            btn.sep:SetTexture(1, 1, 1, 0.10)
             btn:SetScript("OnEnter", function(s)
                 if s._tip then
                     GameTooltip:SetOwner(s, "ANCHOR_BOTTOM")
@@ -1623,6 +1673,14 @@ function CL:GridRender(g, cols, rows, opt)
         btn:ClearAllPoints()
         btn:SetPoint("TOPLEFT", g.hdr, "TOPLEFT", c.x, 0)
         btn:SetSize(math.max(18, c.px), 24)
+        if i > 1 then
+            btn.sep:ClearAllPoints()
+            btn.sep:SetSize(1, 20)
+            btn.sep:SetPoint("TOPLEFT", btn, "TOPLEFT", -1, -2)
+            btn.sep:Show()
+        else
+            btn.sep:Hide()
+        end
         if c.ic then
             btn.icon:SetTexture(c.ic)
             btn.icon:ClearAllPoints()
@@ -1647,7 +1705,21 @@ function CL:GridRender(g, cols, rows, opt)
             btn.fs:SetWidth(math.max(18, c.px - 8))
             btn.fs:SetTextColor(1, 0.82, 0)
             btn.fs:Show()
-            FitText(btn.fs, c.label or "", math.max(18, c.px - 8))
+            TruncTo(btn.fs, c.label or "", math.max(18, c.px - 8))
+            -- seconda passata: in 3.3.5 la larghezza del testo diventa
+            -- affidabile solo al frame successivo, quindi rifinisco il taglio
+            local lbl, lw = c.label or "", math.max(18, c.px - 8)
+            if not btn._fitHooked then
+                btn._fitHooked = true
+                local f = CreateFrame("Frame")
+                f:SetScript("OnUpdate", function(self2, el)
+                    self2._t = (self2._t or 0) + (el or 0)
+                    if self2._t >= 0.15 then
+                        TruncTo(btn.fs, lbl, lw)
+                        self2:SetScript("OnUpdate", nil)
+                    end
+                end)
+            end
         end
         btn:Show()
     end
@@ -1678,6 +1750,7 @@ function CL:GridRender(g, cols, rows, opt)
             local d = data[ci]
             if not d then
                 cell.fs:SetText("")
+                cell.fs:Hide()
                 cell.bar:Hide(); cell.fill:Hide()
             else
                 cell.fs:ClearAllPoints()
@@ -1693,8 +1766,10 @@ function CL:GridRender(g, cols, rows, opt)
                 end
                 local cw = math.max(18, c.px - 8)
                 cell.fs:SetWidth(cw)
-                FitText(cell.fs, d.t or "", cw)
                 cell.fs:SetTextColor(d.r or 1, d.g or 1, d.b or 1)
+                -- testo SEMPRE troncato entro la colonna (anche "Nome..", che
+                -- il client misura solo al frame dopo)
+                TruncTo(cell.fs, d.t or "", cw)
                 cell.fs:Show()
                 if c.kind == "bar" then
                     local frac = d.frac or 0
@@ -1751,6 +1826,7 @@ function CL:GridRender(g, cols, rows, opt)
     g.content:SetHeight(math.max(y, 1))
     g.rowCount = #rows
     RLSuite.utils:RefreshScrollClip(g.content)
+    self:FitPass(g)
     if g.hint then g.hint:SetText(opt.hint or "") end
 end
 
@@ -1836,7 +1912,7 @@ function CL:BuildTargetsTab(f)
     for i = 1, n do
         local c = tg.targetCols[i]
         cols[#cols + 1] = {
-            label = Trunc(c.name, (c.boss and 13) or 14),
+            label = (c.boss and "*" or "") .. Trunc(c.name, (c.boss and 10) or 12),
             w = w, fix = true, align = "RIGHT",
             tip = c.name .. (c.boss and "  (BOSS: conta come danno utile)" or "  (spazzino)"),
         }
@@ -2180,7 +2256,7 @@ function CL:LayoutTabs()
         if fst then
             if fst.SetWordWrap then fst:SetWordWrap(false) end
             if fst.SetNonSpaceWrap then fst:SetNonSpaceWrap(false) end
-            FitText(fst, L[def.label], math.max(20, tabW - 16))
+            TruncTo(fst, L[def.label], math.max(20, tabW - 16))
         end
         prev = b
     end
