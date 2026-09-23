@@ -141,12 +141,13 @@ end
 function MW:CreateFrame()
     local f = CreateFrame("Frame", "RLSuiteMainWindow", UIParent)
     f:SetSize(240, 150)
-    f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
-    -- Finestra UNIVERSALE come tutte le altre dell'addon: drag+clamp
-    -- (MakeDraggable), front layer, BORDO tematico. Layout key "main"
-    -- (mai ripristinato in base flow: la posizione viene dalla command).
-    RLSuite.utils:MakeUniversalWindow(f, "main")
+    -- NIENTE drag: la barra e' ANCORATA (bordo alto dello schermo, a una
+    -- distanza dal lato destro pari alla larghezza del Raid Frame). La
+    -- posizione la impone ApplyLayout a ogni ricalcolo; restano skin e
+    -- "click to front" come per le altre finestre.
+    RLSuite.utils:MakeClickToFront(f)
+    RLSuite.utils:ClampWindow(f)
     f:Hide()
     f._noOuterBorder = true
     self.frame = f
@@ -168,30 +169,16 @@ function MW:CreateFrame()
     tb:EnableMouse(true)
     tb:Hide()
     self.titleBar = tb
-    -- la barretta e' una finestra universale anche lei: drag+clamp e stesso
-    -- bordo tematico della main bar (e di ogni finestra dell'addon).
-    if RLSuite.utils.MakeUniversalWindow then
-        RLSuite.utils:MakeUniversalWindow(tb, "titlebar")
-    else
-        RLSuite.utils:SkinFrame(tb)
-    end
+    -- SOLO skin: la barretta NON si trascina piu' (niente drag, niente
+    -- posizione salvata). La barra e' ANCORATA al bordo alto dello schermo e
+    -- la sua posizione la calcola ApplyLayout: un drag la farebbe solo
+    -- "staccare" dal posto in cui deve stare.
+    RLSuite.utils:SkinFrame(tb)
 
-    -- La barretta TRASCINA tutta la main bar: clic sinistro + trascina.
-    -- La barretta trascina la main bar (proxy), MA con lo stesso guard di
-    -- clamp usato da MakeDraggable: durante il drag la finestra non esce
-    -- MAI dai bordi (workaround del bug SetClampedToScreen+scala).
-    tb:RegisterForDrag("LeftButton")
+    -- La barretta resta cliccabile (i suoi bottoni) ma NON trascinabile: la
+    -- posizione e' fissa (bordo alto, alla distanza dal lato destro pari alla
+    -- larghezza del Raid Frame).
     tb:EnableMouse(true)
-    tb:SetScript("OnDragStart", function()
-        f:StartMoving()
-        if f._rlsDragGuard then f._rlsDragGuard:Show() end
-    end)
-    tb:SetScript("OnDragStop", function()
-        f:StopMovingOrSizing()
-        if f._rlsDragGuard then f._rlsDragGuard:Hide() end
-        RLSuite.utils:ClampWindowToScreen(f)
-        RLSuite.utils:PersistFramePos(f, "main")
-    end)
 
     -- Niente piu' la scritta "RLS": al suo posto (creati piu' sotto) l'icona
     -- di fase e il nome della fase, cosi' la barretta dice qualcosa di utile.
@@ -209,29 +196,39 @@ function MW:CreateFrame()
     end)
     tb.closeBtn = crashBtn
 
-    local arrBtn = CreateFrame("Button", nil, tb)
-    arrBtn:SetSize(11, 11)
-    arrBtn:SetPoint("RIGHT", crashBtn, "LEFT", -4, 0)
-    RLSuite.utils:ApplyIcon(arrBtn, "media\\arrowup.tga")
+    -- La VECCHIA FRECCIA e' diventata un PULSANTE "Raid Control": apre e
+    -- chiude il pannello dei tasti sotto la barretta (stesso comportamento di
+    -- prima: in ogni momento, anche in fight, mai altre finestre).
+    local rcBtn = CreateFrame("Button", "RLSuiteRaidControlBtn", tb, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(rcBtn)
+    rcBtn:SetHeight(16)
+    rcBtn:SetText("Raid Control")
+    -- larghezza = testo + margini (mai piu' stretta del testo)
+    local probe = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    probe:SetText("Raid Control")
+    local textW = (probe.GetStringWidth and probe:GetStringWidth()) or 84
+    probe:Hide()
+    rcBtn:SetWidth(math.max(78, (textW or 84) + 16))
+    rcBtn:SetPoint("RIGHT", crashBtn, "LEFT", -6, 0)
+    rcBtn:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("Raid Control")
+        GameTooltip:AddLine(L["Shows or hides the button panel under this bar."], 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    rcBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- Freccia: punta IN SU col pannello APERTO; SPECCHIATA (in giu') col
-    -- pannello CHIUSO. Flip verticale via TexCoord.
+    -- Evidenzia il pulsante quando il pannello e' aperto (prima lo faceva la
+    -- freccia girandosi). Nome storico mantenuto: _updateArrowDir.
     local function MW_UpdateArrowDir()
-        local up = f:IsShown()
-        if arrBtn.icon and arrBtn.icon.SetTexCoord then
-            arrBtn.icon:SetTexCoord(0, 1, up and 0 or 1, up and 1 or 0)
-        end
-        if arrBtn.hl and arrBtn.hl.SetTexCoord then
-            arrBtn.hl:SetTexCoord(0, 1, up and 0 or 1, up and 1 or 0)
-        end
+        if not (rcBtn and rcBtn.LockHighlight) then return end
+        if f:IsShown() then rcBtn:LockHighlight() else rcBtn:UnlockHighlight() end
     end
     MW._updateArrowDir = MW_UpdateArrowDir
     f:HookScript("OnShow", MW_UpdateArrowDir)
     f:HookScript("OnHide", MW_UpdateArrowDir)
 
-    arrBtn:SetScript("OnClick", function()
-        -- La freccia mostra/nasconde SOLO il pannello dei pulsanti sotto
-        -- la barretta. In ogni momento, anche in fight: mai altre finestre.
+    rcBtn:SetScript("OnClick", function()
         if f:IsShown() then
             f:Hide()
         else
@@ -239,7 +236,9 @@ function MW:CreateFrame()
         end
         MW_UpdateArrowDir()
     end)
-    tb.arrowBtn = arrBtn
+    tb.raidControlBtn = rcBtn
+    tb.arrowBtn = rcBtn            -- alias storico (stesso bottone)
+    self.raidControlBtn = rcBtn    -- usato da ApplyLayout per la larghezza
     MW_UpdateArrowDir()
 
     -- Niente titolo dentro la finestra: i bottoni restano (matrice + fase +
@@ -395,6 +394,18 @@ function MW:CreateFrame()
     self.phaseText:Hide()
     tb.title = self.phaseText
 
+    -- Larghezza del nome di fase piu' lungo (una volta sola): e' il posto che
+    -- la barretta riserva al nome, cosi' la larghezza non cambia mai al
+    -- cambiare della fase.
+    local widest = 0
+    for _, pd in pairs(self.phaseDefs or {}) do
+        self.phaseText:SetText(pd.label or "")
+        local w = (self.phaseText.GetStringWidth and self.phaseText:GetStringWidth()) or 0
+        if w > widest then widest = w end
+    end
+    self._phaseLabelW = math.ceil(widest + 2)
+    self.phaseText:SetText("")
+
 
     -- Config: accessibile dal clic destro sull'icona della minimappa e da
     -- /rls config (niente piu' icona rotellina nella barra principale).
@@ -421,6 +432,20 @@ function MW:CreateFrame()
     self:ApplyLayout()
 end
 
+-- Larghezza del RAID FRAME (HUD) come la vede l'utente: icone food/flask +
+-- barra giocatore + barre CD. La matrice dei buff NON e' compresa: le colonne
+-- dei buff sono disegnate OLTRE il bordo destro del frame (RaidFrame.lua:
+-- matrix a x = rowWidth + 4), quindi m.W e' gia' "senza buff".
+-- Ritorna la larghezza EFFETTIVA a schermo (metrica x scala del frame).
+function MW:RaidFrameWidth()
+    local rf = RLSuite.raidFrame
+    if not (rf and rf.LayoutMetrics) then return 0 end
+    local ok, m = pcall(function() return rf:LayoutMetrics() end)
+    if not ok or type(m) ~= "table" then return 0 end
+    local scale = (rf.db and rf.db.scale) or 1
+    return (m.W or 0) * scale
+end
+
 function MW:ApplyLayout()
     local L = RLSuite.db and RLSuite.db.profile.layout and RLSuite.db.profile.layout.main
     if not self.frame then return end
@@ -441,16 +466,44 @@ function MW:ApplyLayout()
     -- nella barretta del titolo e "SaveRaid" e' tornato un pulsante della
     -- matrice. Quindi la barra e' PIU' BASSA di tutta quella riga.
     local bw, bh, gapX, gapY = 90, 22, 8, 4
-    local PAD = 12
+    -- PAD ridotto: i tasti stanno ADERENTI al bordo esterno della barra.
+    local PAD = 4
 
     local matrixW = cols * bw + (cols - 1) * gapX
     local matrixH = rows * bh + (rows - 1) * gapY
 
+    -- LARGHEZZA FISSA = SOMMA DEGLI ELEMENTI: la matrice (colonne x tasti) o
+    -- la riga della barretta (icona fase + nome fase + "Raid Control" + X),
+    -- quella piu' larga delle due. Cosi' la larghezza non "salta" mai: il
+    -- nome della fase ha un posto riservato e gli elementi ci stanno sempre.
+    local tbPad, tbGap = 5, 6
+    local phaseIconW = 16
+    -- posto riservato al nome della fase = larghezza del nome piu' LUNGO
+    -- ("Pre-raid"/"Pre-boss"/"In-fight"): misurata una volta, non un numero
+    -- a caso, cosi' la larghezza e' fissa ma nessun elemento viene tagliato.
+    local phaseNameW = self._phaseLabelW or 58
+    local rcBtnRef = self.raidControlBtn or (self.titleBar and self.titleBar.raidControlBtn)
+    local rcW = (rcBtnRef and rcBtnRef:GetWidth()) or 96
+    local closeW = 11
+    local titleW = tbPad + phaseIconW + 5 + phaseNameW + tbGap + rcW + tbGap + closeW + tbPad
+    local contentW = math.max(matrixW, titleW)
+    self._titleRowW = titleW
+
     local h = 2 * PAD + matrixH
-    local w = 2 * PAD + matrixW
+    local w = 2 * PAD + contentW
 
     self.frame:SetSize(w, h)
     self.frame:SetScale(L.scale or 1)
+
+    -- ANCORAGGIO FISSO: bordo ALTO dello schermo, a distanza dal lato destro
+    -- pari alla larghezza del Raid Frame (food/flask + barra player + CD,
+    -- senza i buff). La barretta sta sopra il pannello, quindi la sua sommita'
+    -- e' il vero bordo alto della barra: si compensa altezza barretta + gap.
+    local tbH = (self.titleBar and self.titleBar:GetHeight()) or 20
+    local tbGapPx = 2
+    self.frame:ClearAllPoints()
+    self.frame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT",
+        -self:RaidFrameWidth(), -(tbH + tbGapPx))
 
     -- Bottoni matrice: colonne x righe configurabili dalla Config.
     -- La coppia MT/OT sta SOTTO il tasto "Raid Frame" (cella
@@ -509,16 +562,14 @@ function MW:ApplyLayout()
     if self.phaseText and self.phaseBtn then
         self.phaseText:ClearAllPoints()
         self.phaseText:SetPoint("LEFT", self.phaseBtn, "RIGHT", 5, 0)
-        -- spazio libero = larghezza barretta - icona - margini - (freccia+X).
-        -- La barretta e' ancorata ai due angoli della finestra, quindi la sua
-        -- larghezza E' la larghezza della barra (niente GetWidth: con gli
-        -- ancoraggi il valore non e' disponibile nell'istante del calcolo).
-        local available = w - 6 - 16 - 5 - 44
-        if available >= 48 then
-            self.phaseText:Show()
-        else
-            self.phaseText:Hide()
-        end
+        -- Il nome della fase ha un posto RISERVATO nel calcolo della
+        -- larghezza (phaseNameW): qui si mostra sempre, senza salti.
+        self.phaseText:Show()
+    end
+    -- "Raid Control" a sinistra della X, dentro la barretta.
+    if self.raidControlBtn and self.titleBar and self.titleBar.closeBtn then
+        self.raidControlBtn:ClearAllPoints()
+        self.raidControlBtn:SetPoint("RIGHT", self.titleBar.closeBtn, "LEFT", -tbGap, 0)
     end
     if self.closeBtn then
         self.closeBtn:ClearAllPoints()

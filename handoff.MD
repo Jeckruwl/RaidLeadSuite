@@ -7,7 +7,42 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.56**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.57**.
+
+## 1.11.57 — main bar: tasti aderenti, "Raid Control", larghezza fissa, ancoraggio dal Raid Frame
+
+Quattro richieste dell'utente sul layout della main bar:
+
+1. **Spacing ridotto**: `PAD` 12 -> **4**. I tasti stanno a 4px dal bordo su
+   tutti i lati (verticale) e la matrice e' allineata a sinistra a 4px; la
+   larghezza in piu' che la riga della barretta impone resta a destra.
+2. **La freccia e' diventata il pulsante "Raid Control"**: tasto di testo
+   (`UIPanelButtonTemplate`, alto 16px, largo = testo + 16) dentro la barretta,
+   a sinistra della X. Stesso comportamento di prima (apre/chiude SOLO il
+   pannello sotto la barra) + highlight quando il pannello e' aperto.
+   `titleBar.arrowBtn` resta come alias; `MW._updateArrowDir` ora gestisce
+   l'highlight. La vecchia freccia TGA (`media/arrowup.tga`) non e' piu' usata
+   nella barretta (i file restano in media/, non toccati).
+3. **Larghezza FISSA = somma degli elementi**: il posto del nome della fase NON
+   e' un numero a caso ma la larghezza **misurata** del nome piu' lungo
+   ("Pre-raid"/"Pre-boss"/"In-fight", `MW._phaseLabelW`) e il pulsante "Raid
+   Control" e' largo quanto il suo testo. Larghezza barra =
+   `PAD + max(matrice, riga barretta) + PAD` -> non cambia mai al cambio fase e
+   nessun elemento viene tagliato (`MW._titleRowW`).
+4. **Ancoraggio fisso**: la barra NON si trascina piu' (via il drag della
+   barretta e `MakeUniversalWindow("main")`): `ApplyLayout` la mette a
+   **TOPRIGHT** di UIParent, `x = -MW:RaidFrameWidth()`, `y = -(20 + 2)`
+   (altezza barretta + gap, cosi' e' la BARRETTA a toccare il bordo alto).
+   `MW:RaidFrameWidth()` = `RaidFrame:LayoutMetrics().W * db.scale`, cioe' icone
+   food/flask + barra giocatore + barre CD **senza i buff** (le colonne della
+   matrice sono disegnate OLTRE il bordo destro del frame, `matrix a rowWidth+4`).
+   `RaidFrame:ApplyLayout` richiama `mainWindow:ApplyLayout`, quindi se cambia
+   larghezza del Raid Frame (icon size, bar width, scala) la barra si sposta.
+
+Test: **871 check** totali (16 nuovi nella 1.11.57: ancoraggio TOPRIGHT con
+offset = larghezza RF, barretta al bordo alto, offset che segue il Raid Frame
++40px e ritorno, larghezza = formula per 1..8 colonne, tasti a 4px dal bordo,
+Raid Control pulsante di testo + highlight, riserva del nome fase misurata).
 
 ## 1.11.56 — barretta piu' bassa, icona di fase al posto di "RLS", SaveRaid pulsante
 
@@ -150,7 +185,7 @@ sessione, poi l'ultimo con progressione registrata.
 NON registra** (i pull finti del debug non devono sporcare la progressione vera). `MacroBar:OnBossProgressChanged` riallinea la barra quando il counter avanza (guardia di rientranza perche'
 passa da `CurrentBossInfo` -> `InferLinearKills` -> di nuovo `OnBossProgressChanged`).
 
-Test: **855 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
+Test: **871 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
 counter su Gunship e Faction Champions, precedenza del target, inferenza lineare su ICC e ToC,
 kill dal combat log con e senza debug, riallineo automatico della barra al variare del counter,
 guardia di rientranza sempre rilasciata e robustezza a un errore di riconoscimento).

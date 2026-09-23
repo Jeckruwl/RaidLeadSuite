@@ -1593,6 +1593,12 @@ function RF:ApplyLayout()
     if not db or not self.frame then return end
     local m = self:LayoutMetrics()
     self.frame:SetWidth(m.W)
+    -- La main bar e' ancorata a una distanza dal lato destro pari alla
+    -- larghezza di QUESTO frame (senza i buff): se cambia la larghezza del
+    -- Raid Frame (icon size, bar width, scala) la barra si riposiziona.
+    if RLSuite.mainWindow and RLSuite.mainWindow.ApplyLayout then
+        RLSuite.mainWindow:ApplyLayout()
+    end
     self.frame:SetScale(db.scale or 1)
     -- Trasparenza complessiva dell'HUD (Config -> Raid Frame -> Layout).
     self.frame:SetAlpha(db.alpha or 1)

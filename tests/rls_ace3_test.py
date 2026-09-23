@@ -3973,7 +3973,8 @@ check(bool(rt.eval("TB_P1[1] == 'BOTTOMLEFT' and TB_P1[3] == 'TOPLEFT' and TB_P2
 check(rt.eval("TB_P1[5]") == 2 and rt.eval("TB_P2[5]") == 2, "title bar is DETACHED (2px gap above the main bar)")
 check(bool(rt.eval("TB.title ~= nil and tostring(TB.title:GetText()):find('RLS') == nil")),
       "no more 'RLS' text in the title bar")
-check(bool(rt.eval("TB.arrowBtn ~= nil and TB.arrowBtn.icon ~= nil and tostring(TB.arrowBtn.icon._texture):find('arrowup.tga', 1, true) ~= nil")), "arrowup.tga button present on the right (ARTWORK texture, renders)")
+check(bool(rt.eval("TB.raidControlBtn ~= nil and TB.arrowBtn == TB.raidControlBtn")), "'Raid Control' button replaced the arrow (arrowBtn kept as alias)")
+check(bool(rt.eval("tostring(TB.raidControlBtn:GetText()) == 'Raid Control'")), "the button says 'Raid Control'")
 check(bool(rt.eval("TB.closeBtn ~= nil and TB.closeBtn.icon ~= nil and tostring(TB.closeBtn.icon._texture):find('close.tga', 1, true) ~= nil")), "close.tga button present on the right (ARTWORK texture, renders)")
 
 # -- v1.11.56: icona di fase DENTRO la barretta + SaveRaid tornato pulsante --
@@ -4008,7 +4009,7 @@ check(bool(rt.eval("SAVE_W == 90 and SAVE_H == 22")), "SaveRaid button has the s
 check(bool(rt.eval("SAVE_IS_MATRIX == true and SAVE_IDX == 7")), "SaveRaid joins the button matrix as the 7th button")
 check(bool(rt.eval("SAVE_HAS_ICON == false")), "SaveRaid is no longer an icon button")
 
-# -- la barra e' piu' bassa: la vecchia riga di icone non esiste piu'
+# -- la barra e' piu' bassa e i tasti sono ADERENTI al bordo (PAD ridotto)
 rt.execute("""
     MW = RLSuite.mainWindow
     local L = RLSuite.db.profile.layout.main or {}
@@ -4016,14 +4017,25 @@ rt.execute("""
     local rows = math.max(1, math.min(8, tonumber(L.matrixRows) or 4))
     local n = #(MW.matrixButtons or {})
     rows = math.max(rows, math.ceil(n / cols))
-    EXPECT_H = 2 * 12 + rows * 22 + (rows - 1) * 4
-    EXPECT_W = 2 * 12 + cols * 90 + (cols - 1) * 8
+    PADU = 4
+    EXPECT_H = 2 * PADU + rows * 22 + (rows - 1) * 4
     BAR_H = MW.frame._h
     BAR_W = MW.frame._w
+    -- il primo tasto sta a PAD dal bordo (misurato dai punti)
+    local p1 = MW.matrixButtons[1]._points[1] or {}
+    FIRST_X = p1[4]
+    FIRST_Y = p1[5]
+    -- ultimo tasto della prima riga: la matrice e' CENTRATA, margini pari
+    local last = MW.matrixButtons[cols]
+    local rEdge = (last._points[1][4] or 0) + (last._w or 0)
+    RIGHT_GAP = BAR_W - rEdge
+    MATRIX_MW = cols * 90 + (cols - 1) * 8
 """)
 check(bool(rt.eval("BAR_H == EXPECT_H")),
       "main bar height = padding + matrix only (icon row removed): %d px" % rt.eval("BAR_H"))
-check(bool(rt.eval("BAR_W == EXPECT_W")), "main bar width still follows the matrix")
+check(bool(rt.eval("FIRST_Y == 4 * -1 and FIRST_X == 4")),
+      "buttons sit 4px from the bar border on all sides (spacing reduced, was 12)")
+check(bool(rt.eval("RIGHT_GAP >= 4")), "matrix left-aligned: any extra width of the title row sits on the right")
 
 # -- il click sul pulsante salva davvero (OnSaveRaid) ---------------------
 rt.execute("""
@@ -4046,28 +4058,137 @@ rt.execute("""
     MW:ApplyLayout()
     NARROW_TEXT = MW.phaseText:IsShown()
     NARROW_BTN = MW.phaseBtn:IsShown()
+    NARROW_W = MW.frame._w
     layout.main.matrixCols = oldCols
     MW:ApplyLayout()
     WIDE_TEXT = MW.phaseText:IsShown()
+    WIDE_W = MW.frame._w
 """)
-check(bool(rt.eval("NARROW_TEXT == false and NARROW_BTN == true")),
-      "narrow bar: the phase icon stays, only the phase NAME hides")
-check(bool(rt.eval("WIDE_TEXT == true")), "wide bar: the phase name is shown again")
+check(bool(rt.eval("NARROW_TEXT == true and NARROW_BTN == true")),
+      "narrow bar: phase icon AND phase name stay (the name has a reserved slot)")
+check(bool(rt.eval("NARROW_W == WIDE_W")),
+      "fixed width: with 1 or 2 matrix columns the bar keeps the same width (title row dominates)")
 
-# -- Barretta: arrow = solo pannello; close = tutto chiuso
+# -- v1.11.57: ancoraggio fisso + larghezza = somma degli elementi --------
+rt.execute("""
+    MW = RLSuite.mainWindow
+    local f = MW.frame
+    local p1, _, p3, px, py = f:GetPoint(1)
+    ANCH_P, ANCH_REL, ANCH_RELP, ANCH_X, ANCH_Y = p1, f:GetParent(), p3, px, py
+    ANCH_PARENT_NAME = (ANCH_REL == UIParent) and 'UIParent' or 'ALTRO'
+    RFW = MW:RaidFrameWidth()
+    TBH = MW.titleBar:GetHeight()
+    RF_M = RLSuite.raidFrame:LayoutMetrics()
+    RF_LIVE_W = RLSuite.raidFrame.frame._w
+    RF_SCALE = RLSuite.raidFrame.db.scale or 1
+    -- larghezza dei BUFF in colonne (matrice oltre il bordo destro del frame)
+    local cols = #(RLSuite.raidFrame._buffHdrBtns or {})
+    BUFFS_W = cols * RF_M.cellW
+""")
+check(bool(rt.eval("ANCH_P == 'TOPRIGHT' and ANCH_PARENT_NAME == 'UIParent' and ANCH_RELP == 'TOPRIGHT'")),
+      "main bar anchored to the TOP-RIGHT corner of the screen")
+check(bool(rt.eval("ANCH_Y == -(TBH + 2)")),
+      "the TITLE BAR (not the panel) touches the top edge: y = -(20+2) = %d" % rt.eval("ANCH_Y"))
+check(bool(rt.eval("RFW == RF_LIVE_W and RF_LIVE_W == RF_M.W * RF_SCALE")),
+      "right offset = Raid Frame width (%d px at scale %s)" % (rt.eval("RF_M.W * RF_SCALE"), rt.eval("RF_SCALE")))
+check(bool(rt.eval("ANCH_X == -RFW")), "the offset IS the Raid Frame width (no other constant)")
+check(bool(rt.eval("BUFFS_W > 0 and RFW < RF_M.rowWidth + BUFFS_W")),
+      "the buff columns are NOT part of that width (matrix %d px drawn beyond the frame)" % rt.eval("BUFFS_W"))
+check(bool(rt.eval("RF_M.W == RF_M.rowWidth")), "Raid Frame width = food/flask + player bar + CDs (no buffs)")
+
+# -- il Raid Frame cambia -> la barra si riposiziona da sola ---------------
+rt.execute("""
+    MW = RLSuite.mainWindow
+    local app = RLSuite.raidFrame.db.appearance
+    local old = app.barWidth
+    app.barWidth = 220
+    RLSuite.raidFrame:ApplyLayout()
+    local _, _, _, xNew = MW.frame:GetPoint(1)
+    RFW_NEW = MW:RaidFrameWidth()
+    ANCH_X_NEW = xNew
+    app.barWidth = old
+    RLSuite.raidFrame:ApplyLayout()
+    local _, _, _, xBack = MW.frame:GetPoint(1)
+    ANCH_X_BACK = xBack
+""")
+check(bool(rt.eval("RFW_NEW == RFW + 40 and ANCH_X_NEW == -(RFW + 40)")),
+      "player bar +40px -> the bar moves 40px left (offset follows the Raid Frame)")
+check(bool(rt.eval("ANCH_X_BACK == -RFW")), "restoring the Raid Frame restores the bar position")
+
+# -- larghezza fissa = somma degli elementi -------------------------------
+rt.execute("""
+    MW = RLSuite.mainWindow
+    local layout = RLSuite.db.profile.layout
+    layout.main = layout.main or {}
+    local map = { [1] = 1, [2] = 2, [3] = 3, [4] = 4 }
+    W_BY_COLS = {}
+    for _, c in ipairs({ 1, 2, 3, 5, 8 }) do
+        layout.main.matrixCols = c
+        MW:ApplyLayout()
+        W_BY_COLS[c] = MW.frame._w
+    end
+    -- riga della barretta: tutti gli elementi presenti e dentro il bordo
+    local tbW = MW.titleBar._w
+    local rc = MW.titleBar.raidControlBtn
+    TITLE_FITS = (MW.phaseText:IsShown() and rc ~= nil and rc:IsShown() and MW.phaseBtn:IsShown())
+    TITLE_W = tbW
+    TITLE_BAR_W = MW.frame._w
+    layout.main.matrixCols = 2
+    MW:ApplyLayout()
+""")
+rt.execute("""
+    local MWc = RLSuite.mainWindow
+    WFORM_OK = true
+    for c, w in pairs(W_BY_COLS) do
+        local matrixW = c * 90 + (c - 1) * 8
+        local expect = 2 * 4 + math.max(matrixW, MWc._titleRowW)
+        if w ~= expect then WFORM_OK = false end
+    end
+""")
+check(bool(rt.eval("WFORM_OK == true")),
+      "every width = padding + widest element row (formula holds for 1..8 columns)")
+check(bool(rt.eval("W_BY_COLS[8] > W_BY_COLS[2] and W_BY_COLS[3] > W_BY_COLS[1]")),
+      "wider matrix -> wider bar (width = widest element row)")
+check(bool(rt.eval("TITLE_FITS == true")), "every title bar element always fits (phase icon + name + Raid Control)")
+rt.execute("""
+    -- larghezza attesa = PAD + max(matrice, riga barretta) + PAD
+    local MW = RLSuite.mainWindow
+    local layout = RLSuite.db.profile.layout.main or {}
+    local cols = tonumber(layout.matrixCols) or 2
+    local matrixW = cols * 90 + (cols - 1) * 8
+    local rcW = MW.titleBar.raidControlBtn:GetWidth()
+    local titleW = MW._titleRowW
+    EXPECT_W = 2 * 4 + math.max(matrixW, titleW)
+    BAR_W = MW.frame._w
+    RC_W = rcW
+    RC_TEXT_W = MW.titleBar.raidControlBtn:GetStringWidth()
+    PHASE_RESERVE = MW._phaseLabelW
+""")
+check(bool(rt.eval("BAR_W == EXPECT_W")),
+      "bar width = padding + widest element row (matrix vs title row) = %d px" % rt.eval("BAR_W"))
+check(bool(rt.eval("RC_W >= RC_TEXT_W + 8")),
+      "the Raid Control button is sized on its own text (%d px wide)" % rt.eval("RC_W"))
+check(bool(rt.eval("PHASE_RESERVE >= 40 and PHASE_RESERVE <= 90")),
+      "phase name reserve is measured on the real labels (%d px), not a magic number" % rt.eval("PHASE_RESERVE"))
+
+# -- Barretta: "Raid Control" = solo pannello; close = tutto chiuso
 rt.execute("""
 f = RLSuite.mainWindow.frame
 f:Show(); TB:Show()
-TB.arrowBtn._scripts.OnClick(TB.arrowBtn)
+TB.raidControlBtn._scripts.OnClick(TB.raidControlBtn)
 A1 = f:IsShown(); A1TB = TB:IsShown()
-TB.arrowBtn._scripts.OnClick(TB.arrowBtn)
+HL_HIDDEN = TB.raidControlBtn._highlight
+TB.raidControlBtn._scripts.OnClick(TB.raidControlBtn)
 A2 = f:IsShown()
+HL_SHOWN = TB.raidControlBtn._highlight
 f:Show(); TB:Show()
 TB.closeBtn._scripts.OnClick(TB.closeBtn)
 C_F = f:IsShown(); C_TB = TB:IsShown()
 """)
-check(bool(rt.eval("A1 == false and A1TB == true")), "arrowup: hides ONLY the panel under the bar (bar stays)")
-check(bool(rt.eval("A2 == true")), "arrowup: shows the panel back under the bar")
+check(bool(rt.eval("A1 == false and A1TB == true")), "Raid Control: hides ONLY the panel under the bar (bar stays)")
+check(bool(rt.eval("A2 == true")), "Raid Control: shows the panel back under the bar")
+check(bool(rt.eval("HL_SHOWN == true and HL_HIDDEN == false")),
+      "Raid Control is highlighted only while the panel is open")
 check(bool(rt.eval("C_F == false and C_TB == false")), "close.blp: closes the main bar (panel + title bar)")
 
 # -- Toggle tab riallinea anche la barretta
@@ -4127,7 +4248,7 @@ check('HideAllWindows' not in _ct, "CloseTab never hides other windows (in-fight
 check(_rp42.count('MW:CloseTab()') == 1, "only the CloseTab definition remains (no implicit calls from arrow/X/toggle)")
 _rt42 = _re.sub(r'--[^\n]*', '', _rp42)
 _rt42 = _re.sub(r'\s+', ' ', _rt42)
-check('arrBtn:SetScript("OnClick", function() if f:IsShown() then f:Hide() else f:Show() end' in _rt42, "the bar arrow toggles ONLY the button panel, at any time")
+check('rcBtn:SetScript("OnClick", function() if f:IsShown() then f:Hide() else f:Show() end' in _rt42, "the Raid Control button toggles ONLY the button panel, at any time")
 # -- v1.11.42: loot dedupe + boss from looted corpse
 _l42 = open("LootManager.lua", encoding='utf-8').read()
 check('< 4 then' in _l42 and 'prev.itemLink == itemLink' in _l42, "loot dedupe: same itemLink within 4s is skipped (no duplicates)")
@@ -4233,7 +4354,7 @@ for _f in ("MSManager.lua", "GroupMaking.lua", "RaidProfile.lua"):
     _src = open(_f, encoding="utf-8").read()
     check("RaidLeadSuite\\\\media" not in _src, _f + ": no hardcoded addon-folder texture paths (AddonTexture only)")
 check('ApplyIcon(delBtn, "media\\\\close.tga")' in open("MSManager.lua", encoding="utf-8").read(), "MS changes X uses ApplyIcon media close.tga (AddonTexture)")
-check('ApplyIcon(arrBtn, "media\\\\arrowup.tga")' in open("RaidProfile.lua", encoding="utf-8").read(), "title bar arrow uses ApplyIcon media arrowup.tga (AddonTexture)")
+check('"RLSuiteRaidControlBtn"' in open("RaidProfile.lua", encoding="utf-8").read(), "title bar hosts the Raid Control button (the old arrow is gone)")
 
 # -- PH slot e' un bottone del KEYPAD: i tasti sotto (Pull/Ready/Break), stesso parent
 rt.execute("MBPS = RLSuite.macrobar.phaseSlot")
@@ -4301,31 +4422,37 @@ rt.execute("""
 TB23 = RLSuite.mainWindow.titleBar
 TB23DRAG = TB23._dragButtons ~= nil
 TB23PROXY = TB23._scripts.OnDragStart ~= nil or TB23._scripts.OnDragStop ~= nil
+TB23_NO_DRAG = (TB23DRAG == false and TB23PROXY == false)
 """)
-check(bool(rt.eval("TB23DRAG == true")), "title bar is REGISTERED for LeftButton drag")
-check(bool(rt.eval("TB23PROXY == true")), "title bar drags the main window with the SAME drag guard as every other window (clamps during drag)")
+check(bool(rt.eval("TB23_NO_DRAG == true")),
+      "title bar is NOT draggable any more: the bar is anchored (top of the screen, right offset)")
 
-# -- v1.11.30: icone barretta dimezzate (11x11) + freccia su/giu con il pannello
+# -- v1.11.30/56: X a 11x11 e pulsante "Raid Control" al posto della freccia
 rt.execute("""
 TB30C = RLSuite.mainWindow.titleBar.closeBtn
 TB30A = RLSuite.mainWindow.titleBar.arrowBtn
 MFW30 = RLSuite.mainWindow.frame
 MFW30:Hide(); RLSuite.mainWindow._updateArrowDir()
-TC_CLOSED30 = table.concat(TB30A.icon._texCoord or {}, ',')
+HL_CLOSED30 = TB30A._highlight
 MFW30:Show(); RLSuite.mainWindow._updateArrowDir()
-TC_OPEN30 = table.concat(TB30A.icon._texCoord or {}, ',')
+HL_OPEN30 = TB30A._highlight
 MFW30:Hide(); RLSuite.mainWindow._updateArrowDir()
+TB30_H = TB30A._h
+TB30_TEXT = TB30A:GetText()
 """)
-check(bool(rt.eval("TB30C._w == 11 and TB30C._h == 11 and TB30A._w == 11 and TB30A._h == 11")), "title bar icons HALVED (11x11)")
-check(rt.eval("TC_CLOSED30") == '0,1,1,0', "arrow FLIPPED VERTICALLY (points DOWN) when the panel is CLOSED")
-check(rt.eval("TC_OPEN30") == '0,1,0,1', "arrow points UP when the panel is OPEN")
+check(bool(rt.eval("TB30C._w == 11 and TB30C._h == 11")), "title bar close icon HALVED (11x11)")
+check(bool(rt.eval("TB30_TEXT == 'Raid Control' and TB30_H == 16")),
+      "the panel toggle is a 16px 'Raid Control' text button (no more arrow)")
+check(bool(rt.eval("HL_CLOSED30 == false and HL_OPEN30 == true")),
+      "Raid Control highlight follows the panel state")
 # -- v1.11.31: la barra non esce mai dallo schermo
 _rp = open("RaidProfile.lua", encoding="utf-8").read()
-check(('MakeDraggable(f, "main")' in _rp) or ('MakeUniversalWindow(f, "main")' in _rp), "main window is a universal window via Utils:MakeUniversalWindow (SAME drag+clamp as every other window)")
-check(bool(rt.eval("RLSuite.mainWindow.frame._rlsDraggable == true and RLSuite.mainWindow.frame._rlsDragGuard ~= nil")), "main window flagged _rlsDraggable AND guarded by MakeDraggable (same clamp guard as every other window)")
+check(('MakeDraggable(f, "main")' not in _rp) and ('MakeUniversalWindow(f, "main")' not in _rp),
+      "main window is NOT draggable: its position is anchored (Raid Frame width offset)")
+check(bool(rt.eval("RLSuite.mainWindow.frame._rlsDraggable == nil")), "main window carries no drag machinery")
 _u35 = open("Utils.lua", encoding="utf-8").read()
 check('_rlsDragGuard' in _u35 and _u35.count("ClampWindowToScreen(frame)") >= 1 and _u35.count("ClampWindowToScreen(self2)") >= 1, "MakeDraggable clamps ALL windows during drag + on drop (the identical machinery everywhere)")
-check('tb:RegisterForDrag("LeftButton")' in _rp and '_rlsDragGuard' in _rp, "title bar drags the main window using the SAME _rlsDragGuard machinery as every other MakeDraggable window")
+check('tb:RegisterForDrag("LeftButton")' not in _rp, "title bar no longer registers any drag")
 check('ClampWindowToScreen(self.frame)' in open("MacroBar.lua", encoding="utf-8").read(), "macrobar shift-drag drop clamped inside the screen")
 check('ClampWindowToScreen(self2)' in open("MacroBar.lua", encoding="utf-8").read(), "macrobar anchor-mode drop clamped inside the screen")
 
