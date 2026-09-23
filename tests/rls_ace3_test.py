@@ -5653,6 +5653,184 @@ check(bool(rt.eval("UW_ICON.hdr_icon == true and UW_ICON.hdr_shown == true")), "
 check(bool(rt.eval("UW_ICON.noicon_shown == true and UW_ICON.noicon_text == 'Spell Name' and UW_ICON.noicon_icon == false")), "v1.11.68: senza icona l'intestazione mostra il NOME (mai una colonna vuota)")
 check(bool(rt.eval("UW_ICON.rows == true")), "v1.11.68 tab Spells: l'icona compare anche accanto al nome di ogni spell nella lista")
 
+rt.execute("""
+-- =====================================================================
+-- v1.11.70: encounter-anchored (la morte non chiude il pull) + watchdog
+--           + riga di stato
+-- =====================================================================
+local cl = RLSuite.combatLog
+local R_IAC, R_DEAD, R_NRAID, R_PARTY, R_UE, R_UG = UnitAffectingCombat, UnitIsDeadOrGhost, GetNumRaidMembers, GetNumPartyMembers, UnitExists, UnitGUID
+local R_DEADU, R_HEALTH = UnitIsDead, UnitHealth
+UW_COMBAT, UW_DEAD, UW_RAIDN = {}, false, 0
+UnitAffectingCombat = function(u) return UW_COMBAT[u] == true end
+GetNumRaidMembers = function() return UW_RAIDN end
+GetNumPartyMembers = function() return 0 end
+UW_BOSS_UNITS, UW_BOSS_DEAD = {}, {}
+UnitExists = function(u)
+    return (UW_COMBAT[u] ~= nil) or u == "player" or (UW_BOSS_UNITS[u] ~= nil)
+end
+UnitIsDead = function(u) return UW_BOSS_DEAD[u] == true end
+UnitIsDeadOrGhost = function(u)
+    if u ~= "player" then return UW_BOSS_DEAD[u] == true end
+    return UW_DEAD
+end
+UnitHealth = function(u) if u == "player" then return 100 end return (UW_BOSS_DEAD[u] and 0) or 100 end
+
+cl.db.fights = {}
+cl.current = nil
+cl.selFight = nil
+cl.recoveries = 0
+cl.sessionLost = 0
+cl._initError = nil
+
+-- A) morte a meta' pull: il pull NON si chiude, la morte viene annotata
+UW_COMBAT = { player = true, raid1 = true, boss1 = true }
+UW_RAIDN = 2
+UW_DEAD = false
+cl:OnRegenDisabled()
+UW_A_OPEN = (cl.current ~= nil)
+cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
+UW_DEAD = true
+cl:OnRegenEnabled()                        -- scatta QUANDO MUORI (esci dalla hate list)
+cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerTwo', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Frostbolt', 2, 3000, 0, 0, 0, 0, 0, 0)
+UW_A_STILL = (cl.current ~= nil)
+UW_A_DIED = cl.current and cl.current.playerDied
+UW_A_CNT = cl.current and cl.current.count
+UW_A_NFIGHTS = #cl.db.fights
+
+-- B) res in combat: stesso pull, nessun secondo record
+UW_DEAD = false
+cl:OnRegenDisabled()
+UW_B_SAME = (cl.current ~= nil)
+UW_B_DIED = cl.current and cl.current.playerDied
+cl:WatchTick('tick')                       -- il tick da 1 Hz annota la ripresa
+UW_B_ALIVE = cl.current and cl.current.playerAlive
+UW_B_NFIGHTS = #cl.db.fights
+
+-- C) l'encounter finisce -> il pull si chiude (una volta sola)
+UW_COMBAT = {}
+cl:WatchTick('test')
+UW_C_CLOSED = (cl.current == nil)
+UW_C_NF = #cl.db.fights
+UW_C_F = cl.db.fights[1] or {}
+UW_C_REASON = UW_C_F.closeReason
+UW_C_DIED = UW_C_F.playerDied
+UW_C_ALIVE = UW_C_F.playerAlive
+
+-- C2) kill del boss + trash a catena: il pull si chiude lo stesso
+cl.current = nil
+cl.db.fights = {}
+UW_COMBAT = { raid1 = true }
+UW_RAIDN = 2
+cl:OpenFight(false)
+cl.current.boss = "Lord Marrowgar"
+cl.current.kill = true
+cl:WatchTick('kill')
+UW_C2_CLOSED = (cl.current == nil)
+UW_C2_NF = #cl.db.fights
+-- C3) encounter MULTI-BOSS: un boss muore ma un altro e' vivo -> resta aperto
+cl.current = nil
+cl.db.fights = {}
+UW_BOSS_UNITS = { boss1 = true, boss2 = true }
+UW_BOSS_DEAD = { boss1 = true }
+cl:OpenFight(false)
+cl.current.boss = "Blood Prince Council"
+cl.current.kill = true
+cl:WatchTick('multiboss')
+UW_C3_OPEN = (cl.current ~= nil)
+-- ora muore anche il secondo
+UW_BOSS_DEAD = { boss1 = true, boss2 = true }
+cl:WatchTick('multiboss')
+UW_C3_CLOSED = (cl.current == nil)
+UW_BOSS_UNITS, UW_BOSS_DEAD = {}, {}
+
+-- D) watchdog: in combat senza pull aperto -> apri e marca "recuperato"
+cl.current = nil
+cl.db.fights = {}
+UW_COMBAT = { raid1 = true }
+UW_RAIDN = 2
+local rec0 = cl.recoveries or 0
+cl:WatchTick('test')
+UW_D_OPEN = (cl.current ~= nil)
+UW_D_REC = cl.current and cl.current.recovered
+UW_D_COUNT = (cl.recoveries or 0) - rec0
+cl.current = nil
+
+-- E) re-arm dopo /reload: PLAYER_ENTERING_WORLD mentre sei in combat
+cl.db.fights = {}
+UW_COMBAT = { player = true }
+UW_E_BEFORE = (cl.current == nil)
+cl:OnEnteringWorld()
+UW_E_AFTER = (cl.current ~= nil)
+UW_E_REC = cl.current and cl.current.recovered
+cl.current = nil
+
+-- F) riga di stato
+cl.db.fights = {}
+cl.recoveries = 0
+cl.sessionLost = 0
+cl.current = nil
+cl:RefreshInfo(nil)
+UW_F_IDLE = tostring(cl.infoText:GetText())
+UW_COMBAT = { raid1 = true }
+UW_RAIDN = 2
+cl:OpenFight(true)
+cl:RefreshInfo(nil)
+UW_F_REC = tostring(cl.infoText:GetText())
+cl.current.recovered = nil
+cl.current.dropped = 12
+cl:RefreshInfo(nil)
+UW_F_LOST = tostring(cl.infoText:GetText())
+cl.current = nil
+cl.sessionLost = 40
+cl:RefreshInfo(nil)
+UW_F_SESS = tostring(cl.infoText:GetText())
+cl.sessionLost = 0
+cl.recoveries = 1
+cl:RefreshInfo(nil)
+UW_F_RECOVERY = tostring(cl.infoText:GetText())
+cl.recoveries = 0
+cl._initError = 'boom in CreateFrame'
+cl:RefreshInfo(nil)
+UW_F_ERR = tostring(cl.infoText:GetText())
+cl._initError = nil
+cl:RefreshInfo(nil)
+UW_F_IDLE2 = tostring(cl.infoText:GetText())
+cl:RefreshInfo(nil)
+
+-- G) pull salvato VECCHIO (senza i campi nuovi) si apre ancora
+UW_LEGACY = { name = 'Sindragosa', duration = 95, kill = false, events = {}, count = 0 }
+UW_G_LABEL = cl:FightLabel(UW_LEGACY, 1)
+UW_G_TITLE = cl:FightTitle(UW_LEGACY)
+
+UnitAffectingCombat, UnitIsDeadOrGhost, GetNumRaidMembers, GetNumPartyMembers, UnitExists, UnitGUID, UnitIsDead, UnitHealth = R_IAC, R_DEAD, R_NRAID, R_PARTY, R_UE, R_UG, R_DEADU, R_HEALTH
+cl.current = nil
+cl.db.fights = {}
+cl.recoveries = 0
+cl.sessionLost = 0
+cl:RefreshInfo(nil)
+""")
+
+
+check(bool(rt.eval("UW_A_OPEN == true and UW_A_STILL == true")), "v1.11.70: la morte del tuo personaggio NON chiude piu' il pull (l'encounter e' ancora in corso)")
+check(bool(rt.eval("UW_A_DIED ~= nil and UW_A_CNT == 2")), "v1.11.70: la morte viene annotata (t=%r) e il pull continua a registrare anche dopo" % rt.eval("UW_A_DIED"))
+check(bool(rt.eval("UW_A_NFIGHTS == 0")), "v1.11.70: morendo NON nasce un pull falso con esito Wipe")
+check(bool(rt.eval("UW_B_SAME == true and UW_B_DIED == UW_A_DIED and UW_B_ALIVE ~= nil")), "v1.11.70: la res in combat continua lo STESSO pull (ripresa annotata a t=%r)" % rt.eval("UW_B_ALIVE"))
+check(bool(rt.eval("UW_B_NFIGHTS == 0")), "v1.11.70: la res non crea un pull fantasma")
+check(bool(rt.eval("UW_C_CLOSED == true and UW_C_NF == 1")), "v1.11.70: quando l'encounter finisce il pull si chiude (e una volta sola)")
+check(bool(rt.eval("tostring(UW_C_REASON) == 'test' and UW_C_DIED ~= nil and UW_C_ALIVE ~= nil")), "v1.11.70: il pull salvato porta motivo di chiusura, morte e ripresa (%r / %r / %r)" % (rt.eval("UW_C_REASON"), rt.eval("UW_C_DIED"), rt.eval("UW_C_ALIVE")))
+check(bool(rt.eval("UW_D_OPEN == true and UW_D_REC == true and UW_D_COUNT == 1")), "v1.11.70 watchdog: in combat senza pull aperto lo apre da solo e lo marca 'recuperato'")
+check(bool(rt.eval("UW_C2_CLOSED == true and UW_C2_NF == 1")), "v1.11.70: boss ucciso + trash a catena -> il pull si chiude comunque (kill pulito)")
+check(bool(rt.eval("UW_C3_OPEN == true and UW_C3_CLOSED == true")), "v1.11.70: encounter multi-boss, un boss morto NON chiude il pull; si chiude quando muoiono tutti")
+check(bool(rt.eval("UW_E_BEFORE == true and UW_E_AFTER == true and UW_E_REC == true")), "v1.11.70 re-arm: rientrando nel mondo in combat (dopo un /reload) il pull riparte da solo")
+check(bool(rt.eval("UW_F_IDLE:find('Idle') ~= nil and UW_F_IDLE:find('8') == nil")), "v1.11.70 riga di stato a riposo: \"%s\"" % rt.eval("UW_F_IDLE"))
+check(bool(rt.eval("UW_F_REC:find('Recording') ~= nil and UW_F_REC:find('watchdog') ~= nil")), "v1.11.70 riga di stato con pull recuperato: \"%s\"" % rt.eval("UW_F_REC"))
+check(bool(rt.eval("UW_F_LOST:find('12') ~= nil and UW_F_LOST:find('lost') ~= nil")), "v1.11.70 riga di stato con eventi persi: \"%s\"" % rt.eval("UW_F_LOST"))
+check(bool(rt.eval("UW_F_SESS:find('40') ~= nil")), "v1.11.70 riga di stato a riposo con eventi persi in sessione: \"%s\"" % rt.eval("UW_F_SESS"))
+check(bool(rt.eval("UW_F_RECOVERY:find('watchdog') ~= nil")), "v1.11.70 riga di stato a riposo con un recupero del watchdog: \"%s\"" % rt.eval("UW_F_RECOVERY"))
+check(bool(rt.eval("UW_F_ERR:find('Window error') ~= nil and UW_F_ERR:find('boom') ~= nil")), "v1.11.70 riga di stato con finestra rotta: \"%s\"" % rt.eval("UW_F_ERR"))
+check(bool(rt.eval("UW_G_LABEL ~= nil and UW_G_TITLE ~= nil")), "v1.11.70: i pull salvati con il formato vecchio (senza campi nuovi) si aprono ancora: \"%s\"" % rt.eval("UW_G_TITLE"))
+
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

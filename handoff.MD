@@ -7,7 +7,53 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.69**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.70**.
+
+## 1.11.70 — Passata 1: pull legato all'ENCOUNTER + watchdog + riga di stato
+
+Direttiva: *"utilizza lo stesso metodo di DBM, lega il pull all'encounter"* +
+*"diagnostica combat log: implementa riga di stato e watchdog"*.
+
+**Il difetto vero (misurato nel codice):** l'unica porta di chiusura era
+`CL:OnRegenEnabled` (PLAYER_REGEN_ENABLED). Morire toglie dalla hate list,
+quindi quel evento scatta **quando il tuo personaggio muore**: il pull veniva
+chiuso a meta' con esito `falso Wipe`, il CLEU veniva deregistrato (il resto del
+pull, kill compreso, non registrato) e una res in combat faceva partire un
+**secondo** record per lo stesso encounter.
+
+**Ora (encounter-anchored, metodo DBM):**
+- `CL:EncounterActive()` = il tuo personaggio, **boss1..boss4 in combattimento**,
+  oppure un membro di gruppo/raid ancora in combattimento.
+- Apertura: `PLAYER_REGEN_DISABLED` (via rapida) **oppure** il watchdog quando
+  rileva un encounter attivo (apertura marcata `recovered`).
+- Chiusura: nessuno piu' in combattimento, **oppure** kill di un boss
+  riconosciuto senza altri boss vivi (`CL:BossAlive()` = boss1..boss4 con vita
+  > 0: gli encounter multi-boss NON si chiudono alla prima morte).
+- **La tua morte e' un evento del pull** (`f.playerDied`), la ripresa anche
+  (`f.playerAlive`): il pull continua e la tab Deaths la usa.
+- **Res in combat = stesso record** (nessun pull fantasma).
+- **Re-arm**: `PLAYER_ENTERING_WORLD` -> se sei in combat il pull riparte
+  (dopo un `/reload` in pull si perde comunque la parte precedente).
+- **Un solo tick da 1 Hz** (`WatchTick`) = campioni + watchdog; prima i campioni
+  avevano un timer creato/distrutto a ogni pull e **nessun** controllo di stato
+  (un evento perso lasciava il log muto per tutta la sessione).
+- Modulo disattivato -> il pull aperto viene chiuso (`closeReason = "disabled"`).
+
+**Riga di stato** (`CL:RefreshInfo`), 1 volta al secondo quando la finestra e'
+visibile:
+- `Recording 1:23 · 3721 Events · Deathbringer Saurfang` (verde)
+- `... · recovered by watchdog` (giallo) / `... · 12 events lost` (rosso)
+- `Recording ... · you died at 0:47` quando sei morto nel pull
+- a riposo: `Idle · 8 pulls (5 boss, 3 trash)` (+ recuperi o eventi persi)
+- `Window error: <testo>` (rosso) se la finestra non si e' costruita: l'errore
+  non resta piu' solo in chat.
+- Priorita': eventi persi (grave) > recuperi (auto-riparato).
+
+**Test:** +18 check (1008 totali): morte che non chiude, morte annotata e pull
+che continua, res senza pull fantasma, chiusura a fine encounter, motivo di
+chiusura salvato, kill con trash a catena, multi-boss, watchdog che apre e
+marca il recupero, re-arm da PLAYER_ENTERING_WORLD, i 6 stati della riga di
+stato, pull vecchi (senza campi nuovi) ancora apribili.
 
 ## 1.11.69 — audit: la versione mostrata in chat viene dal .toc
 
@@ -42,7 +88,7 @@ Due problemi reali:
    il nome sotto l'icona + icona accanto al nome nella lista del tab "Spells"
    (riga con texture + testo).
 
-Test: **990 check** totali (2 nuovi nella 1.11.69); 988 nella 1.11.68 (risoluzione icona, fallback GetSpellInfo,
+Test: **1008 check** totali (18 nuovi nella 1.11.70); 988 nella 1.11.68 (risoluzione icona, fallback GetSpellInfo,
 nessuna spell = nessuna icona, "vuote=0" per Consumables/Auras/Powers, altezza
 intestazione, icona+nome nell'header, nome al posto dell'icona se manca, icona
 nella lista Spells).

@@ -177,7 +177,18 @@ L["Debug: %d fake MS whispers sent."] = "Debug: %d whisper MS fittizi inviati."
 L["Ask MS changes first (MS Manager), then click Test MS."] = "Chiedi prima gli MS change (MS Manager), poi clicca Test MS."
 L["Start the spammer first, then Whisp test sends the fake whispers."] = "Avvia prima lo spammer, poi Whisper di test invia i whisper fittizi."
 
-L["Combat log"] = true
+    L["Combat log"] = true
+    -- Riga di stato del pannello Log (v1.11.70)
+    L["Recording"] = true
+    L["Idle"] = true
+    L["events lost"] = true
+    L["recovered by watchdog"] = true
+    L["watchdog recoveries"] = true
+    L["you died at"] = true
+    L["Window error"] = true
+    L["pulls"] = true
+    L["boss"] = true
+    L["trash"] = true
     L["Select fight"] = true
     L["Send report"] = true
     L["Shift+click to wipe the saved fights."] = true

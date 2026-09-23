@@ -236,6 +236,17 @@ function CL:Init()
     end
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnRegenDisabled")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnRegenEnabled")
+    -- Re-arm dopo un /reload o un rientro nel mondo: se siamo in combat
+    -- (o l'encounter e' ancora aperto) il pull riparte da solo.
+    self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnEnteringWorld")
+    self.recoveries = self.recoveries or 0
+    self.sessionLost = self.sessionLost or 0
+    if self.watchTimer then self:CancelTimer(self.watchTimer); self.watchTimer = nil end
+    -- UN SOLO tick da 1 Hz: campioni del pull + WATCHDOG (auto-riparazione).
+    -- Prima i campioni avevano un timer creato/distrutto a ogni pull e non
+    -- c'era nessun controllo di stato: un evento perso lasciava il log muto
+    -- per tutta la sessione.
+    self.watchTimer = self:ScheduleRepeatingTimer("WatchTick", 1)
 end
 
 function CL:Toggle()
@@ -255,9 +266,71 @@ end
 -- ------------------------------------------------------------------
 -- Segmentazione per pull
 -- ------------------------------------------------------------------
-function CL:OnRegenDisabled()
+-- ==================================================================
+-- ENCOUNTER-ANCHORED (metodo DBM): il pull e' legato all'ENCOUNTER,
+-- non al flag di combattimento del TUO personaggio.
+-- Conseguenza pratica: se muori il pull CONTINUA (la tua morte e' un
+-- evento del pull, non la sua fine) e una res in combat non crea un
+-- secondo pull.
+-- ==================================================================
+function CL:EncounterActive()
+    -- il tuo personaggio conta (da solo, in open world)
+    if UnitAffectingCombat and UnitAffectingCombat("player") then return true end
+    -- boss dell'encounter in combattimento (boss1..boss4)
+    for i = 1, 4 do
+        local u = "boss" .. i
+        if UnitExists and UnitExists(u) and UnitAffectingCombat(u) then return true end
+    end
+    -- un membro di gruppo/raid ancora in combattimento
+    local n = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    for i = 1, n do
+        if UnitAffectingCombat("raid" .. i) then return true end
+    end
+    local pn = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    for i = 1, pn do
+        if UnitAffectingCombat("party" .. i) then return true end
+    end
+    return false
+end
+
+-- C'e' ancora un boss VIVO (boss1..boss4)? Serve per distinguere il kill
+-- pulito dall'encounter multi-boss (dove la morte di uno solo non chiude il pull).
+function CL:BossAlive()
+    for i = 1, 4 do
+        local u = "boss" .. i
+        if UnitExists and UnitExists(u) then
+            local dead = (UnitIsDead and UnitIsDead(u)) or (UnitIsDeadOrGhost and UnitIsDeadOrGhost(u))
+            local hp = (UnitHealth and UnitHealth(u)) or 0
+            if not dead and hp > 0 then return true end
+        end
+    end
+    return false
+end
+
+function CL:PlayerDead()
+    return (UnitIsDeadOrGhost and UnitIsDeadOrGhost("player")) and true or false
+end
+
+-- Morte/ripresa del TUO personaggio dentro il pull: si annota, non si chiude.
+function CL:TrackVitals(f)
+    if not f or f.duration then return end
+    local t = math.floor((GetTime() - f.startTime) * 10 + 0.5) / 10
+    if self:PlayerDead() then
+        if not f.playerDied then f.playerDied = t end
+    elseif f.playerDied and not f.playerAlive then
+        f.playerAlive = t
+    end
+end
+
+function CL:ClockLabel()
+    if not date then return "" end
+    local ok, t = pcall(date, "%H:%M")
+    return (ok and t) or ""
+end
+
+function CL:OpenFight(recovered)
     if not (self.db and self.db.enabled) then return end
-    if self.current then return end -- gia' in combat
+    if self.current then return end -- gia' in corso
     self.current = {
         startTime = GetTime(),
         startUTC = time(),
@@ -268,16 +341,20 @@ function CL:OnRegenDisabled()
         bossGUID = nil,
         kill = nil,
         samples = { health = {}, power = {} },
+        recovered = recovered and true or nil,
     }
+    if recovered then
+        self.recoveries = (self.recoveries or 0) + 1
+        self.lastRecovery = self:ClockLabel()
+    end
     self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", "OnCLEU")
-    self.sampleTimer = self:ScheduleRepeatingTimer("SampleTick", 1)
     if self.liveUpdate and self.frame and self.frame:IsShown() then
         self:SelectFight(self.current)
         self:RefreshUI()
     end
 end
 
-function CL:OnRegenEnabled()
+function CL:CloseFight(reason)
     local f = self.current
     if not f then return end
     self:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
@@ -285,13 +362,16 @@ function CL:OnRegenEnabled()
         self:CancelTimer(self.sampleTimer)
         self.sampleTimer = nil
     end
+    self:TrackVitals(f) -- ultima annotazione (se si chiude da morti)
     f.duration = GetTime() - f.startTime
     f.kill = f.kill and true or false
     f.name = f.boss or "Combat"
     f.player = UnitName and UnitName("player") or "?"
+    f.closeReason = reason or "encounter-end"
     -- Chiudi le aure aperte alla durata del fight (per gli uptime).
     f.auraOpen = nil
     self.current = nil
+    self.sessionLost = (self.sessionLost or 0) + (f.dropped or 0)
     -- Ring buffer dei pull salvati: in testa il piu' recente.
     if self.db and self.db.fights then
         table.insert(self.db.fights, 1, f)
@@ -301,10 +381,50 @@ function CL:OnRegenEnabled()
             table.remove(self.db.fights)
         end
     end
-    if self.selFight == f then
-        -- niente da fare: la vista resta sul pull appena chiuso
-    end
     self:RefreshUI()
+end
+
+function CL:OnRegenDisabled()
+    self:OpenFight(false)
+end
+
+-- Il regen NON chiude piu' da solo: chiede al watchdog di decidere.
+-- (Morire toglie dalla hate list: senza questo, la morte del raid
+-- leader chiudeva il pull a meta' con esito "Wipe".)
+function CL:OnRegenEnabled()
+    self:WatchTick("regen")
+end
+
+function CL:OnEnteringWorld()
+    self:WatchTick("zone")
+end
+
+-- Tick da 1 Hz: campioni quando c'e' un pull, WATCHDOG sempre.
+--   * in combat senza pull aperto  -> apre il pull (recupero)
+--   * pull aperto ma encounter finito -> chiude
+function CL:WatchTick(reason)
+    local f = self.current
+    if not (self.db and self.db.enabled) then
+        -- modulo spento: non si lascia un pull aperto per sempre
+        if f then self:CloseFight("disabled") end
+        return
+    end
+    if f then
+        self:TrackVitals(f)
+        self:SampleTick()
+        -- Chiusura: (a) nessuno piu' in combattimento, oppure (b) un boss
+        -- riconosciuto e' morto e NON ci sono altri boss vivi (kill pulito
+        -- anche se il raid incatena i trash, ma NON negli encounter
+        -- multi-boss tipo Consiglio dei Principi: li' gli altri sono vivi).
+        if not self:EncounterActive() or (f.kill and not self:BossAlive()) then
+            self:CloseFight(reason or "watchdog")
+        end
+    elseif self:EncounterActive() then
+        self:OpenFight(true)
+    end
+    if self.frame and self.frame:IsShown() then
+        self:RefreshInfo(self.selFight)
+    end
 end
 
 -- ------------------------------------------------------------------
@@ -2698,15 +2818,65 @@ function CL:RefreshUI()
 end
 
 -- Riga di stato in basso (eventi registrati, scarti, dimensione dei dati).
+-- Riga di stato: DEVE dire a colpo d'occhio se il log sta lavorando.
+-- Tre guasti diversi (morte, watchdog, finestra rotta) davano tutti lo
+-- stesso sintomo: "non c'e' niente nel log".
 function CL:RefreshInfo(f)
-    if not f then
-        self.infoText:SetText("")
+    if not self.infoText then return end
+    -- 1) un errore di costruzione della finestra si vede QUI, non solo in chat
+    if self._initError then
+        self.infoText:SetText(string.format("%s: %s", L["Window error"], self._initError))
+        self.infoText:SetTextColor(1, 0.35, 0.35)
         return
     end
-    local dropped = (f.dropped and f.dropped > 0) and (" (+" .. f.dropped .. " " .. L["dropped"] .. ")") or ""
-    self.infoText:SetText(string.format("%s | %d:%02d | %d %s%s",
-        f.name or "Combat", math.floor(self:FightDuration(f) / 60), math.floor(self:FightDuration(f) % 60),
-        f.count or #f.events, L["Events"], dropped))
+    local cur = self.current
+    if cur then
+        local t = GetTime() - cur.startTime
+        local txt = string.format("%s %d:%02d \194\183 %d %s",
+            L["Recording"], math.floor(t / 60), math.floor(t % 60), cur.count or #cur.events, L["Events"])
+        local lost = cur.dropped or 0
+        if lost > 0 then
+            txt = txt .. string.format(" \194\183 %d %s", lost, L["events lost"])
+        end
+        if cur.boss then txt = txt .. " \194\183 " .. cur.boss end
+        if cur.playerDied then
+            txt = txt .. string.format(" \194\183 %s %s",
+                L["you died at"], string.format("%d:%02d", math.floor(cur.playerDied / 60), math.floor(cur.playerDied % 60)))
+        end
+        if cur.recovered then
+            txt = txt .. " \194\183 " .. L["recovered by watchdog"]
+            self.infoText:SetTextColor(1, 0.85, 0.3)
+        elseif lost > 0 then
+            self.infoText:SetTextColor(1, 0.45, 0.45)
+        else
+            self.infoText:SetTextColor(0.55, 1, 0.55)
+        end
+        self.infoText:SetText(txt)
+        return
+    end
+    -- 2) fermo: quanti pull ci sono e, se c'e' stato un recupero, quando
+    local fights = (self.db and self.db.fights) or {}
+    local nBoss, nTrash = 0, 0
+    for _, x in ipairs(fights) do
+        if x.boss then nBoss = nBoss + 1 else nTrash = nTrash + 1 end
+    end
+    local txt
+    if #fights > 0 then
+        txt = string.format("%s \194\183 %d %s (%d %s, %d %s)", L["Idle"], #fights, L["pulls"], nBoss, L["boss"], nTrash, L["trash"])
+    else
+        txt = L["Idle"]
+    end
+    if self.sessionLost and self.sessionLost > 0 then
+        -- eventi persi = il dato piu' grave: viene mostrato per primo
+        txt = txt .. string.format(" \194\183 %d %s", self.sessionLost, L["events lost"])
+        self.infoText:SetTextColor(1, 0.45, 0.45)
+    elseif self.recoveries and self.recoveries > 0 then
+        txt = txt .. string.format(" \194\183 %d %s %s", self.recoveries, L["watchdog recoveries"], self.lastRecovery or "")
+        self.infoText:SetTextColor(1, 0.85, 0.3)
+    else
+        self.infoText:SetTextColor(0.75, 0.75, 0.75)
+    end
+    self.infoText:SetText(txt)
 end
 
 -- Tab DEATHS: lista dei morti + recap della morte selezionata.
