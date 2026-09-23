@@ -6948,14 +6948,15 @@ check(bool(rt.eval("UW_P14_VERSION == '1.11.80'")), "v1.11.80: la versione viene
 check(bool(rt.eval("UW_P14_COPIES.n == 2 and UW_P14_COPIES.a == 'RaidLeadSuite/1.11.52/false' and UW_P14_COPIES.b == 'RLSuite/1.11.80/true'")), "v1.11.80: con DUE copie installate le elenca entrambe con versione e stato (%s, %s)" % (rt.eval("UW_P14_COPIES.a"), rt.eval("UW_P14_COPIES.b")))
 check(bool(rt.eval("UW_P14_WARN.has == true and UW_P14_WARN.n >= 3 and UW_P14_WARN.mentionsOld == true and UW_P14_WARN.mentionsNew == true")), "v1.11.80: l'avviso nomina la copia vecchia (1.11.52) e dice quale e' CARICATA")
 check(bool(rt.eval("UW_P14_SINGLE_WARN == true and UW_P14_SINGLE_N == 1")), "v1.11.80: con UNA sola copia nessun avviso (una voce in elenco)")
+
 rt.execute("""
 -- =====================================================================
--- v1.11.81: la barra Tanks (MT/OT) e' lo SPECCHIO del player.
--- Report in gioco: due pressioni che non facevano NIENTE a (88,614) e
--- (72,616) - stessa zona, sopra le righe dei gruppi: il blocco Tanks, dove
--- il player compare anche da solo. Da li' il drag parte ora dalla RIGA
--- della griglia che mostra lo stesso membro (l'aspetto delle barre Tanks
--- non cambia: tag MT/OT, barra del target, niente consumabili, niente CD).
+-- v1.11.82: TOLLERANZA del gesto + barre Tanks inerti (come sempre).
+-- Il report parlava di barre giocatore NEI GRUPPI: le barre MT/OT restano
+-- fuori dal trascinamento e non sono ne' sorgenti ne' bersagli. Il gesto
+-- ora aggancia la barra anche a pochi pixel di distanza (righe da ~20 px:
+-- un click a filo finiva nel vuoto e sembrava che quel player non si
+-- potesse piu' spostare).
 -- =====================================================================
 local RF = RLSuite.raidFrame
 RLSuite:ResetDebugRaid()
@@ -6965,39 +6966,37 @@ RLSuite:SetContextPhase("infight")
 RF:Rebuild()
 
 local mt = RF.tankSlots[1]
-UW_P15_MT = {
+UW_P16_TANK = {
     filled = (mt.member ~= nil),
     name = (mt.member and mt.member.name) or "?",
     isTank = (mt.isTank == true),
-    tag = tostring(mt.tankTagText),
     targetBar = (mt.targetBar ~= nil),
     noConsumables = (mt.flaskIcon == nil and mt.foodIcon == nil),
     cdHidden = (mt.cdIcons[1] ~= nil and mt.cdIcons[1]:IsShown() == false),
     noPlane = (mt.dropPlane == nil),
+    noDragScript = (mt._dragButtons == nil or #mt._dragButtons == 0),
 }
-UW_P15_SOLO = (#RLSuite:DebugRoster() == 1)
 
-local SAVED_ISD, SAVED_GCP = IsShiftKeyDown, GetCursorPosition
-local SAVED_IMBD = IsMouseButtonDown
+local SAVED_ISD, SAVED_GCP, SAVED_IMBD = IsShiftKeyDown, GetCursorPosition, IsMouseButtonDown
 IsShiftKeyDown = function() return true end
 local DOWN = false
 IsMouseButtonDown = function(b) return DOWN and b == "LeftButton" end
 local CUR_X, CUR_Y = 0, 0
 GetCursorPosition = function() return CUR_X, CUR_Y end
 
--- Geometria: blocco Tanks SOPRA (y 700..722), righe gruppi sotto (y 600..).
 local function setRect(f, x0, x1, y0, y1)
     f.GetLeft = function() return x0 end
     f.GetRight = function() return x1 end
     f.GetBottom = function() return y0 end
     f.GetTop = function() return y1 end
 end
+-- Griglia: righe da 20 px (come in gioco), 5 px di buco fra una e l'altra.
 local function gridRect(i)
     local col = (i - 1) % 5
     local rw = math.floor((i - 1) / 5)
     local x0 = 100 + col * 130
-    local y1 = 600 - rw * 20
-    return x0, x0 + 120, y1 - 14, y1
+    local y1 = 600 - rw * 50
+    return x0, x0 + 120, y1 - 20, y1
 end
 for i, sl in ipairs(RF.slots) do
     local x0, x1, y0, y1 = gridRect(i)
@@ -7005,8 +7004,8 @@ for i, sl in ipairs(RF.slots) do
     if sl.dropPlane then setRect(sl.dropPlane, x0, x1, y0, y1) end
     if sl.secTarget then setRect(sl.secTarget, x0, x1, y0, y1) end
 end
-setRect(mt, 100, 220, 700, 722)
-setRect(RF.tankSlots[2], 100, 220, 670, 692)
+setRect(mt, 100, 220, 700, 720)
+setRect(RF.tankSlots[2], 100, 220, 670, 690)
 RF.frame.GetLeft = function() return 0 end
 RF.frame.GetRight = function() return 1000 end
 RF.frame.GetBottom = function() return 0 end
@@ -7022,85 +7021,85 @@ local function gridCenter(i)
     return (x0 + x1) / 2, (y0 + y1) / 2
 end
 
--- IL CLIENT non consegna NIENTE alle barre (nessun handler): conta solo il
--- poller, come nelle prove precedenti.
-local muted = {}
-for _, f in ipairs({ mt, RF.tankSlots[2] }) do
-    muted[#muted + 1] = { f = f, down = f._scripts.OnMouseDown, up = f._scripts.OnMouseUp }
-    f:SetScript("OnMouseDown", nil)
-    f:SetScript("OnMouseUp", nil)
-end
-
--- DRAG 1: si prende la BARRA MT (dove il player si vede anche da solo)
--- e si rilascia sullo slot 6.
-CUR_X, CUR_Y = 160, 711
+----------------------------------------------------------------------
+-- 1) LE BARRE TANKS NON SI TRASCINANO (ne' sorgente ne' destinazione)
+----------------------------------------------------------------------
+CUR_X, CUR_Y = 160, 710
 DOWN = true
 tick()
-UW_P15_D1_START = {
-    srcIsGridRow = (RF._rfDragSource == RF.slots[1]),
-    srcIsMt = (RF._rfDragSource == mt),
+UW_P16_TANK_DOWN = (RF._rfDragSource == nil and RF._dragPressSlot == nil)
+DOWN = false
+tick()
+
+----------------------------------------------------------------------
+-- 2) IL GESTO E' TOLLERANTE: 6 px sotto la barra del player -> aggancia
+----------------------------------------------------------------------
+local s1 = RF.slots[1]          -- il player, nel primo gruppo
+local x1a, _, y0a, y1a = gridRect(1)
+CUR_X, CUR_Y = (x1a + x1a + 120) / 2, y0a - 6      -- 6 px SOTTO la riga
+DOWN = true
+tick()
+UW_P16_SNAP = {
+    src = (RF._rfDragSource == s1),
+    press = (RF._dragPressSlot == s1),
 }
-CUR_X, CUR_Y = gridCenter(6)
+local x8, y8 = gridCenter(8)
+CUR_X, CUR_Y = x8, y8
 DOWN = false
 tick()
 local slots = RLSuite:DebugRaidSlots()
-UW_P15_D1 = {
-    at6 = (slots[6] and slots[6].name) or "?",
+UW_P16_D1 = {
+    at8 = (slots[8] and slots[8].name) or "?",
     at1_free = (slots[1] == nil),
-    mtStillShows = (RF.tankSlots[1].member and RF.tankSlots[1].member.name) or "?",
+    clean = (RF._rfDragSource == nil),
 }
 
--- DRAG 2: di NUOVO dalla barra MT, verso lo slot 3 (barra piena = scambio).
-CUR_X, CUR_Y = 160, 711
+----------------------------------------------------------------------
+-- 3) LONTANO (> tolleranza) NON SI AGGANCIA NULLA
+----------------------------------------------------------------------
+UW_P16_FAR = { press = false, started = false }
+local x11 = select(1, gridRect(11))
+CUR_X, CUR_Y = x11 + 60, select(4, gridRect(11)) - 40   -- 40 px sotto, nel vuoto
 DOWN = true
 tick()
-UW_P15_D2_START = (RF._rfDragSource == RF.slots[6])
-CUR_X, CUR_Y = gridCenter(3)
+UW_P16_FAR.press = (RF._dragPressSlot == nil)
+UW_P16_FAR.started = (RF._rfDragSource == nil)
 DOWN = false
 tick()
-slots = RLSuite:DebugRaidSlots()
-UW_P15_D2 = {
-    at3 = (slots[3] and slots[3].name) or "?",
-    at6_free = (slots[6] == nil),
-    mtStillShows = (RF.tankSlots[1].member and RF.tankSlots[1].member.name) or "?",
-}
 
--- La barra MT di un player che NON e' nella griglia non trascina niente.
-local SAVED_GRID = RLSuite:DebugRaidSlots()[3]
-RLSuite:DebugRaidSlots()[3] = nil
-RF:Rebuild()
-CUR_X, CUR_Y = 160, 711
-DOWN = true
-tick()
-DOWN = false
-tick()
-UW_P15_ORPHAN = (RF._rfDragSource == nil)
-RLSuite:DebugRaidSlots()[3] = SAVED_GRID
-RF:Rebuild()
-
--- Nessuna barra sotto il cursore: la traccia nomina la piu' vicina.
-CUR_X, CUR_Y = 160, 730          -- buco sopra al blocco Tanks
-DOWN = true
-tick()
-DOWN = false
-tick()
-local near, dist = RF:NearestMemberInfo(CUR_X, CUR_Y)
-UW_P15_NEAR = {
-    who = (near and RF:SlotLabel(near)) or "?",
-    dist = dist and math.floor(dist + 0.5) or -1,
-    over = RF:IsCursorOverFrame(),
-}
-
--- Risoluzione per NOME: nel raid VERO ogni rebuild ricrea le tabelle dei
--- membri, quindi la barra Tanks e la riga della griglia NON condividono la
--- stessa tabella: il legame deve reggere per nome.
-local proxy = { name = (RF.slots[3].member and RF.slots[3].member.name) or "?" }
-UW_P15_BYNAME = (RF:GridSlotForMember(proxy) == RF.slots[3])
-
-for _, m in ipairs(muted) do
-    m.f:SetScript("OnMouseDown", m.down)
-    m.f:SetScript("OnMouseUp", m.up)
+----------------------------------------------------------------------
+-- 4) RIGA RISULTATA NASCOSTA ma con un player: si prende lo stesso
+--    (barra e icone vivono su content: possono essere VISIBILI anche
+--    quando la riga non risulta mostrata -> se si vede, si prende)
+----------------------------------------------------------------------
+local s2 = nil
+for i, sl in ipairs(RF.slots) do
+    if sl.member then s2 = sl break end
 end
+UW_P16_HIDDEN = { row = (s2 and s2.slot) or -1, gen = false }
+if s2 then
+    s2:Hide()                       -- riga nascosta, barra ancora mostrata
+    UW_P16_HIDDEN.gen = (s2.bar ~= nil and s2.bar:IsShown() == true)
+    CUR_X, CUR_Y = gridCenter(s2.slot)
+    DOWN = true
+    tick()
+    UW_P16_HIDDEN.src = (RF._rfDragSource == s2)
+    DOWN = false
+    tick()
+    UW_P16_HIDDEN.clean = (RF._rfDragSource == nil)
+    s2:Show()
+end
+
+----------------------------------------------------------------------
+-- 5) /rls rfdump: stato geometrico leggibile
+----------------------------------------------------------------------
+local lines = RF:DiagSlotLines()
+UW_P16_DUMP = {
+    n = #lines,
+    hasWindow = (table.concat(lines, " | "):find("finestra", 1, true) ~= nil),
+    hasName = (table.concat(lines, " | "):find("Onyxia", 1, true) ~= nil),
+}
+
 mt.GetLeft, mt.GetRight, mt.GetBottom, mt.GetTop = nil, nil, nil, nil
 RF.tankSlots[2].GetLeft, RF.tankSlots[2].GetRight, RF.tankSlots[2].GetBottom, RF.tankSlots[2].GetTop = nil, nil, nil, nil
 RF.frame.GetLeft, RF.frame.GetRight, RF.frame.GetBottom, RF.frame.GetTop = nil, nil, nil, nil
@@ -7109,22 +7108,20 @@ for i, sl in ipairs(RF.slots) do
     if sl.dropPlane then sl.dropPlane.GetLeft, sl.dropPlane.GetRight, sl.dropPlane.GetBottom, sl.dropPlane.GetTop = nil, nil, nil, nil end
     if sl.secTarget then sl.secTarget.GetLeft, sl.secTarget.GetRight, sl.secTarget.GetBottom, sl.secTarget.GetTop = nil, nil, nil, nil end
 end
-IsShiftKeyDown, GetCursorPosition = SAVED_ISD, SAVED_GCP
-IsMouseButtonDown = SAVED_IMBD
+IsShiftKeyDown, GetCursorPosition, IsMouseButtonDown = SAVED_ISD, SAVED_GCP, SAVED_IMBD
 RLSuite:SetContextPhase("preraid")
 RLSuite:ResetDebugRaid()
 RF:Rebuild()
 """)
 
 
-check(bool(rt.eval("UW_P15_SOLO == true and UW_P15_MT.filled == true and UW_P15_MT.name ~= '?'")), "v1.11.81: con il solo player in raid la barra MT lo mostra (specchio) - %s" % rt.eval("UW_P15_MT.name"))
-check(bool(rt.eval("UW_P15_MT.isTank == true and UW_P15_MT.tag == 'MT' and UW_P15_MT.targetBar == true and UW_P15_MT.noConsumables == true and UW_P15_MT.cdHidden == true and UW_P15_MT.noPlane == true")), "v1.11.81: l'aspetto delle barre Tanks NON cambia (tag MT, barra del target, niente consumabili/CD/piano di drop)")
-check(bool(rt.eval("UW_P15_D1_START.srcIsGridRow == true and UW_P15_D1_START.srcIsMt == false")), "v1.11.81: prendendo la barra MT il drag parte dalla RIGA della griglia che mostra lo stesso player")
-check(bool(rt.eval("UW_P15_D1.at6 ~= '?' and UW_P15_D1.at1_free == true and UW_P15_D1.mtStillShows == UW_P15_MT.name")), "v1.11.81: il player si sposta DAVVERO (%s -> slot 6) e la barra MT continua a mostrarlo" % rt.eval("UW_P15_D1.at6"))
-check(bool(rt.eval("UW_P15_D2_START == true and UW_P15_D2.at3 == UW_P15_MT.name and UW_P15_D2.mtStillShows == UW_P15_MT.name")), "v1.11.81: si puo' spostare ANCORA lo stesso player, sempre prendendolo dalla barra MT (ora dallo slot 6 allo slot 3)")
-check(bool(rt.eval("UW_P15_ORPHAN == true")), "v1.11.81: la barra MT di un player che non e' nella griglia non trascina niente (nessun effetto a sorpresa)")
-check(bool(rt.eval("UW_P15_BYNAME == true")), "v1.11.81: nel raid vero il legame barra Tanks -> riga regge per NOME (le tabelle dei membri vengono ricostruite)")
-check(bool(rt.eval("UW_P15_NEAR.who ~= '?' and UW_P15_NEAR.dist > 0 and UW_P15_NEAR.over == true")), "v1.11.81: premendo nel vuoto la traccia nomina la barra piu' vicina e la distanza (barra %s a %d px)" % (rt.eval("UW_P15_NEAR.who"), rt.eval("UW_P15_NEAR.dist")))
+check(bool(rt.eval("UW_P16_TANK.isTank == true and UW_P16_TANK.targetBar == true and UW_P16_TANK.noConsumables == true and UW_P16_TANK.cdHidden == true and UW_P16_TANK.noPlane == true and UW_P16_TANK.noDragScript == true")), "v1.11.82: le barre Tanks restano come sempre (tag, barra del target, niente consumabili/CD/piani/registrazione drag)")
+check(bool(rt.eval("UW_P16_TANK_DOWN == true")), "v1.11.82: premere una barra Tanks NON avvia nessun trascinamento (comportamento storico)")
+check(bool(rt.eval("UW_P16_SNAP.src == true and UW_P16_SNAP.press == true")), "v1.11.82: premendo 6 px SOTTO la barra del player il gesto aggancia comunque quella barra (tolleranza 10 px)")
+check(bool(rt.eval("UW_P16_D1.at8 ~= '?' and UW_P16_D1.at1_free == true and UW_P16_D1.clean == true")), "v1.11.82: e lo spostamento va a buon fine (%s -> slot 8)" % rt.eval("UW_P16_D1.at8"))
+check(bool(rt.eval("UW_P16_FAR.press == true and UW_P16_FAR.started == true")), "v1.11.82: premendo 40 px fuori dalle barre non si aggancia niente (nessun effetto a distanza)")
+check(bool(rt.eval("UW_P16_HIDDEN.gen == true and UW_P16_HIDDEN.src == true and UW_P16_HIDDEN.clean == true")), "v1.11.82: riga con un player ma NON mostrata (barra visibile su content) - il gesto la prende lo stesso")
+check(bool(rt.eval("UW_P16_DUMP.n >= 3 and UW_P16_DUMP.hasWindow == true and UW_P16_DUMP.hasName == true")), "v1.11.82: /rls rfdump elenca barre, stato mostrata/nascosta e rettangoli (nome player incluso)")
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

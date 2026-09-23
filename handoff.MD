@@ -7,9 +7,38 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.81**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.82**.
 
-## 1.11.81 — La barra Tanks (MT/OT) e' lo SPECCHIO del player: prendendola si trascina il player
+## 1.11.82 — Barre Tanks inerti (come sempre) + gesto con tolleranza + `/rls rfdump`
+
+Direttiva dell'utente: *"le barre MT/OT non sono oggetto del problema: mi sposto
+dalla prima barra di G1 a un'altra in un altro gruppo"*. Quindi:
+
+* **1.11.81 ANNULLATA**: le barre Tanks tornano a NON essere ne' sorgenti ne'
+  bersagli di trascinamento (comportamento identico a prima della 1.11.77).
+  Prenendo una barra Tanks la chat dice il perche' (una riga sola) e basta.
+  Rimosso `GridSlotForMember`; `SlotAtCursor` cerca SOLO fra le righe dei
+  gruppi (niente effetto collaterale sui drop: con `dst.slot = nil` un rilascio
+  su una barra Tanks poteva pure dare errore Lua).
+* **Tolleranza del gesto**: `RF:MemberRowAtCursor(tol)` con `RF_DRAG_SNAP = 10
+  px`. Le righe sono alte ~20 px: un click "a filo" (5-6 px sopra/sotto/sul
+  bordo) finiva nel vuoto e il gesto non faceva nulla -> da fuori sembrava che
+  quel player non si potesse piu' spostare. Ora aggancia e lo dice in chat
+  (`aggancio la barra 8 (Nome) a 6 px (a filo)`). Oltre la tolleranza: nessun
+  effetto (niente agganci a distanza).
+* **Riga non mostrata ma con un player**: dalla 1.11.76 barra/icone vivono su
+  `content` (fuori dalla riga), quindi una barra VISIBILE puo' avere la riga
+  non mostrata. La sorgente del gesto ora non guarda piu' `IsShown()`: se il
+  player si vede, si prende (traccia: `la riga N risulta NON mostrata ma ha
+  Nome: la prendo lo stesso`).
+* **`/rls rfdump`**: per ogni barra con un player stampa nome, se la RIGA e' "
+  mostrata/nascosta, se la BARRA e' mostrata e i rettangoli dei due, piu' il
+  rettangolo della finestra: serve a capire in un colpo se cio' che si vede
+  corrisponde a cio' che il mouse puo' prendere.
+
+Test: **1084 check** (7 nuovi al posto dei 7 della 1.11.81).
+
+## 1.11.81 — (ANNULLATA dalla 1.11.82) La barra Tanks era lo SPECCHIO del player: prendendola si trascina il player
 
 Il log in game ha dato la risposta. Con il solo player in raid, due pressioni
 che non facevano **niente**:

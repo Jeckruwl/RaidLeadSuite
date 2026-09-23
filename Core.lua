@@ -63,7 +63,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.81"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.82"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -1128,6 +1128,7 @@ function RLSuite:PrintHelp()
     p(L["  /rls              Tab bar"])
     p(L["  /rls help         This list"])
     p(L["  /rls diag         Install diagnostic (folder, version, duplicate copies)"])
+    p(L["  /rls rfdump       HUD geometry (which bars the mouse can really grab)"])
     p(L["  /rls group        Groupmaking tab"])
     p(L["  /rls inviteengine InviteEngine panel (whisper + auto-invite)"])
     p(L["  /rls whisplist    InviteEngine panel (alias)"])
@@ -1191,6 +1192,18 @@ function RLSuite:ChatCommand(input)
         end
     elseif msg == "diag" or msg == "version" then
         self:PrintAddonDiag()
+    elseif msg == "rfdump" then
+        -- Geometria dell'HUD: cosa l'addon puo' prendere col mouse e cosa si
+        -- vede a schermo. E' il comando da usare quando un trascinamento
+        -- "non fa niente": dice se la barra che vedi e' anche cliccabile.
+        local rf = self.raidFrame
+        if rf and rf.DiagSlotLines then
+            local p2 = function(t) self.utils:Print(t) end
+            p2("RLSuite - stato dell'HUD (barre con un player)")
+            for _, line in ipairs(rf.DiagSlotLines()) do p2(line) end
+        else
+            self:Print(L["Raid frame not initialized yet."])
+        end
     elseif msg == "config" then
         if self.config then self.config:Toggle() end
     elseif msg == "" then

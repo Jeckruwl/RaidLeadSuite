@@ -72,6 +72,11 @@ end
 local RF_GROUPS = 6
 local RF_PER_GROUP = 5
 local RF_MAX_CDS = 4
+-- Tolleranza del gesto di trascinamento (px): prendere una barra a 5-6 px di
+-- distanza deve FUNZIONARE. Con le righe da ~20 px un click "a filo" finiva
+-- nel vuoto e il gesto non faceva niente: da fuori sembrava che quel player
+-- non si potesse piu' spostare.
+local RF_DRAG_SNAP = 10
 local RF_HEADER_H = 14
 local RF_GROUP_GAP = 8
 local RF_TANK_COUNT = 2     -- Tanks group sopra G1: barra MT + barra OT
@@ -1590,21 +1595,8 @@ end
 -- doppio spostamento).
 function RF:_StartDragFromSlot(slot)
     if not slot or not slot.member then return end
-    -- Barre Tanks (MT/OT): il player che mostrano si trascina dalla RIGA
-    -- della griglia che mostra lo stesso membro. L'aspetto delle barre Tanks
-    -- non cambia di una virgola: non diventano drop target, non prendono
-    -- icone consumabili ne' CD, restano con tag MT/OT e barra del target.
-    if slot.isTank then
-        local grid = self:GridSlotForMember(slot.member)
-        if not grid then
-            rfDbg("drag: la barra %s mostra %s, che non e' nella griglia dei gruppi",
-                self:SlotLabel(slot), tostring(slot.name))
-            return
-        end
-        rfDbg("drag: dalla barra %s prendo %s (riga %s)",
-            self:SlotLabel(slot), tostring(slot.name), self:SlotLabel(grid))
-        slot = grid
-    end
+    -- Le barre Tanks (MT/OT) NON si trascinano: non sono mai sorgente.
+    if slot.isTank then return end
     if self._rfDragSource == slot then return end
     self._rfDragSource = slot
     slot._manualDrag = true
@@ -1664,32 +1656,51 @@ function RF:_InitDragPoller()
             -- Diagnostica (debug mode): la pressione su una barra dice SUBITO
             -- cosa vede l'addon - barra piena, barra vuota, o nessuna barra.
             -- Serve a non restare mai piu' con un gesto che "non fa niente".
+            local shifted = (IsShiftKeyDown and IsShiftKeyDown()) and true or false
             local hull = RF:SlotAtCursor()
-            if hull then
-                if hull.member then
-                    RF._dragPressSlot = hull
-                    if IsShiftKeyDown and IsShiftKeyDown() then
-                        rfDbg("shift+left: barra %s (%s)", RF:SlotLabel(hull), tostring(hull.name))
-                    end
-                else
-                    RF._dragPressSlot = nil
-                    if IsShiftKeyDown and IsShiftKeyDown() then
-                        rfDbg("shift+left: barra %s VUOTA (nessun player sulla riga)", RF:SlotLabel(hull))
-                    end
+            RF._dragPressSlot = nil
+            if hull and hull.member then
+                RF._dragPressSlot = hull
+                if shifted then
+                    rfDbg("shift+left: barra %s (%s)", RF:SlotLabel(hull), tostring(hull.name))
                 end
             else
-                RF._dragPressSlot = nil
-                if IsShiftKeyDown and IsShiftKeyDown() and RF:IsCursorOverFrame() then
-                    local cx, cy = GetCursorPosition()
-                    local near, dist = RF:NearestMemberInfo(cx or 0, cy or 0)
-                    if near then
-                        rfDbg("shift+left: NESSUNA barra sotto %s - piu' vicina: barra %s (%s) a %d px",
-                            RF:CursorText(), RF:SlotLabel(near), tostring(near.name), math.floor(dist + 0.5))
+                -- Niente riga sotto il cursore: prima si prova la TOLLERANZA
+                -- (il gesto a filo della barra deve funzionare), poi si dice
+                -- perche' non si e' agganciato niente.
+                local nearRow, nearD = RF:MemberRowAtCursor(RF_DRAG_SNAP)
+                if nearRow then
+                    RF._dragPressSlot = nearRow
+                    if shifted then
+                        rfDbg("shift+left: aggancio la barra %s (%s) a %d px (a filo)",
+                            RF:SlotLabel(nearRow), tostring(nearRow.name), math.floor(nearD + 0.5))
+                    end
+                elseif shifted then
+                    if hull then
+                        rfDbg("shift+left: barra %s VUOTA (nessun player su quella riga)", RF:SlotLabel(hull))
                     else
-                        rfDbg("shift+left: NESSUNA barra sotto %s - nessuna barra con un player nell'HUD",
-                            RF:CursorText())
+                        local tank = RF:TankBarAtCursor()
+                        if tank then
+                            rfDbg("shift+left: barra %s (%s) - le barre Tanks non si spostano; il player si prende dalla sua barra nei gruppi",
+                                RF:SlotLabel(tank), tostring(tank.name))
+                        elseif RF:IsCursorOverFrame() then
+                            local cx, cy = GetCursorPosition()
+                            local near, dist = RF:NearestMemberInfo(cx or 0, cy or 0)
+                            if near then
+                                rfDbg("shift+left: NESSUNA barra sotto %s - piu' vicina: barra %s (%s) a %d px (tolleranza %d)",
+                                    RF:CursorText(), RF:SlotLabel(near), tostring(near.name),
+                                    math.floor(dist + 0.5), RF_DRAG_SNAP)
+                            else
+                                rfDbg("shift+left: NESSUNA barra sotto %s - nessuna barra con un player nell'HUD",
+                                    RF:CursorText())
+                            end
+                        end
                     end
                 end
+            end
+            if RF._dragPressSlot and shifted and not RF._dragPressSlot:IsShown() then
+                rfDbg("shift+left: la riga %s risulta NON mostrata ma ha %s: la prendo lo stesso",
+                    RF:SlotLabel(RF._dragPressSlot), tostring(RF._dragPressSlot.name))
             end
         elseif (not down) and RF._dragBtnDown then
             RF._dragBtnDown = false
@@ -1703,6 +1714,45 @@ function RF:_InitDragPoller()
         if RF._rfDragSource then RF:UpdateDropGlow() end
     end)
     self._dragPoller = p
+end
+
+-- Stato geometrico dell'HUD (diagnostica `/rls rfdump`): per ogni barra con
+-- un player dice se la riga risulta mostrata, se la barra e' mostrata e i
+-- rettangoli dei due. Serve a capire in un colpo se cio' che si VEDE
+-- corrisponde a cio' che l'addon puo' prendere col mouse.
+function RF:DiagSlotLines()
+    local lines = {}
+    local function rect(f)
+        if not f then return "?" end
+        local l, r = f:GetLeft(), f:GetRight()
+        local b, t = f:GetBottom(), f:GetTop()
+        if type(l) ~= "number" or type(r) ~= "number"
+            or type(b) ~= "number" or type(t) ~= "number" then
+            return "senza coordinate"
+        end
+        return string.format("[%d,%d] x [%d,%d]", math.floor(l + 0.5), math.floor(r + 0.5),
+            math.floor(b + 0.5), math.floor(t + 0.5))
+    end
+    local function add(list, label)
+        for _, slot in ipairs(list or {}) do
+            if slot and slot.member then
+                lines[#lines + 1] = string.format("  %s %s  %s | riga %s%s | barra %s %s",
+                    label, RF:SlotLabel(slot), tostring(slot.name),
+                    slot:IsShown() and "mostrata" or "NASCOSTA",
+                    (slot.isTank and " (tank)" or ""),
+                    (slot.bar and slot.bar:IsShown()) and "mostrata" or "nascosta",
+                    slot.bar and rect(slot.bar) or "?")
+            end
+        end
+    end
+    add(self.slots, "riga")
+    add(self.tankSlots, "tank")
+    if self.frame then
+        lines[#lines + 1] = "  finestra: " .. rect(self.frame)
+            .. string.format("  scala=%s", tostring(self.frame.GetScale and self.frame:GetScale() or 1))
+    end
+    if #lines == 0 then lines[#lines + 1] = "  nessuna barra con un player" end
+    return lines
 end
 
 -- Il cursore e' sopra la finestra dell'HUD? (solo per la diagnostica: se non
@@ -1771,12 +1821,48 @@ function RF:SlotAtCursor(requireMember)
     if not GetCursorPosition then return nil end
     local x, y = GetCursorPosition()
     if not x or not y then return nil end
-    local slot = self:_SlotUnderCursor(self.slots, x, y, requireMember)
-    if slot then return slot end
-    -- Barre Tanks (MT/OT): anche loro rispondono (vedi GridSlotForMember):
-    -- con un roster corto la barra MT E' la barra piu' visibile del frame e
-    -- ignorarla faceva sembrare che "quel player non si muova piu'".
-    return self:_SlotUnderCursor(self.tankSlots, x, y, requireMember)
+    -- SOLO righe dei gruppi: le barre Tanks (MT/OT) non sono ne' sorgenti ne'
+    -- bersagli di trascinamento (comportamento storico, ripristinato).
+    return self:_SlotUnderCursor(self.slots, x, y, requireMember)
+end
+
+-- Distanza fra il cursore e il rettangolo di una riga (0 = dentro).
+-- nil se la riga non ha coordinate utilizzabili.
+function RF:_RectDistance(slot, x, y)
+    if not slot then return nil end
+    local scale = (slot.GetEffectiveScale and slot:GetEffectiveScale()) or 1
+    if not (scale and scale > 0) then scale = 1 end
+    local cx, cy = x / scale, y / scale
+    local l, r = slot:GetLeft(), slot:GetRight()
+    local b, t = slot:GetBottom(), slot:GetTop()
+    if type(l) ~= "number" or type(r) ~= "number"
+        or type(b) ~= "number" or type(t) ~= "number" then
+        return nil
+    end
+    local dx = math.max(l - cx, 0, cx - r)
+    local dy = math.max(b - cy, 0, cy - t)
+    return math.sqrt(dx * dx + dy * dy)
+end
+
+-- Riga DI GRUPPO con un player sotto il cursore, con tolleranza: serve al
+-- gesto vero. Non guarda IsShown() di proposito - dalla 1.11.76 barra e icone
+-- vivono su content (fuori dalla riga), quindi puo' esserci una barra VISIBILE
+-- con la riga che risulta non mostrata: se il player si vede, si deve
+-- prendere. Ritorna riga e distanza (0 = cursore dentro la riga).
+function RF:MemberRowAtCursor(tol)
+    if not GetCursorPosition then return nil end
+    local x, y = GetCursorPosition()
+    if not x or not y then return nil end
+    local best, bestD = nil, nil
+    for _, slot in ipairs(self.slots or {}) do
+        if slot and slot.member then
+            local d = self:_RectDistance(slot, x, y)
+            if d and (not bestD or d < bestD) then best, bestD = slot, d end
+        end
+    end
+    if not best then return nil end
+    if tol and bestD > tol then return nil end
+    return best, bestD
 end
 
 -- Slot di una lista (righe gruppi o barre Tanks) sotto il cursore.
@@ -1818,27 +1904,14 @@ end
 -- diagnostica ("nessuna barra sotto: la piu' vicina e' a N px"), cosi' un
 -- gesto a vuoto dice SUBITO se il cursore e' in un buco o fuori dalle barre.
 function RF:NearestMemberInfo(x, y)
-    local best, bestD, bestDx, bestDy = nil, nil, nil, nil
-    local lists = { self.slots, self.tankSlots }
-    for _, list in ipairs(lists) do
-        for _, slot in ipairs(list or {}) do
-            if slot and slot.member and slot:IsShown() then
-                local l, r = slot:GetLeft(), slot:GetRight()
-                local b, t = slot:GetBottom(), slot:GetTop()
-                if type(l) == "number" and type(r) == "number"
-                    and type(b) == "number" and type(t) == "number" then
-                    local cx = math.max(l, math.min(x, r))
-                    local cy = math.max(b, math.min(y, t))
-                    local dx, dy = x - cx, y - cy
-                    local d = math.sqrt(dx * dx + dy * dy)
-                    if not bestD or d < bestD then
-                        best, bestD, bestDx, bestDy = slot, d, dx, dy
-                    end
-                end
-            end
+    local best, bestD = nil, nil
+    for _, slot in ipairs(self.slots or {}) do
+        if slot and slot.member then
+            local d = self:_RectDistance(slot, x, y)
+            if d and (not bestD or d < bestD) then best, bestD = slot, d end
         end
     end
-    return best, bestD, bestDx, bestDy
+    return best, bestD
 end
 
 -- Etichetta di una barra per le tracce: "12" (riga) oppure "MT"/"OT".
@@ -1848,18 +1921,13 @@ function RF:SlotLabel(slot)
     return tostring(slot.tankTagText or "tank")
 end
 
--- La RIGA della griglia che mostra lo stesso membro di una barra Tanks:
--- MT/OT sono specchi del player, quindi un drag preso da li' sposta il
--- player DAVVERO nella griglia (la destinazione resta uno slot dei gruppi).
-function RF:GridSlotForMember(member)
-    if not member then return nil end
-    for _, slot in ipairs(self.slots or {}) do
-        if slot.member == member then return slot end
-        if slot.member and slot.name and member.name and slot.name == member.name then
-            return slot
-        end
-    end
-    return nil
+-- La barra Tanks sotto il cursore (solo per la DIAGNOSTICA: le barre Tanks
+-- non si trascinano, ma se l'utente le prende deve leggere il perche').
+function RF:TankBarAtCursor()
+    if not GetCursorPosition then return nil end
+    local x, y = GetCursorPosition()
+    if not x or not y then return nil end
+    return self:_SlotUnderCursor(self.tankSlots, x, y, true)
 end
 
 -- Reorganizes the groups by dragging a player between slots. src/dst are
