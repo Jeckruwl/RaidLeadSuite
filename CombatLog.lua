@@ -1732,7 +1732,14 @@ function CL:GridRender(g, cols, rows, opt)
         pool = {}
         g.pool[key] = pool
     end
-    for _, r in ipairs(pool) do r:Hide() end
+    -- IMPORTANTE: nascondo le righe di TUTTI i pool, non solo di quello del
+    -- numero di colonne corrente. Il pool e' diviso per numero di colonne,
+    -- quindi passando da una tab con 6 colonne (Damage) a una con 5 (Targets)
+    -- le righe precedenti RESTAVANO A SCHERMO e la nuova tabella si disegnava
+    -- sopra: l'effetto era "tutte le tab mostrano la stessa tabella".
+    for _, p in pairs(g.pool) do
+        for _, r in ipairs(p) do r:Hide() end
+    end
     RLSuite.utils:ClearScrollClip(g.content)
     local y = 0
     for ri, data in ipairs(rows) do

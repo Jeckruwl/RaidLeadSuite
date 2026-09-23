@@ -7,7 +7,38 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.66**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.67**.
+
+## 1.11.67 — Log: FINE delle tabelle impilate fra le tab
+
+Sintomo segnalato: *"le tab mostrano ancora testo sovrapposto, come se
+condividessero la stessa unica tab Damage/Powers/Targets/Consumables/Auras"*.
+
+Causa VERA (diversa da quella della 1.11.66): il pool delle righe della
+griglia e' diviso PER NUMERO DI COLONNE (`g.pool[#cols]`) e nascondeva SOLO il
+pool della tab corrente:
+
+```lua
+for _, r in ipairs(pool) do r:Hide() end   -- solo il pool corrente!
+```
+
+Passando da `Damage` (6 colonne) a `Targets` (5) o `Auras` (3) le righe della
+tab precedente restavano VISIBILI e la nuova tabella si disegnava sopra:
+l'effetto era "tutte le tab sono la stessa tabella". Ora si nascondono le righe
+di TUTTI i pool:
+
+```lua
+for _, p in pairs(g.pool) do for _, r in ipairs(p) do r:Hide() end end
+```
+
+Test di regressione (4): per ognuno dei tab Damage/Targets/Consumables/Auras/
+Powers le righe visibili DEVONO essere pari a quelle della tabella corrente
+(`damage:6col:3row:3vis | targets:5col:3row:3vis | consumables:6col:2row:2vis |
+auras:3col:2row:2vis | powers:3col:3row:3vis`), le tabelle hanno davvero un
+numero di colonne diverso (era il caso che le impilava), tornando su Damage la
+tabella e' identica, e la griglia dei morti mostra solo le sue righe.
+
+Test: **978 check** totali.
 
 ## 1.11.66 — Log: sovrapposizioni vere (misura testo 3.3.5) e celle vuote
 
@@ -191,7 +222,7 @@ non cambia MAI dimensione: la y di una barra dipende solo dal suo gruppo.
 - accendere/spegnere il tasto "Raid Buffs" non muove nulla (era gia' cosi'):
   ora vale anche per il passaggio roster vuoto <-> roster pieno.
 
-Test: **974 check** totali (4 nuovi nella 1.11.66): altezza costante con raid
+Test: **978 check** totali (4 nuovi nella 1.11.67): altezza costante con raid
 vuoto/1 player/pieno, G6 in fondo anche a raid vuoto, y uguali fra roster pieno
 e quasi vuoto, banda fra gruppi costante, icone del buff check visibili con G1
 vuoto e alla stessa y, celle della matrice allineate alla riga del gruppo,

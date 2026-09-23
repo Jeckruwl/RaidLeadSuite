@@ -5526,6 +5526,61 @@ check(bool(rt.eval("UW_CELL.headers_wrap == true")), "v1.11.65: anche le intesta
 check(bool(rt.eval("UW_LIVE.after > UW_LIVE.before and UW_LIVE.content > 1000")), "v1.11.65: la larghezza delle colonne usa quella VERA della finestra (%r -> %r px a finestra larga)" % (rt.eval("UW_LIVE.before"), rt.eval("UW_LIVE.after")))
 check(bool(rt.eval("UW_NOFIGHT.ok == true")), "v1.11.65: senza pull registrati ogni tab si apre senza errori (crash su colonna senza larghezza: %r)" % rt.eval("UW_NOFIGHT.fail"))
 
+rt.execute("""
+-- =====================================================================
+-- v1.11.67: le tab NON devono condividere/impilare le tabelle.
+-- Il pool delle righe e' diviso per NUMERO di colonne: passando da una tab
+-- con 6 colonne (Damage) a una con 5 (Targets) le righe del pool precedente
+-- restavano visibili -> tutte le tab sembravano la stessa tabella.
+-- =====================================================================
+function UW_VisibleRows(g)
+    local n = 0
+    for _, p in pairs(g.pool or {}) do
+        for _, r in ipairs(p) do if r:IsShown() then n = n + 1 end end
+    end
+    return n
+end
+function UW_Pools(g)
+    local n = 0
+    for _, _ in pairs(g.pool or {}) do n = n + 1 end
+    return n
+end
+local cl = RLSuite.combatLog
+cl.selFight = UW_F
+
+UW_STACK = { tabs = {} }
+local seq = { "damage", "targets", "consumables", "auras", "powers", "damage" }
+for _, tab in ipairs(seq) do
+    cl:SelectTab(tab)
+    local cols = #(cl.grid.cols or {})
+    local vis = UW_VisibleRows(cl.grid)
+    UW_STACK.tabs[#UW_STACK.tabs + 1] = string.format("%s:%dcol:%drow:%dvis", tab, cols,
+        cl.grid.rowCount or -1, vis)
+end
+-- la griglia dei morti: si ri-renderizza con un altro numero di colonne
+cl:SelectTab("deaths")
+UW_STACK.death1 = UW_VisibleRows(cl.deathGrid)
+cl:SelectTab("targets")
+cl:SelectTab("deaths")            -- ritorno sulla tab dei morti
+UW_STACK.death2 = UW_VisibleRows(cl.deathGrid)
+UW_STACK.death_rows = cl.deathGrid.rowCount or -1
+UW_STACK.pools = UW_Pools(cl.grid)
+cl:SelectTab("damage")
+UW_STACK.vis_damage = UW_VisibleRows(cl.grid)
+UW_STACK.rows_damage = cl.grid.rowCount
+cl.selFight = nil
+cl:SelectTab("damage")
+""")
+
+
+UW_STACK_SEQ = str(rt.eval("table.concat(UW_STACK.tabs, ' | ')"))
+check(bool(rt.eval("(function() for _, t in ipairs(UW_STACK.tabs) do local r, v = t:match('%d+col:(%d+)row:(%d+)vis'); if tonumber(r) ~= tonumber(v) then return false end end return true end)()")),
+    "v1.11.67: in OGNI tab le righe visibili sono SOLO quelle della tabella corrente (niente tabelle impilate) -> %s" % UW_STACK_SEQ)
+check(bool(rt.eval("UW_STACK.tabs[1]:find('damage:6col') ~= nil and UW_STACK.tabs[2]:find('targets:5col') ~= nil")),
+    "v1.11.67: le tabelle hanno davvero un numero di colonne diverso (e' il caso che le impilava)")
+check(bool(rt.eval("UW_STACK.tabs[6] == UW_STACK.tabs[1]")), "v1.11.67: tornando su Damage la tabella e' identica (stesse colonne, stesse righe visibili)")
+check(bool(rt.eval("UW_STACK.death1 == UW_STACK.death2 and UW_STACK.death2 == UW_STACK.death_rows")), "v1.11.67: tornando sulla tab Deaths la tabella mostra solo le sue righe (%r visibili / %r righe)" % (rt.eval("UW_STACK.death2"), rt.eval("UW_STACK.death_rows")))
+
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
