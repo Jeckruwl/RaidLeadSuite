@@ -31,7 +31,7 @@ Due richieste dell'utente (la 1.11.57 le aveva interpretate male):
 Il pannello resta largo `2*PAD + max(matrice, barretta)` = 213 px con 2 colonne,
 cosi' nessun tasto sporge dal bordo (i tasti restano a 4 px dal bordo sinistro).
 
-Test: **886 check** (6 aggiornati nella 1.11.59: barretta = somma elementi con
+Test: **883 check** totali sul branch (6 aggiornati nella 1.11.59: barretta = somma elementi con
 ancoraggio singolo, larghezza costante 1 vs 8 colonne, ancoraggio TOPLEFT con
 x = +larghezza Raid Frame, spostamento a destra quando il Raid Frame si allarga).
 
@@ -245,7 +245,7 @@ sessione, poi l'ultimo con progressione registrata.
 NON registra** (i pull finti del debug non devono sporcare la progressione vera). `MacroBar:OnBossProgressChanged` riallinea la barra quando il counter avanza (guardia di rientranza perche'
 passa da `CurrentBossInfo` -> `InferLinearKills` -> di nuovo `OnBossProgressChanged`).
 
-Test: **886 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
+Test: **883 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
 counter su Gunship e Faction Champions, precedenza del target, inferenza lineare su ICC e ToC,
 kill dal combat log con e senza debug, riallineo automatico della barra al variare del counter,
 guardia di rientranza sempre rilasciata e robustezza a un errore di riconoscimento).
