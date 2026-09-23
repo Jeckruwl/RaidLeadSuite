@@ -4041,9 +4041,24 @@ rt.execute("RLSuite.context = 'preraid'; RLSuite.macrobar:UpdatePhase()")
 rt.execute("TB = RLSuite.mainWindow.titleBar")
 check(bool(rt.eval("TB ~= nil")), "main title bar exists")
 check(rt.eval("TB._h") == 20, "title bar is LOW: height 20px (was 30)")
-rt.execute("TB_P1 = TB._points[1] or {}; TB_P2 = TB._points[2] or {}")
-check(bool(rt.eval("TB_P1[1] == 'BOTTOMLEFT' and TB_P1[3] == 'TOPLEFT' and TB_P2[1] == 'BOTTOMRIGHT' and TB_P2[3] == 'TOPRIGHT'")), "title bar spans the full main-bar width (anchored to both top corners)")
-check(rt.eval("TB_P1[5]") == 2 and rt.eval("TB_P2[5]") == 2, "title bar is DETACHED (2px gap above the main bar)")
+rt.execute("""
+    TB_P1 = TB._points[1] or {}
+    TB_POINTS = TB:GetNumPoints()
+    TB_W = TB:GetWidth()
+    TB_TITLE_W = RLSuite.mainWindow._titleRowW
+    PB = RLSuite.mainWindow.phaseBtn
+    PT = RLSuite.mainWindow.phaseText
+    RC = TB.raidControlBtn
+    CLB = TB.closeBtn
+    SUM_W = 4 + PB:GetWidth() + 4 + RLSuite.mainWindow._phaseLabelW + 4
+        + RC:GetWidth() + 4 + CLB:GetWidth() + 4
+""")
+check(bool(rt.eval("TB_P1[1] == 'BOTTOMLEFT' and TB_P1[3] == 'TOPLEFT'")),
+      "title bar anchored bottom-left to the panel (left aligned, no longer stretched)")
+check(rt.eval("TB_P1[5]") == 2, "title bar is DETACHED (2px gap above the main bar)")
+check(bool(rt.eval("TB_W == TB_TITLE_W and TB_W == SUM_W")),
+      "TITLE BAR WIDTH = SUM OF ITS ELEMENTS (phase icon+name, Raid Control, close) = %d px" % rt.eval("TB_W"))
+check(bool(rt.eval("TB_POINTS == 1")), "single anchor: the width is fixed, not derived from the panel")
 check(bool(rt.eval("TB.title ~= nil and tostring(TB.title:GetText()):find('RLS') == nil")),
       "no more 'RLS' text in the title bar")
 check(bool(rt.eval("TB.raidControlBtn ~= nil and TB.arrowBtn == TB.raidControlBtn")), "'Raid Control' button replaced the arrow (arrowBtn kept as alias)")
@@ -4158,13 +4173,13 @@ rt.execute("""
     local cols = #(RLSuite.raidFrame._buffHdrBtns or {})
     BUFFS_W = cols * RF_M.cellW
 """)
-check(bool(rt.eval("ANCH_P == 'TOPRIGHT' and ANCH_PARENT_NAME == 'UIParent' and ANCH_RELP == 'TOPRIGHT'")),
-      "main bar anchored to the TOP-RIGHT corner of the screen")
+check(bool(rt.eval("ANCH_P == 'TOPLEFT' and ANCH_PARENT_NAME == 'UIParent' and ANCH_RELP == 'TOPLEFT'")),
+      "main bar anchored to the TOP-LEFT corner: the distance is from the LEFT side")
 check(bool(rt.eval("ANCH_Y == -(TBH + 2)")),
       "the TITLE BAR (not the panel) touches the top edge: y = -(20+2) = %d" % rt.eval("ANCH_Y"))
 check(bool(rt.eval("RFW == RF_LIVE_W and RF_LIVE_W == RF_M.W * RF_SCALE")),
       "right offset = Raid Frame width (%d px at scale %s)" % (rt.eval("RF_M.W * RF_SCALE"), rt.eval("RF_SCALE")))
-check(bool(rt.eval("ANCH_X == -RFW")), "the offset IS the Raid Frame width (no other constant)")
+check(bool(rt.eval("ANCH_X == RFW")), "the offset IS the Raid Frame width, on the LEFT side (no other constant)")
 check(bool(rt.eval("BUFFS_W > 0 and RFW < RF_M.rowWidth + BUFFS_W")),
       "the buff columns are NOT part of that width (matrix %d px drawn beyond the frame)" % rt.eval("BUFFS_W"))
 check(bool(rt.eval("RF_M.W == RF_M.rowWidth")), "Raid Frame width = food/flask + player bar + CDs (no buffs)")
@@ -4184,9 +4199,9 @@ rt.execute("""
     local _, _, _, xBack = MW.frame:GetPoint(1)
     ANCH_X_BACK = xBack
 """)
-check(bool(rt.eval("RFW_NEW == RFW + 40 and ANCH_X_NEW == -(RFW + 40)")),
-      "player bar +40px -> the bar moves 40px left (offset follows the Raid Frame)")
-check(bool(rt.eval("ANCH_X_BACK == -RFW")), "restoring the Raid Frame restores the bar position")
+check(bool(rt.eval("RFW_NEW == RFW + 40 and ANCH_X_NEW == (RFW + 40)")),
+      "player bar +40px -> the bar moves 40px right (offset follows the Raid Frame)")
+check(bool(rt.eval("ANCH_X_BACK == RFW")), "restoring the Raid Frame restores the bar position")
 
 # -- larghezza fissa = somma degli elementi -------------------------------
 rt.execute("""
@@ -4223,6 +4238,21 @@ check(bool(rt.eval("WFORM_OK == true")),
 check(bool(rt.eval("W_BY_COLS[8] > W_BY_COLS[2] and W_BY_COLS[3] > W_BY_COLS[1]")),
       "wider matrix -> wider bar (width = widest element row)")
 check(bool(rt.eval("TITLE_FITS == true")), "every title bar element always fits (phase icon + name + Raid Control)")
+rt.execute("""
+    local MWt = RLSuite.mainWindow
+    local layout = RLSuite.db.profile.layout
+    layout.main = layout.main or {}
+    local oldC = layout.main.matrixCols
+    local tw1, tw8
+    layout.main.matrixCols = 1; MWt:ApplyLayout(); tw1 = MWt.titleBar:GetWidth()
+    layout.main.matrixCols = 8; MWt:ApplyLayout(); tw8 = MWt.titleBar:GetWidth()
+    TITLE_CONST_W = (tw1 == tw8)
+    TITLE_W_1 = tw1
+    layout.main.matrixCols = oldC
+    MWt:ApplyLayout()
+""")
+check(bool(rt.eval("TITLE_CONST_W == true")),
+      "title bar keeps its own width whatever the matrix does (1 vs 8 columns: %d px)" % rt.eval("TITLE_W_1"))
 rt.execute("""
     -- larghezza attesa = PAD + max(matrice, riga barretta) + PAD
     local MW = RLSuite.mainWindow

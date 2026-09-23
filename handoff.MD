@@ -7,7 +7,33 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.58**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.59**.
+
+## 1.11.59 — barretta: larghezza = SOMMA DEI SUOI ELEMENTI + ancoraggio dal SINISTRO
+
+Due richieste dell'utente (la 1.11.57 le aveva interpretate male):
+
+1. **La barretta (barra in alto) ha larghezza FISSA = somma dei suoi elementi**:
+   `4 + icona fase(16) + 4 + nome fase(riserva misurata) + 4 + Raid Control + 4
+   + X(11) + 4` = **205 px** con "Raid Control" largo 100 (misurato sul testo).
+   NON e' piu' "stirata" sulla larghezza della matrice dei tasti: con la matrice
+   larga restava un vuoto enorme fra il nome della fase e Raid Control.
+   La barretta e' ancorata `BOTTOMLEFT -> TOPLEFT` del pannello (dx 0, dy 2):
+   resta quindi allineata a sinistra, sopra il pannello.
+   Il nome della fase ha il posto riservato del nome piu' lungo, quindi la
+   larghezza NON cambia al cambio fase.
+2. **Ancoraggio dal lato SINISTRO** (l'utente aveva indicato il lato sbagliato):
+   `SetPoint("TOPLEFT", UIParent, "TOPLEFT", +RaidFrameWidth(), -(20+2))`.
+   Con la larghezza Raid Frame attuale (298 a scala 1) la barra parte 298 px dal
+   bordo sinistro, cioe' subito a destra del Raid Frame; l'offset segue il Raid
+   Frame (verificato: barra player +40 -> la barra si sposta di 40 a destra).
+
+Il pannello resta largo `2*PAD + max(matrice, barretta)` = 213 px con 2 colonne,
+cosi' nessun tasto sporge dal bordo (i tasti restano a 4 px dal bordo sinistro).
+
+Test: **886 check** (6 aggiornati nella 1.11.59: barretta = somma elementi con
+ancoraggio singolo, larghezza costante 1 vs 8 colonne, ancoraggio TOPLEFT con
+x = +larghezza Raid Frame, spostamento a destra quando il Raid Frame si allarga).
 
 ## 1.11.58 — grafico del combat log: da "barrette" a CURVA DPS continua
 
@@ -219,7 +245,7 @@ sessione, poi l'ultimo con progressione registrata.
 NON registra** (i pull finti del debug non devono sporcare la progressione vera). `MacroBar:OnBossProgressChanged` riallinea la barra quando il counter avanza (guardia di rientranza perche'
 passa da `CurrentBossInfo` -> `InferLinearKills` -> di nuovo `OnBossProgressChanged`).
 
-Test: **880 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
+Test: **886 check** totali sul branch (25 nuovi nella 1.11.52: registro kill, lockout reset,
 counter su Gunship e Faction Champions, precedenza del target, inferenza lineare su ICC e ToC,
 kill dal combat log con e senza debug, riallineo automatico della barra al variare del counter,
 guardia di rientranza sempre rilasciata e robustezza a un errore di riconoscimento).

@@ -472,22 +472,25 @@ function MW:ApplyLayout()
     local matrixW = cols * bw + (cols - 1) * gapX
     local matrixH = rows * bh + (rows - 1) * gapY
 
-    -- LARGHEZZA FISSA = SOMMA DEGLI ELEMENTI: la matrice (colonne x tasti) o
-    -- la riga della barretta (icona fase + nome fase + "Raid Control" + X),
-    -- quella piu' larga delle due. Cosi' la larghezza non "salta" mai: il
-    -- nome della fase ha un posto riservato e gli elementi ci stanno sempre.
-    local tbPad, tbGap = 5, 6
+    -- LARGHEZZA FISSA DELLA BARRETTA = SOMMA DEI SUOI ELEMENTI:
+    --   [icona di fase][nome della fase] ... [Raid Control][X]
+    -- Niente piu' barretta "stirata" sulla larghezza della matrice: la
+    -- barretta e' larga ESATTAMENTE quanto i suoi pezzi (il nome della fase ha
+    -- il posto riservato del nome piu' lungo, quindi la larghezza non cambia
+    -- mai al cambio fase) e sta ancorata a sinistra sopra il pannello.
+    local tbPad, tbGap = 4, 4
     local phaseIconW = 16
-    -- posto riservato al nome della fase = larghezza del nome piu' LUNGO
-    -- ("Pre-raid"/"Pre-boss"/"In-fight"): misurata una volta, non un numero
-    -- a caso, cosi' la larghezza e' fissa ma nessun elemento viene tagliato.
     local phaseNameW = self._phaseLabelW or 58
     local rcBtnRef = self.raidControlBtn or (self.titleBar and self.titleBar.raidControlBtn)
     local rcW = (rcBtnRef and rcBtnRef:GetWidth()) or 96
     local closeW = 11
-    local titleW = tbPad + phaseIconW + 5 + phaseNameW + tbGap + rcW + tbGap + closeW + tbPad
-    local contentW = math.max(matrixW, titleW)
+    local titleW = tbPad + phaseIconW + tbGap + phaseNameW + tbGap + rcW + tbGap + closeW + tbPad
     self._titleRowW = titleW
+
+    -- Pannello: larghezza = matrice dei tasti (somma delle colonne). Se la
+    -- barretta e' piu' larga della matrice (poche colonne) il pannello prende
+    -- la larghezza della barretta: cosi' niente sporge dal bordo.
+    local contentW = math.max(matrixW, titleW)
 
     local h = 2 * PAD + matrixH
     local w = 2 * PAD + contentW
@@ -495,15 +498,16 @@ function MW:ApplyLayout()
     self.frame:SetSize(w, h)
     self.frame:SetScale(L.scale or 1)
 
-    -- ANCORAGGIO FISSO: bordo ALTO dello schermo, a distanza dal lato destro
-    -- pari alla larghezza del Raid Frame (food/flask + barra player + CD,
-    -- senza i buff). La barretta sta sopra il pannello, quindi la sua sommita'
-    -- e' il vero bordo alto della barra: si compensa altezza barretta + gap.
+    -- ANCORAGGIO FISSO: bordo ALTO dello schermo, a distanza dal lato
+    -- SINISTRO pari alla larghezza del Raid Frame (food/flask + barra player +
+    -- CD, senza i buff): la barra parte subito a destra del Raid Frame.
+    -- La barretta sta sopra il pannello, quindi e' la sua sommita' a toccare
+    -- il bordo alto: si compensa altezza barretta + gap.
     local tbH = (self.titleBar and self.titleBar:GetHeight()) or 20
     local tbGapPx = 2
     self.frame:ClearAllPoints()
-    self.frame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT",
-        -self:RaidFrameWidth(), -(tbH + tbGapPx))
+    self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT",
+        self:RaidFrameWidth(), -(tbH + tbGapPx))
 
     -- Bottoni matrice: colonne x righe configurabili dalla Config.
     -- La coppia MT/OT sta SOTTO il tasto "Raid Frame" (cella
@@ -553,20 +557,30 @@ function MW:ApplyLayout()
         self.otBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX + halfW + halfGap, cellY)
     end
 
-    -- BARRETTA DEL TITOLO: icona di fase + nome della fase a sinistra
-    -- (al posto della vecchia scritta "RLS"); freccia e X restano a destra.
+    -- BARRETTA DEL TITOLO: larghezza = SOMMA DEI SUOI ELEMENTI e ancorata a
+    -- sinistra sopra il pannello (non piu' stirata sulla larghezza della
+    -- matrice: con la matrice larga restava un vuoto enorme in mezzo).
+    if self.titleBar then
+        self.titleBar:ClearAllPoints()
+        self.titleBar:SetPoint("BOTTOMLEFT", self.frame, "TOPLEFT", 0, 2)
+        self.titleBar:SetWidth(titleW)
+    end
     if self.phaseBtn then
         self.phaseBtn:ClearAllPoints()
-        self.phaseBtn:SetPoint("LEFT", self.titleBar or self.frame, "LEFT", 6, 0)
+        self.phaseBtn:SetPoint("LEFT", self.titleBar or self.frame, "LEFT", tbPad, 0)
     end
     if self.phaseText and self.phaseBtn then
         self.phaseText:ClearAllPoints()
-        self.phaseText:SetPoint("LEFT", self.phaseBtn, "RIGHT", 5, 0)
+        self.phaseText:SetPoint("LEFT", self.phaseBtn, "RIGHT", tbGap, 0)
         -- Il nome della fase ha un posto RISERVATO nel calcolo della
         -- larghezza (phaseNameW): qui si mostra sempre, senza salti.
         self.phaseText:Show()
     end
-    -- "Raid Control" a sinistra della X, dentro la barretta.
+    -- "Raid Control" e X incolonnati a destra della barretta.
+    if self.titleBar and self.titleBar.closeBtn then
+        self.titleBar.closeBtn:ClearAllPoints()
+        self.titleBar.closeBtn:SetPoint("RIGHT", self.titleBar, "RIGHT", -tbPad, 0)
+    end
     if self.raidControlBtn and self.titleBar and self.titleBar.closeBtn then
         self.raidControlBtn:ClearAllPoints()
         self.raidControlBtn:SetPoint("RIGHT", self.titleBar.closeBtn, "LEFT", -tbGap, 0)
