@@ -26,7 +26,12 @@ local CL_E = {
     T = 1, SUB = 2, SRC = 3, SRCF = 4, DST = 5, DSTF = 6,
     SID = 7, SNAME = 8, AMT = 9, OVER = 10, ABS = 11, BLOCK = 12,
     CRIT = 13, AURA = 14, PTYPE = 15, EXTRA = 16,
+    -- 17: bersaglio del colpo = NPC BOSS noto. E' il dato che distingue il
+    -- "danno UTILE" (sui boss) dal danno sullo spazzino, come fa UwU Logs.
+    BOSS = 17,
 }
+-- Indici evento esposti anche ai test (le tabelle evento sono array compatti).
+CL.E = CL_E
 
 -- Flag bit del combat log (potenze di due, dal FrameXML 3.3.5).
 local CL_FLAG_PLAYER = 1024
@@ -70,6 +75,20 @@ local CL_BOSS_NPC = {
     [10184] = "Onyxia", [28860] = "Sartharion", [28859] = "Malygos",
     [31125] = "Archavon the Stone Watcher", [33993] = "Emalon the Storm Watcher",
     [35013] = "Koralon the Flame Watcher", [38433] = "Toravon the Ice Watcher",
+}
+
+-- Set di id per il test rapido "questo bersaglio e' un boss?" (danno utile).
+local CL_BOSS_SET = {}
+for id in pairs(CL_BOSS_NPC) do CL_BOSS_SET[id] = true end
+
+-- Consumabili tracciati dal tab "Consumables": solo NOMI/ID noti, nessuna
+-- detection euristica. I flask e il "Well Fed" arrivano dalle liste gia'
+-- curate in RLSuite.buffData (Core); pozioni/elisir si riconoscono dal nome
+-- della spell (client inglese) perche' i loro id cambiano fra item e rank.
+local CL_CONSUM_PATTERNS = {
+    "potion", "elixir", "flask", "well fed", "feast", "rum", "firecracker",
+    "kibler", "sashimi", "biscuit", "tequila", "mammoth", "shoveltusk",
+    "blackened", "dragonfin", "snapper", "bold", "spiced", "great feast",
 }
 
 -- subEvent -> categoria di cattura.
@@ -203,7 +222,9 @@ function CL:Init()
     self.selSource = nil      -- sorgente selezionata (click nella lista sx)
     self.selSpell = nil
     self.graphMode = "dps"    -- dps | health | power
-    self.graphStep = 1
+    -- 0 = "Avg whole fight" (media cumulativa, default come UwU), poi 1/2/3/5/10s
+    self.graphStep = 0
+    self.showGraph = true
     self.liveUpdate = false
     self:CreateFrame()
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnRegenDisabled")
@@ -365,6 +386,11 @@ function CL:OnCLEU(_, ts, sub, srcGUID, srcName, srcFlags, dstGUID, dstName, dst
         -- nessun suffix: dst e' il morto
     else
         return
+    end
+    -- Danno "utile": il bersaglio e' un boss noto (vedi CL_E.BOSS).
+    if cat == "damage" and self:IsNPCFlag(dstFlags) then
+        local bid = self:NpcIdFromGUID(dstGUID)
+        if bid and CL_BOSS_SET[bid] then ev[CL_E.BOSS] = true end
     end
     f.count = f.count + 1
     f.events[f.count] = ev
@@ -610,23 +636,482 @@ function CL:AggPower(f)
     return rows, byPlayer
 end
 
+-- ------------------------------------------------------------------
+-- Report (v1.11.63): aggregazioni per le viste stile UwU Logs.
+-- Tutte le funzioni prendono un fight (o un fight "unito" dei segmenti) e
+-- tornano tabelle pronte per la griglia: {rows=..., cols=...}.
+-- ------------------------------------------------------------------
+
+-- Tabella principale: per giocatore danno utile/totale, cure, danno subito.
+function CL:AggPlayerStats(f)
+    local dur = self:FightDuration(f)
+    if dur <= 0 then dur = 1 end
+    local acc = {}
+    local function get(name)
+        local a = acc[name]
+        if not a then a = { name = name, useful = 0, total = 0, heal = 0, taken = 0 }; acc[name] = a end
+        return a
+    end
+    for _, ev in ipairs(f.events) do
+        local cat = CL_CATS[ev[CL_E.SUB]]
+        local amt = ev[CL_E.AMT] or 0
+        if cat == "damage" then
+            local src = ev[CL_E.SRC]
+            if src and self:IsRaidGroupFlag(ev[CL_E.SRCF]) then
+                local a = get(src)
+                a.total = a.total + amt
+                if ev[CL_E.BOSS] then a.useful = a.useful + amt end
+            end
+            local dst = ev[CL_E.DST]
+            if dst and self:IsRaidGroupFlag(ev[CL_E.DSTF]) then
+                get(dst).taken = get(dst).taken + amt
+            end
+        elseif cat == "heal" then
+            local src = ev[CL_E.SRC]
+            if src and self:IsRaidGroupFlag(ev[CL_E.SRCF]) then
+                get(src).heal = get(src).heal + amt
+            end
+        end
+    end
+    local rows, tot = {}, {
+        name = "Total", useful = 0, total = 0, heal = 0, taken = 0, isTotal = true,
+    }
+    for _, a in pairs(acc) do
+        if (a.total > 0) or (a.heal > 0) or (a.taken > 0) then
+            rows[#rows + 1] = a
+            tot.useful = tot.useful + a.useful
+            tot.total = tot.total + a.total
+            tot.heal = tot.heal + a.heal
+            tot.taken = tot.taken + a.taken
+        end
+    end
+    table.sort(rows, function(x, y)
+        if x.useful ~= y.useful then return x.useful > y.useful end
+        if x.total ~= y.total then return x.total > y.total end
+        return x.name < y.name
+    end)
+    return { rows = rows, total = tot, duration = dur }
+end
+
+-- Matrice danno per (giocatore, bersaglio NPC) + totali per colonna.
+function CL:AggTargets(f)
+    local byPlayer, targetTotal, targetIsBoss, playerTotal = {}, {}, {}, {}
+    for _, ev in ipairs(f.events) do
+        if CL_CATS[ev[CL_E.SUB]] == "damage" and self:IsRaidGroupFlag(ev[CL_E.SRCF])
+            and ev[CL_E.DST] and self:IsNPCFlag(ev[CL_E.DSTF]) then
+            local src, dst, amt = ev[CL_E.SRC], ev[CL_E.DST], (ev[CL_E.AMT] or 0)
+            if src then
+                local t = byPlayer[src]
+                if not t then t = {}; byPlayer[src] = t end
+                t[dst] = (t[dst] or 0) + amt
+                playerTotal[src] = (playerTotal[src] or 0) + amt
+                targetTotal[dst] = (targetTotal[dst] or 0) + amt
+                if ev[CL_E.BOSS] then targetIsBoss[dst] = true end
+            end
+        end
+    end
+    local cols = {}
+    for name, amt in pairs(targetTotal) do
+        cols[#cols + 1] = { name = name, amt = amt, boss = targetIsBoss[name] and true or false }
+    end
+    -- i bersaglio "utili" (boss) restano in testa, poi per danno
+    table.sort(cols, function(a, b)
+        if a.boss ~= b.boss then return a.boss end
+        if a.amt ~= b.amt then return a.amt > b.amt end
+        return a.name < b.name
+    end)
+    local rows = {}
+    for name, t in pairs(byPlayer) do
+        local useful = 0
+        for tn, amt in pairs(t) do if targetIsBoss[tn] then useful = useful + amt end end
+        rows[#rows + 1] = { name = name, byTarget = t, total = playerTotal[name] or 0, useful = useful }
+    end
+    table.sort(rows, function(a, b)
+        if a.useful ~= b.useful then return a.useful > b.useful end
+        if a.total ~= b.total then return a.total > b.total end
+        return a.name < b.name
+    end)
+    local totRow = { name = "Total", isTotal = true, byTarget = {}, total = 0, useful = 0 }
+    for _, c in ipairs(cols) do totRow.byTarget[c.name] = c.amt; totRow.total = totRow.total + c.amt end
+    for _, r in ipairs(rows) do totRow.useful = totRow.useful + r.useful end
+    return { rows = rows, targetCols = cols, totalRow = totRow }
+end
+
+-- Un nome di spell e' un consumabile? (match per parola sul nome inglese)
+function CL:IsConsumableName(name)
+    if not name then return false end
+    local n = string.lower(name)
+    for _, pat in ipairs(CL_CONSUM_PATTERNS) do
+        if string.find(n, pat, 1, true) then return true end
+    end
+    return false
+end
+
+-- Consumabili usati per giocatore (flask/food dalle liste curate, pozioni ed
+-- elisir per nome). Un "uso" = un cast o un'aura: si prende il massimo fra i
+-- due conteggi, cosi' una pozione con cast+aura non viene contata due volte.
+function CL:AggConsumables(f)
+    local flaskIds, foodIds = {}, {}
+    for _, id in ipairs((RLSuite.buffData and RLSuite.buffData.flask) or {}) do flaskIds[id] = true end
+    for _, id in ipairs((RLSuite.buffData and RLSuite.buffData.food) or {}) do foodIds[id] = true end
+    local casts, auras, info, playerTotal = {}, {}, {}, {}
+    local function bump(store, player, sid, name, kind)
+        if not player then return end
+        local key = tostring(sid or 0) .. "|" .. tostring(name or "?")
+        info[key] = info[key] or { key = key, sid = sid, name = name or "?", kind = kind }
+        store[player] = store[player] or {}
+        store[player][key] = (store[player][key] or 0) + 1
+    end
+    for _, ev in ipairs(f.events) do
+        local sub = ev[CL_E.SUB]
+        local sid, sname = ev[CL_E.SID], ev[CL_E.SNAME]
+        if sub == "SPELL_AURA_APPLIED" and self:IsRaidGroupFlag(ev[CL_E.DSTF]) then
+            if flaskIds[sid] then
+                bump(auras, ev[CL_E.DST], sid, sname or "Flask", "flask")
+            elseif foodIds[sid] then
+                bump(auras, ev[CL_E.DST], sid, sname or "Well Fed", "food")
+            elseif self:IsConsumableName(sname) then
+                bump(auras, ev[CL_E.DST], sid, sname, "other")
+            end
+        elseif sub == "SPELL_CAST_SUCCESS" and self:IsRaidGroupFlag(ev[CL_E.SRCF]) then
+            if self:IsConsumableName(sname) then bump(casts, ev[CL_E.SRC], sid, sname, "potion") end
+        elseif (sub == "SPELL_HEAL" or sub == "SPELL_PERIODIC_HEAL")
+            and ev[CL_E.SRC] == ev[CL_E.DST] and self:IsConsumableName(sname) then
+            bump(auras, ev[CL_E.SRC], sid, sname, "potion")
+        end
+    end
+    local cells, totals = {}, {}
+    for player, t in pairs(auras) do
+        for key, n in pairs(t) do
+            local c = (casts[player] and casts[player][key]) or 0
+            if c > n then n = c end
+            cells[player] = cells[player] or {}
+            cells[player][key] = n
+            totals[key] = (totals[key] or 0) + n
+            playerTotal[player] = (playerTotal[player] or 0) + n
+        end
+    end
+    for player, t in pairs(casts) do
+        for key, n in pairs(t) do
+            if not (cells[player] and cells[player][key]) then
+                cells[player] = cells[player] or {}
+                cells[player][key] = n
+                totals[key] = (totals[key] or 0) + n
+                playerTotal[player] = (playerTotal[player] or 0) + n
+            end
+        end
+    end
+    local cols = {}
+    for key, n in pairs(totals) do
+        local i = info[key] or { key = key, name = "?" }
+        i.key = key; i.amt = n; i.count = n
+        cols[#cols + 1] = i
+    end
+    table.sort(cols, function(a, b)
+        if a.kind ~= b.kind then return tostring(a.kind) < tostring(b.kind) end
+        if a.amt ~= b.amt then return a.amt > b.amt end
+        return tostring(a.name) < tostring(b.name)
+    end)
+    local players = {}
+    for name, n in pairs(playerTotal) do players[#players + 1] = { name = name, uses = n } end
+    table.sort(players, function(a, b)
+        if a.uses ~= b.uses then return a.uses > b.uses end
+        return a.name < b.name
+    end)
+    return { cells = cells, cols = cols, players = players }
+end
+
+-- Matrice aure per (giocatore, spellId): applicazioni + uptime%.
+function CL:AggAuraMatrix(f)
+    local dur = self:FightDuration(f)
+    if dur <= 0 then dur = 1 end
+    local open, cells, info, auraTotal, playerTotal = {}, {}, {}, {}, {}
+    local function cell(p, sid)
+        local t = cells[p]
+        if not t then t = {}; cells[p] = t end
+        local c = t[sid]
+        if not c then c = { count = 0, up = 0 }; t[sid] = c end
+        return c
+    end
+    for _, ev in ipairs(f.events) do
+        local sub = ev[CL_E.SUB]
+        local sid = ev[CL_E.SID]
+        if sid and (sub == "SPELL_AURA_APPLIED" or sub == "SPELL_AURA_APPLIED_DOSE"
+            or sub == "SPELL_AURA_REMOVED" or sub == "SPELL_AURA_REMOVED_DOSE"
+            or sub == "SPELL_AURA_BROKEN_SPELL") then
+            local dst, k = ev[CL_E.DST], sid .. "|" .. tostring(ev[CL_E.DST])
+            if sub == "SPELL_AURA_APPLIED" or sub == "SPELL_AURA_APPLIED_DOSE" then
+                local st = open[k]
+                if not st then
+                    st = { t = ev[CL_E.T], n = 0, sid = sid, dst = dst,
+                           raid = self:IsRaidGroupFlag(ev[CL_E.DSTF]) and true or false }
+                    open[k] = st
+                end
+                if st.n == 0 then st.t = ev[CL_E.T] end
+                st.n = st.n + 1
+                if st.raid and dst and sub == "SPELL_AURA_APPLIED" then
+                    cell(dst, sid).count = cell(dst, sid).count + 1
+                end
+                if dst then info[sid] = info[sid] or { sid = sid, name = ev[CL_E.SNAME] } end
+            else
+                local st = open[k]
+                if st then
+                    if sub == "SPELL_AURA_REMOVED_DOSE" and st.n > 1 then
+                        st.n = st.n - 1
+                    else
+                        local dt = ev[CL_E.T] - st.t
+                        open[k] = nil
+                        if st.raid and st.dst and dt > 0 then
+                            local c = cell(st.dst, sid)
+                            c.up = c.up + dt
+                            auraTotal[sid] = (auraTotal[sid] or 0) + dt
+                            playerTotal[st.dst] = (playerTotal[st.dst] or 0) + dt
+                        end
+                    end
+                end
+            end
+        end
+    end
+    -- aure ancora aperte a fine fight: contate fino alla fine del pull
+    for _, st in pairs(open) do
+        if st.raid and st.dst then
+            local dt = dur - st.t
+            if dt > 0 then
+                local c = cell(st.dst, st.sid)
+                c.up = c.up + dt
+                auraTotal[st.sid] = (auraTotal[st.sid] or 0) + dt
+                playerTotal[st.dst] = (playerTotal[st.dst] or 0) + dt
+            end
+        end
+    end
+    local cols = {}
+    for sid, up in pairs(auraTotal) do
+        local i = info[sid] or { sid = sid, name = "?" }
+        i.up = up; i.amt = up
+        cols[#cols + 1] = i
+    end
+    table.sort(cols, function(a, b)
+        if a.up ~= b.up then return a.up > b.up end
+        return tostring(a.name) < tostring(b.name)
+    end)
+    local players = {}
+    for name, up in pairs(playerTotal) do
+        players[#players + 1] = { name = name, up = up }
+    end
+    for _, p in ipairs(players) do p.pct = math.min(100, p.up / dur * 100) end
+    table.sort(players, function(a, b)
+        if a.up ~= b.up then return a.up > b.up end
+        return a.name < b.name
+    end)
+    return { cells = cells, cols = cols, players = players, duration = dur }
+end
+
+-- Somma di una tabella di numeri (utility per i totali di colonna).
+function sumAll(t)
+    local n = 0
+    for _, v in pairs(t or {}) do n = n + (v or 0) end
+    return n
+end
+
+-- Matrice potere per (giocatore, spell che ha energizzato) + totali.
+function CL:AggPowerMatrix(f)
+    local cells, info, totals, playerTotal = {}, {}, {}, {}
+    for _, ev in ipairs(f.events) do
+        if CL_CATS[ev[CL_E.SUB]] == "energize" and self:IsRaidGroupFlag(ev[CL_E.DSTF]) then
+            local dst, sid, sname = ev[CL_E.DST], ev[CL_E.SID], ev[CL_E.SNAME]
+            local amt = ev[CL_E.AMT] or 0
+            if dst then
+                local key = tostring(sid or 0) .. "|" .. tostring(sname or "?")
+                info[key] = info[key] or { key = key, sid = sid, name = sname or "?",
+                    ptype = CL_POWER_NAMES[ev[CL_E.PTYPE]] or ("Power " .. tostring(ev[CL_E.PTYPE] or "?")) }
+                local t = cells[dst]
+                if not t then t = {}; cells[dst] = t end
+                t[key] = (t[key] or 0) + amt
+                totals[key] = (totals[key] or 0) + amt
+                playerTotal[dst] = (playerTotal[dst] or 0) + amt
+            end
+        end
+    end
+    local cols = {}
+    for key, amt in pairs(totals) do
+        local i = info[key] or { key = key, name = "?" }
+        i.amt = amt
+        cols[#cols + 1] = i
+    end
+    table.sort(cols, function(a, b)
+        if a.amt ~= b.amt then return a.amt > b.amt end
+        return tostring(a.name) < tostring(b.name)
+    end)
+    local players = {}
+    for name, amt in pairs(playerTotal) do players[#players + 1] = { name = name, amt = amt } end
+    table.sort(players, function(a, b)
+        if a.amt ~= b.amt then return a.amt > b.amt end
+        return a.name < b.name
+    end)
+    return { cells = cells, cols = cols, players = players, total = sumAll(totals) }
+end
+
+-- Morti del raid (nome, istante, chi ha dato il colpo finale).
+function CL:AggDeaths(f)
+    local out = {}
+    for _, ev in ipairs(f.events) do
+        if ev[CL_E.SUB] == "UNIT_DIED" and ev[CL_E.DST]
+            and self:IsPlayerFlag(ev[CL_E.DSTF]) and self:IsRaidGroupFlag(ev[CL_E.DSTF]) then
+            out[#out + 1] = { name = ev[CL_E.DST], t = ev[CL_E.T], killer = nil }
+        end
+    end
+    -- Colpo finale: un solo passaggio sugli eventi (l'ultimo danno ricevuto
+    -- da ciascun morto PRIMA della sua morte).
+    local last = {}
+    for _, ev in ipairs(f.events) do
+        if CL_CATS[ev[CL_E.SUB]] == "damage" and ev[CL_E.DST] then
+            local cur = last[ev[CL_E.DST]]
+            local t = ev[CL_E.T] or 0
+            if not cur or t >= cur.t then last[ev[CL_E.DST]] = { t = t, src = ev[CL_E.SRC] } end
+        end
+    end
+    for _, d in ipairs(out) do
+        local l = last[d.name]
+        if l and l.t <= (d.t or 0) then d.killer = l.src end
+        d.lastHit = l and l.t or nil
+    end
+    table.sort(out, function(a, b) return (a.t or 0) < (b.t or 0) end)
+    return out
+end
+
+-- "Flag" della riga di dettaglio (come la colonna FLAG di UwU: il come).
+local CL_DEATH_FLAG = {
+    SWING_DAMAGE = "SWING", RANGE_DAMAGE = "RANGE", SPELL_DAMAGE = "SPELL",
+    SPELL_PERIODIC_DAMAGE = "PERIODIC", DAMAGE_SHIELD = "SHIELD",
+    DAMAGE_SPLIT = "SPLIT", ENVIRONMENTAL_DAMAGE = "ENV",
+    SPELL_HEAL = "SPELL", SPELL_PERIODIC_HEAL = "HOT",
+    SPELL_CAST_SUCCESS = "SUCCESS", SPELL_CAST_START = "START",
+    SPELL_AURA_APPLIED = "APPLIED", SPELL_AURA_REMOVED = "REMOVED",
+}
+
+-- Dettaglio di una morte: la morte + gli ultimi secondi di colpi/cure subiti.
+function CL:DeathDetail(f, name, tDeath, window)
+    window = tonumber(window) or 12
+    tDeath = tonumber(tDeath) or 0
+    local rows = { {
+        t = tDeath, rel = 0, kind = "DIED", flag = "", src = "", spell = "",
+        val = "", over = "", isDeath = true,
+    } }
+    for _, ev in ipairs(f.events) do
+        local et = ev[CL_E.T] or 0
+        if et <= tDeath and et >= (tDeath - window) and ev[CL_E.DST] == name then
+            local cat = CL_CATS[ev[CL_E.SUB]]
+            if cat == "damage" or cat == "heal" or cat == "cast" then
+                local val = ev[CL_E.AMT]
+                rows[#rows + 1] = {
+                    t = et, rel = et - tDeath,
+                    kind = (cat == "damage" and "DAMAGE") or (cat == "heal" and "HEAL") or "CAST",
+                    flag = CL_DEATH_FLAG[ev[CL_E.SUB]] or "",
+                    src = ev[CL_E.SRC] or "",
+                    spell = ev[CL_E.SNAME] or "",
+                    val = val and tostring(val) or "",
+                    over = (ev[CL_E.OVER] and ev[CL_E.OVER] > 0) and tostring(ev[CL_E.OVER]) or "",
+                }
+            end
+        end
+    end
+    table.sort(rows, function(a, b)
+        if (a.t or 0) ~= (b.t or 0) then return (a.t or 0) > (b.t or 0) end
+        return (a.kind or "") < (b.kind or "")
+    end)
+    return rows
+end
+
+-- "m:ss.mmm" (con segno) per le righe del death recap.
+function CL:RelStamp(dt)
+    local neg = (dt or 0) < 0
+    local a = math.abs(dt or 0)
+    local m = math.floor(a / 60)
+    local s = a - m * 60
+    return string.format("%s%d:%06.3f", neg and "-" or "", m, s)
+end
+
+-- Fight "unito" dei segmenti di un boss ("All Lady Deathwhisper segments"):
+-- copia gli eventi dei pull di quel boss su una linea temporale continua.
+function CL:MergedFight(bossName, maxFights)
+    local db = self.db or {}
+    local list = {}
+    for _, f in ipairs(db.fights or {}) do
+        if (f.name or "Combat") == bossName then list[#list + 1] = f end
+    end
+    if #list == 0 then return nil end
+    maxFights = tonumber(maxFights) or 8
+    -- db.fights e' "il piu' recente per primo": tengo i piu' recenti e li
+    -- concateno in ORDINE CRONOLOGICO (il piu' vecchio per primo).
+    while #list > maxFights do table.remove(list) end
+    local chrono = {}
+    for i = #list, 1, -1 do chrono[#chrono + 1] = list[i] end
+    list = chrono
+    local out = {
+        merged = true, name = bossName, events = {}, count = 0,
+        duration = 0, kill = false, startUTC = list[1] and list[1].startUTC or nil,
+        player = list[1] and list[1].player or nil,
+        samples = { health = {}, power = {} }, boss = bossName,
+    }
+    out.segments = #list
+    local off = 0
+    for _, f in ipairs(list) do
+        local d = self:FightDuration(f)
+        for i = 1, (f.count or #(f.events or {})) do
+            local ev = f.events[i]
+            if ev then
+                local c = {}
+                for k = 1, 17 do c[k] = ev[k] end
+                c[CL_E.T] = (ev[CL_E.T] or 0) + off
+                out.count = out.count + 1
+                out.events[out.count] = c
+            end
+        end
+        for kind, store in pairs(out.samples) do
+            local src = (f.samples or {})[kind]
+            for key, arr in pairs(src or {}) do
+                local dst = store[key]
+                if not dst then dst = {}; store[key] = dst end
+                for _, pt in ipairs(arr) do dst[#dst + 1] = { (pt[1] or 0) + off, pt[2] } end
+            end
+        end
+        off = off + d
+        if f.kill then out.kill = true end
+    end
+    out.duration = off
+    out.kill = out.kill and true or false
+    out.startTime = 0
+    return out
+end
+
 -- Serie DPS per il grafico: bucket per step secondi (fill zeri).
+-- step = 0 -> "Avg whole fight": media CUMULATIVA (danno fino a t / t secondi),
+-- la curva che sale e si appiattisce come nel grafico di UwU Logs.
 function CL:DpsSeries(f, srcName, step)
     step = tonumber(step) or 1
-    if step <= 0 then step = 1 end
+    local running = (step <= 0)
+    local bucket = running and 1 or step
     local buckets, maxB = {}, 0
     for _, ev in ipairs(f.events) do
         if CL_CATS[ev[CL_E.SUB]] == "damage" and self:IsRaidGroupFlag(ev[CL_E.SRCF]) then
             if srcName == nil or ev[CL_E.SRC] == srcName then
-                local b = math.floor(ev[CL_E.T] / step)
+                local b = math.floor((ev[CL_E.T] or 0) / bucket)
                 buckets[b] = (buckets[b] or 0) + (ev[CL_E.AMT] or 0)
                 if b > maxB then maxB = b end
             end
         end
     end
     local pts = {}
-    for b = 0, maxB do
-        pts[#pts + 1] = { b * step, (buckets[b] or 0) / step }
+    if running then
+        local cum = 0
+        for b = 0, maxB do
+            cum = cum + (buckets[b] or 0)
+            pts[#pts + 1] = { b + 1, cum / (b + 1) }
+        end
+    else
+        for b = 0, maxB do
+            pts[#pts + 1] = { b * step, (buckets[b] or 0) / step }
+        end
     end
     -- decimazione se troppi punti (max ~400 segmenti draw)
     local MAXPTS = 400
@@ -935,271 +1420,602 @@ function CL:NewGraph(parent, w, h)
 end
 
 -- ------------------------------------------------------------------
--- UI
+-- UI (v1.11.63) — layout stile UwU Logs
+--   [durata + nome boss + esito + ora]              [player] [fight ▼]
+--   [Show graph] [Avg whole fight ▼] [DPS][Health][Power]  <etichetta>
+--   +------------------------- GRAFICO (altezza fissa) ----------------+
+--   [Damage][Targets][Consumables][Auras][Deaths][Powers][...]
+--   +------------------------- contenuto del tab ----------------------+
+--   [Send report][Clear][Live]  info
 -- ------------------------------------------------------------------
 local CL_ROW_H = 18
+local CL_GRID_ROW_H = 18
+local CL_WIN_W, CL_WIN_H = 900, 660
+local CL_PAD = 14
+local CL_TAB_W, CL_TAB_GAP = 78, 5
+local CL_GRAPH_H = 150
+-- larghezza utile di una griglia a tutta larghezza (finestra - margini -
+-- barra di scorrimento verticale)
+local CL_GRID_W = CL_WIN_W - 2 * CL_PAD - 34
+local CL_TABS_Y = -218
+local CL_CONTENT_Y = -244
+local CL_FOOTER_H = 42
 
-function CL:CreateFrame()
-    local f = CreateFrame("Frame", "RLSuiteCombatLog", UIParent)
-    f:SetSize(730, 540)
-    f:SetPoint("CENTER", UIParent, "CENTER", 0, -80)
-    f:SetFrameStrata("HIGH")
-    f:SetMovable(true)
-    f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    f:Hide()
-    f._noOuterBorder = true
-    self.frame = f
-    RLSuite.utils:SkinFrame(f)
-    RLSuite.utils:ClampWindow(f)
+local CL_UI_TABS = {
+    { key = "damage",      label = "Damage" },
+    { key = "targets",     label = "Targets" },
+    { key = "consumables", label = "Consumables" },
+    { key = "auras",       label = "Auras" },
+    { key = "deaths",      label = "Deaths" },
+    { key = "powers",      label = "Powers" },
+    { key = "healing",     label = "Healing" },
+    { key = "spells",      label = "Spells" },
+    { key = "enemies",     label = "Entities" },
+    { key = "interrupts",  label = "Interrupts" },
+}
+-- Tab disegnati con la GRIGLIA (gli altri usano le due liste storiche).
+local CL_GRID_TABS = {
+    damage = true, targets = true, consumables = true, auras = true, powers = true,
+}
 
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
-    title:SetText(L["Combat log"])
+-- Discretizzazioni del grafico (terzo screen di UwU): 0 = media dell'intero
+-- fight (curva cumulativa), poi bucket da 1/2/3/5/10 secondi.
+local CL_GRAPH_STEPS = {
+    { step = 0,  text = "Avg whole fight" },
+    { step = 1,  text = "Avg every second" },
+    { step = 2,  text = "Avg every 2 seconds" },
+    { step = 3,  text = "Avg every 3 seconds" },
+    { step = 5,  text = "Avg every 5 seconds" },
+    { step = 10, text = "Avg every 10 seconds" },
+}
 
-    -- Fight selector (dropdown in alto a destra)
-    local fightLbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fightLbl:SetPoint("TOPRIGHT", f, "TOPRIGHT", -296, -14)
-    fightLbl:SetText(L["Select fight"])
-    self.fightDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteCombatLogFightDD", 240, 20)
-    self.fightDropdown:ClearAllPoints()
-    -- lascia libera la zona della X di chiusura (-34..-4): il bordo
-    -- destro del dropdown non la sfiora piu'
-    self.fightDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -44, -10)
+-- Esposte anche fuori dal file (test/debug): ordine dei tab e passi del grafico.
+CL.uiTabs = CL_UI_TABS
+CL.graphSteps = CL_GRAPH_STEPS
 
-    -- Tab bar
-    self.tabBtns = {}
-    local tx = 16
-    for _, def in ipairs(CL_UI_TABS) do
-        local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        RLSuite.utils:SkinButton(b)
-        b:SetSize(86, 20)
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", tx, -36)
-        b:SetText(L[def.label])
-        b.tabKey = def.key
-        b:SetScript("OnClick", function() CL:SelectTab(def.key) end)
-        self.tabBtns[def.key] = b
-        tx = tx + 88
+local function Trunc(s, n)
+    s = tostring(s or "")
+    if #s > n then s = s:sub(1, n - 1) .. "." end
+    return s
+end
+
+-- ==================================================================
+-- GRIGLIA riutilizzabile: header (testo o icona, con tooltip) + righe
+-- scrollabili. cols = { {label=, w=, fix=, align=, kind=, ic=, tip=}, ... }
+-- rows[i] = { {t=, r=,g=,b=, frac=, barR=,barG=,barB=, tip=}, ... , name= }
+-- ==================================================================
+function CL:NewGrid(parent)
+    local g = CreateFrame("Frame", nil, parent)
+    g:SetAllPoints(parent)
+    g.hdr = CreateFrame("Frame", nil, g)
+    g.hdr:SetPoint("TOPLEFT", g, "TOPLEFT", 4, 0)
+    g.hdr:SetPoint("TOPRIGHT", g, "TOPRIGHT", -26, 0)
+    g.hdr:SetHeight(24)
+    g.scroll = CreateFrame("ScrollFrame", nil, g, "UIPanelScrollFrameTemplate")
+    g.scroll:SetPoint("TOPLEFT", g, "TOPLEFT", 4, -24)
+    g.scroll:SetPoint("BOTTOMRIGHT", g, "BOTTOMRIGHT", -26, 4)
+    g.content = CreateFrame("Frame", nil, g.scroll)
+    g.content:SetWidth(400)
+    g.content:SetHeight(1)
+    g.scroll:SetScrollChild(g.content)
+    RLSuite.utils:RegisterScrollClip(g.scroll, g.content)
+    g.hdrPool = {}
+    g.pool = {}
+    return g
+end
+
+-- Larghezze: le colonne "fix" hanno w in pixel, le altre w = peso sul resto.
+function CL:GridMeasure(g, cols, width)
+    local avail = (width or CL_GRID_W) - 6
+    local fixed, flex = 0, 0
+    for _, c in ipairs(cols) do
+        if c.fix then fixed = fixed + c.w else flex = flex + c.w end
     end
-
-    -- Pannelli lista (sx = sorgenti, dx = breakdown/eventi)
-    self.leftHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.leftHeader:SetPoint("TOPLEFT", f, "TOPLEFT", 22, -62)
-    self.leftHeader:SetText("")
-
-    self.leftBox = CreateFrame("Frame", nil, f)
-    self.leftBox:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -78)
-    self.leftBox:SetSize(250, 398)
-    RLSuite.utils:SkinBox(self.leftBox)
-    self.leftScroll = CreateFrame("ScrollFrame", "RLSuiteCombatLogLeft", self.leftBox, "UIPanelScrollFrameTemplate")
-    self.leftScroll:SetPoint("TOPLEFT", 4, -4)
-    self.leftScroll:SetPoint("BOTTOMRIGHT", -24, 4)
-    self.leftContent = CreateFrame("Frame", nil, self.leftScroll)
-    self.leftContent:SetWidth(214)
-    self.leftContent:SetHeight(1)
-    self.leftScroll:SetScrollChild(self.leftContent)
-    RLSuite.utils:RegisterScrollClip(self.leftScroll, self.leftContent)
-
-    self.rightHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.rightHeader:SetPoint("TOPLEFT", f, "TOPLEFT", 280, -62)
-    self.rightHeader:SetText("")
-
-    self.rightBox = CreateFrame("Frame", nil, f)
-    self.rightBox:SetPoint("TOPLEFT", f, "TOPLEFT", 274, -78)
-    self.rightBox:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -78)
-    self.rightBox:SetHeight(398)
-    RLSuite.utils:SkinBox(self.rightBox)
-    self.rightScroll = CreateFrame("ScrollFrame", "RLSuiteCombatLogRight", self.rightBox, "UIPanelScrollFrameTemplate")
-    self.rightScroll:SetPoint("TOPLEFT", 4, -4)
-    self.rightScroll:SetPoint("BOTTOMRIGHT", -24, 4)
-    self.rightContent = CreateFrame("Frame", nil, self.rightScroll)
-    self.rightContent:SetWidth(390)
-    self.rightContent:SetHeight(1)
-    self.rightScroll:SetScrollChild(self.rightContent)
-    RLSuite.utils:RegisterScrollClip(self.rightScroll, self.rightContent)
-
-    -- Pannello GRAFICO (visibile solo nel tab Graphs: copre entrambe le liste)
-    self.graphPane = CreateFrame("Frame", nil, f)
-    self.graphPane:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -78)
-    self.graphPane:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -78)
-    self.graphPane:SetHeight(398)
-    RLSuite.utils:SkinBox(self.graphPane)
-    self.graphPane:Hide()
-
-    -- controlli del grafico: mode DPS/Health/Power + step
-    self.graphModeBtns = {}
-    for i, m in ipairs({ "dps", "health", "power" }) do
-        local b = CreateFrame("Button", nil, self.graphPane, "UIPanelButtonTemplate")
-        RLSuite.utils:SkinButton(b)
-        b:SetSize(70, 20)
-        b:SetPoint("TOPLEFT", self.graphPane, "TOPLEFT", 8 + (i - 1) * 74, -8)
-        b:SetText(L[m == "dps" and "DPS" or (m == "health" and "Health" or "Power")])
-        b.graphMode = m
-        b:SetScript("OnClick", function() CL.graphMode = m; CL:RefreshGraph() end)
-        self.graphModeBtns[m] = b
+    local free = avail - fixed
+    if free < 40 then free = 40 end
+    local x = 0
+    for _, c in ipairs(cols) do
+        c.x = x
+        c.px = c.fix and c.w or ((flex > 0) and (c.w / flex * free) or 0)
+        if c.px < 20 then c.px = 20 end
+        x = x + c.px
     end
-    local stepLbl = self.graphPane:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    stepLbl:SetPoint("LEFT", self.graphModeBtns.power, "RIGHT", 10, 0)
-    stepLbl:SetText(L["Step, sec."])
-    self.stepDropdown = RLSuite.utils:CreateDropdown(self.graphPane, "RLSuiteCombatLogStepDD", 70, 20)
-    self.stepDropdown:ClearAllPoints()
-    self.stepDropdown:SetPoint("LEFT", stepLbl, "RIGHT", 6, 0)
+    return x
+end
 
-    -- player selector nel grafico (riusa la selezione sinistra: click lista = player)
-    self.graphHint = self.graphPane:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.graphHint:SetPoint("TOPLEFT", self.graphPane, "TOPLEFT", 30, -34)
-    self.graphHint:SetTextColor(1, 0.82, 0)
+function CL:MakeGridRow(g, n, rownum)
+    local row = CreateFrame("Button", nil, g.content)
+    row:EnableMouse(true)
+    row:RegisterForClicks("LeftButtonUp")
+    row:SetHeight(CL_GRID_ROW_H)
+    row.cells = {}
+    for i = 1, n do
+        local c = {}
+        c.row = row
+        c.bar = row:CreateTexture(nil, "BACKGROUND")
+        c.fill = row:CreateTexture(nil, "ARTWORK")
+        c.fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        c.bar:Hide(); c.fill:Hide()
+        row.cells[i] = c
+    end
+    -- Striscia di sfondo (riga TOTAL / zebra): sotto le barre, stessa area.
+    row.stripe = row:CreateTexture(nil, "BACKGROUND")
+    row.stripe:SetDrawLayer("BACKGROUND", -8)
+    row.stripe:SetAllPoints(row)
+    row.stripe:Hide()
+    return row
+end
 
-    -- Barra inferiore: report/clear/live + info
-    self.reportBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    RLSuite.utils:SkinButton(self.reportBtn)
-    self.reportBtn:SetSize(100, 24)
-    self.reportBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 10)
-    self.reportBtn:SetText(L["Send report"])
-    self.reportBtn:SetScript("OnClick", function() CL:SendReport() end)
+function CL:GridRender(g, cols, rows, opt)
+    if not (g and cols) then return end
+    opt = opt or {}
+    rows = rows or {}
+    local width = opt.width or CL_GRID_W
+    local totalW = self:GridMeasure(g, cols, width)
+    g.content:SetWidth(math.max(1, totalW))
+    g.cols = cols
 
-    self.clearBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    RLSuite.utils:SkinButton(self.clearBtn)
-    self.clearBtn:SetSize(70, 24)
-    self.clearBtn:SetPoint("LEFT", self.reportBtn, "RIGHT", 6, 0)
-    self.clearBtn:SetText(L["Clear"])
-    self.clearBtn:SetScript("OnClick", function()
-        if IsShiftKeyDown and IsShiftKeyDown() then
-            if CL.db and CL.db.fights then
-                for k in pairs(CL.db.fights) do CL.db.fights[k] = nil end
-            end
-            CL.selFight = nil
-            CL:RefreshUI()
+    -- HEADER
+    for i, c in ipairs(cols) do
+        local h = g.hdrPool[i]
+        if not h then
+            local btn = CreateFrame("Button", nil, g.hdr)
+            btn:EnableMouse(true)
+            btn:SetHeight(24)
+            btn.icon = btn:CreateTexture(nil, "ARTWORK")
+            btn.fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            btn:SetScript("OnEnter", function(s)
+                if s._tip then
+                    GameTooltip:SetOwner(s, "ANCHOR_BOTTOM")
+                    pcall(function()
+                        GameTooltip:SetText(s._tip)
+                        GameTooltip:Show()
+                    end)
+                end
+            end)
+            btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            h = { btn = btn }
+            g.hdrPool[i] = h
+        end
+        local btn = h.btn
+        btn._tip = c.tip or c.label
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", g.hdr, "TOPLEFT", c.x, 0)
+        btn:SetSize(math.max(18, c.px), 24)
+        if c.ic then
+            btn.icon:SetTexture(c.ic)
+            btn.icon:ClearAllPoints()
+            btn.icon:SetSize(18, 18)
+            btn.icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+            btn.icon:Show()
+            btn.fs:SetText("")
+            btn.fs:Hide()
         else
-            RLSuite.utils:Print(L["Shift+click to wipe the saved fights."])
+            btn.icon:Hide()
+            btn.fs:ClearAllPoints()
+            btn.fs:SetPoint("LEFT", btn, "LEFT", 4, 0)
+            btn.fs:SetJustifyH("LEFT")
+            btn.fs:SetWidth(math.max(18, c.px - 8))
+            btn.fs:SetText(Trunc(c.label or "", 24))
+            btn.fs:SetTextColor(1, 0.82, 0)
+            btn.fs:Show()
         end
-    end)
+        btn:Show()
+    end
+    for i = #cols + 1, #g.hdrPool do g.hdrPool[i].btn:Hide() end
 
-    self.liveCheck = CreateFrame("CheckButton", "RLSuiteCombatLogLive", f, "UICheckButtonTemplate")
-    self.liveCheck:SetSize(20, 20)
-    self.liveCheck:SetPoint("LEFT", self.clearBtn, "RIGHT", 8, 0)
-    self.liveCheck:SetScript("OnClick", function(btn)
-        CL.liveUpdate = btn:GetChecked() and true or false
-        if CL.liveUpdate then CL:EnsureLiveTicker() end
-    end)
-    local liveLbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    liveLbl:SetPoint("LEFT", self.liveCheck, "RIGHT", 2, 0)
-    liveLbl:SetText(L["Live"])
-
-    self.infoText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.infoText:SetPoint("LEFT", liveLbl, "RIGHT", 12, 0)
-    self.infoText:SetText("")
-
-    f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
-    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
-
-    -- Il widget grafico viene costruito PER ULTIMO: un suo errore non puo'
-    -- mai impedire la creazione della finestra/comandi.
-    self.graph = self:NewGraph(self.graphPane, 640, 330)
-    self.graph:SetPoint("TOPLEFT", self.graphPane, "TOPLEFT", 30, -52)
-
-    f:SetScript("OnShow", function() CL:RefreshUI() end)
-end
-
-function CL:SkinInner()
-    RLSuite.utils:SkinBox(self.leftBox)
-    RLSuite.utils:SkinBox(self.rightBox)
-    RLSuite.utils:SkinBox(self.graphPane)
-end
-
--- Ticker "live" (2s): aggiorna la vista durante il fight registrato.
-function CL:EnsureLiveTicker()
-    if self._liveTicker then return end
-    self._liveTicker = self:ScheduleRepeatingTimer(function()
-        if not CL.liveUpdate then return end
-        if CL.current and CL.frame and CL.frame:IsShown() then
-            CL.selFight = CL.current
-            CL:RefreshUI()
+    -- RIGHE (pool per numero di colonne)
+    local key = #cols
+    local pool = g.pool[key]
+    if not pool then
+        pool = {}
+        g.pool[key] = pool
+    end
+    for _, r in ipairs(pool) do r:Hide() end
+    RLSuite.utils:ClearScrollClip(g.content)
+    local y = 0
+    for ri, data in ipairs(rows) do
+        local row = pool[ri]
+        if not row then
+            row = self:MakeGridRow(g, key, ri)
+            pool[ri] = row
         end
-    end, 2)
-end
-
--- ------------------------------------------------------------------
--- Fight selector/disponi righe
--- ------------------------------------------------------------------
-function CL:FightLabel(f, idx)
-    local dur = self:FightDuration(f)
-    local mm = math.floor(dur / 60)
-    local ss = math.floor(dur % 60)
-    local when = (f.startUTC and date) and date("%H:%M", f.startUTC) or "??:??"
-    local tag = f.kill and "[KILL]" or (f.kill == false and "[WIPE]" or "")
-    return string.format("#%d %s %d:%02d %s (%s)", idx or 0, f.name or "Combat", mm, ss, tag, when)
-end
-
-function CL:FightListItems()
-    local items = {}
-    if self.current then
-        items[#items + 1] = { text = L["[LIVE]"] .. " " .. (self.current.boss or "Combat"), value = self.current }
-    end
-    for i, f in ipairs((self.db and self.db.fights) or {}) do
-        items[#items + 1] = { text = self:FightLabel(f, i), value = f }
-    end
-    if #items == 0 then
-        items[1] = { text = L["No fights recorded"], value = false }
-    end
-    return items
-end
-
-function CL:SelectFight(f)
-    if f ~= false then self.selFight = f end
-    self.selSource = nil
-    self:RefreshUI()
-end
-
-function CL:SelectTab(key)
-    self.selTab = key
-    self.selSource = nil
-    if self.graphPane then
-        if key == "graphs" then
-            self.leftBox:Hide(); self.rightBox:Hide()
-            self.leftHeader:Hide(); self.rightHeader:Hide()
-            self.graphPane:Show()
-        else
-            self.graphPane:Hide()
-            self.leftBox:Show(); self.rightBox:Show()
-            self.leftHeader:Show(); self.rightHeader:Show()
-        end
-    end
-    self:RefreshUI()
-end
-
--- Refresh completo: dropdown + tab attiva + liste (o grafico).
-function CL:RefreshUI()
-    if not self.frame then return end
-    local items = self:FightListItems()
-    local cur = self.selFight
-    if not cur and items[1] and items[1].value ~= false then
-        cur = items[1].value
-        self.selFight = cur
-    end
-    RLSuite.utils:SetupDropdown(self.fightDropdown, items, cur or false, function(v)
-        CL:SelectFight(v)
-    end)
-    -- evidenzia tab attivo
-    for key, b in pairs(self.tabBtns or {}) do
-        if b.SetBackdropBorderColor then
-            if key == self.selTab then
-                b:SetBackdropBorderColor(0.85, 0.70, 0.20, 1)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", g.content, "TOPLEFT", 0, -y)
+        row:SetPoint("TOPRIGHT", g.content, "TOPRIGHT", 0, -y)
+        RLSuite.utils:ClipScrollRow(g.content, row, y, CL_GRID_ROW_H)
+        for ci, c in ipairs(cols) do
+            local cell = row.cells[ci]
+            local d = data[ci]
+            if not d then
+                cell.fs:SetText("")
+                cell.bar:Hide(); cell.fill:Hide()
             else
-                b:SetBackdropBorderColor(0.45, 0.45, 0.48, 1)
+                cell.fs:ClearAllPoints()
+                if c.align == "RIGHT" then
+                    cell.fs:SetPoint("RIGHT", row, "LEFT", c.x + c.px - 4, 0)
+                    cell.fs:SetJustifyH("RIGHT")
+                elseif c.align == "CENTER" then
+                    cell.fs:SetPoint("CENTER", row, "LEFT", c.x + c.px / 2, 0)
+                    cell.fs:SetJustifyH("CENTER")
+                else
+                    cell.fs:SetPoint("LEFT", row, "LEFT", c.x + 4, 0)
+                    cell.fs:SetJustifyH("LEFT")
+                end
+                if c.fsWidth == nil then c.fsWidth = math.max(18, c.px - 8) end
+                cell.fs:SetWidth(c.fsWidth)
+                cell.fs:SetText(d.t or "")
+                cell.fs:SetTextColor(d.r or 1, d.g or 1, d.b or 1)
+                cell.fs:Show()
+                if c.kind == "bar" then
+                    local frac = d.frac or 0
+                    if frac > 1 then frac = 1 end
+                    if frac < 0 then frac = 0 end
+                    local bw = math.max(2, c.px - 8)
+                    local bw2 = math.max(1, bw * frac)
+                    cell.bar:ClearAllPoints()
+                    cell.bar:SetSize(bw, CL_GRID_ROW_H - 2)
+                    cell.bar:SetPoint("LEFT", row, "LEFT", c.x + 4, 0)
+                    cell.bar:SetTexture(0.06, 0.06, 0.06, 0.55)
+                    cell.fill:ClearAllPoints()
+                    cell.fill:SetSize(bw2, CL_GRID_ROW_H - 2)
+                    cell.fill:SetPoint("LEFT", row, "LEFT", c.x + 4, 0)
+                    cell.fill:SetTexture(d.barR or 0.72, d.barG or 0.12, d.barB or 0.12, 0.55)
+                    cell.bar:Show(); cell.fill:Show()
+                else
+                    cell.bar:Hide(); cell.fill:Hide()
+                end
             end
         end
+        if data.isTotal then
+            row.stripe:SetTexture(0.35, 0.3, 0.6, 0.25)
+            row.stripe:Show()
+        elseif ri % 2 == 0 then
+            row.stripe:SetTexture(1, 1, 1, 0.04)
+            row.stripe:Show()
+        else
+            row.stripe:Hide()
+        end
+        local tip = data.tip
+        if tip then
+            row:SetScript("OnEnter", function(s)
+                GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+                pcall(function()
+                    GameTooltip:SetText(tip)
+                    if data.tip2 then GameTooltip:AddLine(data.tip2, 0.85, 0.85, 0.85) end
+                    GameTooltip:Show()
+                end)
+            end)
+            row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        else
+            row:SetScript("OnEnter", nil)
+            row:SetScript("OnLeave", nil)
+        end
+        if opt.onClick and data.name then
+            row:SetScript("OnClick", function() opt.onClick(data) end)
+        else
+            row:SetScript("OnClick", nil)
+        end
+        row:Show()
+        y = y + CL_GRID_ROW_H
     end
-    if self.selTab == "graphs" then
-        self:RefreshGraph()
-    else
-        self:RefreshLists()
-    end
+    g.content:SetHeight(math.max(y, 1))
+    g.rowCount = #rows
+    RLSuite.utils:RefreshScrollClip(g.content)
+    if g.hint then g.hint:SetText(opt.hint or "") end
 end
 
--- Costruisce una riga fissa (da pooled rebuild, pattern Loot Manager).
+-- ==================================================================
+-- COSTRUZIONE DEI TAB (tornano cols, rows pronti per GridRender)
+-- ==================================================================
+
+-- Colonna "barra" con il numero in fondo: utile per i valori di danno.
+local function BarCell(self, v, maxv, txt, r, g, b)
+    local frac = (maxv and maxv > 0) and (v / maxv) or 0
+    return { t = txt or self:ShortNum(v), frac = frac, barR = r, barG = g, barB = b }
+end
+
+-- 1) DAMAGE: la tabella principale (screen 1 di UwU).
+function CL:BuildDamageTab(f)
+    local st = self:AggPlayerStats(f)
+    local dur = st.duration
+    local tot = st.total
+    local maxU, maxH, maxT = 1, 1, 1
+    for _, a in ipairs(st.rows) do
+        if a.useful > maxU then maxU = a.useful end
+        if a.heal > maxH then maxH = a.heal end
+        if a.taken > maxT then maxT = a.taken end
+    end
+    if tot.useful > maxU then maxU = tot.useful end
+    if tot.heal > maxH then maxH = tot.heal end
+    if tot.taken > maxT then maxT = tot.taken end
+    local cols = {
+        { label = "Name", w = 1.7, tip = "Giocatore" },
+        { label = "Rank", w = 0.42, align = "RIGHT", tip = "Posizione in classifica" },
+        { label = "Dps%", w = 0.8, align = "RIGHT", tip = "DPS sul danno UTILE (danno ai boss / durata)" },
+        { label = "Useful Damage", w = 1.5, align = "RIGHT", kind = "bar",
+          tip = "Danno ai BOSS (danno utile). Passa il mouse su una riga per il dettaglio" },
+        { label = "Heal", w = 1.3, align = "RIGHT", kind = "bar", tip = "Cure fatte" },
+        { label = "Damage Taken", w = 1.5, align = "RIGHT", kind = "bar", tip = "Danno subito" },
+    }
+    local rows = {
+        { -- riga TOTAL (in per-secondo come UwU)
+            { t = "Total", r = 1, g = 0.82, b = 0 },
+            { t = "" },
+            { t = self:ShortNum(tot.useful / dur), r = 1, g = 1, b = 1 },
+            BarCell(self, tot.useful, maxU, self:ShortNum(tot.useful), 0.72, 0.12, 0.12),
+            BarCell(self, tot.heal, maxH, self:ShortNum(tot.heal), 0.12, 0.6, 0.2),
+            BarCell(self, tot.taken, maxT, self:ShortNum(tot.taken), 0.72, 0.12, 0.12),
+            isTotal = true, name = nil,
+            tip = string.format("TOTALE raid — durata %d:%02d", math.floor(dur / 60), math.floor(dur % 60)),
+            tip2 = "Dps% = danno utile al secondo. Heal/Damage Taken per giocatore sono valori grezzi.",
+        },
+    }
+    for i, a in ipairs(st.rows) do
+        local r, g, b = self:ClassColor(a.name)
+        rows[#rows + 1] = {
+            { t = a.name, r = r, g = g, b = b },
+            { t = tostring(i) },
+            { t = string.format("%.1f", a.useful / dur) },
+            BarCell(self, a.useful, maxU, self:ShortNum(a.useful), 0.72, 0.12, 0.12),
+            BarCell(self, a.heal, maxH, self:ShortNum(a.heal), 0.12, 0.6, 0.2),
+            BarCell(self, a.taken, maxT, self:ShortNum(a.taken), 0.72, 0.12, 0.12),
+            name = a.name,
+            tip = a.name,
+            tip2 = string.format("Danno utile %s (%.1f dps) | totale %s | cure %s | subito %s",
+                self:ShortNum(a.useful), a.useful / dur, self:ShortNum(a.total),
+                self:ShortNum(a.heal), self:ShortNum(a.taken)),
+        }
+    end
+    return cols, rows
+end
+
+-- 2) TARGETS: danno per giocatore e per bersaglio (screen 4).
+function CL:BuildTargetsTab(f)
+    local tg = self:AggTargets(f)
+    local nameW, fixW = 132, 74
+    local free = CL_GRID_W - nameW - 2 * fixW
+    local n = math.floor(free / 92)
+    if n < 1 then n = 1 end
+    if n > #tg.targetCols then n = #tg.targetCols end
+    local w = math.min((n > 0) and (free / n) or 92, 110)
+    local cols = {
+        { label = "Name", w = nameW, fix = true, tip = "Giocatore" },
+        { label = "Useful", w = fixW, fix = true, align = "RIGHT", tip = "Danno ai boss (utile)" },
+        { label = "Total", w = fixW, fix = true, align = "RIGHT", tip = "Danno totale su NPC" },
+    }
+    for i = 1, n do
+        local c = tg.targetCols[i]
+        cols[#cols + 1] = {
+            label = Trunc(c.name, (c.boss and 13) or 14),
+            w = w, fix = true, align = "RIGHT",
+            tip = c.name .. (c.boss and "  (BOSS: conta come danno utile)" or "  (spazzino)"),
+        }
+    end
+    local maxv = 1
+    for _, r in ipairs(tg.rows) do if r.total > maxv then maxv = r.total end end
+    local rows = {}
+    for i, r in ipairs(tg.rows) do
+        local rr, gg, bb = self:ClassColor(r.name)
+        local line = {
+            { t = i .. ". " .. r.name, r = rr, g = gg, b = bb },
+            { t = self:ShortNum(r.useful), r = 1, g = 0.85, b = 0.4 },
+            { t = self:ShortNum(r.total) },
+        }
+        for ci = 1, n do
+            local amt = r.byTarget[tg.targetCols[ci].name]
+            line[#line + 1] = { t = amt and self:ShortNum(amt) or "",
+                r = amt and 1 or 0.5, g = amt and 1 or 0.5, b = amt and 1 or 0.5 }
+        end
+        line.name = r.name
+        line.tip = r.name
+        line.tip2 = string.format("Utile %s | totale %s — click: grafico su questo giocatore",
+            self:ShortNum(r.useful), self:ShortNum(r.total))
+        rows[#rows + 1] = line
+    end
+    local tot = tg.totalRow
+    local trow = {
+        { t = "Total", r = 1, g = 0.82, b = 0 },
+        { t = self:ShortNum(tot.useful), r = 1, g = 0.85, b = 0.4 },
+        { t = self:ShortNum(tot.total) },
+    }
+    for ci = 1, n do
+        local amt = tot.byTarget[tg.targetCols[ci].name] or 0
+        trow[#trow + 1] = { t = self:ShortNum(amt) }
+    end
+    trow.isTotal = true
+    rows[#rows + 1] = trow
+    if #tg.targetCols > n then
+        cols.tip = string.format("%d bersagli in piu' non entrano nella larghezza", #tg.targetCols - n)
+    end
+    return cols, rows
+end
+
+-- 3) CONSUMABLES: flask/food/pozioni per giocatore (screen 5).
+function CL:BuildConsumablesTab(f)
+    local ag = self:AggConsumables(f)
+    local nameW, usesW = 150, 56
+    local free = CL_GRID_W - nameW - usesW
+    local n = math.floor(free / 46)
+    if n < 1 then n = 1 end
+    if n > #ag.cols then n = #ag.cols end
+    local w = math.min((n > 0) and (free / n) or 46, 56)
+    local cols = {
+        { label = "Name", w = nameW, fix = true, tip = "Giocatore" },
+        { label = "Uses", w = usesW, fix = true, align = "RIGHT", tip = "Consumabili usati in totale" },
+    }
+    for i = 1, n do
+        local c = ag.cols[i]
+        local tex
+        if GetSpellTexture and c.sid then
+            local ok, t = pcall(GetSpellTexture, c.sid)
+            if ok then tex = t end
+        end
+        cols[#cols + 1] = { label = "", w = w, fix = true, align = "CENTER", ic = tex,
+            tip = c.name .. (c.kind and ("  [" .. tostring(c.kind) .. "]") or "") }
+    end
+    local rows = {}
+    for i, p in ipairs(ag.players) do
+        local rr, gg, bb = self:ClassColor(p.name)
+        local line = {
+            { t = i .. ". " .. p.name, r = rr, g = gg, b = bb },
+            { t = tostring(p.uses), r = 1, g = 0.82, b = 0 },
+        }
+        for ci = 1, n do
+            local key = ag.cols[ci].key
+            local cnt = ag.cells[p.name] and ag.cells[p.name][key] or nil
+            line[#line + 1] = { t = cnt and tostring(cnt) or "",
+                r = cnt and 1 or 0.45, g = cnt and 0.9 or 0.45, b = cnt and 0.4 or 0.45 }
+        end
+        line.name = p.name
+        line.tip = p.name
+        line.tip2 = string.format("%d consumabili usati", p.uses)
+        rows[#rows + 1] = line
+    end
+    if #rows == 0 then rows[1] = { { t = "No consumables detected" } } end
+    return cols, rows
+end
+
+-- 4) AURAS: applicazioni + uptime% per giocatore (screen 6).
+function CL:BuildAurasTab(f)
+    local am = self:AggAuraMatrix(f)
+    local dur = am.duration
+    local nameW = 150
+    local free = CL_GRID_W - nameW
+    local n = math.floor(free / 66)
+    if n < 1 then n = 1 end
+    if n > #am.cols then n = #am.cols end
+    local w = math.min((n > 0) and (free / n) or 66, 78)
+    local cols = { { label = "Name", w = nameW, fix = true, tip = "Giocatore" } }
+    for i = 1, n do
+        local c = am.cols[i]
+        local tex
+        if GetSpellTexture and c.sid then
+            local ok, t = pcall(GetSpellTexture, c.sid)
+            if ok then tex = t end
+        end
+        cols[#cols + 1] = { label = "", w = w, fix = true, align = "CENTER", ic = tex,
+            tip = (c.name or "?") .. "  (applicazioni / uptime)" }
+    end
+    local rows = {}
+    for i, p in ipairs(am.players) do
+        local rr, gg, bb = self:ClassColor(p.name)
+        local line = {
+            { t = i .. ". " .. p.name, r = rr, g = gg, b = bb },
+        }
+        for ci = 1, n do
+            local sid = am.cols[ci].sid
+            local cell = am.cells[p.name] and am.cells[p.name][sid] or nil
+            if cell and (cell.count > 0 or cell.up > 0) then
+                local pct = math.min(100, cell.up / dur * 100)
+                line[#line + 1] = { t = string.format("%d  %.0f%%", cell.count or 0, pct),
+                    r = 0.5, g = 1, b = 0.6 }
+            else
+                line[#line + 1] = { t = "", r = 0.45, g = 0.45, b = 0.45 }
+            end
+        end
+        line.name = p.name
+        line.tip = p.name
+        line.tip2 = string.format("%d aure tracciate, uptime totale %.0fs", #am.cols, p.up or 0)
+        rows[#rows + 1] = line
+    end
+    if #rows == 0 then rows[1] = { { t = "No auras detected" } } end
+    return cols, rows
+end
+
+-- 5) POWERS: risorsa generata per giocatore e per spell (screen 8).
+function CL:BuildPowersTab(f)
+    local pm = self:AggPowerMatrix(f)
+    local nameW, totW = 150, 84
+    local free = CL_GRID_W - nameW - totW
+    local n = math.floor(free / 66)
+    if n < 1 then n = 1 end
+    if n > #pm.cols then n = #pm.cols end
+    local w = math.min((n > 0) and (free / n) or 66, 78)
+    local cols = { { label = "Name", w = nameW, fix = true, tip = "Giocatore" } }
+    for i = 1, n do
+        local c = pm.cols[i]
+        local tex
+        if GetSpellTexture and c.sid then
+            local ok, t = pcall(GetSpellTexture, c.sid)
+            if ok then tex = t end
+        end
+        cols[#cols + 1] = { label = "", w = w, fix = true, align = "RIGHT", ic = tex,
+            tip = (c.name or "?") .. (c.ptype and ("  (" .. c.ptype .. ")") or "") }
+    end
+    cols[#cols + 1] = { label = "TOTAL", w = totW, fix = true, align = "RIGHT", tip = "Risorsa totale generata" }
+    local rows = {}
+    for i, p in ipairs(pm.players) do
+        local rr, gg, bb = self:ClassColor(p.name)
+        local line = {
+            { t = i .. ". " .. p.name, r = rr, g = gg, b = bb },
+        }
+        for ci = 1, n do
+            local key = pm.cols[ci].key
+            local amt = pm.cells[p.name] and pm.cells[p.name][key] or nil
+            line[#line + 1] = { t = amt and self:ShortNum(amt) or "",
+                r = amt and 0.5 or 0.45, g = amt and 0.8 or 0.45, b = amt and 1 or 0.45 }
+        end
+        line[#line + 1] = { t = self:ShortNum(p.amt), r = 1, g = 0.82, b = 0 }
+        line.name = p.name
+        line.tip = p.name
+        line.tip2 = string.format("Risorsa totale %s", self:ShortNum(p.amt))
+        rows[#rows + 1] = line
+    end
+    local trow = { { t = "Total", r = 1, g = 0.82, b = 0 } }
+    for ci = 1, n do
+        local key = pm.cols[ci].key
+        local s = 0
+        for _, p in ipairs(pm.players) do
+            if pm.cells[p.name] and pm.cells[p.name][key] then s = s + pm.cells[p.name][key] end
+        end
+        trow[#trow + 1] = { t = self:ShortNum(s), r = 1, g = 1, b = 1 }
+    end
+    trow[#trow + 1] = { t = self:ShortNum(pm.total), r = 1, g = 1, b = 1 }
+    trow.isTotal = true
+    rows[#rows + 1] = trow
+    if #rows == 1 then rows[1] = { { t = "No power events" } } end
+    return cols, rows
+end
+
+-- 6) DEATHS: a sinistra i morti, a destra il recap dei colpi (screen 7).
+function CL:BuildDeathDetail(f, death)
+    local cols = {
+        { label = "Time", w = 86, fix = true, tip = "Tempo relativo alla morte" },
+        { label = "Flag", w = 76, fix = true, tip = "Tipo di evento" },
+        { label = "Source", w = 1.1, tip = "Chi ha agito" },
+        { label = "Spell", w = 1.4, tip = "Spell" },
+        { label = "Type", w = 76, fix = true, tip = "Come (SPELL/SUCCESS/HOT/SWING...)" },
+        { label = "Value", w = 84, fix = true, align = "RIGHT", tip = "Valore" },
+        { label = "Over/Stacks", w = 96, fix = true, align = "RIGHT", tip = "Overkill / overheal / stacks" },
+    }
+    local rows = {}
+    if not death then
+        rows[1] = { { t = "Select a death" } }
+        return cols, rows
+    end
+    local drows = self:DeathDetail(f, death.name, death.t, 12)
+    local flagColor = {
+        DIED = { 1, 0.3, 0.3 }, DAMAGE = { 1, 0.45, 0.45 },
+        HEAL = { 0.35, 1, 0.45 }, CAST = { 0.6, 0.8, 1 },
+    }
+    for _, d in ipairs(drows) do
+        local c = flagColor[d.kind] or { 1, 1, 1 }
+        local line = {
+            { t = (d.isDeath and "0:00.000") or self:RelStamp(d.rel or 0), r = c[1], g = c[2], b = c[3] },
+            { t = d.kind or "", r = c[1], g = c[2], b = c[3] },
+            { t = d.src or "", r = 0.9, g = 0.9, b = 0.9 },
+            { t = d.spell or "" },
+            { t = d.flag or "", r = 0.7, g = 0.7, b = 0.7 },
+            { t = d.val or "" },
+            { t = d.over or "", r = 1, g = 0.6, b = 0.4 },
+        }
+        rows[#rows + 1] = line
+    end
+    return cols, rows
+end
+
+-- Riga a due testi (liste storiche + lista dei morti).
 local function MakeRow(parent, onClick)
     local row = CreateFrame("Button", nil, parent)
     row:EnableMouse(true)
@@ -1221,7 +2037,7 @@ function CL:_FillRows(content, poolName, rows, paintFn, clickFn)
     for _, r in ipairs(pool) do r:Hide() end
     RLSuite.utils:ClearScrollClip(content)
     local y = 0
-    for i, data in ipairs(rows) do
+    for i, data in ipairs(rows or {}) do
         local row = pool[i]
         if not row then
             row = MakeRow(content, nil)
@@ -1244,31 +2060,447 @@ function CL:_FillRows(content, poolName, rows, paintFn, clickFn)
     RLSuite.utils:RefreshScrollClip(content)
 end
 
--- Refresh dei due pannelli secondo il tab selezionato.
-function CL:RefreshLists()
+-- ==================================================================
+-- FINESTRA
+-- ==================================================================
+function CL:CreateFrame()
+    local f = CreateFrame("Frame", "RLSuiteCombatLog", UIParent)
+    f:SetSize(CL_WIN_W, CL_WIN_H)
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, -40)
+    f:SetFrameStrata("HIGH")
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:Hide()
+    f._noOuterBorder = true
+    self.frame = f
+    RLSuite.utils:SkinFrame(f)
+    RLSuite.utils:ClampWindow(f)
+
+    -- ---- riga 1: nome del fight (durata, boss, esito) + dropdown a destra
+    self.titleText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    self.titleText:SetPoint("TOPLEFT", f, "TOPLEFT", CL_PAD, -8)
+    self.titleText:SetJustifyH("LEFT")
+    self.titleText:SetText(L["Combat log"])
+
+    self.subText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.subText:SetPoint("TOPRIGHT", f, "TOPRIGHT", -CL_PAD - 252, -12)
+    self.subText:SetJustifyH("RIGHT")
+    self.subText:SetText("")
+
+    self.fightDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteCombatLogFightDD", 244, 20)
+    self.fightDropdown:ClearAllPoints()
+    -- bordo destro a -28: lascia libera la X di chiusura (11px a -4)
+    self.fightDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -28, -8)
+
+    -- ---- riga 2: controllo del grafico
+    self.showGraphCheck = CreateFrame("CheckButton", "RLSuiteCombatLogShowGraph", f, "UICheckButtonTemplate")
+    self.showGraphCheck:SetSize(20, 20)
+    self.showGraphCheck:SetPoint("TOPLEFT", f, "TOPLEFT", CL_PAD, -36)
+    self.showGraphCheck:SetChecked(true)
+    local gLbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    gLbl:SetPoint("LEFT", self.showGraphCheck, "RIGHT", 2, 0)
+    gLbl:SetText(L["Show graph"])
+    self.showGraphCheck:SetScript("OnClick", function(btn)
+        CL.showGraph = btn:GetChecked() and true or false
+        if CL.graphPane then
+            if CL.showGraph then CL.graphPane:Show() else CL.graphPane:Hide() end
+        end
+    end)
+
+    self.stepDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteCombatLogStepDD", 170, 20)
+    self.stepDropdown:ClearAllPoints()
+    self.stepDropdown:SetPoint("LEFT", gLbl, "RIGHT", 12, 0)
+
+    self.graphModeBtns = {}
+    for i, m in ipairs({ "dps", "health", "power" }) do
+        local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        RLSuite.utils:SkinButton(b)
+        b:SetSize(58, 20)
+        b:SetPoint("LEFT", self.stepDropdown, "RIGHT", 8 + (i - 1) * 60, 0)
+        b:SetText(L[m == "dps" and "DPS" or (m == "health" and "Health" or "Power")])
+        b.graphMode = m
+        b:SetScript("OnClick", function() CL.graphMode = m; CL:RefreshGraph() end)
+        self.graphModeBtns[m] = b
+    end
+
+    self.graphHint = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.graphHint:SetPoint("LEFT", self.graphModeBtns.power, "RIGHT", 10, 0)
+    self.graphHint:SetJustifyH("LEFT")
+    self.graphHint:SetTextColor(1, 0.82, 0)
+
+    -- ---- grafico: SEMPRE visibile, altezza fissa
+    self.graphPane = CreateFrame("Frame", nil, f)
+    self.graphPane:SetPoint("TOPLEFT", f, "TOPLEFT", CL_PAD, -62)
+    self.graphPane:SetPoint("TOPRIGHT", f, "TOPRIGHT", -CL_PAD, -62)
+    self.graphPane:SetHeight(CL_GRAPH_H)
+    RLSuite.utils:SkinBox(self.graphPane)
+    self.graph = self:NewGraph(self.graphPane, CL_WIN_W - 2 * CL_PAD - 44, CL_GRAPH_H - 22)
+    self.graph:SetPoint("TOPLEFT", self.graphPane, "TOPLEFT", 30, -14)
+
+    -- ---- tab
+    self.tabBtns = {}
+    local tx = CL_PAD
+    for _, def in ipairs(CL_UI_TABS) do
+        local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        RLSuite.utils:SkinButton(b)
+        b:SetSize(CL_TAB_W, 20)
+        b:SetPoint("TOPLEFT", f, "TOPLEFT", tx, CL_TABS_Y)
+        b:SetText(L[def.label])
+        b.tabKey = def.key
+        b:SetScript("OnClick", function() CL:SelectTab(def.key) end)
+        self.tabBtns[def.key] = b
+        tx = tx + CL_TAB_W + CL_TAB_GAP
+    end
+
+    -- ---- contenuto: griglia / due liste storiche / morti
+    self.gridPane = CreateFrame("Frame", nil, f)
+    self.gridPane:SetPoint("TOPLEFT", f, "TOPLEFT", CL_PAD, CL_CONTENT_Y)
+    self.gridPane:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -CL_PAD, CL_FOOTER_H)
+    RLSuite.utils:SkinBox(self.gridPane)
+    self.grid = self:NewGrid(self.gridPane)
+    self.grid.hint = self.gridPane:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.grid.hint:SetPoint("BOTTOMLEFT", self.gridPane, "BOTTOMLEFT", 6, 4)
+    self.grid.hint:SetTextColor(0.8, 0.8, 0.8)
+
+    self.legacyPane = CreateFrame("Frame", nil, f)
+    self.legacyPane:SetPoint("TOPLEFT", f, "TOPLEFT", CL_PAD, CL_CONTENT_Y)
+    self.legacyPane:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -CL_PAD, CL_FOOTER_H)
+
+    self.leftHeader = self.legacyPane:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.leftHeader:SetPoint("TOPLEFT", self.legacyPane, "TOPLEFT", 8, -2)
+    self.leftHeader:SetText("")
+
+    self.leftBox = CreateFrame("Frame", nil, self.legacyPane)
+    self.leftBox:SetPoint("TOPLEFT", self.legacyPane, "TOPLEFT", 0, -18)
+    self.leftBox:SetPoint("BOTTOMLEFT", self.legacyPane, "BOTTOMLEFT", 0, 0)
+    self.leftBox:SetWidth(300)
+    RLSuite.utils:SkinBox(self.leftBox)
+    self.leftScroll = CreateFrame("ScrollFrame", "RLSuiteCombatLogLeft", self.leftBox, "UIPanelScrollFrameTemplate")
+    self.leftScroll:SetPoint("TOPLEFT", 4, -4)
+    self.leftScroll:SetPoint("BOTTOMRIGHT", -24, 4)
+    self.leftContent = CreateFrame("Frame", nil, self.leftScroll)
+    self.leftContent:SetWidth(264)
+    self.leftContent:SetHeight(1)
+    self.leftScroll:SetScrollChild(self.leftContent)
+    RLSuite.utils:RegisterScrollClip(self.leftScroll, self.leftContent)
+
+    self.rightHeader = self.legacyPane:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.rightHeader:SetPoint("TOPLEFT", self.legacyPane, "TOPLEFT", 320, -2)
+    self.rightHeader:SetText("")
+
+    self.rightBox = CreateFrame("Frame", nil, self.legacyPane)
+    self.rightBox:SetPoint("TOPLEFT", self.legacyPane, "TOPLEFT", 312, -18)
+    self.rightBox:SetPoint("BOTTOMRIGHT", self.legacyPane, "BOTTOMRIGHT", 0, 0)
+    RLSuite.utils:SkinBox(self.rightBox)
+    self.rightScroll = CreateFrame("ScrollFrame", "RLSuiteCombatLogRight", self.rightBox, "UIPanelScrollFrameTemplate")
+    self.rightScroll:SetPoint("TOPLEFT", 4, -4)
+    self.rightScroll:SetPoint("BOTTOMRIGHT", -24, 4)
+    self.rightContent = CreateFrame("Frame", nil, self.rightScroll)
+    self.rightContent:SetWidth(470)
+    self.rightContent:SetHeight(1)
+    self.rightScroll:SetScrollChild(self.rightContent)
+    RLSuite.utils:RegisterScrollClip(self.rightScroll, self.rightContent)
+
+    -- ---- tab DEATHS: lista a sinistra + recap a destra
+    self.deathPane = CreateFrame("Frame", nil, f)
+    self.deathPane:SetPoint("TOPLEFT", f, "TOPLEFT", CL_PAD, CL_CONTENT_Y)
+    self.deathPane:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -CL_PAD, CL_FOOTER_H)
+
+    self.deathHeader = self.deathPane:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.deathHeader:SetPoint("TOPLEFT", self.deathPane, "TOPLEFT", 8, -2)
+    self.deathHeader:SetText("")
+
+    self.deathListBox = CreateFrame("Frame", nil, self.deathPane)
+    self.deathListBox:SetPoint("TOPLEFT", self.deathPane, "TOPLEFT", 0, -18)
+    self.deathListBox:SetPoint("BOTTOMLEFT", self.deathPane, "BOTTOMLEFT", 0, 0)
+    self.deathListBox:SetWidth(170)
+    RLSuite.utils:SkinBox(self.deathListBox)
+    self.deathScroll = CreateFrame("ScrollFrame", "RLSuiteCombatLogDeaths", self.deathListBox, "UIPanelScrollFrameTemplate")
+    self.deathScroll:SetPoint("TOPLEFT", 4, -4)
+    self.deathScroll:SetPoint("BOTTOMRIGHT", -24, 4)
+    self.deathContent = CreateFrame("Frame", nil, self.deathScroll)
+    self.deathContent:SetWidth(134)
+    self.deathContent:SetHeight(1)
+    self.deathScroll:SetScrollChild(self.deathContent)
+    RLSuite.utils:RegisterScrollClip(self.deathScroll, self.deathContent)
+
+    self.deathDetailHeader = self.deathPane:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.deathDetailHeader:SetPoint("TOPLEFT", self.deathPane, "TOPLEFT", 188, -2)
+    self.deathDetailHeader:SetText("")
+
+    self.deathDetailBox = CreateFrame("Frame", nil, self.deathPane)
+    self.deathDetailBox:SetPoint("TOPLEFT", self.deathPane, "TOPLEFT", 180, -18)
+    self.deathDetailBox:SetPoint("BOTTOMRIGHT", self.deathPane, "BOTTOMRIGHT", 0, 0)
+    RLSuite.utils:SkinBox(self.deathDetailBox)
+    self.deathGrid = self:NewGrid(self.deathDetailBox)
+    self.deathGrid.hint = self.deathDetailBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.deathGrid.hint:SetPoint("BOTTOMLEFT", self.deathDetailBox, "BOTTOMLEFT", 6, 4)
+    self.deathGrid.hint:SetTextColor(0.8, 0.8, 0.8)
+
+    -- ---- footer
+    self.reportBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.reportBtn)
+    self.reportBtn:SetSize(100, 24)
+    self.reportBtn:SetText(L["Send report"])
+    self.reportBtn:SetScript("OnClick", function() CL:SendReport() end)
+    self.reportBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", CL_PAD, 10)
+
+    self.clearBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.clearBtn)
+    self.clearBtn:SetSize(70, 24)
+    self.clearBtn:SetPoint("LEFT", self.reportBtn, "RIGHT", 6, 0)
+    self.clearBtn:SetText(L["Clear"])
+    self.clearBtn:SetScript("OnClick", function()
+        if IsShiftKeyDown and IsShiftKeyDown() then
+            if CL.db and CL.db.fights then
+                for k in pairs(CL.db.fights) do CL.db.fights[k] = nil end
+            end
+            CL.selFight = nil
+            CL.selSegment = nil
+            CL._mergeStamp = (CL._mergeStamp or 0) + 1
+            CL:RefreshUI()
+        else
+            RLSuite.utils:Print(L["Shift+click to wipe the saved fights."])
+        end
+    end)
+
+    self.liveCheck = CreateFrame("CheckButton", "RLSuiteCombatLogLive", f, "UICheckButtonTemplate")
+    self.liveCheck:SetSize(20, 20)
+    self.liveCheck:SetPoint("LEFT", self.clearBtn, "RIGHT", 8, 0)
+    self.liveCheck:SetScript("OnClick", function(btn)
+        CL.liveUpdate = btn:GetChecked() and true or false
+        if CL.liveUpdate then CL:EnsureLiveTicker() end
+    end)
+    local liveLbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    liveLbl:SetPoint("LEFT", self.liveCheck, "RIGHT", 2, 0)
+    liveLbl:SetText(L["Live"])
+
+    self.infoText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.infoText:SetPoint("LEFT", liveLbl, "RIGHT", 14, 0)
+    self.infoText:SetJustifyH("LEFT")
+    self.infoText:SetText("")
+
+    f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
+    f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+
+    self.showGraph = true
+    self.gridPane:Hide()
+    self.legacyPane:Hide()
+    self.deathPane:Hide()
+    self:SelectTab(self.selTab or "damage")
+
+    f:SetScript("OnShow", function() CL:RefreshUI() end)
+end
+
+function CL:SkinInner()
+    RLSuite.utils:SkinBox(self.gridPane)
+    RLSuite.utils:SkinBox(self.leftBox)
+    RLSuite.utils:SkinBox(self.rightBox)
+    RLSuite.utils:SkinBox(self.deathListBox)
+    RLSuite.utils:SkinBox(self.deathDetailBox)
+    RLSuite.utils:SkinBox(self.graphPane)
+end
+
+-- Ticker "live" (2s): aggiorna la vista durante il fight registrato.
+function CL:EnsureLiveTicker()
+    if self._liveTicker then return end
+    self._liveTicker = self:ScheduleRepeatingTimer(function()
+        if not CL.liveUpdate then return end
+        if CL.current and CL.frame and CL.frame:IsShown() and not CL.selSegment then
+            CL.selFight = CL.current
+            CL:RefreshUI()
+        end
+    end, 2)
+end
+
+-- ------------------------------------------------------------------
+-- Etichette dei fight + dropdown
+-- ------------------------------------------------------------------
+function CL:FightDurationLabel(f)
+    local dur = self:FightDuration(f)
+    local mm = math.floor(dur / 60)
+    local ss = dur - mm * 60
+    return string.format("%d:%06.3f", mm, ss)
+end
+
+-- Prefisso taglia+difficolta' ("10N"/"25H") quando e' deducibile.
+function CL:FightSizeTag(f)
+    local n = tonumber(f and f.raidSize) or 0
+    if n < 10 then return "" end
+    local size = (n >= 20) and "25" or "10"
+    local d = tonumber(f and f.difficulty)
+    local tag = ""
+    if d == 1 then tag = "N" elseif d == 2 then tag = "N"
+    elseif d == 3 then tag = "H" elseif d == 4 then tag = "H" end
+    return size .. tag
+end
+
+function CL:FightLabel(f, idx)
+    local when = (f.startUTC and date) and date("%d %b %y, %H:%M", f.startUTC) or "??:??"
+    return string.format("%s | %s  %s", self:FightDurationLabel(f),
+        (f.kill and "Kill") or (f.kill == false and "Wipe") or "", f.name or "Combat")
+end
+
+-- Titolo grande in alto a sinistra: "0:02:31.994  10N Gunship  Wipe"
+function CL:FightTitle(f)
+    if not f then return L["Combat log"] end
+    local tag = (f.kill and L["Kill"]) or (f.kill == false and L["Wipe"]) or ""
+    local size = self:FightSizeTag(f)
+    -- come lo screen di UwU: "0:02:31.994  Gunship 10H  Wipe"
+    return string.format("%s  %s%s  %s", self:FightDurationLabel(f),
+        f.name or "Combat", (size ~= "" and (" " .. size)) or "", tag)
+end
+
+function CL:FightListItems()
+    local items = {}
+    if self.current then
+        items[#items + 1] = { text = L["[LIVE]"] .. " " .. (self.current.boss or "Combat"), value = self.current }
+    end
+    local seen, bosses = {}, {}
+    for i, f in ipairs((self.db and self.db.fights) or {}) do
+        items[#items + 1] = { text = self:FightLabel(f, i), value = f }
+        local n = f.name or "Combat"
+        if not seen[n] then
+            seen[n] = true
+            bosses[#bosses + 1] = n
+        end
+    end
+    -- "All <boss> segments": tutti i pull di quel boss su una linea di tempo
+    for _, n in ipairs(bosses) do
+        items[#items + 1] = { text = string.format("All %s segments", n), value = { __segment = n } }
+    end
+    if #items == 0 then items[1] = { text = L["No fights recorded"], value = false } end
+    return items
+end
+
+function CL:SelectFight(f)
+    if type(f) == "table" and f.__segment then
+        self.selSegment = f.__segment
+        local merged = self:MergedFight(f.__segment)
+        if merged then self.selFight = merged else self.selFight = nil end
+    else
+        if f ~= false then self.selFight = f end
+        self.selSegment = nil
+    end
+    self.selSource = nil
+    self.deathSel = nil
+    self:RefreshUI()
+end
+
+function CL:SelectTab(key)
+    self.selTab = key
+    self.selSource = nil
+    if CL_GRID_TABS[key] then
+        self.gridPane:Show(); self.legacyPane:Hide(); self.deathPane:Hide()
+    elseif key == "deaths" then
+        self.gridPane:Hide(); self.legacyPane:Hide(); self.deathPane:Show()
+    else
+        self.gridPane:Hide(); self.legacyPane:Hide(); self.deathPane:Hide()
+        self.legacyPane:Show()
+    end
+    for _, def in ipairs(CL_UI_TABS) do
+        local b = self.tabBtns[def.key]
+        if b then
+            if def.key == key then b:LockHighlight() else b:UnlockHighlight() end
+        end
+    end
+    self:RefreshUI()
+end
+
+-- Intestazione + dropdown dei fight.
+function CL:RefreshHeader()
     local f = self.selFight
+    self.titleText:SetText(self:FightTitle(f))
+    if f then
+        local when = (f.startUTC and date) and date("%d %b %y, %H:%M", f.startUTC) or ""
+        local who = f.player or ""
+        local txt = (when ~= "" and (when .. "  -  " .. who)) or who
+        if f.merged then txt = string.format("segments: %d pull", f.segments or 0) end
+        if f.interrupted then txt = txt .. "  (interrupted)" end
+        self.subText:SetText(txt)
+    else
+        self.subText:SetText("")
+    end
+    local items = self:FightListItems()
+    -- per un segmento il "valore corrente" e' la voce stessa (per TESTO):
+    -- SetupDropdown confronta i value per riferimento, non per contenuto.
+    local cur = f
+    if self.selSegment then
+        for _, it in ipairs(items) do
+            if type(it.value) == "table" and it.value.__segment == self.selSegment then
+                cur = it.text
+            end
+        end
+    end
+    RLSuite.utils:SetupDropdown(self.fightDropdown, items, cur, function(v)
+        CL:SelectFight(v)
+    end)
+end
+
+function CL:RefreshUI()
+    if not self.frame then return end
+    self:RefreshHeader()
+    self:EnsureLiveTicker()
+    self:RefreshLists()
+    self:RefreshGraph()
+end
+
+-- Riga di stato in basso (eventi registrati, scarti, dimensione dei dati).
+function CL:RefreshInfo(f)
     if not f then
-        self.leftHeader:SetText(L["No fights recorded"])
-        self.rightHeader:SetText("")
         self.infoText:SetText("")
-        self:_FillRows(self.leftContent, "_lRows", {}, function() end)
-        self:_FillRows(self.rightContent, "_rRows", {}, function() end)
         return
     end
-    local dur = self:FightDuration(f)
-    -- info bar
     local dropped = (f.dropped and f.dropped > 0) and (" (+" .. f.dropped .. " " .. L["dropped"] .. ")") or ""
     self.infoText:SetText(string.format("%s | %d:%02d | %d %s%s",
-        f.name or "Combat", math.floor(dur / 60), math.floor(dur % 60),
+        f.name or "Combat", math.floor(self:FightDuration(f) / 60), math.floor(self:FightDuration(f) % 60),
         f.count or #f.events, L["Events"], dropped))
+end
 
+-- Tab DEATHS: lista dei morti + recap della morte selezionata.
+function CL:RefreshDeathPane(f)
+    local deaths = self:AggDeaths(f)
+    self.deathHeader:SetText(string.format("%s: %d", L["Deaths"], #deaths))
+    if #deaths == 0 then
+        self.deathSel = nil
+    elseif not self.deathSel or not deaths[self.deathSel] then
+        self.deathSel = 1
+    end
+    local rows = {}
+    for i, d in ipairs(deaths) do
+        rows[#rows + 1] = { name = d.name, idx = i, t = d.t, killer = d.killer }
+    end
+    self:_FillRows(self.deathContent, "_dRows", rows, function(row, d, i)
+        row.txt1:SetText(i .. ". " .. (d.name or "?"))
+        row.txt1:SetTextColor(1, 0.55, 0.55)
+        row.txt2:SetText(string.format("%d:%02d  %s", math.floor((d.t or 0) / 60),
+            math.floor((d.t or 0) % 60), Trunc(d.killer or "", 10)))
+        if CL.deathSel == i then
+            RLSuite.utils:SkinRow(row, true)
+        else
+            RLSuite.utils:SkinRow(row, false)
+        end
+    end, function(d)
+        CL.deathSel = d.idx
+        CL:RefreshDeathPane(CL.selFight)
+    end)
+    local sel = deaths[self.deathSel]
+    local cols, drows = self:BuildDeathDetail(f, sel)
+    self.deathDetailHeader:SetText(sel and string.format("%s  (killer: %s)", sel.name, sel.killer or "?") or "")
+    self:GridRender(self.deathGrid, cols, drows, { width = CL_GRID_W - 180 })
+end
+
+-- Tab storici (Healing / Players spells / Entities / Interrupts): due liste.
+function CL:RefreshLegacyLists(f)
     local tab = self.selTab
     local sel = self.selSource
-
-    if tab == "damage" or tab == "healing" or tab == "players" then
-        local cat = (tab == "damage" and "damage") or (tab == "healing" and "heal") or "cast"
+    if tab == "healing" or tab == "spells" then
+        local cat = (tab == "healing") and "heal" or "cast"
         local rows, total = self:AggTotals(f, cat)
-        self.leftHeader:SetText((tab == "damage" and L["Damage"] or tab == "healing" and L["Healing"] or L["Players spells"])
+        self.leftHeader:SetText(((tab == "healing") and L["Healing"] or L["Players spells"])
             .. " — " .. L["Total"] .. ": " .. self:ShortNum(total))
         self:_FillRows(self.leftContent, "_lRows", rows, function(row, d, i)
             local pct = (total > 0) and (d.amt / total * 100) or 0
@@ -1276,19 +2508,14 @@ function CL:RefreshLists()
             row.txt2:SetText(string.format("%s %.1f%%", self:ShortNum(d.amt), pct))
             local rr, gg, bb = self:ClassColor(d.name)
             row.txt1:SetTextColor(rr, gg, bb)
-            if sel == d.name then
-                RLSuite.utils:SkinRow(row, true)
-            else
-                RLSuite.utils:SkinRow(row, false)
-            end
+            if sel == d.name then RLSuite.utils:SkinRow(row, true) else RLSuite.utils:SkinRow(row, false) end
         end, function(d)
             CL.selSource = (CL.selSource == d.name) and nil or d.name
             CL:RefreshLists()
         end)
-        -- dettaglio: breakdown per spell della sorgente selezionata
         if sel then
             local srows, stotal = self:AggSpells(f, cat, sel)
-            self.rightHeader:SetText(sel .. " — " .. (cat == "cast" and L["Spells list"] or L["By cast"]))
+            self.rightHeader:SetText(sel .. " — " .. ((cat == "cast") and L["Spells list"] or L["By cast"]))
             self:_FillRows(self.rightContent, "_rRows", srows, function(row, d, i)
                 if cat == "cast" then
                     local sidTxt = (self.db.options and self.db.options.showSpellIds and d.sid) and (" [" .. d.sid .. "]") or ""
@@ -1323,7 +2550,6 @@ function CL:RefreshLists()
             self.rightHeader:SetText(L["Select player"])
             self:_FillRows(self.rightContent, "_rRows", {}, function() end)
         end
-
     elseif tab == "enemies" then
         local rows, total = self:AggEnemies(f)
         self.leftHeader:SetText(L["Enemies"] .. " — " .. L["Total"] .. ": " .. self:ShortNum(total))
@@ -1336,7 +2562,6 @@ function CL:RefreshLists()
             RLSuite.utils:SkinRow(row, false)
         end)
         self:_FillRows(self.rightContent, "_rRows", {}, function() end)
-
     elseif tab == "interrupts" then
         local rows = self:AggInterrupts(f, "interrupt")
         local rows2 = self:AggInterrupts(f, "dispel")
@@ -1354,94 +2579,104 @@ function CL:RefreshLists()
             row.txt1:SetTextColor(0.85, 0.6, 1)
             RLSuite.utils:SkinRow(row, false)
         end)
-
-    elseif tab == "auras" then
-        local rows = self:AggAuras(f)
-        self.leftHeader:SetText(L["Auras"] .. " — " .. L["Uptime"])
-        self:_FillRows(self.leftContent, "_lRows", rows, function(row, d, i)
-            row.txt1:SetText(i .. ". " .. (d.name or "?") .. ((d.auraType == "DEBUFF") and " [D]" or ""))
-            row.txt2:SetText(string.format("%d×  %.0f%%", d.count, d.uptime or 0))
-            row.txt1:SetTextColor(d.auraType == "DEBUFF" and 1 or 0.4, d.auraType == "DEBUFF" and 0.5 or 1, 0.5)
-            if sel == d.name then RLSuite.utils:SkinRow(row, true) else RLSuite.utils:SkinRow(row, false) end
-        end, function(d)
-            CL.selSource = (CL.selSource == d.name) and nil or d.name
-            CL:RefreshLists()
-        end)
-        if sel then
-            local sp
-            for _, d in ipairs(rows) do if d.name == sel then sp = d break end end
-            self.rightHeader:SetText(sel .. " — " .. L["By target"])
-            local drows = {}
-            if sp then
-                for dst, up in pairs(sp.dests) do
-                    drows[#drows + 1] = { name = dst, amt = up }
-                end
-                table.sort(drows, function(a, b) return a.amt > b.amt end)
-            end
-            self:_FillRows(self.rightContent, "_rRows", drows, function(row, d, i)
-                row.txt1:SetText(i .. ". " .. d.name)
-                row.txt2:SetText(string.format("%.1fs", d.amt))
-                row.txt1:SetTextColor(1, 1, 1)
-                RLSuite.utils:SkinRow(row, false)
-            end)
-        else
-            self.rightHeader:SetText(L["Select player"])
-            self:_FillRows(self.rightContent, "_rRows", {}, function() end)
-        end
-
-    elseif tab == "power" then
-        local rows, byPlayer = self:AggPower(f)
-        self.leftHeader:SetText(L["Power"])
-        self:_FillRows(self.leftContent, "_lRows", rows, function(row, d, i)
-            row.txt1:SetText(i .. ". " .. d.name)
-            row.txt2:SetText(self:ShortNum(d.amt))
-            row.txt1:SetTextColor(0.4, 0.6, 1)
-            if sel == d.name then RLSuite.utils:SkinRow(row, true) else RLSuite.utils:SkinRow(row, false) end
-        end, function(d)
-            CL.selSource = (CL.selSource == d.name) and nil or d.name
-            CL:RefreshLists()
-        end)
-        if sel then
-            local drows = {}
-            for k, amt in pairs(byPlayer) do
-                local pt, dst = strsplit("|", k)
-                if pt == sel then drows[#drows + 1] = { name = dst, amt = amt } end
-            end
-            table.sort(drows, function(a, b) return a.amt > b.amt end)
-            self.rightHeader:SetText(sel .. " — " .. L["By target"])
-            self:_FillRows(self.rightContent, "_rRows", drows, function(row, d, i)
-                row.txt1:SetText(i .. ". " .. d.name)
-                row.txt2:SetText(self:ShortNum(d.amt))
-                row.txt1:SetTextColor(1, 1, 1)
-                RLSuite.utils:SkinRow(row, false)
-            end)
-        else
-            self.rightHeader:SetText(L["Select player"])
-            self:_FillRows(self.rightContent, "_rRows", {}, function() end)
-        end
     end
 end
 
--- Refresh del tab Graphs.
+-- Contenuto del tab attivo.
+function CL:RefreshLists()
+    local f = self.selFight
+    self:RefreshInfo(f)
+    if not f then
+        local tab0 = self.selTab
+        if CL_GRID_TABS[tab0] then
+            local cols, rows = { { label = "Name" } }, { { { t = L["No fights recorded"] } } }
+            if tab0 == "damage" then
+                cols, rows = self:BuildDamageTab({
+                    events = {}, count = 0, duration = 1, samples = { health = {}, power = {} },
+                })
+                rows = { { { t = L["No fights recorded"], r = 1, g = 0.82, b = 0 } } }
+            end
+            self:GridRender(self.grid, cols, rows, { width = CL_GRID_W })
+        elseif tab0 == "deaths" then
+            self.deathHeader:SetText(L["Deaths"])
+            self.deathDetailHeader:SetText("")
+            self:_FillRows(self.deathContent, "_dRows", {}, function() end)
+            local cols, drows = self:BuildDeathDetail(nil, nil)
+            self:GridRender(self.deathGrid, cols, drows, { width = CL_GRID_W - 180 })
+        else
+            self.leftHeader:SetText(L["No fights recorded"])
+            self.rightHeader:SetText("")
+            self:_FillRows(self.leftContent, "_lRows", {}, function() end)
+            self:_FillRows(self.rightContent, "_rRows", {}, function() end)
+        end
+        return
+    end
+    local tab = self.selTab
+    if tab == "deaths" then
+        self:RefreshDeathPane(f)
+        return
+    end
+    if not CL_GRID_TABS[tab] then
+        self:RefreshLegacyLists(f)
+        return
+    end
+    local cols, rows
+    if tab == "damage" then
+        cols, rows = self:BuildDamageTab(f)
+    elseif tab == "targets" then
+        cols, rows = self:BuildTargetsTab(f)
+    elseif tab == "consumables" then
+        cols, rows = self:BuildConsumablesTab(f)
+    elseif tab == "auras" then
+        cols, rows = self:BuildAurasTab(f)
+    elseif tab == "powers" then
+        cols, rows = self:BuildPowersTab(f)
+    end
+    -- click su una riga = sorgente del grafico
+    self:GridRender(self.grid, cols, rows, {
+        width = CL_GRID_W,
+        hint = L["Click a row to plot that player"],
+        onClick = function(data)
+            CL.selSource = (CL.selSource == data.name) and nil or data.name
+            CL:RefreshGraph()
+            CL:RefreshLists()
+        end,
+    })
+end
+
 function CL:RefreshGraph()
     if not self.graphPane or not self.graph then return end
+    -- Discretizzazioni (terzo screen di UwU): media intero fight + 1/2/3/5/10s
+    local items = {}
+    for _, st in ipairs(CL_GRAPH_STEPS) do
+        items[#items + 1] = { text = L[st.text], value = st.step }
+    end
+    RLSuite.utils:SetupDropdown(self.stepDropdown, items, self.graphStep, function(v)
+        CL.graphStep = v
+        CL:RefreshGraph()
+    end)
+    for _, m in ipairs({ "dps", "health", "power" }) do
+        local b = self.graphModeBtns and self.graphModeBtns[m]
+        if b then
+            if m == self.graphMode then b:LockHighlight() else b:UnlockHighlight() end
+        end
+    end
     local f = self.selFight
     if not f then
         self.graphHint:SetText(L["No fights recorded"])
         self.graph:SetData({}, {})
         return
     end
-    local items = {}
-    for _, s in ipairs({ 1, 2, 3, 5, 10 }) do items[#items + 1] = { text = s .. "s", value = s } end
-    RLSuite.utils:SetupDropdown(self.stepDropdown, items, self.graphStep, function(v)
-        CL.graphStep = v
-        CL:RefreshGraph()
-    end)
     local series, vlines, label = {}, {}, ""
     local mode = self.graphMode
     if mode == "dps" then
         series = self:DpsSeries(f, self.selSource, self.graphStep)
-        label = (self.selSource and (self.selSource .. " ")) or (L["Total DPS"] .. " ")
+        local stepTxt = L["Avg whole fight"]
+        for _, st in ipairs(CL_GRAPH_STEPS) do
+            if st.step == self.graphStep then stepTxt = L[st.text] end
+        end
+        label = ((self.selSource and (self.selSource .. " ")) or (L["Total DPS"] .. " "))
+            .. "— " .. stepTxt
         for _, ev in ipairs(f.events) do
             if ev[CL_E.SUB] == "UNIT_DIED" then vlines[#vlines + 1] = { ev[CL_E.T] } end
         end
@@ -1449,8 +2684,7 @@ function CL:RefreshGraph()
         local key = (self.selSource and not self.selSource:find("^%[BOSS%]"))
             and self.selSource or (f.boss and ("[BOSS] " .. f.boss) or self.selSource)
         series = self:SampleSeries(f, "health", key)
-        label = (key or "?") .. " HP% "
-        -- health usa i sample: vline = morti pg
+        label = (key or "?") .. " HP%"
         for _, ev in ipairs(f.events) do
             if ev[CL_E.SUB] == "UNIT_DIED" and self:IsPlayerFlag(ev[CL_E.DSTF]) then
                 vlines[#vlines + 1] = { ev[CL_E.T] }
@@ -1459,7 +2693,7 @@ function CL:RefreshGraph()
     else
         local key = self.selSource
         series = key and self:SampleSeries(f, "power", key) or {}
-        label = (key and (key .. " Power% ")) or (L["Select player"] .. " ")
+        label = (key and (key .. " Power%")) or (L["Select player"] .. " (Power)")
         if not key then
             for _, ev in ipairs(f.events) do
                 if ev[CL_E.SUB] == "UNIT_DIED" and self:IsPlayerFlag(ev[CL_E.DSTF]) then
@@ -1468,7 +2702,7 @@ function CL:RefreshGraph()
             end
         end
     end
-    self.graphHint:SetText(label .. "(" .. L["drag: zoom, click: reset, hover: values"] .. ")")
+    self.graphHint:SetText(label .. "  (" .. L["drag: zoom, click: reset, hover: values"] .. ")")
     local unit = (mode == "dps") and "DPS" or (mode == "health" and "HP%" or "Power%")
     self.graph:SetData(series, vlines, { unit = unit })
 end
@@ -1480,9 +2714,17 @@ function CL:SendReport()
         RLSuite.utils:Print(L["No fights recorded"])
         return
     end
-    local cat = (self.selTab == "healing") and "heal" or (self.selTab == "players" and "cast" or "damage")
-    local rows, total = self:AggTotals(f, cat)
-    local mode = (self.selTab == "healing") and "HEALING" or (self.selTab == "players" and "CASTS" or "DAMAGE")
+    -- Sul tab Damage il report e' il danno UTILE (boss) top-5 come la tabella.
+    local tab = self.selTab
+    local cat = (tab == "healing") and "heal" or (tab == "spells" and "cast" or "damage")
+    local mode = (tab == "healing") and "HEALING" or (tab == "spells" and "CASTS" or "DAMAGE")
+    if tab == "damage" then
+        -- il tab Damage mostra il danno UTILE: il report usa la stessa fonte
+        local st = self:AggPlayerStats(f)
+        rows, total = {}, st.total.useful
+        for _, a in ipairs(st.rows) do rows[#rows + 1] = { name = a.name, amt = a.useful } end
+        table.sort(rows, function(x, y) return x.amt > y.amt end)
+    end
     local parts = {}
     for i = 1, math.min(5, #rows) do
         local d = rows[i]

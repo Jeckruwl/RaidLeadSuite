@@ -7,7 +7,66 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.62**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.63**.
+
+## 1.11.63 — pannello Log rifatto: layout e viste stile UwU Logs
+
+Richiesta: *"overhaul grafico del pannello di log ... stesse funzionalita' di
+uwulogs"* (grafico sempre visibile + tab Targets/Consumables/Auras/Deaths/Powers).
+L'aspetto (texture/colori) non conta: **conta la disposizione**.
+
+Nuovo layout della finestra `Log` (900x660, minimi 870x660 in `windowMins.log`):
+
+```
+[durata + nome boss + taglia + esito]        [data, ora - player] [fight ▼]
+[Show graph] [Avg whole fight ▼] [DPS][Health][Power]  <etichetta serie>
++-------------------------- GRAFICO (150px, SEMPRE visibile) ----------+
+[Damage][Targets][Consumables][Auras][Deaths][Powers][Healing][Spells][Entities][Interrupts]
++-------------------------- contenuto del tab -------------------------+
+[Send report][Clear][Live]  info
+```
+
+- **In alto a sinistra**: `0:02:31.994  Gunship 10H  Wipe` (durata + nome +
+  taglia/difficolta' + esito). Il taglio `10N/25H` e' DEDOTTO da
+  `GetNumRaidMembers` + `GetInstanceDifficulty` (guardato con pcall): da
+  verificare in game, se sbaglia si leva.
+- **In alto a destra**: dropdown di scelta del fight. Voci: i pull salvati
+  (`durata | Kill/Wipe  Nome`) + **"All <boss> segments"** = tutti i pull di
+  quel boss concatenati su una linea di tempo continua (`CL:MergedFight`,
+  ultimi 8, in ordine cronologico).
+- **Grafico sempre visibile** (pannello suo, 150px) con le 6 discretizzazioni
+  di UwU: `Avg whole fight` (DEFAULT: media cumulativa = curva che sale e si
+  appiattisce), `Avg every second`, `2/3/5/10 seconds`. La casella "Show graph"
+  lo spegne/riaccende.
+- **Tab** (ordine UwU: Damage, Targets, Consumables, Auras, Deaths, Powers,
+  poi gli storici Healing/Spells/Entities/Interrupts):
+  - `Damage`: griglia `Name | Rank | Dps% | Useful Damage | Heal | Damage Taken`
+    con riga TOTAL in testa e barre rosse/verdi (danno utile/cure/subito).
+    Dps% = danno utile / durata. Click su una riga = grafico su quel giocatore.
+  - `Targets`: `Name | Useful | Total` + una colonna per bersaglio NPC (i boss
+    sono marcati `*`, tooltip "conta come danno utile"). Colonne = top N che
+    entrano nella larghezza (max 110px l'una).
+  - `Consumables`: `Name | Uses` + colonne con l'ICONA della spell. Flask e
+    "Well Fed" per ID (liste gia' curate in `RLSuite.buffData`), pozioni/elisir
+    per NOME ("potion/elixir/flask/feast/rum/...", client EN). Un uso = un
+    cast o un'aura (max dei due conteggi: cast+aura non conta doppio).
+  - `Auras`: `Name` + una colonna per aura (icona) con `applicazioni uptime%`.
+  - `Deaths`: lista dei morti a sinistra (ora + killer), a destra il recap
+    stile UwU: `Time | Flag | Source | Spell | Type | Value | Over/Stacks`
+    (12s prima della morte: DAMAGE con overkill, HEAL con overheal, CAST).
+  - `Powers`: `Name` + una colonna per spell che ha generato risorsa + `TOTAL`,
+    con riga Total in fondo.
+- **Danno "utile"** = danno i cui bersagli sono NPC boss noti (`CL_BOSS_NPC`,
+  flag `CL_E.BOSS=17` messo in cattura). Gli ADD importanti NON sono boss noti
+  (es. Skybreaker Sorcerer del Gunship in UwU): per ora non contano come utili.
+- Icone nell'intestazione con tooltip (nome della spell/aura), righe con
+  tooltip di dettaglio, zebra + riga TOTAL evidenziata.
+
+Test: **952 check** totali (45 nuovi): aggregazioni su un fight sintetico
+deterministico (utile/totale/subito/cure, bersagli, consumabili, aure con
+uptime, risorse, morti + recap con overkill), title/label dei fight, merge dei
+segmenti, le 6 discretizzazioni e la serie cumulativa, colonne/righe dei tab,
+struttura della finestra (grafico sempre visibile, ordine dei tab, minimi).
 
 ## 1.11.62 — Raid Frame: griglia IMMOBILE (le barre non saltano piu' in cima)
 
@@ -37,7 +96,7 @@ non cambia MAI dimensione: la y di una barra dipende solo dal suo gruppo.
 - accendere/spegnere il tasto "Raid Buffs" non muove nulla (era gia' cosi'):
   ora vale anche per il passaggio roster vuoto <-> roster pieno.
 
-Test: **907 check** totali (13 nuovi nella 1.11.62): altezza costante con raid
+Test: **952 check** totali (45 nuovi nella 1.11.63): altezza costante con raid
 vuoto/1 player/pieno, G6 in fondo anche a raid vuoto, y uguali fra roster pieno
 e quasi vuoto, banda fra gruppi costante, icone del buff check visibili con G1
 vuoto e alla stessa y, celle della matrice allineate alla riga del gruppo,

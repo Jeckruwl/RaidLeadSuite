@@ -678,12 +678,11 @@ function MW:RegisterAllWindows()
         return 510, 340
     end
     RLSuite.windowMins.log = function()
-        -- min width = riga dei tab in alto (16 + 8 tab da 86px + gap da 2),
-        -- sotto i 724px i tasti sbordano fuori finestra.
-        -- min height = stack reale: 78 (dropdown+tab+header) + 398 (liste)
-        -- + ~30 (barra report/clear/live) + margini: sotto i 540 la barra
-        -- inferiore clippa le liste.
-        return 730, 540
+        -- Layout v1.11.63 (stile UwU Logs): la riga dei tab ha 10 tasti da
+        -- 78px + 5 di gap (14 + 10*83 + 14 = 853): sotto ~870 i tasti
+        -- sbordano. Altezza = riga titolo (28) + controlli grafico (28) +
+        -- grafico (150) + tab (24) + contenuto (360) + footer (42) + margini.
+        return 870, 660
     end
 
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
@@ -723,7 +722,7 @@ function MW:RegisterAllWindows()
         group = { "groupmaking", 420, 380, "groupmaking" },
         ms = { "ms", 320, 260, "ms" },
         loot = { "loot", 440, 300, "loot" },
-        log = { "combatlog", 730, 540, "combatlog" },
+        log = { "combatlog", 900, 646, "combatlog" },
     }
     for key, cfg in pairs(resizable) do
         local pane = self:PaneForTab(key)

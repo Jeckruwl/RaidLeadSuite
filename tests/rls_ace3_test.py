@@ -3719,35 +3719,45 @@ rt.execute("""
 """)
 check(bool(rt.eval("TIP_OK == true")), "hovering the graph opens a readout tooltip (time + value)")
 
-# --- I.6 UI: tab presenti, liste, selezione, grafico ---# --- I.6 UI: tab presenti, liste, selezione, grafico ---
+# --- I.6 UI (v1.11.63, layout stile UwU): griglia + tab + grafico fanno parte
+# --- di una sola finestra: grafico sempre visibile, tab che cambiano il
+# --- contenuto (griglia / due liste storiche / morti).
 rt.execute("""
 local cl = RLSuite.combatLog
 ROSTER_MOCK = { { 'PlayerOne', 1, 1, 80, 80, 'WARRIOR' } }
 cl.selFight = cl.db.fights[2]
 cl:SelectTab('damage')
-I_LROWS = #cl._lRows
-I_LTOP = cl._lRows[1] and cl._lRows[1].txt1:GetText()
--- click prima riga = selezione sorgente -> breakdown a destra
-cl._lRows[1]._scripts.OnClick(cl._lRows[1])
+I_GRID_TAB = cl.gridPane:IsShown() and not cl.legacyPane:IsShown()
+I_COLS = #(cl.grid.cols or {})
+I_ROWS = #(cl.grid.pool[I_COLS] or {})
+I_HDR = cl.grid.hdrPool[1] and cl.grid.hdrPool[1].btn.fs:GetText()
+-- click su una riga (la 1 e' la riga TOTAL, senza nome): la 2 = primo player
+local row = cl.grid.pool[I_COLS] and cl.grid.pool[I_COLS][2]
+I_ROWTXT = row and row.cells[1].fs:GetText()
+if row and row._scripts.OnClick then row._scripts.OnClick(row) end
 I_SEL = cl.selSource
-I_RROWS = #cl._rRows
 cl:SelectTab('interrupts')
 I_IL = 0
 for _, r in ipairs(cl._lRows) do if r:IsShown() then I_IL = I_IL + 1 end end
-cl:SelectTab('graphs')
-I_GPANE = (cl.leftBox:IsShown() == false and cl.graphPane:IsShown() == true)
+I_LEGACY = cl.legacyPane:IsShown() and not cl.gridPane:IsShown()
+cl:SelectTab('deaths')
+I_DEATH = cl.deathPane:IsShown() and not cl.gridPane:IsShown()
+cl:SelectTab('damage')
+I_BACK = cl.gridPane:IsShown() and not cl.deathPane:IsShown()
 cl:RefreshGraph()
 I_SERIES = (cl.graph.series ~= nil and #cl.graph.series > 0)
 I_VLINES = (cl.graph.vlines ~= nil and #cl.graph.vlines >= 1)
-cl:SelectTab('damage')
-I_BACK = (cl.leftBox:IsShown() == true and cl.graphPane:IsShown() == false)
+I_GPANE = (cl.graphPane:IsShown() == true)
 """)
-check(bool(rt.eval("I_LTOP == '1. PlayerOne'")), "left pane lists sources sorted (PlayerOne first)")
-check(bool(rt.eval("I_SEL == 'PlayerOne' and I_RROWS >= 2")), "clicking a source fills the right pane with the spell breakdown")
-check(bool(rt.eval("I_IL == 1")), "interrupts tab lists the kick event")
-check(bool(rt.eval("I_GPANE == true and I_SERIES == true")), "graphs tab shows the graph with a DPS series drawn from the fight")
-check(bool(rt.eval("I_VLINES == true")), "death events drawn as vertical markers on the graph")
-check(bool(rt.eval("I_BACK == true")), "leaving the graphs tab restores the two lists")
+check(bool(rt.eval("I_GRID_TAB == true and I_COLS >= 6")), "v1.11.63: damage tab draws a GRID (name/rank/dps/useful/heal/taken)")
+check(bool(rt.eval("I_HDR == 'Name'")), "v1.11.63: grid column headers rendered (first = Name)")
+check(bool(rt.eval("I_ROWS >= 2")), "v1.11.63: grid has the TOTAL row + one row per player")
+check(bool(rt.eval("I_SEL == 'PlayerOne'")), "v1.11.63: clicking a grid row selects the player for the graph")
+check(bool(rt.eval("I_IL == 1")), "interrupts tab lists the kick event (legacy two-list pane)")
+check(bool(rt.eval("I_LEGACY == true")), "v1.11.63: legacy tabs show the two-list pane and hide the grid")
+check(bool(rt.eval("I_DEATH == true")), "v1.11.63: deaths tab shows its own pane (list + recap)")
+check(bool(rt.eval("I_BACK == true")), "v1.11.63: going back to damage restores the grid")
+check(bool(rt.eval("I_GPANE == true and I_SERIES == true and I_VLINES == true")), "v1.11.63: the graph is ALWAYS visible (own pane) and still draws series + death markers")
 
 # --- I.7 clear + report + live dropdown ---
 rt.execute("""
@@ -3898,10 +3908,10 @@ check(bool(rt.eval("LL_N == 0")), "enabling debug mode no longer spawns loot by 
 check(bool(rt.eval("LL_N2 > 0")), "the Fill Loot button is the ONLY thing spawning debug loot")
 
 # --- CombatLog window: dropdown clears the close X; min width covers the tab row ---
-check(bool(rt.eval("""(function() local p = RLSuite.combatLog.fightDropdown._points[1] return p ~= nil and p[4] ~= nil and p[4] <= -40 end)()""")), "fight dropdown stays CLEAR of the close X (-44, no more clipping)")
+check(bool(rt.eval("""(function() local p = RLSuite.combatLog.fightDropdown._points[1] return p ~= nil and p[4] ~= nil and p[4] <= -24 end)()""")), "fight dropdown stays CLEAR of the close X (11px wide at -4)")
 check(bool(rt.eval("RLSuite.windowMins.log() >= 730")), "log min width covers the full top tab row (8 tabs x 88px + margins)")
 check(bool(rt.eval("(function() local _, h = RLSuite.windowMins.log() return h ~= nil and h >= 540 end)()")), "log min height covers the stacked content (lists 398 + top area 78 + bottom bar, never clipped)")
-check(bool(rt.eval("(function() local tx = 0 for _ in pairs(RLSuite.combatLog.tabBtns) do tx = tx + 1 end return (16 + tx * 88) <= RLSuite.windowMins.log() + 10 end)()")), "every top tab stays inside the min-width window")
+check(bool(rt.eval("(function() local tx = 0 for _ in pairs(RLSuite.combatLog.tabBtns) do tx = tx + 1 end return (14 + tx * 83 + 14) <= RLSuite.windowMins.log() + 10 end)()")), "every top tab stays inside the min-width window")
 
 # --- Loot Manager: min width includes the MS announce button# --- Loot Manager: min width includes the MS announce button; window fixed like the equip panel ---
 rt.execute("LM_MINW = RLSuite.windowMins.loot()")
@@ -5092,6 +5102,256 @@ check(bool(rt.eval("IM_DRAG_SHOWN >= 5")), "v1.11.62: durante il drag gli slot v
 check(bool(rt.eval("IM_H_MAT_OFF == IM_H_MAT_ON and IM_Y6_MAT_OFF == IM_Y6_MAT_ON")), "v1.11.62: accendere/spegnere il buff check non muove le barre")
 check(bool(rt.eval("IM_MT_Y_ONE == IM_MT_Y_FULL")), "v1.11.62: il blocco Tanks e' riservato sempre (barra MT ferma: %r / %r)" % (rt.eval("IM_MT_Y_ONE"), rt.eval("IM_MT_Y_FULL")))
 check(bool(rt.eval("IM_BTN_EMPTY_SHOWN == false and IM_BTN_FULL_SHOWN == true")), "v1.11.62: a roster vuoto il tasto 'Raid Buffs' resta nascosto e riappare col roster")
+
+rt.execute("""
+-- =====================================================================
+-- v1.11.63: report stile UwU Logs (targets/consumables/auras/deaths/powers)
+-- Fight SINTETICO deterministico: numeri esatti per ogni aggregazione.
+-- =====================================================================
+CLT = RLSuite.combatLog
+CLT.db.enabled = true
+UW_P = 1024 + 16 + 1      -- player, friendly, affiliato al raid
+UW_N = 2048 + 64          -- npc, hostile
+UW_FLASK = 53760          -- Flask of Endless Rage (in RLSuite.buffData.flask)
+UW_FOOD = 57399           -- Well Fed (Fish Feast)
+UW_F = {
+    name = "Test Boss", kill = true, duration = 100, startTime = 0, startUTC = 0,
+    count = 0, events = {}, samples = { health = {}, power = {} },
+    player = "Alpha", raidSize = 25, difficulty = 3, boss = "Test Boss",
+}
+function UWPush(t, sub, src, srcf, dst, dstf, sid, sname, amt, over)
+    local ev = { t, sub, src, srcf or 0, dst, dstf or 0, sid, sname, amt, over }
+    UW_F.count = UW_F.count + 1
+    UW_F.events[UW_F.count] = ev
+    return ev
+end
+for i = 1, 6 do
+    UWPush(10 * i, "SPELL_DAMAGE", "Alpha", UW_P, "Test Boss", UW_N, 48230, "Fireball", 10000, 0)[17] = true
+end
+for i = 1, 4 do
+    UWPush(12 * i, "SPELL_DAMAGE", "Beta", UW_P, "Test Boss", UW_N, 47488, "Mortal Strike", 10000, 0)[17] = true
+end
+UWPush(30, "SWING_DAMAGE", "Alpha", UW_P, "Trash Mob", UW_N, 0, "Melee", 10000, 0)
+UWPush(40, "SPELL_DAMAGE", "Test Boss", UW_N, "Alpha", UW_P, 59448, "Cleave", 5000, 0)
+UWPush(45, "SPELL_HEAL", "Alpha", UW_P, "Beta", UW_P, 48782, "Holy Light", 3000, 200)
+UWPush(46, "SPELL_HEAL", "Beta", UW_P, "Beta", UW_P, 43185, "Runic Healing Potion", 2000, 0)
+UWPush(0, "SPELL_AURA_APPLIED", "Alpha", UW_P, "Alpha", UW_P, UW_FLASK, "Flask of Endless Rage")
+UWPush(50, "SPELL_AURA_REMOVED", "Alpha", UW_P, "Alpha", UW_P, UW_FLASK, "Flask of Endless Rage")
+UWPush(0, "SPELL_AURA_APPLIED", "Alpha", UW_P, "Beta", UW_P, UW_FOOD, "Well Fed")
+UWPush(20, "SPELL_CAST_SUCCESS", "Alpha", UW_P, "Alpha", UW_P, 53908, "Potion of Speed")
+UWPush(5, "SPELL_ENERGIZE", "Alpha", UW_P, "Alpha", UW_P, 29131, "Bloodrage", 500)
+UWPush(6, "SPELL_ENERGIZE", "Beta", UW_P, "Beta", UW_P, 29131, "Bloodrage", 300)
+UWPush(89.5, "SPELL_DAMAGE", "Test Boss", UW_N, "Beta", UW_P, 59448, "Cleave", 4000, 1000)
+UWPush(89.7, "SPELL_CAST_SUCCESS", "Test Boss", UW_N, "Beta", UW_P, 59448, "Cleave")
+UWPush(89.9, "SPELL_HEAL", "Alpha", UW_P, "Beta", UW_P, 48782, "Holy Light", 800, 100)
+UWPush(90, "UNIT_DIED", nil, 0, "Beta", UW_P)
+
+local st = CLT:AggPlayerStats(UW_F)
+UW_ORDER = {}
+for _, a in ipairs(st.rows) do UW_ORDER[#UW_ORDER + 1] = a.name end
+UW_A = st.rows[1]
+UW_B = st.rows[2]
+UW_STATS = {
+    order = table.concat(UW_ORDER, ","),
+    a_useful = UW_A.useful, a_total = UW_A.total, a_heal = UW_A.heal, a_taken = UW_A.taken,
+    b_useful = UW_B.useful, b_taken = UW_B.taken, b_heal = UW_B.heal,
+    t_useful = st.total.useful, t_total = st.total.total, t_heal = st.total.heal,
+    t_taken = st.total.taken, dur = st.duration,
+}
+
+local tg = CLT:AggTargets(UW_F)
+UW_TG = {
+    ncol = #tg.targetCols,
+    c1 = tg.targetCols[1].name, c1boss = tg.targetCols[1].boss,
+    c2 = tg.targetCols[2].name, c2boss = tg.targetCols[2].boss,
+    a_useful = tg.rows[1].useful, a_total = tg.rows[1].total,
+    a_boss = tg.rows[1].byTarget["Test Boss"], a_trash = tg.rows[1].byTarget["Trash Mob"],
+    t_total = tg.totalRow.total, t_useful = tg.totalRow.useful,
+}
+
+local cg = CLT:AggConsumables(UW_F)
+UW_CONS = { ncol = #cg.cols, nplayers = #cg.players }
+for _, c in ipairs(cg.cols) do
+    if c.sid == UW_FLASK then UW_CONS.flask = c.key end
+    if c.name == "Potion of Speed" then UW_CONS.pot = c.key end
+    if c.name == "Well Fed" then UW_CONS.food = c.key end
+end
+UW_CONS.a_flask = cg.cells["Alpha"] and UW_CONS.flask and cg.cells["Alpha"][UW_CONS.flask]
+UW_CONS.a_pot = cg.cells["Alpha"] and UW_CONS.pot and cg.cells["Alpha"][UW_CONS.pot]
+UW_CONS.b_food = cg.cells["Beta"] and UW_CONS.food and cg.cells["Beta"][UW_CONS.food]
+UW_CONS.b_pot = cg.cells["Beta"] and cg.cells["Beta"][tostring(43185) .. "|Runic Healing Potion"]
+
+local ag = CLT:AggAuraMatrix(UW_F)
+UW_AUR = { ncol = #ag.cols, dur = ag.duration }
+local acell = ag.cells["Alpha"] and ag.cells["Alpha"][UW_FLASK]
+if acell then UW_AUR.a_flask_count = acell.count; UW_AUR.a_flask_pct = acell.up / ag.duration * 100 end
+local fcell = ag.cells["Beta"] and ag.cells["Beta"][UW_FOOD]
+if fcell then UW_AUR.b_food_count = fcell.count; UW_AUR.b_food_pct = fcell.up / ag.duration * 100 end
+
+local pm = CLT:AggPowerMatrix(UW_F)
+UW_POW = { ncol = #pm.cols, total = pm.total, nplayers = #pm.players, sid = pm.cols[1].sid }
+if pm.cells["Alpha"] then UW_POW.a = pm.cells["Alpha"][pm.cols[1].key] end
+if pm.cells["Beta"] then UW_POW.b = pm.cells["Beta"][pm.cols[1].key] end
+
+local de = CLT:AggDeaths(UW_F)
+UW_DEATH = { n = #de, name = de[1] and de[1].name, t = de[1] and de[1].t, killer = de[1] and de[1].killer }
+local dd = CLT:DeathDetail(UW_F, "Beta", 90, 12)
+UW_DD = { n = #dd, first_kind = dd[1] and dd[1].kind }
+for _, r in ipairs(dd) do
+    if r.kind == "DAMAGE" and r.spell == "Cleave" and r.val == "4000" then
+        UW_DD.dmg_val, UW_DD.dmg_over, UW_DD.dmg_flag, UW_DD.dmg_src = r.val, r.over, r.flag, r.src
+    end
+    if r.kind == "CAST" then UW_DD.cast_flag = r.flag end
+    if r.kind == "HEAL" and r.val == "800" then UW_DD.heal_over = r.over end
+end
+UW_DD.stamp = CLT:RelStamp(-0.887)
+
+-- titolo/etichette + dropdown
+UW_TITLE = CLT:FightTitle(UW_F)
+UW_LABEL = CLT:FightLabel(UW_F, 1)
+local savedFights = CLT.db.fights
+CLT.db.fights = { UW_F }
+local items = CLT:FightListItems()
+UW_ITEM1 = items[1] and items[1].text
+UW_HAS_ALL = false
+for _, it in ipairs(items) do
+    if it.text == "All Test Boss segments" then UW_HAS_ALL = true end
+end
+
+-- fight unito ("All <boss> segments") su due pull
+local fa = { name = "Same Boss", kill = false, duration = 100, startTime = 0,
+    count = 1, events = { { 10, "SPELL_DAMAGE", "Alpha", UW_P, "Boss", UW_N, 1, "Hit", 100 } },
+    samples = { health = {}, power = {} } }
+local fb = { name = "Same Boss", kill = true, duration = 50, startTime = 200,
+    count = 1, events = { { 5, "SPELL_DAMAGE", "Alpha", UW_P, "Boss", UW_N, 1, "Hit", 200 } },
+    samples = { health = {}, power = {} } }
+CLT.db.fights = { fb, fa }
+local mf = CLT:MergedFight("Same Boss")
+UW_MERGE = { n = mf and mf.count, dur = mf and mf.duration, seg = mf and mf.segments,
+    kill = mf and mf.kill, t2 = mf and mf.events[2] and mf.events[2][1] }
+CLT.db.fights = savedFights
+
+-- grafico: 6 discretizzazioni + serie "media dell'intero fight"
+CLT.selFight = UW_F
+CLT:SelectTab("damage")
+UW_STEPS = CLT.stepDropdown.options
+UW_STEP1 = UW_STEPS[1] and UW_STEPS[1].text
+UW_STEP6 = UW_STEPS[6] and UW_STEPS[6].text
+UW_STEPN = #UW_STEPS
+UW_GSTEP = CLT.graphStep
+local s0 = CLT:DpsSeries(UW_F, nil, 0)
+local s5 = CLT:DpsSeries(UW_F, nil, 5)
+UW_SER = { n0 = #s0, first0 = s0[1] and s0[1][2], last0 = s0[#s0] and s0[#s0][2],
+    n5 = #s5, b2_5 = s5[3] and s5[3][2] }
+
+-- i tab si costruiscono senza errori e con le colonne giuste
+UW_TABS = {}
+for _, tab in ipairs({ "damage", "targets", "consumables", "auras", "powers" }) do
+    CLT:SelectTab(tab)
+    local cols = CLT.grid.cols or {}
+    local rows = CLT.grid.pool[#cols] or {}
+    UW_TABS[#UW_TABS + 1] = tab .. ":" .. #cols .. "x" .. (CLT.grid.rowCount or 0)
+end
+CLT:SelectTab("targets")
+UW_TG_LABEL = CLT.grid.cols[4] and CLT.grid.cols[4].label
+UW_TG_TIP = CLT.grid.cols[4] and CLT.grid.cols[4].tip
+CLT:SelectTab("consumables")
+UW_CONS_ICON = false
+for _, c in ipairs(CLT.grid.cols) do
+    if c.ic and tostring(c.ic):find("Tex:") then UW_CONS_ICON = true end
+end
+CLT:SelectTab("deaths")
+UW_DEATH_ROWS = #CLT._dRows
+local drows = CLT.deathGrid.pool[#(CLT.deathGrid.cols or {})] or {}
+UW_DEATH_DETAIL_ROWS = CLT.deathGrid.rowCount or 0
+UW_DEATH_FIRST = drows[1] and drows[1].cells[2].fs:GetText()
+CLT:SelectTab("damage")
+UW_BACK = CLT.gridPane:IsShown()
+-- chiusura: nessuna finestra lasciata aperta dai test
+CLT.selFight = nil
+CLT.selTab = "damage"
+CLT.db.fights = savedFights
+CLT:RefreshUI()
+""")
+
+
+check(bool(rt.eval("UW_STATS.order == 'Alpha,Beta'")), "v1.11.63 AggPlayerStats: righe ordinate per danno utile (%s)" % rt.eval("UW_STATS.order"))
+check(bool(rt.eval("UW_STATS.a_useful == 60000 and UW_STATS.a_total == 70000")), "v1.11.63 AggPlayerStats: danno utile (solo boss) separato dal totale (%r/%r)" % (rt.eval("UW_STATS.a_useful"), rt.eval("UW_STATS.a_total")))
+check(bool(rt.eval("UW_STATS.a_taken == 5000 and UW_STATS.b_taken == 4000")), "v1.11.63 AggPlayerStats: danno SUBITO per giocatore (%r/%r)" % (rt.eval("UW_STATS.a_taken"), rt.eval("UW_STATS.b_taken")))
+check(bool(rt.eval("UW_STATS.a_heal == 3800 and UW_STATS.b_heal == 2000")), "v1.11.63 AggPlayerStats: cure per giocatore (%r/%r)" % (rt.eval("UW_STATS.a_heal"), rt.eval("UW_STATS.b_heal")))
+check(bool(rt.eval("UW_STATS.t_useful == 100000 and UW_STATS.t_total == 110000 and UW_STATS.t_heal == 5800 and UW_STATS.t_taken == 9000")), "v1.11.63 AggPlayerStats: riga TOTAL (utile %r, totale %r, cure %r, subito %r)" % (rt.eval("UW_STATS.t_useful"), rt.eval("UW_STATS.t_total"), rt.eval("UW_STATS.t_heal"), rt.eval("UW_STATS.t_taken")))
+check(bool(rt.eval("UW_TG.ncol == 2 and UW_TG.c1boss == true and UW_TG.c2boss == false")), "v1.11.63 AggTargets: un boss e' marcato come tale (danno utile), lo spazzino no")
+check(bool(rt.eval("UW_TG.a_useful == 60000 and UW_TG.a_boss == 60000 and UW_TG.a_trash == 10000")), "v1.11.63 AggTargets: danno per bersaglio per giocatore (%r boss / %r spazzino)" % (rt.eval("UW_TG.a_boss"), rt.eval("UW_TG.a_trash")))
+check(bool(rt.eval("UW_TG.t_total == 110000 and UW_TG.t_useful == 100000")), "v1.11.63 AggTargets: totali di colonna/riga coerenti")
+check(bool(rt.eval("UW_CONS.ncol == 4 and UW_CONS.a_flask == 1 and UW_CONS.a_pot == 1")), "v1.11.63 AggConsumables: flask (per ID) e pozione (per nome) contati 1 volta (%r/%r su %r colonne)" % (rt.eval("UW_CONS.a_flask"), rt.eval("UW_CONS.a_pot"), rt.eval("UW_CONS.ncol")))
+check(bool(rt.eval("UW_CONS.b_food == 1 and UW_CONS.b_pot == 1")), "v1.11.63 AggConsumables: Well Fed (aura) e pozione curativa (heal su di se') riconosciute")
+check(bool(rt.eval("UW_AUR.a_flask_count == 1 and math.abs(UW_AUR.a_flask_pct - 50) < 0.01")), "v1.11.63 AggAuraMatrix: applicazioni + uptime%% della flask (%r appl., %r%%)" % (rt.eval("UW_AUR.a_flask_count"), rt.eval("UW_AUR.a_flask_pct")))
+check(bool(rt.eval("UW_AUR.b_food_count == 1 and math.abs(UW_AUR.b_food_pct - 100) < 0.01")), "v1.11.63 AggAuraMatrix: aura ancora aperta a fine pull = 100%% di uptime")
+check(bool(rt.eval("UW_POW.total == 800 and UW_POW.a == 500 and UW_POW.b == 300")), "v1.11.63 AggPowerMatrix: risorsa generata per giocatore e per spell (%r)" % rt.eval("UW_POW.total"))
+check(bool(rt.eval("UW_DEATH.n == 1 and UW_DEATH.name == 'Beta' and UW_DEATH.killer == 'Test Boss'")), "v1.11.63 AggDeaths: morto + chi ha dato il colpo finale (%s da %s)" % (rt.eval("UW_DEATH.name"), rt.eval("UW_DEATH.killer")))
+check(bool(rt.eval("UW_DD.first_kind == 'DIED'")), "v1.11.63 DeathDetail: la riga DIED e' la prima (tempo 0:00.000)")
+check(bool(rt.eval("UW_DD.dmg_val == '4000' and UW_DD.dmg_over == '1000' and UW_DD.dmg_flag == 'SPELL'")), "v1.11.63 DeathDetail: colpo con valore e overkill (%r, over %r, %s)" % (rt.eval("UW_DD.dmg_val"), rt.eval("UW_DD.dmg_over"), rt.eval("UW_DD.dmg_flag")))
+check(bool(rt.eval("UW_DD.cast_flag == 'SUCCESS' and UW_DD.heal_over == '100'")), "v1.11.63 DeathDetail: righe CAST (SUCCESS) e HEAL con overheal")
+check(bool(rt.eval("UW_DD.stamp == '-0:00.887'")), "v1.11.63 DeathDetail: timestamp relativo -m:ss.mmm (%s)" % rt.eval("UW_DD.stamp"))
+check(bool(rt.eval("UW_TITLE == '1:40.000  Test Boss 25H  Kill'")), "v1.11.63 testata fight: durata + nome + taglia/difficolta' + esito (%s)" % rt.eval("UW_TITLE"))
+check(bool(rt.eval("UW_LABEL == '1:40.000 | Kill  Test Boss'")), "v1.11.63 etichetta del dropdown (%s)" % rt.eval("UW_LABEL"))
+check(bool(rt.eval("UW_HAS_ALL == true")), "v1.11.63 dropdown: voce 'All <boss> segments' per i segmenti uniti")
+check(bool(rt.eval("UW_MERGE.n == 2 and UW_MERGE.dur == 150 and UW_MERGE.seg == 2 and UW_MERGE.kill == true")), "v1.11.63 MergedFight: eventi dei pull concatenati su una linea di tempo continua (%r)" % rt.eval("UW_MERGE.n"))
+check(bool(rt.eval("UW_MERGE.t2 == 105")), "v1.11.63 MergedFight: il secondo pull parte dopo la durata del primo (t=%r)" % rt.eval("UW_MERGE.t2"))
+check(bool(rt.eval("UW_STEPN == 6 and UW_STEP1 == 'Avg whole fight' and UW_STEP6 == 'Avg every 10 seconds'")), "v1.11.63 grafico: le 6 discretizzazioni di UwU (%s ... %s)" % (rt.eval("UW_STEP1"), rt.eval("UW_STEP6")))
+check(bool(rt.eval("UW_GSTEP == 0")), "v1.11.63 grafico: default = 'Avg whole fight' (media dell'intero fight)")
+check(bool(rt.eval("UW_SER.n0 == 61 and UW_SER.first0 == 0 and math.abs(UW_SER.last0 - 110000/61) < 0.01")), "v1.11.63 DpsSeries step 0 = media cumulativa (parte da 0 e finisce a 110000/61 = %.1f dps: %r)" % (110000/61, rt.eval("UW_SER.last0")))
+check(bool(rt.eval("UW_SER.n5 == 13 and UW_SER.b2_5 == 4000")), "v1.11.63 DpsSeries step 5 = bucket da 5s (20k dmg nel bucket 10-15s = 4000 dps: %r)" % rt.eval("UW_SER.b2_5"))
+check(bool(rt.eval("UW_TABS[1] == 'damage:6x3'")), "v1.11.63 tab Damage: 6 colonne (Name/Rank/Dps%%/Useful/Heal/Taken) e 3 righe (TOTAL + 2) (%s)" % rt.eval("UW_TABS[1]"))
+check(bool(rt.eval("UW_TABS[2] == 'targets:5x3'")), "v1.11.63 tab Targets: Name + Useful + Total + 2 bersagli (%s)" % rt.eval("UW_TABS[2]"))
+check(bool(rt.eval("UW_CONS_ICON == true")), "v1.11.63 tab Consumables: colonne con l'icona della spell")
+check(bool(rt.eval("UW_TG_TIP and UW_TG_TIP:find('BOSS') ~= nil")), "v1.11.63 tab Targets: tooltip dell'intestazione che spiega il danno utile")
+check(bool(rt.eval("UW_DEATH_ROWS == 1 and UW_DEATH_DETAIL_ROWS >= 4 and UW_DEATH_FIRST == 'DIED'")), "v1.11.63 tab Deaths: lista dei morti + recap (prima riga %s, %r righe)" % (rt.eval("UW_DEATH_FIRST"), rt.eval("UW_DEATH_DETAIL_ROWS")))
+check(bool(rt.eval("UW_BACK == true")), "v1.11.63: tornando sul tab Damage la griglia e' di nuovo visibile")
+
+rt.execute("""
+-- ---- v1.11.63: struttura della finestra (layout UwU) ----
+local cl = RLSuite.combatLog
+UW_LAYOUT = {
+    w = cl.frame._w, h = cl.frame._h,
+    graphH = cl.graphPane._h,
+    graphVis = cl.graphPane:IsShown(),
+    steps = {},
+    tabs = {},
+    deaths_left = (cl.deathListBox ~= nil),
+    deaths_right = (cl.deathGrid ~= nil),
+    title_anchor = cl.titleText._points[1] and cl.titleText._points[1][1],
+    dd_pt = cl.fightDropdown._points[1] and cl.fightDropdown._points[1][1],
+    dd_rel = cl.fightDropdown._points[1] and cl.fightDropdown._points[1][3],
+}
+for _, st in ipairs(cl.graphSteps or {}) do UW_LAYOUT.steps[#UW_LAYOUT.steps + 1] = st.text end
+for _, def in ipairs(cl.uiTabs or {}) do UW_LAYOUT.tabs[#UW_LAYOUT.tabs + 1] = def.key end
+UW_LAYOUT.stepn = #UW_LAYOUT.steps
+UW_LAYOUT.tabn = #UW_LAYOUT.tabs
+local minW, minH = RLSuite.windowMins.log()
+UW_LAYOUT.minW, UW_LAYOUT.minH = minW, minH
+-- "Show graph" spegne/riaccende il grafico senza toccare il resto
+cl.showGraphCheck:SetChecked(true)
+cl.showGraphCheck._scripts.OnClick(cl.showGraphCheck)
+UW_LAYOUT.graphOn1 = cl.graphPane:IsShown()
+cl.showGraphCheck:SetChecked(false)
+cl.showGraphCheck._scripts.OnClick(cl.showGraphCheck)
+UW_LAYOUT.graphOn2 = cl.graphPane:IsShown()
+cl.showGraphCheck:SetChecked(true)
+if not cl.graphPane:IsShown() then cl.graphPane:Show() end
+""")
+
+
+check(bool(rt.eval("UW_LAYOUT.w >= 870 and UW_LAYOUT.h >= 660")), "v1.11.63 layout: la finestra non e' mai sotto il minimo del nuovo layout (%rx%r)" % (rt.eval("UW_LAYOUT.w"), rt.eval("UW_LAYOUT.h")))
+_uw_src = open("CombatLog.lua", encoding="utf-8").read()
+check('local CL_WIN_W, CL_WIN_H = 900, 660' in _uw_src, "v1.11.63 layout: dimensione di progetto della finestra = 900x660 (riga titolo + controlli + grafico + tab + contenuto + footer)")
+check(bool(rt.eval("UW_LAYOUT.minW == 870 and UW_LAYOUT.minH == 660")), "v1.11.63 layout: minimi della finestra Log aggiornati (%rx%r)" % (rt.eval("UW_LAYOUT.minW"), rt.eval("UW_LAYOUT.minH")))
+check(bool(rt.eval("UW_LAYOUT.graphH == 150 and UW_LAYOUT.graphVis == true")), "v1.11.63 layout: grafico SEMPRE visibile in alto, altezza fissa (%r px)" % rt.eval("UW_LAYOUT.graphH"))
+check(bool(rt.eval("UW_LAYOUT.graphOn1 == true and UW_LAYOUT.graphOn2 == false")), "v1.11.63 layout: la casella 'Show graph' accende/spegne il grafico")
+check(bool(rt.eval("UW_LAYOUT.title_anchor == 'TOPLEFT' and UW_LAYOUT.dd_pt == 'TOPRIGHT' and UW_LAYOUT.dd_rel == 'TOPRIGHT'")), "v1.11.63 layout: nome fight in alto a SINISTRA, dropdown dei fight in alto a DESTRA")
+check(bool(rt.eval("UW_LAYOUT.stepn == 6 and UW_LAYOUT.steps[1] == 'Avg whole fight' and UW_LAYOUT.steps[6] == 'Avg every 10 seconds'")), "v1.11.63 layout: discretizzazioni del grafico identiche al terzo screen (%r voci)" % rt.eval("UW_LAYOUT.stepn"))
+check(bool(rt.eval("UW_LAYOUT.tabs[1] == 'damage' and UW_LAYOUT.tabs[2] == 'targets' and UW_LAYOUT.tabs[3] == 'consumables' and UW_LAYOUT.tabs[4] == 'auras' and UW_LAYOUT.tabs[5] == 'deaths' and UW_LAYOUT.tabs[6] == 'powers'")), "v1.11.63 layout: tab group nell'ordine di UwU (Damage/Targets/Consumables/Auras/Deaths/Powers) e poi gli storici")
+check(bool(rt.eval("UW_LAYOUT.deaths_left == true and UW_LAYOUT.deaths_right == true")), "v1.11.63 layout: tab Deaths = lista dei morti a sinistra + tabella di dettaglio a destra")
 
 print()
 if fails:
