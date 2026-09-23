@@ -5149,7 +5149,7 @@ UW_FOOD = 57399           -- Well Fed (Fish Feast)
 UW_F = {
     name = "Test Boss", kill = true, duration = 100, startTime = 0, startUTC = 0,
     count = 0, events = {}, samples = { health = {}, power = {} },
-    player = "Alpha", raidSize = 25, difficulty = 3, boss = "Test Boss",
+    player = "Alpha", raidSize = 25, difficulty = 6, boss = "Test Boss",
 }
 function UWPush(t, sub, src, srcf, dst, dstf, sid, sname, amt, over)
     local ev = { t, sub, src, srcf or 0, dst, dstf or 0, sid, sname, amt, over }
@@ -5326,7 +5326,7 @@ check(bool(rt.eval("UW_DD.dmg_val == '4000' and UW_DD.dmg_over == '1000' and UW_
 check(bool(rt.eval("UW_DD.cast_flag == 'SUCCESS' and UW_DD.heal_over == '100'")), "v1.11.63 DeathDetail: righe CAST (SUCCESS) e HEAL con overheal")
 check(bool(rt.eval("UW_DD.stamp == '-0:00.887'")), "v1.11.63 DeathDetail: timestamp relativo -m:ss.mmm (%s)" % rt.eval("UW_DD.stamp"))
 check(bool(rt.eval("UW_TITLE == '1:40.000  Test Boss 25H  Kill'")), "v1.11.63 testata fight: durata + nome + taglia/difficolta' + esito (%s)" % rt.eval("UW_TITLE"))
-check(bool(rt.eval("UW_LABEL == '1:40.000 | Kill  Test Boss'")), "v1.11.63 etichetta del dropdown (%s)" % rt.eval("UW_LABEL"))
+check(bool(rt.eval("UW_LABEL == '1:40.000 | Kill 25H  Test Boss'")), "v1.11.63 etichetta del dropdown con tag (%s)" % rt.eval("UW_LABEL"))
 check(bool(rt.eval("UW_HAS_ALL == true")), "v1.11.63 dropdown: voce 'All <boss> segments' per i segmenti uniti")
 check(bool(rt.eval("UW_MERGE.n == 2 and UW_MERGE.dur == 150 and UW_MERGE.seg == 2 and UW_MERGE.kill == true")), "v1.11.63 MergedFight: eventi dei pull concatenati su una linea di tempo continua (%r)" % rt.eval("UW_MERGE.n"))
 check(bool(rt.eval("UW_MERGE.t2 == 105")), "v1.11.63 MergedFight: il secondo pull parte dopo la durata del primo (t=%r)" % rt.eval("UW_MERGE.t2"))
@@ -6018,6 +6018,91 @@ check(bool(rt.eval("UW_P3.byName['Runic Healing Potion'] ~= nil")), "v1.11.72: i
 check(bool(rt.eval("UW_P3.byName['Arcane Intellect'] == nil")), "v1.11.72: un buff qualunque NON viene contato come consumabile")
 check(bool(rt.eval("UW_P3.byName['Flask of the Frost Wyrm'] ~= nil and UW_P3.byName['Flask of the Frost Wyrm'].kind == 'flask'")), "v1.11.72: il flask (id dalle liste curate) continua a funzionare")
 check(bool(rt.eval("tostring(UW_P3.list):find('Speed=potion') ~= nil")), "v1.11.72: colonne della tab Consumables -> %s" % rt.eval("UW_P3.list"))
+rt.execute("""
+-- =====================================================================
+-- v1.11.73: TAG taglia+difficolta' ("25H") nel titolo e nel selettore
+-- =====================================================================
+local cl = RLSuite.combatLog
+local GM_II, GM_ID, GM_NRM = GetInstanceInfo, GetInstanceDifficulty, GetNumRaidMembers
+local II, ID, NRM = nil, nil, 0
+GetInstanceInfo = function()
+    if not II then return nil end
+    return II[1], II[2], II[3], II[4], II[5], II[6]
+end
+GetInstanceDifficulty = function() return ID end
+GetNumRaidMembers = function() return NRM end
+
+local function snap()
+    local sz, did, hero = cl:DifficultySnapshot()
+    return { sz = sz, did = did, hero = hero,
+             tag = cl:FightSizeTag({ raidSize = sz, difficulty = did, heroic = hero }) }
+end
+
+-- A) ICC 25 heroic: istanza dinamica (dynamicDifficulty = 1)
+II, ID, NRM = { "Icecrown Citadel", "raid", 4, "25 Player (Heroic)", 25, 1 }, nil, 25
+UW_P4_A = snap()
+-- B) ICC 10 normal: dinamica, dynamicDifficulty = 0 (12 persone in raid)
+II, NRM = { "Icecrown Citadel", "raid", 3, "10 Player", 10, 0 }, 12
+UW_P4_B = snap()
+-- C) niente GetInstanceInfo: ripiego su GetInstanceDifficulty (6 = 25 heroic)
+II, ID, NRM = nil, 6, 25
+UW_P4_C = snap()
+-- D) nessun dato di difficolta': taglia dai membri del raid, NIENTE lettera
+--    (la modalita' non si inventa)
+II, ID, NRM = nil, nil, 24
+UW_P4_D = snap()
+-- E) dungeon da 5: nessun tag
+II, ID, NRM = { "Utgarde Keep", "party", 1, "Normal", 5, 0 }, 1, 0
+UW_P4_E = snap()
+
+-- F) dal vivo: il tag viene letto all'APERTURA e sopravvive alla chiusura
+--    anche se nel frattempo si e' usciti dall'istanza
+cl.db.fights = {}
+cl.current = nil
+cl.selFight = nil
+II, ID, NRM = { "Icecrown Citadel", "raid", 4, "25 Player (Heroic)", 25, 1 }, nil, 25
+cl:OnRegenDisabled()
+UW_P4_F_OPEN = { sz = cl.current.raidSize, hero = cl.current.heroic }
+UW_P4_F_LIVE = tostring(cl:FightListItems()[1].text)
+II, ID, NRM = { "Dalaran", "none", 0, "", 0, 0 }, nil, 0
+cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
+    UW_GUID(36853), 'Sindragosa', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
+cl:CloseFight("test")
+local ff = cl.db.fights[1]
+UW_P4_F = { sz = ff.raidSize, hero = ff.heroic, tag = cl:FightSizeTag(ff),
+            title = cl:FightTitle(ff), label = cl:FightLabel(ff, 1),
+            drop = tostring(cl:FightListItems()[1].text) }
+
+-- G) vista unificata ("All <boss> segments")
+local seg = cl:MergedFight("Sindragosa")
+UW_P4_G = { tag = cl:FightSizeTag(seg), title = cl:FightTitle(seg) }
+
+-- H) pull VECCHIO senza i campi nuovi: nessun tag, titolo leggibile
+local legacy = { name = "Sindragosa", duration = 95, kill = false, events = {}, count = 0 }
+UW_P4_H = { tag = cl:FightSizeTag(legacy), label = cl:FightLabel(legacy, 1),
+            title = cl:FightTitle(legacy) }
+
+GetInstanceInfo, GetInstanceDifficulty, GetNumRaidMembers = GM_II, GM_ID, GM_NRM
+cl.current = nil
+cl.db.fights = {}
+cl.selFight = nil
+cl:RefreshInfo(nil)
+""")
+
+
+check(bool(rt.eval("UW_P4_A.sz == 25 and UW_P4_A.hero == true and UW_P4_A.tag == '25H'")), "v1.11.73: ICC 25 heroic (istanza dinamica) -> tag %r" % rt.eval("UW_P4_A.tag"))
+check(bool(rt.eval("UW_P4_B.sz == 10 and UW_P4_B.hero == false and UW_P4_B.tag == '10N'")), "v1.11.73: ICC 10 normal (dinamica, 12 persone in raid) -> tag %r" % rt.eval("UW_P4_B.tag"))
+check(bool(rt.eval("UW_P4_C.sz == 25 and UW_P4_C.hero == true and UW_P4_C.tag == '25H'")), "v1.11.73: senza GetInstanceInfo si ripiega su GetInstanceDifficulty -> tag %r" % rt.eval("UW_P4_C.tag"))
+check(bool(rt.eval("UW_P4_D.sz == 25 and UW_P4_D.hero == nil and UW_P4_D.tag == '25'")), "v1.11.73: senza dati di difficolta' il tag resta di sola taglia (%r), la modalita' non si inventa" % rt.eval("UW_P4_D.tag"))
+check(bool(rt.eval("UW_P4_E.sz == 0 and UW_P4_E.tag == ''")), "v1.11.73: in un dungeon da 5 non si mette nessun tag")
+check(bool(rt.eval("UW_P4_F_OPEN.sz == 25 and UW_P4_F_OPEN.hero == true")), "v1.11.73: il pull in corso mostra subito la taglia e la modalita' lette all'apertura (%r/%r)" % (rt.eval("UW_P4_F_OPEN.sz"), rt.eval("UW_P4_F_OPEN.hero")))
+check(bool(rt.eval("tostring(UW_P4_F_LIVE):find('25H') ~= nil")), "v1.11.73: nel selettore il pull IN CORSO porta il tag -> %s" % rt.eval("UW_P4_F_LIVE"))
+check(bool(rt.eval("UW_P4_F.sz == 25 and UW_P4_F.hero == true and UW_P4_F.tag == '25H'")), "v1.11.73: uscendo dall'istanza durante il pull il tag NON si perde (%r)" % rt.eval("UW_P4_F.tag"))
+check(bool(rt.eval("UW_P4_F.title:find('Sindragosa 25H') ~= nil")), "v1.11.73: titolo del pull -> \"%s\"" % rt.eval("UW_P4_F.title"))
+check(bool(rt.eval("UW_P4_F.label:find('25H') ~= nil")), "v1.11.73: riga del selettore -> \"%s\"" % rt.eval("UW_P4_F.label"))
+check(bool(rt.eval("UW_P4_F.drop:find('25H') ~= nil")), "v1.11.73: voce salvata nel selettore -> \"%s\"" % rt.eval("UW_P4_F.drop"))
+check(bool(rt.eval("UW_P4_G.tag == '25H' and UW_P4_G.title:find('25H') ~= nil")), "v1.11.73: anche la vista unificata porta il tag -> \"%s\"" % rt.eval("UW_P4_G.title"))
+check(bool(rt.eval("tostring(UW_P4_H.tag) == '' and UW_P4_H.title:find('Sindragosa') ~= nil")), "v1.11.73: un pull vecchio (senza i campi nuovi) si legge ancora e non prende tag falsi -> \"%s\"" % rt.eval("UW_P4_H.title"))
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

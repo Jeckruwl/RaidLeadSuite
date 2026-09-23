@@ -377,6 +377,9 @@ function CL:OpenFight(recovered)
     if not (self.db and self.db.enabled) then return end
     if self.current then return end -- gia' in corso
     self:EnsureBossIndex()
+    -- TAGLIA + DIFFICOLTA': lette QUI, all'apertura, quando si e'
+    -- sicuramente dentro l'istanza (alla chiusura si puo' essere usciti).
+    local dsz, ddiff, dhero = self:DifficultySnapshot()
     self.current = {
         startTime = GetTime(),
         startUTC = time(),
@@ -388,6 +391,9 @@ function CL:OpenFight(recovered)
         kill = nil,
         samples = { health = {}, power = {} },
         recovered = recovered and true or nil,
+        raidSize = dsz,
+        difficulty = ddiff,
+        heroic = dhero,
     }
     if recovered then
         self.recoveries = (self.recoveries or 0) + 1
@@ -413,6 +419,14 @@ function CL:CloseFight(reason)
     f.kill = f.kill and true or false
     f.player = UnitName and UnitName("player") or "?"
     f.closeReason = reason or "encounter-end"
+    -- TAGLIA + DIFFICOLTA' rilette alla chiusura; se ora non si e' piu' in un
+    -- raid (usciti, o core che non risponde) tengo quelle lette all'apertura.
+    local dsz, ddiff, dhero = self:DifficultySnapshot()
+    if (tonumber(dsz) or 0) >= 10 then
+        f.raidSize, f.difficulty, f.heroic = dsz, ddiff, dhero
+    elseif not f.raidSize then
+        f.raidSize, f.difficulty, f.heroic = dsz, ddiff, dhero
+    end
     -- ETICHETTA + CLASSIFICAZIONE dal bersaglio principale del pull
     local target, targetIsBoss = self:MainTarget(f)
     f.target = target
@@ -1279,6 +1293,11 @@ function CL:MergedFight(bossName, maxFights)
         samples = { health = {}, power = {} }, boss = bossName,
     }
     out.segments = #list
+    -- taglia+difficolta' del segmento piu' recente (il piu' rappresentativo)
+    local newest = list[#list]
+    if newest then
+        out.raidSize, out.difficulty, out.heroic = newest.raidSize, newest.difficulty, newest.heroic
+    end
     local off = 0
     for _, f in ipairs(list) do
         local d = self:FightDuration(f)
@@ -2788,21 +2807,79 @@ function CL:FightDurationLabel(f)
     return string.format("%d:%06.3f", mm, ss)
 end
 
+-- ISTANTANEA taglia+difficolta' del contenuto in cui si sta combattendo.
+-- Restituisce: raidSize (10/25/0), indice di difficolta', heroic (true/false
+-- oppure nil = non deducibile).
+-- Ordine di lettura, dal piu' affidabile:
+--   1) GetInstanceInfo(): da' tipo di gruppo, difficultyID, maxPlayers e, per
+--      le istanze "dinamiche" (ICC/ToC/RS), dynamicDifficulty (1 = heroic):
+--      e' l'unico modo per non sbagliare la taglia quando la difficolta' e'
+--      cambiabile dentro l'istanza.
+--   2) GetInstanceDifficulty(): tabella 3.3.5 post-3.2 -> 1/2 = dungeon,
+--      3 = 10 normal, 4 = 25 normal, 5 = 10 heroic, 6 = 25 heroic.
+--      (Gli indici 1/2/3/4 sono quelli TBC, dove 3 = 10 heroic: per questo la
+--      lettera non si inventa mai se l'indice non e' riconosciuto.)
+--   3) numero di membri del raid, ultimo ripiego.
+function CL:DifficultySnapshot()
+    local size, diffID, heroic = 0, nil, nil
+    if GetInstanceInfo then
+        -- (1) nome istanza, (2) tipo "party"/"raid", (3) indice difficolta',
+        -- (4) nome difficolta', (5) max players, (6) dynamicDifficulty
+        local ok, _iname, itype, did, dname, maxPlayers, dyn = pcall(GetInstanceInfo)
+        if ok then
+            diffID = tonumber(did) or nil
+            if itype == "raid" then
+                size = tonumber(maxPlayers) or 0
+                local dd = tonumber(dyn)
+                if dd == 1 then heroic = true
+                elseif dd == 0 then heroic = false end
+            end
+        end
+    end
+    if (tonumber(size) or 0) < 10 and GetInstanceDifficulty then
+        local ok, idx = pcall(GetInstanceDifficulty)
+        idx = ok and tonumber(idx) or nil
+        if idx and idx > 0 then diffID = diffID or idx end
+        if idx == 3 then size = 10
+        elseif idx == 4 then size = 25
+        elseif idx == 5 then size = 10
+        elseif idx == 6 then size = 25 end
+    end
+    if (tonumber(size) or 0) < 10 and GetNumRaidMembers then
+        local n = tonumber(GetNumRaidMembers()) or 0
+        if n >= 10 then size = (n >= 20) and 25 or 10 end
+    end
+    -- indice 3.3.5 che dice la modalita' a colpo sicuro: 5/6 = heroic, e vale
+    -- anche contro un dynamicDifficulty a 0 (core che non lo aggiornano).
+    if diffID == 5 or diffID == 6 then heroic = true
+    elseif heroic == nil and (diffID == 3 or diffID == 4) then heroic = false end
+    return tonumber(size) or 0, diffID, heroic
+end
+
 -- Prefisso taglia+difficolta' ("10N"/"25H") quando e' deducibile.
+-- Fuori raid (dungeon, open world) torna "".
 function CL:FightSizeTag(f)
     local n = tonumber(f and f.raidSize) or 0
     if n < 10 then return "" end
     local size = (n >= 20) and "25" or "10"
-    local d = tonumber(f and f.difficulty)
-    local tag = ""
-    if d == 1 then tag = "N" elseif d == 2 then tag = "N"
-    elseif d == 3 then tag = "H" elseif d == 4 then tag = "H" end
-    return size .. tag
+    local letter = ""
+    if f and type(f.heroic) == "boolean" then
+        letter = f.heroic and "H" or "N"
+    else
+        -- indice 3.3.5: 5/6 = heroic, 3/4 = normal; 1/2 = dungeon o indici
+        -- TBC, dove la lettera non e' deducibile in modo sicuro -> niente.
+        local d = tonumber(f and f.difficulty)
+        if d == 5 or d == 6 then letter = "H"
+        elseif d == 3 or d == 4 then letter = "N" end
+    end
+    return size .. letter
 end
 
 function CL:FightLabel(f, idx)
     local tag = (f.kill and "Kill") or (f.kill == false and "Wipe") or ""
-    return string.format("%s | %s  %s", self:FightDurationLabel(f), tag, Trunc(f.name or "Combat", 24))
+    local size = self:FightSizeTag(f)
+    return string.format("%s | %s%s  %s", self:FightDurationLabel(f), tag,
+        (size ~= "" and (" " .. size)) or "", Trunc(f.name or "Combat", 24))
 end
 
 -- Titolo grande in alto a sinistra: "0:02:31.994  10N Gunship  Wipe"
@@ -2818,7 +2895,9 @@ end
 function CL:FightListItems()
     local items = {}
     if self.current then
-        items[#items + 1] = { text = L["[LIVE]"] .. " " .. (self.current.boss or "Combat"), value = self.current }
+        local liveSize = self:FightSizeTag(self.current)
+        items[#items + 1] = { text = L["[LIVE]"] .. " " .. (self.current.boss or "Combat")
+            .. ((liveSize ~= "" and (" " .. liveSize)) or ""), value = self.current }
     end
     local seen, bosses = {}, {}
     for i, f in ipairs((self.db and self.db.fights) or {}) do

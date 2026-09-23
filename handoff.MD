@@ -7,7 +7,36 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.72**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.73**.
+
+## 1.11.73 — Passata 4: TAG taglia+difficolta' ("25H")
+
+Direttiva: *"aaah e' nel combat log intendi, allora si il tag va bene inserirlo"*.
+
+Il lettore del tag esisteva ma non era mai alimentato: `GetInstanceDifficulty`
+non veniva mai chiamata, quindi `FightSizeTag` tornava sempre "".
+
+- `CL:DifficultySnapshot()` legge, in ordine di affidabilita':
+  1. `GetInstanceInfo()` -> tipo di gruppo, indice, **maxPlayers** e, per le
+     istanze dinamiche (ICC/ToC/RS), `dynamicDifficulty` (1 = heroic). E' l'unico
+     modo per non sbagliare la taglia quando la modalita' si cambia dentro
+     l'istanza, come a ICC.
+  2. `GetInstanceDifficulty()` -> tabella 3.3.5 post-3.2: 1/2 = dungeon,
+     3 = 10 normal, 4 = 25 normal, 5 = 10 heroic, 6 = 25 heroic.
+  3. numero di membri del raid (ultimo ripiego, solo taglia).
+- **Correzione importante**: la vecchia mappa del tag era quella di Cataclysm
+  (1 = 10N, 2 = 25N, 3 = 10H, 4 = 25H) e su 3.3.5 avrebbe scritto "25H" su un
+  raid 25 NORMAL. Ora la lettera esce solo quando la modalita' e' dedotta
+  davvero; se non lo e', esce la sola taglia ("25"), mai una lettera inventata.
+- Il tag viene letto **all'apertura** del pull (quando si e' certamente dentro
+  l'istanza) e riletto alla chiusura; se nel frattempo si e' usciti non si
+  perde.
+- Dove si vede: titolo grande ("1:40.000  Deathbringer Saurfang 25H  Kill"),
+  riga del selettore dei pull, voce del pull IN CORSO e vista unificata
+  ("All <boss> segments", che prende il tag del segmento piu' recente).
+- Fuori raid (dungeon da 5, open world) nessun tag.
+
+Test: **1039 check** totali (13 nuovi).
 
 ## 1.11.72 — Passata 3: consumabili per SPELL ID
 
@@ -31,7 +60,7 @@ tab Consumables perdeva la pozione piu' usata del gioco.
   "Spells" del pannello con l'opzione `showSpellIds`, o nella pagina Wowhead
   dell'item (campo "Use:").
 
-Test: **1025 check** totali (7 nuovi).
+Test: **1026 check** totali (7 nuovi).
 
 ## 1.11.71 — Passata 2: lista boss UNICA + bersaglio principale + trash-first
 
@@ -151,7 +180,7 @@ Due problemi reali:
    il nome sotto l'icona + icona accanto al nome nella lista del tab "Spells"
    (riga con texture + testo).
 
-Test: **1025 check** totali (7 nuovi nella 1.11.72); 988 nella 1.11.68 (risoluzione icona, fallback GetSpellInfo,
+Test: **1026 check** totali (7 nuovi nella 1.11.72); 988 nella 1.11.68 (risoluzione icona, fallback GetSpellInfo,
 nessuna spell = nessuna icona, "vuote=0" per Consumables/Auras/Powers, altezza
 intestazione, icona+nome nell'header, nome al posto dell'icona se manca, icona
 nella lista Spells).
