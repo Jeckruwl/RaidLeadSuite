@@ -7,7 +7,21 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.68**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.69**.
+
+## 1.11.69 — audit: la versione mostrata in chat viene dal .toc
+
+Dall'audit completo prima del test in gilda: `RLSuite.version` era una costante
+nel codice, ferma a **1.11.48** mentre il `.toc` era 1.11.68 e il README 1.11.16.
+Tre numeri diversi = nessuna segnalazione dei tester tracciabile.
+
+Ora `RLSuite.version` si legge da `GetAddOnMetadata("RaidLeadSuite", "Version")`
+(dentro pcall), con la costante nel codice solo come fallback. Due check nuovi:
+uno confronta `RLSuite.version` col valore nel `.toc` (fallisce se qualcuno
+bumpa il .toc e dimentica il fallback), l'altro verifica che Core usi la
+metadata.
+
+Test: **990 check** totali.
 
 ## 1.11.68 — Log: icone E nomi delle spell visibili (non solo tooltip)
 
@@ -28,7 +42,7 @@ Due problemi reali:
    il nome sotto l'icona + icona accanto al nome nella lista del tab "Spells"
    (riga con texture + testo).
 
-Test: **988 check** totali (10 nuovi: risoluzione icona, fallback GetSpellInfo,
+Test: **990 check** totali (2 nuovi nella 1.11.69); 988 nella 1.11.68 (risoluzione icona, fallback GetSpellInfo,
 nessuna spell = nessuna icona, "vuote=0" per Consumables/Auras/Powers, altezza
 intestazione, icona+nome nell'header, nome al posto dell'icona se manca, icona
 nella lista Spells).
