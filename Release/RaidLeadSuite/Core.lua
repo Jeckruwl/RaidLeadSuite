@@ -63,7 +63,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.85"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.86"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -1367,29 +1367,54 @@ function RLSuite:DebugRebalanceGroups(ngroups)
     self:DebugSyncSubgroups()
 end
 
--- Nomi/classi fittizi per "Fill Group": copertura di tutte le classi con
--- spec diverse, cosi' Raid Group e Raid Frame mostrano una comp varia.
+-- Nomi/classi fittizi per "Fill Raid": **24** finti = raid 25 (tu + 24).
+-- La lista e' una COMPOSIZIONE pensata, non nomi a caso: 2 tank, 5 healer e
+-- 17 dps, con tutte e 10 le classi presenti. Serve a due cose:
+--   * il Raid Frame mostra una comp vera (e i buff si generano dalle classi
+--     presenti: vedi RF:_DebugRosterBuffSets in RaidFrame.lua);
+--   * i tasti MT/OT, gli MS e i consumabili si provano su ruoli reali.
+-- L'ordine e' FISSO (niente shuffle): stessa comp = stesse righe, cosi' una
+-- segnalazione si puo' confrontare con la schermata di un altro. I finti sono
+-- elencati come vanno a finire nei gruppi: un healer per gruppo (1-5), i tank
+-- nei primi due, gli altri dps a riempire.
+local DEBUG_FILL_TARGET = 24   -- finti da generare (= 25 con il giocatore)
 local DEBUG_FILL_POOL = {
-    {name="Drakbot", class="WARRIOR", spec="prot"},
-    {name="Ironclad", class="WARRIOR", spec="fury"},
-    {name="Holymoon", class="PALADIN", spec="holy"},
-    {name="Retalia", class="PALADIN", spec="retri"},
-    {name="Zapdora", class="MAGE", spec="arcane"},
-    {name="Frostnova", class="MAGE", spec="fire"},
-    {name="Stabbitha", class="ROGUE", spec="combat"},
-    {name="Shivv", class="ROGUE", spec="assassin"},
-    {name="Moowrath", class="DRUID", spec="feral"},
-    {name="Leafsong", class="DRUID", spec="resto"},
-    {name="Holylite", class="PRIEST", spec="holy"},
-    {name="Shadowmel", class="PRIEST", spec="shadow"},
-    {name="Totemly", class="SHAMAN", spec="resto"},
-    {name="Stormcall", class="SHAMAN", spec="ele"},
-    {name="Frostbite", class="DEATHKNIGHT", spec="frost"},
-    {name="Bloodlord", class="DEATHKNIGHT", spec="blood"},
-    {name="Warlocky", class="WARLOCK", spec="destro"},
-    {name="Demoness", class="WARLOCK", spec="demo"},
-    {name="Arrowz", class="HUNTER", spec="marks"},
-    {name="Beastlord", class="HUNTER", spec="bm"},
+    -- Gruppo 1 (lo slot 1 e' TUO: qui ci stanno 4 finti)
+    {name="Drakbot",    class="WARRIOR",     spec="prot"},       -- tank
+    {name="Holymoon",   class="PALADIN",     spec="holy"},       -- healer
+    {name="Ironclad",   class="WARRIOR",     spec="fury"},       -- dps
+    {name="Zapdora",    class="MAGE",        spec="arcane"},     -- dps
+    -- Gruppo 2
+    {name="Lightwall",  class="PALADIN",     spec="prot"},       -- tank
+    {name="Disciple",   class="PRIEST",      spec="disc"},       -- healer
+    {name="Retalia",    class="PALADIN",     spec="retri"},      -- dps
+    {name="Frostnova",  class="MAGE",        spec="fire"},       -- dps
+    {name="Stabbitha",  class="ROGUE",       spec="combat"},     -- dps
+    -- Gruppo 3
+    {name="Holylite",   class="PRIEST",      spec="holy"},       -- healer
+    {name="Moowrath",   class="DRUID",       spec="feral"},      -- dps
+    {name="Bladestorm", class="WARRIOR",     spec="arms"},       -- dps
+    {name="Warlocky",   class="WARLOCK",     spec="destro"},     -- dps
+    {name="Arrowz",     class="HUNTER",      spec="marks"},      -- dps
+    -- Gruppo 4
+    {name="Leafsong",   class="DRUID",       spec="resto"},      -- healer
+    {name="Moonfire",   class="DRUID",       spec="balance"},    -- dps
+    {name="Shivv",      class="ROGUE",       spec="assassin"},   -- dps
+    {name="Demoness",   class="WARLOCK",     spec="demo"},       -- dps
+    {name="Stormbow",   class="HUNTER",      spec="survival"},   -- dps
+    -- Gruppo 5
+    {name="Totemly",    class="SHAMAN",      spec="resto"},      -- healer
+    {name="Shadowmel",  class="PRIEST",      spec="shadow"},     -- dps
+    {name="Hellfire",   class="WARLOCK",     spec="affliction"}, -- dps
+    {name="Beastlord",  class="HUNTER",      spec="bm"},         -- dps
+    {name="Frostbite",  class="DEATHKNIGHT", spec="frost"},      -- dps
+}
+-- Se un giorno il pool viene tagliato sotto il target, il Fill Raid COMPLETA
+-- comunque fino a 24 con questi riempitivi (classi in ciclo, deterministiche):
+-- il "non genera 24 player" non deve tornare per un pool accorciato.
+local DEBUG_FILL_EXTRA_CLASSES = {
+    "WARRIOR", "PALADIN", "PRIEST", "DRUID", "SHAMAN",
+    "MAGE", "WARLOCK", "HUNTER", "ROGUE", "DEATHKNIGHT",
 }
 
 local function debugShuffle(list)
@@ -1407,17 +1432,37 @@ function RLSuite:DebugFillGroup()
         self.utils:Print(L["Debug mode is OFF."])
         return
     end
-    local pool = {}
-    for _, f in ipairs(DEBUG_FILL_POOL) do pool[#pool + 1] = f end
-    debugShuffle(pool)
     local added = 0
-    for _, f in ipairs(pool) do
-        local m = self:DebugInviteAccept(f.name, f.class)
-        if m then
-            m.spec = f.spec
-            added = added + 1
+    local function countFakes()
+        local n = 0
+        for _, m in ipairs(self:DebugRoster()) do
+            if not m.isPlayer then n = n + 1 end
         end
+        return n
     end
+    local function addFake(name, class, spec)
+        if countFakes() >= DEBUG_FILL_TARGET then return false end
+        local before = countFakes()
+        local m = self:DebugInviteAccept(name, class)
+        if not m then return false end
+        m.spec = spec
+        -- Conta solo chi e' ENTRATO ORA: se il nome era gia' nel roster
+        -- (secondo click su Fill Raid) il conteggio non deve mentire.
+        if countFakes() > before then added = added + 1 end
+        return true
+    end
+    -- 1) la composizione pensata, nell'ordine della lista
+    for _, f in ipairs(DEBUG_FILL_POOL) do
+        if not addFake(f.name, f.class, f.spec) then break end
+    end
+    -- 2) rete di sicurezza: se il pool fosse piu' corto del target, completa
+    for i = 1, DEBUG_FILL_TARGET do
+        if countFakes() >= DEBUG_FILL_TARGET then break end
+        local class = DEBUG_FILL_EXTRA_CLASSES[((i - 1) % #DEBUG_FILL_EXTRA_CLASSES) + 1]
+        addFake("Rlsbot" .. i, class, "dps")
+    end
+    -- Il roster e' cambiato: i buff simulati si ricalcolano dalla comp nuova.
+    self.debugBuffs = nil
     self.utils:Print(string.format(L["Debug: raid filled with %d fake players."], added))
 end
 

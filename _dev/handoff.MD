@@ -7,7 +7,73 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.85**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.86**.
+
+## 1.11.86 — Fill Raid: 24 finti e buff generati dalla COMPOSIZIONE
+
+Segnalazione dell'utente sul tasto **Fill Raid** del pannello RLS DEBUG:
+*"non genera 24 player"* e *"hanno tutti buff a caso e non pensati in base alle
+classi generate"*. Due bug distinti.
+
+### 1) Non generava 24 player
+Il pool `DEBUG_FILL_POOL` aveva **20** voci: il fill si fermava a 20 finti
+(21 membri) invece dei 24 finti di un raid 25.
+
+* Pool riscritto a **24** voci: una COMPOSIZIONE pensata (2 tank, 5 healer, 17
+  dps, tutte e 10 le classi), elencata **nell'ordine in cui entra nei gruppi**
+  (un healer per gruppo, tank nei primi due). Niente piu' shuffle: stessa comp
+  = stesse righe, cosi' una segnalazione si confronta con un'altra.
+* `DEBUG_FILL_TARGET = 24`: il fill si ferma al target anche se il pool
+  crescesse.
+* Rete di sicurezza: se un giorno il pool venisse tagliato sotto il target, il
+  fill completa comunque a 24 con nomi generati (`RlsbotN`, classi in ciclo):
+  il "non genera 24" non deve tornare per un pool accorciato.
+* Il conteggio stampato in chat conta solo chi e' **entrato ora** (secondo
+  click su Fill Raid = 0, non un numero finto).
+
+### 2) Buff a caso invece che per classi
+`RF:_DebugMemberBuffSet(name)` dava a ogni finto, per OGNI categoria, ~55% di
+probabilita' di avere una spell scelta a caso (seme dal nome): un warrior
+poteva avere Int/Spirit/Focus Magic, e una categoria senza il suo fornitore in
+raid risultava verde per caso.
+
+Sostituito da **`RF:_DebugRosterBuffSets()`**, che costruisce la tavola dalla
+composizione simulata:
+
+* **fornitori** (`col.classes`): nessuna di quelle classi nel raid -> categoria
+  VUOTA per tutti e intestazione grigia (come in un raid vero);
+* **destinatari** (`col.beneficiaries`): Int/Spirit/MP5 solo a chi ha mana,
+  ATK/crit melee/spec melee solo ai fisici — un mago non ha l'ATK, un warrior
+  non ha l'Int;
+* **scope `single`** (Focus Magic): una aura per MAGO presente, su un caster
+  diverso dal mago (non si lancia su se stesso);
+* **scope `capped`** (Replenishment): i primi `cap` = 10 beneficiari;
+* **categorie senza classi fornitrici** (flask, Well Fed) = consumabili
+  personali, non buff di classe: li hanno tutti **tranne l'ultimo gruppo con
+  membri** ("i ritardatari"), cosi' restano provabili gli avvisi/whisper dei
+  consumabili mancanti. Con un raid pieno l'ultimo gruppo e' il 5.
+* Determinismo: la tavola si ricalcola solo se cambia la firma
+  (nome:classe:gruppo di ogni slot), quindi stessa comp = stessa tavola.
+  `RLSuite.debugBuffs` viene azzerato da `ApplyDebugMode` e da Fill Raid.
+
+Effetti collaterali voluti/necessari:
+
+* `_BuffCellIconFor` ora gestisce anche `col.byNameSpell` per i finti (la
+  colonna **Food** non aveva lista di id: prima non si accendeva mai su un
+  finto, perche' il match del percorso reale e' per NOME aura).
+* Le icone flask/food delle righe FINTE seguono la stessa tavola: prima erano
+  **sempre** "mancante" anche quando la matrice diceva il contrario (due
+  schermate in contraddizione).
+* 4 test dei consumabili sono stati riallineati: presupponevano "finti = sempre
+  senza flask/food". Ora il test azzera il set simulato dei due membri usati e
+  riapplica `UpdateConsumables` (il vecchio comportamento era codificato li').
+
+Test nuovi (13, totale 1116): 24 finti/25 membri/5 gruppi pieni, comp con 10
+classi, ordine fisso, warrior senza Int/Spirit/FM, warrior con ATK+crit melee,
+mago con Int/Spirit e senza ATK, DK fisico, FM = 1 per mago e mai su un mago,
+Replenishment = 10, flask/food 19 si / 5 no (gruppo 5), Well Fed con la stessa
+regola, determinismo del ricalcolo, categoria senza fornitore = non
+disponibile.
 
 ## 1.11.85+ — REGOLA: la README non ha (e non avra' mai) una sezione installazione
 

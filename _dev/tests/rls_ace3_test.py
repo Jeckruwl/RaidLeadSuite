@@ -2757,6 +2757,16 @@ CHAT_LOG = {}
 local row = RLSuite.raidFrame.rows[1]
 ALERT_NAME = row.member.name
 MISSING_NAME = RLSuite.raidFrame.rows[2].member.name
+-- v1.11.86: i consumabili dei finti vengono dalla composizione (gruppi 1-4 li
+-- hanno, il gruppo 5 no). Qui servono DUE player senza: si costruisce la
+-- tavola e poi si azzera il set dei due membri usati dal test. La firma resta
+-- quella corrente, quindi nessun refresh la ricalcola e l'override tiene.
+RLSuite.debugBuffs = RLSuite.raidFrame:_DebugRosterBuffSets()
+RLSuite.debugBuffs[ALERT_NAME] = {}
+RLSuite.debugBuffs[MISSING_NAME] = {}
+-- le icone avevano lo stato calcolato col set precedente: si riapplica
+RLSuite.raidFrame:UpdateConsumables(row)
+RLSuite.raidFrame:UpdateConsumables(RLSuite.raidFrame.rows[2])
 row._lastAlert = nil
 -- sinistro: la finestra non ha piu' RegisterForDrag, l'OnMouseUp arriva;
 -- se qualche client lo mangiasse comunque, il poller di riserva copre
@@ -3913,8 +3923,131 @@ check(bool(rt.eval("RLSuite.debugPanel:IsShown() == true")), "debug panel shown 
 check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 6")), "debug panel has 6 command buttons (with Log Test)")
 check(bool(rt.eval("RLSuite.debugPanel.debugButtons[1]:GetText() == 'Fill Raid'")), "first debug button is Fill Group")
 rt.execute("RLSuite:DebugFillGroup()")
-check(bool(rt.eval("#RLSuite:DebugRoster() >= 15")), "Fill Group fills the simulated raid with fake players")
-check(bool(rt.eval("""(function() local seen = {} for _, m in ipairs(RLSuite:DebugRoster()) do seen[m.class] = true end local n = 0 for _ in pairs(seen) do n = n + 1 end return n >= 6 end)()""")), "Fill Group fakes span many different classes")
+check(bool(rt.eval("#RLSuite:DebugRoster() == 25")), "v1.11.86: Fill Raid porta il raid simulato a 25 (tu + 24 finti)")
+check(bool(rt.eval("""(function() local n = 0 for _, m in ipairs(RLSuite:DebugRoster()) do if not m.isPlayer then n = n + 1 end end return n == 24 end)()""")), "v1.11.86: sono ESATTAMENTE 24 i player finti (prima il pool si fermava a 20)")
+check(bool(rt.eval("""(function() local seen = {} for _, m in ipairs(RLSuite:DebugRoster()) do seen[m.class] = true end local n = 0 for _ in pairs(seen) do n = n + 1 end return n == 10 end)()""")), "v1.11.86: la composizione generata copre tutte e 10 le classi")
+check(bool(rt.eval("""(function() local slots = RLSuite:DebugRaidSlots() local n = 0 for i = 1, 30 do if slots[i] then n = n + 1 end end return n == 25 end)()""")), "v1.11.86: gli slot occupati sono 25 (5 gruppi pieni, il sesto vuoto)")
+check(bool(rt.eval("""(function() local r = RLSuite:DebugRoster() return r[2] and r[2].name == 'Drakbot' and r[2].class == 'WARRIOR' and r[3] and r[3].name == 'Holymoon' and r[3].class == 'PALADIN' and r[6] and r[6].name == 'Lightwall' and r[6].class == 'PALADIN' end)()""")), "v1.11.86: ordine FISSO e pensato (tank+healer nel gruppo 1, secondo tank che apre il gruppo 2: niente shuffle)")
+rt.execute("""
+-- =====================================================================
+-- v1.11.86: aure dei finti = COMPOSIZIONE, non caso.
+-- =====================================================================
+local RF = RLSuite.raidFrame
+local sets = RF:_DebugRosterBuffSets()
+local function has(name, id)
+    local t = sets[name]
+    if t and t[id] then return true end
+    return false
+end
+local WAR, CASTER, DK = nil, nil, nil
+for _, m in ipairs(RLSuite:DebugRoster()) do
+    if not m.isPlayer then
+        if m.class == 'WARRIOR' and not WAR then WAR = m.name end
+        if m.class == 'MAGE' and not CASTER then CASTER = m.name end
+        if m.class == 'DEATHKNIGHT' and not DK then DK = m.name end
+    end
+end
+-- id di riferimento nelle categorie
+local ID_INT, ID_SPIRIT, ID_FM, ID_ATK = 42995, 48073, 54646, 48932
+local ID_MCRIT, ID_SPCRIT, ID_REPLEN, ID_FLASK, ID_FOOD = 17007, 24907, 44561, 53755, 57399
+
+V86 = {
+    WAR = WAR, CASTER = CASTER, DK = DK,
+    -- un melee NON ha roba da caster...
+    war_int = has(WAR, ID_INT), war_spirit = has(WAR, ID_SPIRIT),
+    war_fm = has(WAR, ID_FM), war_spcrit = has(WAR, ID_SPCRIT),
+    -- ...ma ha i buff da melee (fornitori presenti: warrior/druido/hunter)
+    war_atk = has(WAR, ID_ATK), war_mcrit = has(WAR, ID_MCRIT),
+    -- il caster ha Int/Spirit e NON l'ATK
+    caster_int = has(CASTER, ID_INT), caster_spirit = has(CASTER, ID_SPIRIT),
+    caster_atk = has(CASTER, ID_ATK),
+    -- DK: fisico (niente Int), ha il crit melee
+    dk_int = has(DK, ID_INT), dk_mcrit = has(DK, ID_MCRIT),
+}
+
+-- scope "single" (Focus Magic): una per MAGO, mai su un mago (non si lancia
+-- su se stessi) -> contiamo quante aure e quante finiscono sui maghi
+local mages, fmOnMage, fmTotal = 0, 0, 0
+for _, m in ipairs(RLSuite:DebugRoster()) do
+    if m.class == 'MAGE' then mages = mages + 1 end
+    local t = sets[m.name]
+    if t and t[ID_FM] then
+        fmTotal = fmTotal + 1
+        if m.class == 'MAGE' then fmOnMage = fmOnMage + 1 end
+    end
+end
+V86.mages, V86.fm_total, V86.fm_on_mage = mages, fmTotal, fmOnMage
+
+-- scope "capped" (Replenishment): al massimo 10 aure
+local replen = 0
+for _, m in ipairs(RLSuite:DebugRoster()) do
+    local t = sets[m.name]
+    if t and t[ID_REPLEN] then replen = replen + 1 end
+end
+V86.replen = replen
+
+-- consumabili: gruppi 1-4 li hanno, il gruppo 5 no. Si contano i FINTI.
+local withFlask, withoutFlask, withoutFood, stragglersInG5 = 0, 0, 0, 0
+for _, m in ipairs(RLSuite:DebugRoster()) do
+    if not m.isPlayer then
+        local t = sets[m.name]
+        local flask = (t and t[ID_FLASK]) and true or false
+        local food = (t and t[ID_FOOD]) and true or false
+        if flask then withFlask = withFlask + 1 end
+        if not flask then
+            withoutFlask = withoutFlask + 1
+            if (m.subgroup or 0) == 5 then stragglersInG5 = stragglersInG5 + 1 end
+        end
+        if not food then withoutFood = withoutFood + 1 end
+    end
+end
+V86.flask_yes, V86.flask_no, V86.food_no, V86.stragglers_g5 =
+    withFlask, withoutFlask, withoutFood, stragglersInG5
+
+-- DETERMINISMO: ricalcolando la tavola da zero i set sono identici
+local function idsOf(name)
+    local t = sets[name] or {}
+    local ids = {}
+    for id in pairs(t) do ids[#ids + 1] = id end
+    table.sort(ids)
+    return table.concat(ids, ',')
+end
+V86.war_before = idsOf(WAR)
+RLSuite.debugBuffs = nil
+local again = RF:_DebugRosterBuffSets()
+local t2 = again[WAR] or {}
+local ids2 = {}
+for id in pairs(t2) do ids2[#ids2 + 1] = id end
+table.sort(ids2)
+V86.war_after = table.concat(ids2, ',')
+V86.same_table = (again == RF:_DebugRosterBuffSets())
+
+-- categoria NON disponibile: senza PALADIN la colonna %stat (Kings) resta
+-- vuota per tutti e il check la dichiara non disponibile (header grigio)
+local savedRaid = RLSuite.debugRaid
+RLSuite.debugRaid = { slots = { [1] = savedRaid.slots[1] } }   -- c'e' solo tu
+RLSuite.debugBuffs = nil
+local colStats = RLSuite.raidBuffColumns[1]
+local cov = RF:BuffCoverage(colStats)
+V86.avail = cov and cov.available
+V86.expected = cov and cov.expected
+RLSuite.debugRaid = savedRaid
+RLSuite.debugBuffs = nil
+RF:_DebugRosterBuffSets()
+""")
+
+
+check(rt.eval("V86.war_int == false and V86.war_spirit == false and V86.war_fm == false"), "v1.11.86: un WARRIOR non ha Int/Spirit/Focus Magic (prima erano casuali, anche su classi sbagliate)")
+check(rt.eval("V86.war_atk == true and V86.war_mcrit == true"), "v1.11.86: il WARRIOR ha i buff che gli competono (ATK e crit melee, fornitori presenti in comp)")
+check(rt.eval("V86.caster_int == true and V86.caster_spirit == true and V86.caster_atk == false"), "v1.11.86: il MAGE ha Int/Spirit e NON l'ATK (destinatari = beneficiari della categoria)")
+check(rt.eval("V86.dk_int == false and V86.dk_mcrit == true"), "v1.11.86: il DEATHKNIGHT e' trattato da fisico (niente Int, si' crit melee)")
+check(rt.eval("V86.mages >= 2 and V86.fm_total == V86.mages and V86.fm_on_mage == 0"), "v1.11.86: Focus Magic = una aura per MAGO presente, mai su un mago (scope single)")
+check(rt.eval("V86.replen == 10"), "v1.11.86: Replenishment rispetta il cap di 10 player (scope capped)")
+check(rt.eval("V86.flask_yes == 19 and V86.flask_no == 5 and V86.stragglers_g5 == 5"), "v1.11.86: flask/food = consumabili personali: li hanno i gruppi 1-4 (19 finti), mancano ai 5 del gruppo 5 (cosi' restano provabili gli avvisi)")
+check(rt.eval("V86.food_no == 5"), "v1.11.86: Well Fed assegnato con la stessa regola della flask (colonna Food con byNameSpell)")
+check(rt.eval("V86.war_before == V86.war_after and V86.war_before ~= '' and V86.same_table == true"), "v1.11.86: la tavola e' DETERMINISTICA (ricalcolo identico) e non si ricostruisce se la composizione non cambia")
+check(rt.eval("V86.avail == false and V86.expected == 0"), "v1.11.86: senza la classe fornitrice la categoria resta vuota e NON disponibile (header grigio, non un muro di 'mancante')")
+
 rt.execute("LM_HIST_N = #RLSuite.lootManager.history")
 rt.execute("RLSuite:DebugFillLoot()")
 check(bool(rt.eval("#RLSuite.lootManager.history > LM_HIST_N")), "Fill Loot appends random pieces to the loot history (random raid pool)")

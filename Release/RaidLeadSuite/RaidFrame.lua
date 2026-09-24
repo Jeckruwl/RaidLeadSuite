@@ -1299,8 +1299,20 @@ function RF:UpdateConsumables(row)
     local showFood = self.db.showFood ~= false
 
     if row.fake then
-        self:SetConsumable(row.flaskIcon, showFlask and "missing" or "off")
-        self:SetConsumable(row.foodIcon, showFood and "missing" or "off")
+        -- Stessi dati della matrice Raid Buffs: se il simulato dice che ha
+        -- flask/food, l'icona NON segnala il mancante (niente contraddizioni).
+        local member = row.member or { name = row.name, class = row.class }
+        local set = self:_DebugMemberBuffSet(member)
+        local function hasAny(ids)
+            for _, id in ipairs(ids or {}) do
+                if set[id] then return true end
+            end
+            return false
+        end
+        local hasFlask = hasAny(RLSuite.buffData and RLSuite.buffData.flask)
+        local hasFood = hasAny(RLSuite.buffData and RLSuite.buffData.food)
+        self:SetConsumable(row.flaskIcon, (showFlask and not hasFlask) and "missing" or "off")
+        self:SetConsumable(row.foodIcon, (showFood and not hasFood) and "missing" or "off")
         return
     end
 
@@ -2611,6 +2623,9 @@ function RF:RefreshBuffMatrix()
             end
         end
         for c = 1, #cols do aggs[c] = self:_BuffAggNew(cols[c], entries) end
+        -- Debug: le aure dei finti si generano dalla composizione UNA volta
+        -- per passata (la firma evita di rifarlo a ogni cella).
+        if RLSuite.DebugMode and RLSuite:DebugMode() then self:_DebugRosterBuffSets() end
     end
     for _, slot in ipairs(self.slots or {}) do
         for c = 1, #(slot._buffCells or {}) do
@@ -2674,31 +2689,118 @@ function RF:_BuffColSet(col)
     return col._set
 end
 
--- DEBUG: aure simulati dei player FITTIZI (le persone invitate "ricevono
--- buff casuali"). Set stabile in sessione: seme dal nome (LCG), per OGNI
--- categoria ~55% di possibilita' di averne uno, spell scelta a caso.
-function RF:_DebugMemberBuffSet(name)
-    if not (RLSuite.DebugMode and RLSuite:DebugMode()) or not name then return {} end
-    RLSuite.debugBuffs = RLSuite.debugBuffs or {}
-    local set = RLSuite.debugBuffs[name]
-    if set then return set end
-    set = {}
-    local seed = 0
-    for i = 1, #name do
-        seed = (seed * 31 + name:byte(i)) % 2147483647
+-- ============================================================
+-- DEBUG: aure dei player FITTIZI costruite dalla COMPOSIZIONE SIMULATA.
+-- Prima erano CASUALI (seme dal nome, ~55% per categoria): un warrior poteva
+-- avere Int/Spirit/Focus Magic, un mago l'ATK, e una categoria senza il suo
+-- fornitore in raid risultava verde per caso. Ora la tavola segue la comp:
+--   * FORNITORI (col.classes): se nessuna di quelle classi e' nel raid la
+--     categoria resta VUOTA per tutti (l'intestazione si ingrigisce, esatta-
+--     mente come in un raid vero senza quella classe);
+--   * DESTINATARI (col.beneficiaries): un Int non compare su un warrior, un
+--     ATK non compare su un mago; se la categoria non ha lista = tutti;
+--   * scope "single" (Focus Magic) = una aura per MAGO presente, su un caster
+--     diverso dal mago (non si lancia su se stesso);
+--   * scope "capped" (Replenishment) = ce l'hanno i primi `cap` beneficiari.
+-- Le categorie SENZA classi fornitrici (flask, Well Fed) non sono buff di
+-- classe ma CONSUMABILI personali: li hanno tutti tranne l'ultimo gruppo,
+-- cosi' restano provabili gli avvisi e i whisper dei consumabili mancanti.
+-- Tutto DETERMINISTICO: stessa composizione = stessa tavola (una segnalazione
+-- si puo' confrontare con la schermata di un altro). Si ricalcola solo quando
+-- il roster cambia: la firma e' nome:classe:gruppo di ogni slot.
+--
+-- Il risultato va in RLSuite.debugBuffs = { [nome] = { [spellId] = true },
+-- __sig = firma } (Core lo azzera quando cambia la debug mode o il roster).
+-- ============================================================
+function RF:_DebugRosterBuffSets()
+    if not (RLSuite.DebugMode and RLSuite:DebugMode()) then return {} end
+    local roster = RLSuite:DebugRoster()
+    local parts = {}
+    for _, m in ipairs(roster) do
+        parts[#parts + 1] = tostring(m.name) .. ":" .. tostring(m.class) ..
+            ":" .. tostring(m.subgroup or 0)
     end
-    local function rnd()
-        seed = (seed * 1103515245 + 12345) % 2147483648
-        return seed / 2147483648
+    local sig = table.concat(parts, ",")
+    if RLSuite.debugBuffs and RLSuite.debugBuffs.__sig == sig then
+        return RLSuite.debugBuffs
     end
-    for _, col in ipairs(RLSuite.raidBuffColumns or {}) do
-        local sp = col.spells
-        if sp and #sp > 0 and rnd() < 0.55 then
-            set[sp[math.floor(rnd() * #sp) + 1]] = true
+
+    local sets = { __sig = sig }
+    for _, m in ipairs(roster) do sets[m.name] = {} end
+    local cols = RLSuite.raidBuffColumns or {}
+
+    for _, col in ipairs(cols) do
+        local providers = 0
+        for _, m in ipairs(roster) do
+            if self:_BuffClassProvides(col, m.class) then providers = providers + 1 end
         end
+        local personal = (#(col.classes or {}) == 0)
+        if personal then
+            -- Consumabili: id della famiglia giusta dal buffData (flask o
+            -- Well Fed). Li hanno tutti TRANNE l'ULTIMO GRUPPO con membri
+            -- ("i ritardatari"): cosi' restano provabili gli avvisi e i
+            -- whisper dei consumabili mancanti anche in debug. Con un raid
+            -- pieno l'ultimo gruppo e' il 5.
+            local lastGroup = 1
+            for _, m in ipairs(roster) do
+                local g = m.subgroup or 1
+                if g > lastGroup then lastGroup = g end
+            end
+            local ids
+            if col.key == "wellfed" then
+                ids = RLSuite.buffData and RLSuite.buffData.food
+            else
+                ids = RLSuite.buffData and RLSuite.buffData.flask
+            end
+            for _, m in ipairs(roster) do
+                if ids and (m.subgroup or 1) < lastGroup then
+                    for _, id in ipairs(ids) do sets[m.name][id] = true end
+                end
+            end
+        elseif providers > 0 then
+            local targets = {}
+            for _, m in ipairs(roster) do
+                if self:_BuffApplicable(m, col) then targets[#targets + 1] = m end
+            end
+            local id = (col.spells or {})[1]
+            if id and #targets > 0 then
+                local scope = col.scope or "raid"
+                if scope == "single" then
+                    local pool = {}
+                    for _, m in ipairs(targets) do
+                        if not self:_BuffClassProvides(col, m.class) then
+                            pool[#pool + 1] = m
+                        end
+                    end
+                    if #pool == 0 then pool = targets end
+                    for i = 1, providers do
+                        local t = pool[((i - 1) % #pool) + 1]
+                        sets[t.name][id] = true
+                    end
+                elseif scope == "capped" then
+                    local cap = col.cap or #targets
+                    if cap > #targets then cap = #targets end
+                    for i = 1, cap do sets[targets[i].name][id] = true end
+                else
+                    for _, m in ipairs(targets) do sets[m.name][id] = true end
+                end
+            end
+        end
+        -- providers == 0 e categoria non personale: nessuna classe in raid la
+        -- fornisce -> nessuno ha l'aura (header grigio). Nessuna azione.
     end
-    RLSuite.debugBuffs[name] = set
-    return set
+
+    RLSuite.debugBuffs = sets
+    return sets
+end
+
+-- Set del singolo finto. La costruzione vera la fa _DebugRosterBuffSets
+-- (una volta per passata di RefreshBuffMatrix): qui e' solo una lettura.
+function RF:_DebugMemberBuffSet(member)
+    if not (RLSuite.DebugMode and RLSuite:DebugMode()) or not member then return {} end
+    local sets = RLSuite.debugBuffs
+    if not (sets and sets[member.name]) then sets = self:_DebugRosterBuffSets() end
+    return sets[member.name] or {}
 end
 
 -- Icona della cella per un MEMBER: fake in debug -> set simulato (per
@@ -2706,7 +2808,16 @@ end
 function RF:_BuffCellIconFor(member, col)
     if not (member and col) then return nil end
     if member.fake and RLSuite.DebugMode and RLSuite:DebugMode() then
-        local set = self:_DebugMemberBuffSet(member.name)
+        local set = self:_DebugMemberBuffSet(member)
+        if col.byNameSpell then
+            -- "Well Fed": nel gioco si matcha il NOME dell'aura (un id per
+            -- ogni cibo); qui basta un id qualsiasi della famiglia food.
+            local food = (RLSuite.buffData and RLSuite.buffData.food) or {}
+            for _, id in ipairs(food) do
+                if set[id] then return col.icon, id end
+            end
+            return nil
+        end
         for _, id in ipairs(col.spells or {}) do
             if set[id] then
                 local tex = GetSpellTexture and GetSpellTexture(id)
