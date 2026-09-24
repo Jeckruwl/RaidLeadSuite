@@ -196,6 +196,13 @@ tutti i file non dell'addon in una directory separata e ignorata dai git pull"*.
   - per NON averli nel proprio client: un comando una volta sola
     (`git sparse-checkout set --no-cone '/*' '!/_dev/'`, git >= 2.25), poi
     `git pull` non li materializza piu'; `git sparse-checkout disable` annulla.
+  - CLIENT DELL'UTENTE (verificato il 24/09): con
+    `git sparse-checkout set --no-cone '/Release/RaidLeadSuite/'` il suo clone
+    materializza SOLO l'addon (105 file, niente `_dev`, niente README); con
+    l'aggiunta di `'/README.md'` resta visibile anche la README. ATTENZIONE:
+    un file locale modificato (es. `media/save.tga`) fa abortire il pull ANCHE
+    con lo sparse attivo -> prima `git checkout -- <file>`, poi il pull (altrimenti
+    il working tree resta a meta': solo il file sporco rimasto).
 * I file restano anche nella storia git (`git show <commit>:handoff.MD`).
 * La suite si lancia dalla RADICE dell'addon:
   `python3 _dev/tests/rls_ace3_test.py` (trova da sola `Release/RaidLeadSuite`,
