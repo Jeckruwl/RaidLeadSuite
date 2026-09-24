@@ -26,8 +26,22 @@ non metterla mai piu'"*.
   README, nemmeno se in futuro cambia la struttura delle cartelle. Le
   istruzioni di installazione stanno fuori dal repo.
 
-Sezioni attuali della README: Comandi, Interfaccia, Debug mode, "Se qualcosa non
-va", Struttura del repository, Requisiti.
+**Estensione della stessa regola (stesso giorno, altri due ordini):** eliminate
+anche le sezioni
+
+* `## Struttura del repository (per chi sviluppa)` (24 righe: albero di
+  `Release/` + `_dev/`, elenco dei file di sviluppo, comandi `git archive`);
+* `## Se qualcosa non va` (10 righe: errori Lua, versione, righe `RF …`/`RG …`).
+
+Ripulito anche il rimando in testa ("leggi in fondo *Se qualcosa non va*"), che
+ora chiede solo di segnalare **cosa hai fatto / cosa ti aspettavi / cosa è
+successo** + eventuale errore Lua. La nota di guardia nella README elenca tutte
+e tre le sezioni vietate. Le informazioni di servizio
+(comandi completi, struttura, come fare gli zip) restano in `_dev/`:
+`commands.txt` e questo handoff.
+
+Sezioni attuali della README: **Comandi, Interfaccia, Debug mode, Requisiti**.
+Niente altro: non aggiungere sezioni senza un ordine esplicito.
 
 Nessun file Lua toccato: versione invariata (1.11.85).
 

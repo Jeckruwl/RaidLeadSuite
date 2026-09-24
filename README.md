@@ -4,11 +4,14 @@ Addon per **raid leader** su World of Warcraft **Wrath of the Lich King 3.3.5** 
 
 **Versione: 1.11.85**
 
-> Questa è una **build per i tester di gilda**: se qualcosa non funziona, leggi in fondo *"Se qualcosa non va"* — bastano poche righe per far risalire la causa in un colpo.
+> Questa è una **build per i tester di gilda**: se qualcosa non funziona, segnalalo al raid leader con **cosa hai fatto**, **cosa ti aspettavi** e **cosa è successo**, più l'eventuale errore Lua.
 
-<!-- NOTA: la README NON deve contenere una sezione di installazione
-     (richiesta esplicita del 24/09/2026). Le istruzioni di installazione
-     vivono fuori dal repo, non qui: non reintrodurle. -->
+<!-- NOTA (richieste esplicite del 24/09/2026): la README NON deve contenere
+     - una sezione di installazione,
+     - una sezione "Struttura del repository",
+     - una sezione "Se qualcosa non va".
+     Non reintrodurle, nemmeno in forma ridotta o come elenco puntato.
+     Questo documento descrive solo comandi, interfaccia, moduli e requisiti. -->
 
 ---
 
@@ -79,40 +82,6 @@ Barre dei giocatori per gruppo, con:
 Con il debug attivo, accanto alla barra compare il pannello **RLS DEBUG** (due righe di tasti): *Fill Raid*, *Test Loot*, *Empty Loot*, *Test Whisplist*, *Test MS*, *Log Test*. Si apre e si chiude insieme al pannello dei tasti (**Raid Control**).
 
 In debug mode la chat scrive righe di traccia utili (`RF …` per l'HUD, `RG …` per il pannello Raid Group): ogni gesto lascia il segno, quindi un problema è sempre leggibile.
-
----
-
-## Se qualcosa non va
-
-1. **Attiva gli errori Lua**: Esc → Interfaccia → Aiuto → *Mostra errori Lua*. Un riquadro rosso è la segnalazione più preziosa.
-2. **Annota la versione**: la chat la stampa all'avvio (`v1.11.85 loaded`) — serve sempre.
-3. **Copia in chat le righe `RF …` / `RG …`** se il problema riguarda un click o un trascinamento.
-
-Nella segnalazione servono: **cosa hai fatto**, **cosa ti aspettavi**, **cosa è successo**, **versione**, **eventuale errore Lua** (o le righe di traccia).
-
----
-
-## Struttura del repository (per chi sviluppa)
-
-```
-Release/RaidLeadSuite/   <-- l'addon (tutti i file che il gioco carica)
-_dev/                    <-- materiale di sviluppo, NON serve per giocare
-    commands.txt         <-- elenco COMPLETO dei comandi (pubblici + diagnostica)
-    handoff.MD           <-- diario tecnico del progetto
-    SMOKE_TEST.md        <-- lista di controlli da fare in gioco prima di consegnare
-    Logexampl/           <-- log di esempio
-    tests/               <-- suite automatica: python3 _dev/tests/rls_ace3_test.py
-```
-
-Gli ZIP di release si fanno con:
-
-```bash
-# zip con RaidLeadSuite/ in cima
-git archive --format=zip --prefix=RaidLeadSuite/ -o RaidLeadSuite.zip HEAD:Release/RaidLeadSuite
-
-# oppure con la struttura del repo (Release/RaidLeadSuite/...)
-git archive --format=zip -o RaidLeadSuite-repo.zip HEAD Release/RaidLeadSuite
-```
 
 ---
 
