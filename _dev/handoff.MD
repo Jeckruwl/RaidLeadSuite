@@ -9,6 +9,28 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.85**.
 
+## 1.11.85+ — REGOLA: la README non ha (e non avra' mai) una sezione installazione
+
+Ordine dell'utente (24/09/2026): *"elimina la sezione installazione nel readme e
+non metterla mai piu'"*.
+
+* Sezione `## Installazione` **rimossa** dalla README (34 righe: percorso della
+  cartella, procedura con lo ZIP, procedura con git, contenuto della cartella).
+* Ripuliti anche i riferimenti indiretti: la struttura del repo non dice piu'
+  "cartella da copiare in AddOns", il commento del comando `git archive` non
+  dice piu' "pronto da estrarre in Interface/AddOns", e in *"Se qualcosa non
+  va"* non c'e' piu' il controllo "una sola copia in Interface/AddOns".
+* Nella README c'e' un commento HTML di guardia in testa alla sezione comandi:
+  chi la modifica legge che la sezione installazione non va reintrodotta.
+* REGOLA PERMANENTE: **mai** una sezione (o istruzioni) di installazione nella
+  README, nemmeno se in futuro cambia la struttura delle cartelle. Le
+  istruzioni di installazione stanno fuori dal repo.
+
+Sezioni attuali della README: Comandi, Interfaccia, Debug mode, "Se qualcosa non
+va", Struttura del repository, Requisiti.
+
+Nessun file Lua toccato: versione invariata (1.11.85).
+
 ## 1.11.85 — Comandi: lista pubblica, `/rls inv`, comandi rimossi, `commands.txt`
 
 Richiesta dell'utente in vista della release di gilda: lista pubblica dei

@@ -4,41 +4,11 @@ Addon per **raid leader** su World of Warcraft **Wrath of the Lich King 3.3.5** 
 
 **Versione: 1.11.85**
 
-> Questa è una **build per i tester di gilda**: se qualcosa non funziona, leggi in fondo *"Se qualcosa non va"* — ci sono tre comandi che dicono subito cosa sta succedendo, e con quelle righe si risolve in un colpo.
+> Questa è una **build per i tester di gilda**: se qualcosa non funziona, leggi in fondo *"Se qualcosa non va"* — bastano poche righe per far risalire la causa in un colpo.
 
----
-
-## Installazione
-
-La cartella deve chiamarsi **`RaidLeadSuite`** (il nome della cartella deve corrispondere al file `.toc`, altrimenti il gioco non la carica).
-
-### Con lo ZIP (consigliato per chi non usa git)
-
-1. Scarica `RaidLeadSuite-1.11.85-AddOns.zip`.
-2. Estrai la cartella **`RaidLeadSuite`** in:
-
-```
-<WoW 3.3.5>/Interface/AddOns/
-```
-
-3. Il percorso finale deve essere `<WoW 3.3.5>/Interface/AddOns/RaidLeadSuite/RaidLeadSuite.toc`.
-4. Avvia il client (o `/reload` se era già installato). In chat compare:
-
-```
-[RLSuite] v1.11.85 loaded (RaidLeadSuite). Type /rls to open.
-```
-
-### Con git (per chi aggiorna spesso)
-
-```bash
-git clone <repo>
-# l'addon sta in Release/RaidLeadSuite/
-cp -r <repo>/Release/RaidLeadSuite "<WoW 3.3.5>/Interface/AddOns/RaidLeadSuite"
-```
-
-Per aggiornare: `git pull` e ricopia la cartella `Release/RaidLeadSuite`.
-
-**La cartella dell'addon deve contenere solo**: `RaidLeadSuite.toc`, i file `.lua`, `Libs/` e `media/`. Niente altro.
+<!-- NOTA: la README NON deve contenere una sezione di installazione
+     (richiesta esplicita del 24/09/2026). Le istruzioni di installazione
+     vivono fuori dal repo, non qui: non reintrodurle. -->
 
 ---
 
@@ -116,9 +86,7 @@ In debug mode la chat scrive righe di traccia utili (`RF …` per l'HUD, `RG …
 
 1. **Attiva gli errori Lua**: Esc → Interfaccia → Aiuto → *Mostra errori Lua*. Un riquadro rosso è la segnalazione più preziosa.
 2. **Annota la versione**: la chat la stampa all'avvio (`v1.11.85 loaded`) — serve sempre.
-3. **Controlla di avere UNA sola copia dell'addon** in `Interface/AddOns` (due copie danno comportamenti strani).
-5. **Copia in chat le righe `RF …` / `RG …`** se il problema riguarda un click o un trascinamento.
-6. Se sai usare la riga di comando dell'addon, segnalalo al raid leader: esiste un set di comandi di **diagnostica** (elenco completo nel file `commands.txt` della cartella `_dev/` del repository) che fa risalire la causa in pochi secondi.
+3. **Copia in chat le righe `RF …` / `RG …`** se il problema riguarda un click o un trascinamento.
 
 Nella segnalazione servono: **cosa hai fatto**, **cosa ti aspettavi**, **cosa è successo**, **versione**, **eventuale errore Lua** (o le righe di traccia).
 
@@ -127,7 +95,7 @@ Nella segnalazione servono: **cosa hai fatto**, **cosa ti aspettavi**, **cosa è
 ## Struttura del repository (per chi sviluppa)
 
 ```
-Release/RaidLeadSuite/   <-- l'addon (questa è la cartella da copiare in AddOns)
+Release/RaidLeadSuite/   <-- l'addon (tutti i file che il gioco carica)
 _dev/                    <-- materiale di sviluppo, NON serve per giocare
     commands.txt         <-- elenco COMPLETO dei comandi (pubblici + diagnostica)
     handoff.MD           <-- diario tecnico del progetto
@@ -139,7 +107,7 @@ _dev/                    <-- materiale di sviluppo, NON serve per giocare
 Gli ZIP di release si fanno con:
 
 ```bash
-# pronto da estrarre in Interface/AddOns
+# zip con RaidLeadSuite/ in cima
 git archive --format=zip --prefix=RaidLeadSuite/ -o RaidLeadSuite.zip HEAD:Release/RaidLeadSuite
 
 # oppure con la struttura del repo (Release/RaidLeadSuite/...)
