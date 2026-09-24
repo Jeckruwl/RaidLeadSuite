@@ -9,15 +9,53 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.84**.
 
+## 1.11.84+ — README nella radice, riscritta per la release di gilda
+
+Richiesta: *"sposta readme.MD dentro la cartella principale ed aggiornalo"*.
+La README era ferma alla **1.11.16** e descriveva la vecchia barra (riga di
+icone, gear, config): riscritta da zero in italiano (e' il documento che
+leggono i compagni di gilda) e spostata nella **radice** del repo.
+
+Contenuto aggiornato:
+
+* versione **1.11.84** e messaggio di caricamento reale
+  (`v1.11.84 loaded (RaidLeadSuite)`);
+* due strade di installazione: **zip pronto per AddOns** e **git**
+  (`Release/RaidLeadSuite` da copiare) + "la cartella deve contenere solo
+  .toc, .lua, Libs/, media/";
+* comandi reali (letti da `ChatCommand`/`PrintHelp`): inclusi `/rls diag`,
+  `/rls rfdump`, `/rls lootdiag` e gli alias;
+* interfaccia come e' OGGI: barretta 26 px con icona di fase 22 px, pulsante
+  **Raid Control** e X, matrice con ordine `Groupmaking | Raid Frame | MS | Log
+  | Macrobar | MT & OT | Loot | SaveRaid`, MT/OT che assegnano MT/MA dal target,
+  SaveRaid con titolo + *Config → Saved Raids*;
+* Raid Frame: barre per classe, flask/food (whisper + raid warning), CD dal
+  combat log, blocco Tanks con barra del target, matrice Raid Buffs e il drag
+  giocatore (Shift+sinistro, anche in combat, rilascio fuori = annulla, barre
+  MT/OT escluse);
+* MacroBar (12 macro per fase, tastierino per fase, DBM/BigWigs), pannello Log
+  (pull agganciato all'encounter, tag taglia/difficolta', grafico sempre
+  visibile, schede targets/consumables/auras/deaths/powers);
+* **debug mode** (Config → Debug) con il pannello RLS DEBUG e le tracce `RF …` /
+  `RG …` in chat;
+* sezione **"Se qualcosa non va"** per i tester: errori Lua attivi, versione,
+  `/rls diag`, `/rls rfdump`, righe di traccia;
+* **struttura del repo** (`Release/RaidLeadSuite/` + `_dev/`) e i due comandi
+  `git archive` per gli zip.
+
+Nessun file Lua toccato: versione invariata (1.11.84).
+
 ## 1.11.84+ — STRUTTURA DEL REPO: addon in `Release/RaidLeadSuite/`, sviluppo in `_dev/`
 
 Richiesta dell'utente in vista della release per i compagni di gilda: *"sposta
 tutti i file non dell'addon in una directory separata e ignorata dai git pull"*.
 
 * **L'ADDON vive in `Release/RaidLeadSuite/`** (dentro: `*.lua`, il .toc,
-  `Libs/`, `media/`, `README.md`): e' la cartella da copiare in
-  `Interface/AddOns`. Alla radice del repo restano solo `.gitignore`,
-  `.gitattributes`, `Release/` e `_dev/`.
+  `Libs/`, `media/`): e' la cartella da copiare in `Interface/AddOns`. Alla
+  radice del repo restano `.gitignore`, `.gitattributes`, `README.md`,
+  `Release/` e `_dev/`.
+* La **README sta nella RADICE** (compare su GitHub come pagina del progetto):
+  e' documentazione, non un file dell'addon.
 * `handoff.MD`, `SMOKE_TEST.md`, `Logexampl/` e `tests/` vivono in **`_dev/`**,
   TRACCIATA ma esclusa dai pacchetti (`.gitattributes` -> `_dev/ export-ignore`):
   - ogni clone/sessione nuova li trova subito (serve agli agenti);
