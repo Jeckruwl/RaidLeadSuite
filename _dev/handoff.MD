@@ -7,7 +7,35 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.84**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.85**.
+
+## 1.11.85 — Comandi: lista pubblica, `/rls inv`, comandi rimossi, `commands.txt`
+
+Richiesta dell'utente in vista della release di gilda: lista pubblica dei
+comandi, rinomina di InviteEngine, rimozione di due comandi, e l'elenco
+COMPLETO in un file interno.
+
+* **`/rls help`** ora stampa SOLO i 9 comandi pubblici, in quest'ordine:
+  `/rls`, `/rls help`, `/rls config`, `/rls group`, `/rls inv`,
+  `/rls macrobar`, `/rls ms`, `/rls loot`, `/rls raidframe`. Le chiavi in
+  `Locale.lua` sono state riallineate (righe vecchie rimosse dall'elenco).
+* **`/rls inv`** e' il nome nuovo del pannello InviteEngine. Gli alias storici
+  (`inviteengine`, `ie`, `wl`, `whisplist`) continuano a funzionare ma NON sono
+  elencati; anche `/rls ?` e `/rls rf` restano come scorciatoie invisibili.
+* **RIMOSSI** (`/rls macro` e `/rls rfhud`): ora rispondono "Unknown command".
+  Il Macro Editor si apre da *Config → Macros → Macro Editor* (era gia' una voce
+  dell'albero: nessuna perdita di funzionalita').
+* **Diagnostica nascosta ma ATTIVA**: `diag`/`version`, `rfdump`, `lootdiag`,
+  `debugbuff`, `icondbg`, `minimap`. Non compaiono ne' nell'help in gioco ne'
+  nella README; l'elenco completo sta in **`_dev/commands.txt`** (con quando
+  usarli, alias, comandi rimossi, tracce `RF …`/`RG …` e la procedura per
+  aggiornare il file quando si tocca un comando).
+* **BUG trovato dai test nuovi**: `/rls rfdump` chiamava `DiagSlotLines()`
+  senza `self` (punto invece di due punti) e andava in errore Lua invece di
+  stampare la geometria. Corretto in questa release: il primo test che passa
+  dal vero `ChatCommand` l'ha scoperto.
+* Test: 7 check nuovi (ordine ed esattezza dell'help, `/rls inv`, alias,
+  comandi rimossi, diagnostica ancora funzionante).
 
 ## 1.11.84+ — README nella radice, riscritta per la release di gilda
 

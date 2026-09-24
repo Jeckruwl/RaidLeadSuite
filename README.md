@@ -2,7 +2,7 @@
 
 Addon per **raid leader** su World of Warcraft **Wrath of the Lich King 3.3.5** (Interface `30300`), pensato per **Warmane Lordaeron**.
 
-**Versione: 1.11.84**
+**Versione: 1.11.85**
 
 > Questa è una **build per i tester di gilda**: se qualcosa non funziona, leggi in fondo *"Se qualcosa non va"* — ci sono tre comandi che dicono subito cosa sta succedendo, e con quelle righe si risolve in un colpo.
 
@@ -14,7 +14,7 @@ La cartella deve chiamarsi **`RaidLeadSuite`** (il nome della cartella deve corr
 
 ### Con lo ZIP (consigliato per chi non usa git)
 
-1. Scarica `RaidLeadSuite-1.11.84-AddOns.zip`.
+1. Scarica `RaidLeadSuite-1.11.85-AddOns.zip`.
 2. Estrai la cartella **`RaidLeadSuite`** in:
 
 ```
@@ -25,7 +25,7 @@ La cartella deve chiamarsi **`RaidLeadSuite`** (il nome della cartella deve corr
 4. Avvia il client (o `/reload` se era già installato). In chat compare:
 
 ```
-[RLSuite] v1.11.84 loaded (RaidLeadSuite). Type /rls to open.
+[RLSuite] v1.11.85 loaded (RaidLeadSuite). Type /rls to open.
 ```
 
 ### Con git (per chi aggiorna spesso)
@@ -44,24 +44,21 @@ Per aggiornare: `git pull` e ricopia la cartella `Release/RaidLeadSuite`.
 
 ## Comandi
 
-`/rls help` stampa la lista in chat. I comandi più utili:
+`/rls help` stampa la lista in chat.
 
 | Comando | Cosa fa |
 |---|---|
 | `/rls` | Barra principale (matrice pulsanti + fase) |
+| `/rls help` | Lista dei comandi |
 | `/rls config` | Finestra Config (anche col **clic destro sull'icona della minimappa**) |
 | `/rls group` | Pannello Groupmaking |
-| `/rls inviteengine` | Pannello InviteEngine (whisper + auto-invito). Alias: `/rls whisplist`, `/rls ie`, `/rls wl` |
-| `/rls macro` | Config → Macros (editor dei 12 tasti) |
+| `/rls inv` | Pannello InviteEngine (whisper ricevuti + auto-invito) |
 | `/rls macrobar` | HUD MacroBar (mostra/nascondi) |
-| `/rls raidframe` / `/rls rfhud` | HUD Raid Frame |
 | `/rls ms` | Pannello MS Manager |
 | `/rls loot` | Pannello Loot Manager |
-| `/rls diag` | **Diagnostica installazione**: cartella caricata, versione, copie multiple |
-| `/rls rfdump` | **Diagnostica HUD**: quali barre il mouse può davvero prendere |
-| `/rls lootdiag` | Diagnostica persistenza loot |
-| `/rls debugbuff` | Diagnostica icone Raid Buffs |
-| `/rls icondbg` / `/rls minimap` | Diagnostica icone |
+| `/rls raidframe` | HUD Raid Frame (mostra/nascondi) |
+
+L'editor dei 12 tasti della MacroBar si apre da **Config → Macros → Macro Editor**.
 
 ---
 
@@ -118,10 +115,10 @@ In debug mode la chat scrive righe di traccia utili (`RF …` per l'HUD, `RG …
 ## Se qualcosa non va
 
 1. **Attiva gli errori Lua**: Esc → Interfaccia → Aiuto → *Mostra errori Lua*. Un riquadro rosso è la segnalazione più preziosa.
-2. **Annota la versione**: la chat la stampa all'avvio (`v1.11.84 loaded`) — serve sempre.
-3. **`/rls diag`**: dice da che cartella è caricato l'addon, che versione usa e se ci sono **copie duplicate** (una delle cause più comuni di comportamenti strani).
-4. **`/rls rfdump`**: geometria dell'HUD, se un trascinamento "non fa niente".
+2. **Annota la versione**: la chat la stampa all'avvio (`v1.11.85 loaded`) — serve sempre.
+3. **Controlla di avere UNA sola copia dell'addon** in `Interface/AddOns` (due copie danno comportamenti strani).
 5. **Copia in chat le righe `RF …` / `RG …`** se il problema riguarda un click o un trascinamento.
+6. Se sai usare la riga di comando dell'addon, segnalalo al raid leader: esiste un set di comandi di **diagnostica** (elenco completo nel file `commands.txt` della cartella `_dev/` del repository) che fa risalire la causa in pochi secondi.
 
 Nella segnalazione servono: **cosa hai fatto**, **cosa ti aspettavi**, **cosa è successo**, **versione**, **eventuale errore Lua** (o le righe di traccia).
 
@@ -132,6 +129,7 @@ Nella segnalazione servono: **cosa hai fatto**, **cosa ti aspettavi**, **cosa è
 ```
 Release/RaidLeadSuite/   <-- l'addon (questa è la cartella da copiare in AddOns)
 _dev/                    <-- materiale di sviluppo, NON serve per giocare
+    commands.txt         <-- elenco COMPLETO dei comandi (pubblici + diagnostica)
     handoff.MD           <-- diario tecnico del progetto
     SMOKE_TEST.md        <-- lista di controlli da fare in gioco prima di consegnare
     Logexampl/           <-- log di esempio

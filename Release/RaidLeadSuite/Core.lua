@@ -63,7 +63,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.84"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.85"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -1122,24 +1122,22 @@ RLSuite.raidDebuffChecks = {
 -- (Events, slash commands, database setup and module init are now handled
 --  by AceAddon-3.0 / AceEvent-3.0 / AceConsole-3.0 / AceDB-3.0 above.)
 
+-- LISTA PUBBLICA dei comandi: solo quelli per l'uso normale. I comandi di
+-- servizio (diagnostica: diag, rfdump, lootdiag, icondbg, minimap, debugbuff,
+-- version) e gli alias restano FUNZIONANTI ma non si elencano: l'elenco
+-- completo sta in _dev/commands.txt, non in game ne' nella README.
 function RLSuite:PrintHelp()
     local p = function(t) self.utils:Print(t) end
     p(L["Available commands:"])
-    p(L["  /rls              Tab bar"])
-    p(L["  /rls help         This list"])
-    p(L["  /rls diag         Install diagnostic (folder, version, duplicate copies)"])
-    p(L["  /rls rfdump       HUD geometry (which bars the mouse can really grab)"])
-    p(L["  /rls group        Groupmaking tab"])
-    p(L["  /rls inviteengine InviteEngine panel (whisper + auto-invite)"])
-    p(L["  /rls whisplist    InviteEngine panel (alias)"])
-    p(L["  /rls macro        Config -> Macros (editor)"])
-    p(L["  /rls macrobar     HUD MacroBar"])
-    p(L["  /rls raidframe    Raid Frame HUD"])
-    p(L["  /rls rfhud        Raid Frame HUD (alias)"])
-    p(L["  /rls ms           MS Manager tab"])
-    p(L["  /rls debugbuff    Diagnose Raid Buffs header icons"])
-    p(L["  /rls loot         Loot Manager tab"])
-    p(L["  /rls config       Config window"])
+    p(L["  /rls            Main bar (buttons + phase)"])
+    p(L["  /rls help       This list"])
+    p(L["  /rls config     Config window"])
+    p(L["  /rls group      Groupmaking panel"])
+    p(L["  /rls inv        InviteEngine (whisper + auto-invite)"])
+    p(L["  /rls macrobar   MacroBar HUD"])
+    p(L["  /rls ms         MS Manager panel"])
+    p(L["  /rls loot       Loot Manager panel"])
+    p(L["  /rls raidframe  Raid Frame HUD"])
 end
 
 function RLSuite:ChatCommand(input)
@@ -1161,18 +1159,13 @@ function RLSuite:ChatCommand(input)
         end
     elseif msg == "macrobar" then
         if self.macrobar then self.macrobar:Toggle() end
-    elseif msg == "rfhud" then
-        if self.raidFrame then self.raidFrame:Toggle() end
     elseif msg == "group" then
         if self.mainWindow then self.mainWindow:ShowTab("group") end
-    elseif msg == "whisplist" or msg == "wl" or msg == "inviteengine" or msg == "ie" then
+    elseif msg == "inv" or msg == "inviteengine" or msg == "whisplist"
+        or msg == "wl" or msg == "ie" then
         if self.mainWindow then self.mainWindow:ShowTab("group") end
         if self.groupmaking and self.groupmaking.OpenWhisplist then
             self.groupmaking:OpenWhisplist()
-        end
-    elseif msg == "macro" then
-        if self.config and self.config.OpenMacroEditorPanel then
-            self.config:OpenMacroEditorPanel()
         end
     elseif msg == "raidframe" or msg == "rf" then
         if self.raidFrame then self.raidFrame:Toggle() end
@@ -1200,7 +1193,9 @@ function RLSuite:ChatCommand(input)
         if rf and rf.DiagSlotLines then
             local p2 = function(t) self.utils:Print(t) end
             p2("RLSuite - stato dell'HUD (barre con un player)")
-            for _, line in ipairs(rf.DiagSlotLines()) do p2(line) end
+            -- NB: due punti, non punto: DiagSlotLines usa self (senza, /rls
+            -- rfdump andava in errore Lua invece di stampare la geometria).
+            for _, line in ipairs(rf:DiagSlotLines()) do p2(line) end
         else
             self:Print(L["Raid frame not initialized yet."])
         end

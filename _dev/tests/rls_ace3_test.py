@@ -7327,6 +7327,103 @@ check(bool(rt.eval("UW_P16_D1.at8 ~= '?' and UW_P16_D1.at1_free == true and UW_P
 check(bool(rt.eval("UW_P16_FAR.press == true and UW_P16_FAR.started == true")), "v1.11.82: premendo 40 px fuori dalle barre non si aggancia niente (nessun effetto a distanza)")
 check(bool(rt.eval("UW_P16_HIDDEN.gen == true and UW_P16_HIDDEN.src == true and UW_P16_HIDDEN.clean == true")), "v1.11.82: riga con un player ma NON mostrata (barra visibile su content) - il gesto la prende lo stesso")
 check(bool(rt.eval("UW_P16_DUMP.n >= 3 and UW_P16_DUMP.hasWindow == true and UW_P16_DUMP.hasName == true")), "v1.11.82: /rls rfdump elenca barre, stato mostrata/nascosta e rettangoli (nome player incluso)")
+rt.execute("""
+-- =====================================================================
+-- v1.11.85: LISTA PUBBLICA DEI COMANDI.
+-- L'help in gioco elenca SOLO i comandi d'uso normale: la diagnostica e gli
+-- alias restano attivi ma invisibili. /rls inv sostituisce
+-- /rls inviteengine; /rls macro e /rls rfhud sono stati RIMOSSI.
+-- =====================================================================
+local CL_SAVED_DEBUG = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = false
+
+-- help: righe stampate e contenuto
+CHAT_LOG = {}
+RLSuite:PrintHelp()
+CMD_HELP = { n = #CHAT_LOG, all = table.concat(CHAT_LOG, "\\n") }
+CMD_HELP.public = {}
+for i = 2, #CHAT_LOG do
+    -- togli il prefisso del print in chat ("|cff33ff99[RLSuite]|r  ")
+    local line = tostring(CHAT_LOG[i]):gsub("^.-%]|r%s*", "")
+    CMD_HELP.public[#CMD_HELP.public + 1] = line
+end
+CMD_HELP.joined = table.concat(CMD_HELP.public, " | ")
+
+-- comandi pubblici attesi, in ordine
+CMD_EXPECT = {
+    "/rls            Main bar (buttons + phase)",
+    "/rls help       This list",
+    "/rls config     Config window",
+    "/rls group      Groupmaking panel",
+    "/rls inv        InviteEngine (whisper + auto-invite)",
+    "/rls macrobar   MacroBar HUD",
+    "/rls ms         MS Manager panel",
+    "/rls loot       Loot Manager panel",
+    "/rls raidframe  Raid Frame HUD",
+}
+CMD_ORDER_OK = (#CMD_HELP.public == #CMD_EXPECT)
+if CMD_ORDER_OK then
+    for i, want in ipairs(CMD_EXPECT) do
+        if CMD_HELP.public[i] ~= want then CMD_ORDER_OK = false end
+    end
+end
+
+-- NESSUNA diagnostica nell'help
+CMD_NO_DIAG = true
+for _, bad in ipairs({ "diag", "rfdump", "lootdiag", "icondbg", "minimap",
+    "debugbuff", "version", "whisplist", "inviteengine", "rfhud", "macro " }) do
+    if CMD_HELP.all:find(bad, 1, true) then CMD_NO_DIAG = false end
+end
+
+-- /rls inv deve portare al pannello InviteEngine: si controlla il DISPATCH
+-- (tab "group" + OpenWhisplist) senza costruire la UI, che in questo punto
+-- della suite non e' ancora montata.
+local MWc = RLSuite.mainWindow
+local savedShowTab = MWc.ShowTab
+local savedOpenWL = RLSuite.groupmaking.OpenWhisplist
+local seenTab, seenOpen = nil, nil
+MWc.ShowTab = function(_, key) seenTab = key end
+RLSuite.groupmaking.OpenWhisplist = function() seenOpen = (seenOpen or 0) + 1 end
+
+RLSuite:ChatCommand("inv")
+CMD_INV_OPEN = (seenTab == "group" and seenOpen == 1)
+
+-- alias storici ancora accettati (ma non elencati)
+CMD_ALIAS_OK = true
+for _, alias in ipairs({ "inviteengine", "ie", "wl", "whisplist" }) do
+    seenTab, seenOpen = nil, nil
+    RLSuite:ChatCommand(alias)
+    if not (seenTab == "group" and seenOpen == 1) then CMD_ALIAS_OK = false end
+end
+MWc.ShowTab = savedShowTab
+RLSuite.groupmaking.OpenWhisplist = savedOpenWL
+
+-- /rls macro e /rls rfhud NON esistono piu': cadono nel ramo "sconosciuto"
+CHAT_LOG = {}
+RLSuite:ChatCommand("macro")
+CMD_MACRO_GONE = (table.concat(CHAT_LOG, "\\n"):find("Unknown command", 1, true) ~= nil)
+CHAT_LOG = {}
+RLSuite:ChatCommand("rfhud")
+CMD_RFHUD_GONE = (table.concat(CHAT_LOG, "\\n"):find("Unknown command", 1, true) ~= nil)
+
+-- la diagnostica resta FUNZIONANTE (solo nascosta)
+CHAT_LOG = {}
+RLSuite:ChatCommand("diag")
+CMD_DIAG_WORKS = (table.concat(CHAT_LOG, "\\n"):find("diagnostica installazione", 1, true) ~= nil)
+CHAT_LOG = {}
+RLSuite:ChatCommand("rfdump")
+CMD_RFDUMP_WORKS = (table.concat(CHAT_LOG, "\\n"):find("HUD", 1, true) ~= nil)
+RLSuite.db.profile.debug = CL_SAVED_DEBUG
+""")
+
+
+check(bool(rt.eval("CMD_HELP.n == 1 + #CMD_EXPECT")), "v1.11.85: /rls help stampa SOLO i 9 comandi pubblici (nessuna diagnostica)")
+check(bool(rt.eval("CMD_ORDER_OK == true")), "v1.11.85: help nell'ordine richiesto (main bar, help, config, group, inv, macrobar, ms, loot, raidframe) -- %s" % rt.eval("table.concat(CMD_HELP.public, ' || ')"))
+check(bool(rt.eval("CMD_NO_DIAG == true")), "v1.11.85: nell'help non compaiono diag/rfdump/lootdiag/icondbg/minimap/debugbuff ne' gli alias")
+check(bool(rt.eval("CMD_INV_OPEN == true")), "v1.11.85: /rls inv apre il pannello InviteEngine (comando rinominato)")
+check(bool(rt.eval("CMD_ALIAS_OK == true")), "v1.11.85: gli alias storici (inviteengine, ie, wl, whisplist) restano accettati ma NON elencati")
+check(bool(rt.eval("CMD_MACRO_GONE == true and CMD_RFHUD_GONE == true")), "v1.11.85: /rls macro e /rls rfhud sono stati RIMOSSI (ora comando sconosciuto)")
+check(bool(rt.eval("CMD_DIAG_WORKS == true and CMD_RFDUMP_WORKS == true")), "v1.11.85: i comandi di diagnostica restano FUNZIONANTI, solo nascosti dall'help")
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

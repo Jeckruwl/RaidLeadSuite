@@ -32,18 +32,18 @@ do
     -- Core
     L["v%s loaded. Type /rls to open."] = true
     L["Available commands:"] = true
-    L["  /rls              Tab bar"] = true
-    L["  /rls help         This list"] = true
-    L["  /rls group        Groupmaking tab"] = true
-    L["  /rls inviteengine InviteEngine panel (whisper + auto-invite)"] = true
-    L["  /rls whisplist    InviteEngine panel (alias)"] = true
-    L["  /rls macro        Config -> Macros (editor)"] = true
-    L["  /rls macrobar     HUD MacroBar"] = true
-    L["  /rls raidframe    Raid Frame tab (settings)"] = true
-    L["  /rls rfhud        HUD Raid Frame"] = true
-    L["  /rls ms           MS Manager tab"] = true
-    L["  /rls loot         Loot Manager tab"] = true
-    L["  /rls config       Config tab"] = true
+    -- Lista PUBBLICA (solo comandi d'uso normale): la diagnostica e gli alias
+    -- restano attivi ma fuori da questo elenco (elenco completo in
+    -- _dev/commands.txt).
+    L["  /rls            Main bar (buttons + phase)"] = true
+    L["  /rls help       This list"] = true
+    L["  /rls config     Config window"] = true
+    L["  /rls group      Groupmaking panel"] = true
+    L["  /rls inv        InviteEngine (whisper + auto-invite)"] = true
+    L["  /rls macrobar   MacroBar HUD"] = true
+    L["  /rls ms         MS Manager panel"] = true
+    L["  /rls loot       Loot Manager panel"] = true
+    L["  /rls raidframe  Raid Frame HUD"] = true
     L["Unknown command. Type /rls help for the list."] = true
     L["DEBUG MODE ON"] = true
     L["Simulated raid, messages are whispered to you."] = true
@@ -263,7 +263,7 @@ L["Start the spammer first, then Whisp test sends the fake whispers."] = "Avvia 
     L["OK on everyone"] = true
     L["Missing: %d"] = true
     L["Covered: %d/%d"] = true
-    L["  /rls debugbuff    Diagnose Raid Buffs header icons"] = true
+    -- (/rls debugbuff resta ATTIVO, solo non elencato)
     L["Buff headers: media/BUFFCATICONS/BCI_<0..24>.tga"] = true
     L["Raid frame not initialized yet."] = true
     L["Color of the player name on the bars."] = true
