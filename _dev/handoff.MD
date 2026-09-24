@@ -196,7 +196,16 @@ tutti i file non dell'addon in una directory separata e ignorata dai git pull"*.
   - per NON averli nel proprio client: un comando una volta sola
     (`git sparse-checkout set --no-cone '/*' '!/_dev/'`, git >= 2.25), poi
     `git pull` non li materializza piu'; `git sparse-checkout disable` annulla.
-  - CLIENT DELL'UTENTE (verificato il 24/09): con
+  - CLIENT DELL'UTENTE — SOLUZIONE ADOTTATA (24/09): il clone sta in
+    `Interface/AddOns/RaidLeadSuite` e il gioco carica QUELLA cartella, ma
+    l'addon e' in `Release/RaidLeadSuite`: git non sa promuovere una
+    sottocartella a radice (nessuna impostazione di remote/source lo fa).
+    Quindi: hook `post-merge` che copia `Release/RaidLeadSuite` nella radice del
+    clone (script: `_dev/client-sync-hook.sh`) + `.git/info/exclude` per tenere
+    pulito `git status`. Da li' in poi **basta `git pull`** e l'addon in gioco e'
+    aggiornato (verificato con un push di prova e un pull). Se il clone viene
+    rifatto, l'hook va reinstallato (una riga).
+  - varianti testate: con
     `git sparse-checkout set --no-cone '/Release/RaidLeadSuite/'` il suo clone
     materializza SOLO l'addon (105 file, niente `_dev`, niente README); con
     l'aggiunta di `'/README.md'` resta visibile anche la README. ATTENZIONE:
