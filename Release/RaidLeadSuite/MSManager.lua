@@ -160,9 +160,7 @@ function MSM:ParseMSMessage(sender, msg)
     if string.find(lower, "^ms%s*changes") then return end
 
     local body = string.match(text, "^[Mm][Ss]%s*[:%-=]?%s*(.+)$")
-    local explicit = body ~= nil
-    if not body then return end
-    if body == "" then return end
+    if not body or body == "" then return end
 
     local parsed = RLSuite.utils:ParseWhisper(body)
     local spec = parsed.spec or body

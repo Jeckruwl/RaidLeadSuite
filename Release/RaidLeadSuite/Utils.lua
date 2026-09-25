@@ -305,7 +305,8 @@ Utils.specGrammar = {
     DRUID = {
         { spec = "Balance",     prefix = { "balance" },       suffix = { "balance" } },
         -- Il ferale ammette prefisso E suffisso; "feral"/"f" da soli valgono
-        -- per entrambe le spec (ambiguita' segnalata, vedi ParseClassSpec).
+        -- per ENTRAMBE le spec: Feral Cat e Feral Bear restano due voci
+        -- separate e, in quel caso, si lascia la parola comune "Feral".
         { spec = "Feral Cat",   prefix = { "f", "cat", "feral" },
                                 suffix = { "feral", "cat", "feral cat", "feralcat" } },
         { spec = "Feral Bear",  prefix = { "f", "bear", "feral" },
