@@ -1542,7 +1542,10 @@ end
 -- Buff mancanti di UN membro: le categorie che lo riguardano, che la
 -- composizione puo' coprire e che NON ha attive. Stessa logica della matrice
 -- (destinatari + fornitori presenti), quindi nessun falso allarme.
-function RF:MissingBuffLabels(member, group)
+-- Elenco delle categorie che MANCANO a un membro, ognuna con l'eventuale
+-- assegnatario: all'avviso serve "MP5 (Lightwall)", cioe' il buff mancante e,
+-- fra parentesi, chi deve provvedere (db.buffAssign).
+function RF:MissingBuffEntries(member, group)
     local out = {}
     if not member then return out end
     local entries = {}
@@ -1558,7 +1561,7 @@ function RF:MissingBuffLabels(member, group)
             local ctx = self:_BuffProviderContext(col, entries)
             if self:_BuffApplicable(member, col) and self:_BuffCoverable(col, ctx, group) then
                 if self:_BuffCellIconFor(member, col, group) == nil then
-                    out[#out + 1] = col.label or col.key
+                    out[#out + 1] = { label = col.label or col.key, assign = self:GetBuffAssign(col) }
                 end
             end
         end
@@ -1566,10 +1569,21 @@ function RF:MissingBuffLabels(member, group)
     return out
 end
 
--- CTRL+click (sinistro) sul nome/barra del player: whisper a quel player con
--- l'elenco dei buff che gli mancano. Il testo base e' quello degli avvisi
+function RF:MissingBuffLabels(member, group)
+    local out = {}
+    for _, e in ipairs(self:MissingBuffEntries(member, group)) do
+        out[#out + 1] = e.label
+    end
+    return out
+end
+
+-- CTRL+click (sinistro) sul nome/barra del player: avviso IN RAID (raid
+-- warning) con l'elenco dei buff che gli mancano e, fra parentesi, chi deve
+-- provvedere ("MP5 (Lightwall)"). Il testo base e' quello degli avvisi
 -- ("buff" in Configurazione -> Alert), con $name sostituito; in coda l'elenco.
--- Se non manca niente NON si manda nulla al player: lo dice solo al leader.
+-- Non e' piu' un whisper al singolo: la richiesta era che l'avviso lo vedesse
+-- il raid. Se non manca niente non si manda niente in raid: lo dice solo al
+-- leader.
 function RF:SendMissingBuffsAlert(row)
     if not row then return false end
     local now = (GetTime and GetTime()) or 0
@@ -1580,18 +1594,32 @@ function RF:SendMissingBuffsAlert(row)
     local member = row.member
     local name = row.name or (member and member.name)
     if not name or name == "" then return false end
-    local labels = self:MissingBuffLabels(member, row.group)
-    if #labels == 0 then
+    local entries = self:MissingBuffEntries(member, row.group)
+    if #entries == 0 then
         RLSuite.utils:Print(string.format(L["%s has all the raid buffs."], name))
         return false
     end
+    -- "MP5 (Lightwall)": il nome del buff e, fra parentesi, chi deve farlo.
+    -- Se nessuno e' assegnato resta il solo nome del buff (nessuno da citare).
+    local parts = {}
+    for _, e in ipairs(entries) do
+        if e.assign and e.assign ~= "" then
+            parts[#parts + 1] = string.format("%s (%s)", e.label, e.assign)
+        else
+            parts[#parts + 1] = e.label
+        end
+    end
+    local list = table.concat(parts, ", ")
     local alerts = self.db.alerts or {}
     local msg = alerts.buff
     if not msg or msg == "" then msg = self:GetDefaultAlertMessage("buff") end
     msg = string.gsub(msg or "", "%$name", name)
-    msg = msg .. " " .. table.concat(labels, ", ")
-    RLSuite.utils:Whisper(name, msg)
-    RLSuite.utils:Print(string.format(L["Missing buffs for %s: %s"], name, table.concat(labels, ", ")))
+    msg = msg .. " " .. list
+    -- RAID WARNING (Utils:SendChat torna a RAID se non sei leader/officer):
+    -- cosi' l'avviso lo vede tutto il raid, assegnatario compreso.
+    if #msg > 240 then msg = msg:sub(1, 237) .. "..." end
+    RLSuite.utils:SendChat(msg, "RAID_WARNING")
+    RLSuite.utils:Print(string.format(L["Missing buffs for %s: %s"], name, list))
     return true
 end
 

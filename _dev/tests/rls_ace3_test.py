@@ -8017,7 +8017,8 @@ for _, t in ipairs(RFM.tankSlots or {}) do
     if t._fadeAlpha and t._fadeAlpha ~= 1 then V90.tanks_untouched = false end
 end
 
--- --- CTRL+click sulla barra del nome: avviso buff mancanti a quel player ---
+-- --- CTRL+click sulla barra del nome: avviso IN RAID dei buff mancanti,
+--     con fra parentesi CHI deve provvedere ---
 local origWhisper = RLSuite.utils.Whisper
 local SENT = {}
 RLSuite.utils.Whisper = function(self2, name, msg) SENT[#SENT+1] = tostring(name) .. "|" .. tostring(msg) end
@@ -8028,13 +8029,30 @@ RFM._BuffCellIconFor = function(self2, member, col, group)
     if col and col.kind == "durability" then return origIconFor(self2, member, col, group) end
     return nil
 end
-IsControlKeyDown = function() return true end
 local row = RFM.rows[2]
+-- la PRIMA categoria mancante e' assegnata a Lightwall: nel messaggio deve
+-- comparire "(Lightwall)". Un'altra resta senza assegnatario.
+local miss = RFM:MissingBuffLabels(row.member, row.group)
+V90.miss_n = #miss
+V90.miss_first = miss[1]
+V90.miss_last = miss[#miss]
+local firstCol
+for _, c in ipairs(cols) do
+    if (c.label or c.key) == miss[1] then firstCol = c end
+end
+RFM:SetBuffAssign(firstCol, "Lightwall")
+local n2 = #CHAT_LOG
+IsControlKeyDown = function() return true end
 row._targetT = nil
 RFM:RowPlainClick(row, "LeftButton")
 V90.ctrl_sent = SENT[1]
 V90.ctrl_target = row.member.name
 V90.ctrl_no_target = (row._targetT == nil)
+V90.ctrl_raid = ""
+for i = #CHAT_LOG, n2, -1 do
+    if CHAT_LOG[i]:find("RAID_WARNING", 1, true) then V90.ctrl_raid = CHAT_LOG[i]; break end
+end
+RFM:SetBuffAssign(firstCol, nil)
 SENT = {}
 IsControlKeyDown = function() return false end
 RFM:RowPlainClick(row, "LeftButton")
@@ -8128,8 +8146,14 @@ check(bool(rt.eval("V90.y_near == 12 and V90.y_far == 34 and V90.y_offgrid == 99
 check(bool(rt.eval("V90.fade_near == 1 and V90.fade_far == 0.35")), "v1.11.90: fade per distanza: entro la soglia barra piena, oltre la soglia trasparente al livello scelto")
 check(bool(rt.eval("V90.fade_off == 1")), "v1.11.90: con il fade spento (soglia 0) la barra torna piena")
 check(bool(rt.eval("V90.tanks_untouched == true")), "v1.11.90: le barre MT/OT non vengono toccate dal fade")
-check(bool(rt.eval("V90.ctrl_sent ~= nil and V90.ctrl_sent:find(V90.ctrl_target, 1, true) ~= nil")), "v1.11.90: CTRL+click sul nome whispera a QUEL player l'elenco dei buff mancanti -- %s" % rt.eval("tostring(V90.ctrl_sent)"))
-check(bool(rt.eval("V90.ctrl_sent:find('missing some raid buffs', 1, true) ~= nil and V90.ctrl_sent:find('MP5', 1, true) ~= nil")), "v1.11.90: il whisper elenca le categorie davvero mancanti a quel player")
+check(bool(rt.eval("V90.miss_n > 1")), "v1.11.91: il caso di prova ha piu' di una categoria mancante (elenco non banale) -- %s" % rt.eval("tostring(V90.miss_n)"))
+check(bool(rt.eval("V90.ctrl_sent == nil")), "v1.11.91: l'avviso del giocatore NON e' piu' un whisper: va in raid (niente messaggio privato)")
+check(bool(rt.eval("V90.ctrl_raid ~= '' and V90.ctrl_raid:find('RAID_WARNING', 1, true) ~= nil")), "v1.11.91: CTRL+click = avviso in RAID (raid warning) -- %s" % rt.eval("tostring(V90.ctrl_raid)"))
+check(bool(rt.eval("V90.ctrl_target ~= nil and V90.ctrl_raid:find(V90.ctrl_target, 1, true) ~= nil")), "v1.11.91: il messaggio in raid dice di CHI sono i buff mancanti")
+check(bool(rt.eval("V90.ctrl_raid:find('missing some raid buffs', 1, true) ~= nil")), "v1.11.91: usa il testo dell'alert buff della configurazione")
+check(bool(rt.eval("V90.ctrl_raid:find(V90.miss_first .. ' (Lightwall)', 1, true) ~= nil")), "v1.11.91: fra parentesi c'e' CHI deve provvedere -- %s" % rt.eval("tostring(V90.miss_first)"))
+check(bool(rt.eval("V90.ctrl_raid:find(V90.miss_last, 1, true) ~= nil and V90.ctrl_raid:find(V90.miss_last .. ' (', 1, true) == nil")), "v1.11.91: la categoria senza assegnatario resta senza parentesi (nessuno da citare)")
+check(bool(rt.eval("V90.ctrl_raid:find(V90.miss_first, 1, true) ~= nil and V90.ctrl_raid:find(V90.miss_last, 1, true) ~= nil")), "v1.11.91: il messaggio elenca davvero i buff mancanti, non solo il primo")
 check(bool(rt.eval("V90.ctrl_no_target == true")), "v1.11.90: il CTRL+click non cambia il target (gesto solo di avviso)")
 check(bool(rt.eval("V90.plain_sent == nil and V90.plain_target == true")), "v1.11.90: senza CTRL il click continua a targettare come prima")
 check(bool(rt.eval("V90.mp5_nil == true and V90.prov_n == 2")), "v1.11.90: nessuna assegnazione di partenza e 2 fornitori di MP5 (i due paladini) -- %s" % rt.eval("V90.prov_names"))
@@ -8143,6 +8167,66 @@ check(bool(rt.eval("V90.right_cleared == true")), "v1.11.90: click destro sull'i
 check(bool(rt.eval("V90.warn_sent ~= nil and V90.warn_sent:find('Lightwall', 1, true) ~= nil")), "v1.11.90: l'avviso di categoria whispera all'assegnato di provvedere col buff -- %s" % rt.eval("tostring(V90.warn_sent)"))
 check(bool(rt.eval("V90.warn_raid ~= '' and V90.warn_raid:find('MP5', 1, true) ~= nil")), "v1.11.90: l'avviso in raid resta (il whisper si aggiunge, non sostituisce) -- %s" % rt.eval("tostring(V90.warn_raid)"))
 check(bool(rt.eval("V90.warn_sent_none == nil")), "v1.11.90: senza assegnazione nessun whisper")
+print("\n== v1.11.91: doppio roll ignorato (vale solo il primo) ==")
+rt.execute("""
+local lm = RLSuite.lootManager
+DBG_LM_SAVED = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = true
+RLSuite.mainWindow:ShowTab("loot")
+local tmpl = lm:GetRollTemplate()
+
+-- 1) Furbetto rolla 12, poi Onesto 77, poi Furbetto riprova con 99.
+CHAT_LOG = {}
+lm:ClearHistory()
+lm:AddToHistory("|cffff8000|Hitem:42|h[Doppio Roll]|h|r", "Doppio Roll", "tex", 4)
+lm:SelectItem(lm.history[#lm.history])
+lm:StartRoll("MS")
+lm.currentRoll.rolls = {}
+lm.currentRoll.seen = {}
+lm:OnSystemRoll(string.format(tmpl, "Furbetto", 12, 1, 100))
+lm:OnSystemRoll(string.format(tmpl, "Onesto", 77, 1, 100))
+lm:OnSystemRoll(string.format(tmpl, "Furbetto", 99, 1, 100))
+DR_N = #lm.currentRoll.rolls
+DR_FIRST_NAME = lm.currentRoll.rolls[1] and lm.currentRoll.rolls[1].name
+DR_FIRST_ROLL = lm.currentRoll.rolls[1] and lm.currentRoll.rolls[1].roll
+DR_LAST_NAME = lm.currentRoll.rolls[#lm.currentRoll.rolls] and lm.currentRoll.rolls[#lm.currentRoll.rolls].name
+DR_SEEN = lm.currentRoll.seen["Furbetto"]
+DR_PRINT = ""
+for i = #CHAT_LOG, 1, -1 do
+    if CHAT_LOG[i]:find("Double roll", 1, true) then DR_PRINT = CHAT_LOG[i]; break end
+end
+for tick = 1, 30 do if lm.rollTimer then lm:RollTick() end end
+DR_WINNER = lm.history[#lm.history].assignedTo
+
+-- 2) spareggio: dopo il pareggio i pareggiati devono poter rollare DI NUOVO
+lm:ClearHistory()
+lm:AddToHistory("|cffff8000|Hitem:43|h[Pari]|h|r", "Pari", "tex", 4)
+lm:SelectItem(lm.history[#lm.history])
+lm:StartRoll("MS")
+lm.currentRoll.rolls = {}
+lm.currentRoll.seen = {}
+lm:OnSystemRoll(string.format(tmpl, "Tankbot", 50, 1, 100))
+lm:OnSystemRoll(string.format(tmpl, "Healbot", 50, 1, 100))
+for tick = 1, 30 do if lm.rollTimer then lm:RollTick() end end
+DR_TIE_REROLL_BTN = lm.rerollBtn:IsEnabled()
+lm:DoReroll()
+DR_REROLL_N = #lm.currentRoll.rolls
+for tick = 1, 30 do if lm.rerollTimer then lm:RerollTick() end end
+DR_REROLL_ASSIGNED = lm.history[#lm.history].assignedTo
+
+lm:ClearHistory()
+lm.frame:Hide()
+RLSuite.mainWindow.currentTab = nil
+RLSuite.db.profile.debug = DBG_LM_SAVED
+""")
+check(bool(rt.eval("DR_N == 2")), "v1.11.91: il secondo roll di Furbetto NON entra in lista (2 roll totali su 3 messaggi)")
+check(bool(rt.eval("DR_FIRST_NAME == 'Furbetto' and DR_FIRST_ROLL == 12")), "v1.11.91: del doppio roll viene tenuto il PRIMO (Furbetto 12), non il 99 arrivato dopo")
+check(bool(rt.eval("DR_LAST_NAME == 'Onesto'")), "v1.11.91: la lista resta quella dei roll legittimi (il secondo di Furbetto non c'è)")
+check(bool(rt.eval("DR_SEEN == 12")), "v1.11.91: la mappa dei roll gia' visti tiene il primo valore (12)")
+check(bool(rt.eval("DR_PRINT ~= '' and DR_PRINT:find('Furbetto', 1, true) ~= nil")), "v1.11.91: il raid leader vede l'avviso del doppio roll scartato -- %s" % rt.eval("tostring(DR_PRINT)"))
+check(bool(rt.eval("DR_WINNER == 'Onesto'")), "v1.11.91: vince Onesto con 77 -- senza la correzione avrebbe vinto Furbetto col 99 del secondo roll")
+check(bool(rt.eval("DR_TIE_REROLL_BTN == true and DR_REROLL_N >= 1")), "v1.11.91: dopo un pareggio i pareggiati possono rollare di nuovo (il 'primo roll' riparte)")
+check(bool(rt.eval("DR_REROLL_ASSIGNED == 'Tankbot' or DR_REROLL_ASSIGNED == 'Healbot'")), "v1.11.91: lo spareggio si risolve e assegna l'oggetto a uno dei pareggiati")
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

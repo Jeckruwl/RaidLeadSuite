@@ -855,6 +855,9 @@ function LM:StartRoll(rollType)
         item = self.selectedItem,
         type = rollType,
         rolls = {},
+        -- seen[NomeGiocatore] = primo roll: chi rolla due volte viene ignorato
+        -- (vale SOLO il primo roll, come chiesto dal raid leader).
+        seen = {},
         timer = self.db.rollDuration or 10,
         active = true,
     }
@@ -949,11 +952,26 @@ function LM:GetRollPattern()
     return t
 end
 
+-- Un roll per giocatore: il PRIMO e' quello che vale. Se lo stesso nome rolla
+-- una seconda volta nel corso dello stesso timer il secondo messaggio viene
+-- scartato (niente piu' "rollo finche' non esce alto"): il raid leader vede
+-- solo una riga di avviso per il proprio uso, nel canale raid non si scrive
+-- nulla di piu'.
 function LM:OnSystemRoll(msg)
     if not self.currentRoll or not self.currentRoll.active then return end
     local name, roll, _, maxRoll = string.match(msg or "", self:GetRollPattern())
     if name and roll and maxRoll == "100" then
-        table.insert(self.currentRoll.rolls, {name = name, roll = tonumber(roll)})
+        local seen = self.currentRoll.seen
+        if not seen then seen = {}; self.currentRoll.seen = seen end
+        local first = seen[name]
+        if first then
+            RLSuite.utils:Print(string.format(L["Double roll from %s ignored (first roll %d kept)."],
+                tostring(name), first))
+            return
+        end
+        local value = tonumber(roll)
+        seen[name] = value
+        table.insert(self.currentRoll.rolls, {name = name, roll = value})
     end
 end
 
@@ -1013,6 +1031,9 @@ function LM:DoReroll()
         self.currentRoll.item.itemTexture)
 
     self.currentRoll.rolls = {}
+    -- Spareggio: i pareggiati rollano di nuovo, quindi il "primo roll" riparte
+    -- da zero (altrimenti il loro reroll verrebbe scartato come doppio).
+    self.currentRoll.seen = {}
     self.currentRoll.active = true
     if self.rerollBtn then self.rerollBtn:Disable() end
 

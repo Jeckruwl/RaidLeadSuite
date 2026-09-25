@@ -7,7 +7,66 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.90**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.91**.
+
+## 1.11.91 — Avviso buff mancanti in RAID (con chi li deve fare) + doppio roll
+
+Due richieste del raid leader, entrambe piccole e chiuse.
+
+### 1) L'avviso del giocatore va IN RAID, con fra parentesi chi glieli deve fare
+
+`RF:SendMissingBuffsAlert(row)` (CTRL+click sul nome) **non whispera piu'** al
+singolo: manda la riga in **RAID_WARNING** (`RLSuite.utils:SendChat(msg,
+"RAID_WARNING")` -> se non sei leader/officer `SendChat` la riporta a RAID da
+sola), cosi' la vedono tutti, assegnatario compreso. Il messaggio e' quello
+dell'alert "buff" della configurazione con `$name` sostituito, e in coda
+l'elenco delle categorie mancanti nel formato
+
+    <nomebuff> (<chi lo deve fare>)
+
+cioe' per ogni buff mancante il nome del buff e, **fra parentesi, l'assegnatario**
+(dalla 1.11.90: `db.buffAssign`, assegnabile col drag del tooltip di categoria).
+Se per quella categoria nessuno e' assegnato, resta il solo nome del buff: non si
+inventa un colpevole. Esempio reale dalla suite:
+
+    Hey Holymoon, you're missing some raid buffs! %stat (Lightwall), Int, Armor,
+    MP5, ATK, HP, MCrit, FM, Dmg%, Haste, DR%, Heal+, Repl, Ret
+
+Codice: `MissingBuffLabels` ora e' un wrapper di **`MissingBuffEntries`**, la
+versione che restituisce `{ label, assign }` per ogni categoria mancante (stesse
+condizioni di prima: usabile, coperta, cella vuota; `durability` esclusa). Il
+messaggio viene troncato a 240 caratteri (limite del raid warning). A parte il
+canale, il resto del gesto non cambia: dedup 0.3 s, nessun target, nessun
+consumabile, e se al player non manca niente in raid NON si scrive nulla (resta
+solo il print al leader: "<nome> has all the raid buffs.").
+
+### 2) LootManager: vale SOLO il primo roll
+
+`LM:OnSystemRoll(msg)`: se lo stesso nome ha gia' rollato in questa tornata, il
+messaggio successivo viene **scartato**. La memoria e' `self.currentRoll.seen
+[nome] = valore` (creata in `StartRoll` insieme a `rolls`), quindi:
+
+* Furbetto rolla 12, Onesto 77, Furbetto riprova 99 -> in lista ci sono DUE roll
+  (Furbetto 12 e Onesto 77) e vince Onesto: il 99 non e' mai esistito;
+* il raid leader vede una riga di print `"Double roll from Furbetto ignored
+  (first roll 12 kept)."` — in raid non si scrive niente di piu' (nessuno vuole
+  il rumore del furbetto, e il primo roll e' comunque quello rimasto valido);
+* il nome con doppio roll non puo' piu' finire due volte nella lista di
+  spareggio: il caso "tie con lo stesso nome due volte" della 1.11.90 e' chiuso
+  anche da qui;
+* `DoReroll` **azzera `seen`** insieme a `rolls`: i pareggiati devono poter
+  rollare di nuovo, e senza quel reset il loro reroll verrebbe scartato come
+  "doppio roll".
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1177 PASS**. Il blocco CTRL+click e' stato
+riscritto (non piu' whisper: il check verifica che il whisper NON ci sia, che
+parta il raid warning, che ci sia il nome del player, e che la categoria
+assegnata a Lightwall compaia come "`<buff> (Lightwall)`" mentre una categoria
+senza assegnatario resti senza parentesi). Blocco nuovo per il loot: 3 messaggi
+di roll con un doppio -> 2 roll in lista, vince Onesto, `seen`=12, print di
+avviso, e lo spareggio che si risolve dopo il reroll.
 
 ## 1.11.90 — Raid Frame: durability, fade per distanza, avvisi, assegnazione buff
 
@@ -79,6 +138,9 @@ i tank restano sempre pieni). Config -> `Raid Frame` -> Aspetto:
 * `rf.appearance.distanceAlpha` ord. 18 — slider 0.20 → 1.00 step 0.05 (default 0.40, "Fade transparency")
 
 ### 3) CTRL+click sul nome = avviso buff mancanti a QUEL player
+
+**MODIFICATO in 1.11.91: era un whisper al player, ora e' un avviso IN RAID con
+fra parentesi chi deve provvedere. Vedi la sezione 1.11.91 in testa.**
 
 `RowPlainClick`: se `LeftButton` + `IsControlKeyDown()` -> `SendMissingBuffsAlert(row)`
 e **stop** (nessun target, nessun consumabile: il gesto con CTRL e' solo un
