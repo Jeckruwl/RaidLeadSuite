@@ -2,7 +2,7 @@
 
 Addon per **raid leader** su World of Warcraft **Wrath of the Lich King 3.3.5** (Interface `30300`), pensato per **Warmane Lordaeron**.
 
-**Versione: 1.11.88**
+**Versione: 1.11.89**
 
 > Questa è una **build per i tester di gilda**: se qualcosa non funziona, segnalalo al raid leader con **cosa hai fatto**, **cosa ti aspettavi** e **cosa è successo**, più l'eventuale errore Lua.
 

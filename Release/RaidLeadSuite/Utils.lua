@@ -306,8 +306,10 @@ Utils.specGrammar = {
         { spec = "Balance",     prefix = { "balance" },       suffix = { "balance" } },
         -- Il ferale ammette prefisso E suffisso; "feral"/"f" da soli valgono
         -- per entrambe le spec (ambiguita' segnalata, vedi ParseClassSpec).
-        { spec = "Feral Cat",   prefix = { "f", "cat", "feral" },  suffix = { "feral", "cat", "feral cat" } },
-        { spec = "Feral Bear",  prefix = { "f", "bear", "feral" }, suffix = { "feral", "bear", "feral bear" } },
+        { spec = "Feral Cat",   prefix = { "f", "cat", "feral" },
+                                suffix = { "feral", "cat", "feral cat", "feralcat" } },
+        { spec = "Feral Bear",  prefix = { "f", "bear", "feral" },
+                                suffix = { "feral", "bear", "feral bear", "feralbear" } },
         { spec = "Restoration", prefix = { "r", "resto", "restoration" },
                                 suffix = { "resto", "restoration" } },
     },
@@ -358,7 +360,7 @@ Utils.specGrammar = {
 
 -- Parole che non sono ne' classe ne' spec e che si ignorano nel match:
 -- "spec" (abitudine diffusa: "spec fury") e i marcatori del GS.
-local PARSER_NOISE = { ["spec"] = true, ["gs"] = true, ["k"] = true }
+local PARSER_NOISE = { ["spec"] = true, ["gs"] = true, ["k"] = true, ["kgs"] = true, ["kg"] = true }
 
 local function wordSet(list)
     local s = {}
@@ -376,6 +378,8 @@ function Utils:_Gram()
         for _, w in ipairs(words) do g.body[w] = { class = class } end
     end
     g.body["deathknight"] = { class = "DEATHKNIGHT" }
+    g.prefixWords = {}
+    g.suffixWords = {}
     for _, tab in ipairs({ "LOCALIZED_CLASS_NAMES_MALE", "LOCALIZED_CLASS_NAMES_FEMALE" }) do
         local t = _G[tab]
         if t then
@@ -399,6 +403,12 @@ function Utils:_Gram()
                 prefixSet = wordSet(r.prefix), suffixSet = wordSet(r.suffix),
             }
             g.classes[class][#g.classes[class] + 1] = rule
+            -- unione dei prefissi/suffissi della classe: serve a validare le
+            -- forme ATTACCATE ("protpala", "fdudu", "dudubear")
+            g.prefixWords[class] = g.prefixWords[class] or {}
+            g.suffixWords[class] = g.suffixWords[class] or {}
+            for _, w in ipairs(rule.prefix) do g.prefixWords[class][w] = true end
+            for _, w in ipairs(rule.suffix) do g.suffixWords[class][w] = true end
             for _, w in ipairs(rule.prefix) do
                 g.specWords[#g.specWords + 1] = { word = w, spec = r.spec, class = class, len = #w }
             end
@@ -409,6 +419,16 @@ function Utils:_Gram()
     end
     -- alias piu' lungo prima: per la spec "nuda" conta la parola piu' specifica
     table.sort(g.specWords, function(a, b) return a.len > b.len end)
+    -- elenco dei corpi (classi) per la scansione delle forme attaccate:
+    -- prima le piu' lunghe, cosi' "deathknight" vince su "war" ecc.
+    g.bodies = {}
+    for w, e in pairs(g.body) do
+        g.bodies[#g.bodies + 1] = { word = w, class = e.class, spec = e.spec }
+    end
+    table.sort(g.bodies, function(a, b)
+        if #a.word ~= #b.word then return #a.word > #b.word end
+        return a.word < b.word
+    end)
     self._gram = g
     return g
 end
@@ -460,12 +480,17 @@ function Utils:RoleFromText(msg)
 end
 
 -- Cuore del parser: [PREFIX] BODY [SUFFIX] -> classe + spec.
+-- REGOLA GENERALE: le tre parti possono anche essere ATTACCATE, senza spazi
+-- ("fdudu", "udk", "mmhunt", "protpala", "dudubear", "6kgs"). Funzionano in
+-- tutte le combinazioni: prefisso+corpo, corpo+suffisso, prefisso+corpo+
+-- suffisso (quest'ultima solo dove la tabella la ammette, cioe' il ferale),
+-- e in mezzo alle forme normali con gli spazi.
 -- Ritorna SEMPRE una tabella:
---   class          classe canonica ("PALADIN") o nil
---   spec           spec canonica ("Protection") o nil
---   specFrom       "prefix" | "suffix" | "both" | "body" | "bare"
---   specAmbiguous  spec alternativa quando la parola vale per due spec
---                  (es. "f" / "feral" del druido)
+--   class   classe canonica ("PALADIN") o nil
+--   spec    spec canonica ("Protection") o nil
+--   specFrom "prefix" | "suffix" | "both" | "body" | "bare" | "generic"
+--           ("generic" = parola valida per due spec: resta la parola comune,
+--            decide il raid leader)
 function Utils:ParseClassSpec(text)
     local out = {}
     if not text or text == "" then return out end
@@ -473,108 +498,151 @@ function Utils:ParseClassSpec(text)
     local words = self:_ParserWords(text)
     if #words == 0 then return out end
 
-    -- 1) classe scritta
+    -- Suffissi candidati di una posizione: la parola dopo, le due parole dopo
+    -- insieme ("feral cat") e la seconda da sola.
+    local function adjacent(i)
+        local s1, s2 = words[i + 1], words[i + 2]
+        local combined = (s1 and s2) and (s1 .. " " .. s2) or nil
+        return { s1, combined, s2 }
+    end
+
+    -- Regole di una classe messe alla prova con un prefisso e dei suffissi.
+    local function evaluate(class, pres, sufs)
+        local cands = {}
+        for _, rule in ipairs(g.classes[class] or {}) do
+            local pWord
+            for _, pre in ipairs(pres or {}) do
+                if pre and rule.prefixSet[pre] and (not pWord or #pre > #pWord) then
+                    pWord = pre
+                end
+            end
+            local sWord
+            for _, cand in ipairs(sufs or {}) do
+                if cand and rule.suffixSet[cand] and (not sWord or #cand > #sWord) then
+                    sWord = cand
+                end
+            end
+            if pWord or sWord then
+                cands[#cands + 1] = {
+                    spec = rule.spec,
+                    score = (pWord and sWord) and 3 or (pWord and 2 or 1),
+                    len = #(pWord or sWord or ""),
+                    p = pWord, s = sWord,
+                }
+            end
+        end
+        return cands
+    end
+
+    -- Sceglie la spec fra i candidati e la scrive in `out`.
+    local function choose(cands)
+        table.sort(cands, function(a, b)
+            if a.score ~= b.score then return a.score > b.score end
+            if a.len ~= b.len then return a.len > b.len end
+            return false
+        end)
+        local best = cands[1]
+        -- Regola generale: o prefisso o suffisso. Se il vincitore ha SOLO il
+        -- prefisso e un'altra spec combacia SOLO col suffisso, il messaggio e'
+        -- contraddittorio: si tiene la classe e basta ("p pala holy").
+        if best.p and not best.s then
+            for k = 2, #cands do
+                if cands[k].s and not cands[k].p and cands[k].spec ~= best.spec then
+                    return false
+                end
+            end
+        end
+        out.spec = best.spec
+        out.specFrom = (best.p and best.s and "both") or (best.p and "prefix") or "suffix"
+        -- Parita' non risolvibile ("feral"/"f" da soli valgono sia per il Cat
+        -- sia per il Bear): il parser NON indovina. Feral Cat e Feral Bear
+        -- restano due voci separate e la scelta e' del raid leader: resta la
+        -- parola comune alle due spec, cioe' "Feral".
+        local tied, same = {}, true
+        for k = 1, #cands do
+            local c = cands[k]
+            if c.score == best.score and c.len == best.len and c.spec ~= best.spec then
+                if #tied > 0 and tied[1] ~= c.spec then same = false end
+                tied[#tied + 1] = c.spec
+            end
+        end
+        if #tied > 0 and same then
+            local a, b = {}, {}
+            for w in string.gmatch(best.spec, "%a+") do a[#a + 1] = w end
+            for w in string.gmatch(tied[1], "%a+") do b[#b + 1] = w end
+            local common
+            for k = 1, math.min(#a, #b) do
+                if a[k] == b[k] then common = a[k] else break end
+            end
+            if common then
+                out.spec = common
+                out.specFrom = "generic"
+            end
+        end
+        return true
+    end
+
     for i = 1, #words do
-        local body = g.body[words[i]]
-        if body then
-            out.class = body.class
-            if body.spec then
-                -- Boomkin / Boomie / Disco: la spec e' nel corpo, prefisso e
-                -- suffisso non ammessi (regola della tabella)
-                out.spec = body.spec
+        local w = words[i]
+
+        -- (a) la parola E' una classe: prefisso = parola prima, suffisso = dopo
+        local direct = g.body[w]
+        if direct then
+            out.class = direct.class
+            if direct.spec then
+                -- Boomkin / Boomie / Disco: la spec sta nel corpo e la tabella
+                -- dice che prefisso e suffisso non sono ammessi
+                out.spec = direct.spec
                 out.specFrom = "body"
                 return out
             end
-            local pre  = (i > 1) and words[i - 1] or nil
-            local preC = (i > 2) and (words[i - 2] .. " " .. words[i - 1]) or nil
-            local suf1 = words[i + 1]
-            local suf2 = words[i + 2]
-            local combined = (suf1 and suf2) and (suf1 .. " " .. suf2) or nil
-            local cands = {}
-            for _, rule in ipairs(g.classes[body.class] or {}) do
-                -- si tiene la PAROLA trovata (non un booleano): serve la
-                -- lunghezza per scegliere fra alias generici e specifici.
-                -- Il prefisso puo' essere di due parole ("beast mastery hunt").
-                local pWord
-                for _, cand in ipairs({ pre, preC }) do
-                    if cand and rule.prefixSet[cand] and (not pWord or #cand > #pWord) then
-                        pWord = cand
-                    end
-                end
-                -- il suffisso puo' essere: la parola dopo, le due parole dopo
-                -- insieme ("feral cat"), o la seconda da sola (compatibilita'
-                -- con "war tank prot")
-                -- fra i suffissi possibili si sceglie il PIU' SPECIFICO (il
-                -- piu' lungo): "dudu feral bear" e' Feral Bear, non "feral".
-                local sWord
-                for _, cand in ipairs({ suf1, combined, suf2 }) do
-                    if cand and rule.suffixSet[cand] and (not sWord or #cand > #sWord) then
-                        sWord = cand
-                    end
-                end
-                if pWord or sWord then
-                    cands[#cands + 1] = {
-                        spec = rule.spec,
-                        score = (pWord and sWord) and 3 or (pWord and 2 or 1),
-                        len = #(pWord or sWord or ""),
-                        p = pWord, s = sWord,
-                    }
-                end
-            end
-            if #cands > 0 then
-                table.sort(cands, function(a, b)
-                    if a.score ~= b.score then return a.score > b.score end
-                    if a.len ~= b.len then return a.len > b.len end
-                    return false
-                end)
-                local best = cands[1]
-                -- Regola generale: o prefisso o suffisso. Se il vincitore ha
-                -- SOLO il prefisso e un'altra spec combacia SOLO col suffisso,
-                -- il messaggio e' contraddittorio: si tiene la classe e basta.
-                local conflict = false
-                if best.p and not best.s then
-                    for k = 2, #cands do
-                        if cands[k].s and not cands[k].p and cands[k].spec ~= best.spec then
-                            conflict = true
-                        end
-                    end
-                end
-                if not conflict then
-                    out.spec = best.spec
-                    out.specFrom = (best.p and best.s and "both") or (best.p and "prefix") or "suffix"
-                    -- Parita' non risolvibile ("feral" / "f" da soli valgono sia
-                    -- per il Cat sia per il Bear): il parser NON indovina.
-                    -- Feral Cat e Feral Bear restano due cose separate e la
-                    -- scelta e' del raid leader: qui resta la parola comune
-                    -- alle due spec, cioe' "Feral".
-                    local tied, same = {}, true
-                    for k = 1, #cands do
-                        local c = cands[k]
-                        if c.score == best.score and c.len == best.len and c.spec ~= best.spec then
-                            if #tied > 0 and tied[1] ~= c.spec then same = false end
-                            tied[#tied + 1] = c.spec
-                        end
-                    end
-                    if #tied > 0 and same then
-                        local a, b = {}, {}
-                        for w in string.gmatch(best.spec, "%a+") do a[#a + 1] = w end
-                        for w in string.gmatch(tied[1], "%a+") do b[#b + 1] = w end
-                        local common
-                        for k = 1, math.min(#a, #b) do
-                            if a[k] == b[k] then common = a[k] else break end
-                        end
-                        if common then
-                            out.spec = common
-                            out.specFrom = "generic"   -- deciso dal raid leader
-                        end
-                    end
-                end
-            end
+            local prevs = { words[i - 1] }
+            if i > 2 then prevs[#prevs + 1] = words[i - 2] .. " " .. words[i - 1] end
+            local cands = evaluate(direct.class, prevs, adjacent(i))
+            if #cands > 0 and choose(cands) then return out end
             return out
+        end
+
+        -- (b) forme ATTACCATE: "fdudu", "udk", "mmhunt", "protpala",
+        --     "dudubear", "warriors" (plurale). Le lettere restanti devono
+        --     essere un prefisso o un suffisso VERI della classe, altrimenti
+        --     non si tocca niente ("Warmane" non e' un warrior).
+        for _, b in ipairs(g.bodies) do
+            local s, e = string.find(w, b.word, 1, true)
+            if s then
+                local preTok = string.sub(w, 1, s - 1)
+                local sufTok = string.sub(w, e + 1)
+                local extra = (sufTok ~= "")
+                if sufTok == "s" or sufTok == "es" then sufTok = "" end   -- plurale
+                -- i corpi che portano gia' la spec (boomkin/boomie/disco) non
+                -- ammettono prefisso ne' suffisso: si salta
+                if (preTok ~= "" or extra) and not b.spec then
+                    local pOK = (preTok == "") or (g.prefixWords[b.class] or {})[preTok]
+                    local sOK = (sufTok == "") or (g.suffixWords[b.class] or {})[sufTok]
+                    if pOK and sOK then
+                        local sufs = {}
+                        if sufTok ~= "" then sufs[#sufs + 1] = sufTok end
+                        for _, x in ipairs(adjacent(i)) do sufs[#sufs + 1] = x end
+                        local pres
+                        if preTok ~= "" then
+                            pres = { preTok }
+                        else
+                            pres = { words[i - 1] }
+                            if i > 2 then pres[#pres + 1] = words[i - 2] .. " " .. words[i - 1] end
+                        end
+                        local cands = evaluate(b.class, pres, sufs)
+                        -- la classe si tiene anche senza spec ("warriors"):
+                        -- le lettere attaccate erano un alias VERO della classe
+                        out.class = b.class
+                        if #cands > 0 and choose(cands) then return out end
+                        return out
+                    end
+                end
+            end
         end
     end
 
-    -- 2) nessuna classe: la spec scritta da sola ("prot", "resto", "fury").
+    -- (c) nessuna classe: la spec scritta da sola ("prot", "resto", "fury").
     -- Vale solo se NON e' ambigua: due spec diverse (o la stessa spec di due
     -- classi, es. "prot" warrior/paladin) non fanno indovinare la classe.
     local seen, hitClasses = {}, {}
