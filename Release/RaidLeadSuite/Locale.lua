@@ -377,6 +377,12 @@ L["Start the spammer first, then Whisp test sends the fake whispers."] = "Avvia 
     L["One item per line: ID, or ID: name. Empty the list to stop ignoring items."] = true
     L["Ctrl+click a loot row to ignore that item: it is never captured nor shown again. The list below is editable (one item per line: ID, or ID: name, or paste the item link)."] = true
     L["Ctrl+click: add to the ignore list"] = true
+    -- Tooltip categoria (informativo) + assegnazione col drag delle barre
+    L["Providers (%d):"] = true
+    L["... and %d more"] = true
+    L["Left-click: buff check. Right-click: clear assignment."] = true
+    L["%s assigned to %s."] = true
+    L["Assignment removed for %s."] = true
     L["Clear ignored items"] = true
     L["Removes every item from the ignore list: loot that was ignored starts being captured again."] = true
     L["Ignore list saved (%d items)."] = true

@@ -7,7 +7,7 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.96**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.97**.
 
 ## COME L'UTENTE PRENDE GLI AGGIORNAMENTI (DECISIONE, 25/09)
 
@@ -43,6 +43,56 @@ L'installazione nel client passa dallo **zip `RaidLeadSuite-<versione>-AddOns.zi
 scompattato in `Interface/AddOns`, quindi va generato a OGNI versione insieme a
 `RaidLeadSuite-<versione>.zip` (repo). Non riproporre hook, symlink, junction,
 rsync, branch alternativi ne' il flip della struttura: tutto rifiutato.
+
+## 1.11.97 — Tooltip categoria INFORMATIVO + assegnazione col drag delle BARRE
+
+Correzione di rotta spiegata dal raid leader: **"IO NON TI HO CHIESTO DI
+TRASCINARE IL NOME DAL TOOLTIP. IL TOOLTIP E' SOLO INFORMATIVO. IL NOME LO
+TRASCINO DALLE BARRE GIOCATORE: quando Raid Buffs e' aperto posso trascinare un
+giocatore, come per spostarlo di gruppo, ma dropparlo su una categoria."**
+
+Avevo implementato l'assegnazione sbagliata (righe-fornitore trascinabili dentro
+un tooltip custom), che e' anche la ragione per cui il tooltip era diventato un
+frame mio. Rifatta come chiesto:
+
+### Tooltip = tooltip di GIOCO, solo informativo
+`RF:ShowBuffCatTip(col, btn)` ora usa il **GameTooltip**, grafica standard:
+
+    <categoria>                        (titolo)
+    <stato della categoria>            (es. "OK on everyone")
+    Assigned to: <nome> | Not assigned
+    Providers (N):
+       <nome> (<CLASSE>): <buff>
+       ... and K more                 (oltre RF_TIP_ROWS = 10)
+    Left-click: buff check. Right-click: clear assignment.
+
+Rimosso tutto il resto: frame `RLSuiteBuffCatTip`, ghost `RLSuiteBuffAssignGhost`,
+righe-fornitore cliccabili, `_StartAssignDrag`/`_DropAssignDrag`, `_BuffTipRow`.
+Niente piu' backdrop da sistemare: il tooltip e' quello del client.
+
+### Assegnazione = drag della barra, rilascio sull'icona
+Il drag dei giocatori (lo stesso che sposta di gruppo, `_StartDragFromSlot` /
+`_FinishDrag`) ora controlla **per primo** se il rilascio e' su un'icona di
+categoria (`_BuffHeaderAtCursor`, hit-test sui rettangoli degli header):
+se si', assegna QUELLA categoria a quel player (print `"<nome> assigned to
+<label>."`), **senza spostarlo di gruppo**; altrimenti prosegue come prima
+(slot sotto il cursore). Durante il trascinamento l'icona sotto il cursore si
+**accende in oro** (`UpdateDropGlow`), cosi' si vede dove si puo' lasciare.
+Il click destro sull'icona continua a togliere l'assegnazione, il sinistro a
+mandare il raid warning, e `WarnBuffCategory` whispera ancora all'assegnato.
+
+Nota: funziona anche in combat, perche' e' lo stesso gesto del drag (che l'utente
+usa in fight per spostare di gruppo) — nessun gate nuovo.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1222 PASS**. Check nuovi: tooltip = GameTooltip
+(righe catturate: categoria, stato, assegnazione, `Providers (2)`, riga
+fornitore con `PALADIN`, hint dei click), nessun frame custom/ghost/funzione di
+drag dal tooltip, drag dalla barra che assegna (`Drakbot` su ATK), il giocatore
+**non** si sposta di gruppo (roster confrontato prima/dopo), icona accesa durante
+il drag, rilascio lontano dalle icone = nessuna assegnazione, click destro che
+pulisce.
 
 ## 1.11.96 — Tooltip categoria: grafica del tooltip di gioco (era inguardabile)
 

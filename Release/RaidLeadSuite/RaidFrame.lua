@@ -999,6 +999,23 @@ function RF:UpdateDropGlow()
         target = self:SlotAtCursor()
         if target == src then target = nil end
     end
+    -- Icona di categoria sotto il cursore: si ACCENDE. Cosi' durante il drag
+    -- si vede dove si puo' lasciare il player per assegnarlo.
+    local hcol = nil
+    if src then
+        local hbtn = self:_BuffHeaderAtCursor()
+        hcol = hbtn and hbtn._col or nil
+    end
+    for c, btn in ipairs(self._buffHdrBtns or {}) do
+        if btn and btn._icon then
+            if btn._col and btn._col == hcol then
+                btn._icon:SetVertexColor(1, 0.82, 0)
+            elseif btn._col then
+                local v = btn._nodata and RF_HDR_NODATA or RF_HDR_NORMAL
+                btn._icon:SetVertexColor(v, v, v)
+            end
+        end
+    end
     for _, slot in ipairs(self.slots or {}) do
         if slot.dropGlow then
             if slot == target then
@@ -1745,6 +1762,22 @@ end
 function RF:_FinishDrag()
     local src = self._rfDragSource
     if not src then return end
+    -- PRIMA di tutto: il rilascio e' su un'ICONA di categoria? Allora il gesto
+    -- non e' uno spostamento di gruppo ma un'ASSEGNAZIONE: quella categoria va
+    -- a questo player. (E' il gesto chiesto dal raid leader: trascino il nome
+    -- dalle barre, come per spostarlo di gruppo, e lo lascio sull'icona.)
+    local hbtn = self:_BuffHeaderAtCursor()
+    if hbtn and hbtn._col and src.member and src.member.name then
+        local col = hbtn._col
+        self._rfDragSource = nil
+        src._manualDrag = nil
+        src._pendingRowClick = nil
+        if src._scripts and src._scripts.OnUpdate then src:SetScript("OnUpdate", nil) end
+        self._dropActive = nil
+        self:RefreshDropTargets()
+        self:NewBuffAssignDrag(col, src.member.name)
+        return
+    end
     -- Bersaglio calcolato PRIMA di azzerare la sorgente (l'hit-test conta
     -- sulla geometria, non sulla visibilita' delle righe).
     local t = self:SlotAtCursor()
@@ -2401,18 +2434,20 @@ function RF:_MatrixHeaderBtn(c)
                 local v = s._nodata and RF_HDR_NODATA or 1
                 s._icon:SetVertexColor(v, v, v)
             end
-            -- Tooltip CUSTOM (frame, non GameTooltip): deve contenere la lista
-            -- dei fornitori su cui si preme e si trascina.
-            if s._col then RF:ShowBuffCatTip(s._col, s) end
+            -- Tooltip di GIOCO, informativo: chi fornisce, chi e' assegnato.
+            if s._col then
+                RF._buffTipCol = s._col
+                RF._buffTipAnchor = s
+                RF:ShowBuffCatTip(s._col, s)
+            end
         end)
         btn:SetScript("OnLeave", function(s)
             if s._icon then
                 local v = s._nodata and RF_HDR_NODATA or RF_HDR_NORMAL
                 s._icon:SetVertexColor(v, v, v)
             end
-            -- Durante un trascinamento il tooltip resta APERTO: e' la
-            -- sorgente da cui si e' preso il nome.
-            if not RF._assignDrag then RF:HideBuffCatTip() end
+            RF._buffTipCol = nil
+            RF:HideBuffCatTip()
         end)
         btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         btn:SetScript("OnClick", function(s, button)
@@ -2655,8 +2690,8 @@ function RF:SetBuffAssign(col, name)
     local t = self:BuffAssignTable()
     t[key] = (name and name ~= "") and name or nil
     rfDbg("buff assign: %s -> %s", tostring(key), tostring(t[key]))
-    if self._buffCatTip and self._buffCatTip._col == col then
-        self:ShowBuffCatTip(col, self._buffCatTip._anchor)
+    if self._buffTipCol == col then
+        self:ShowBuffCatTip(col, self._buffTipAnchor)
     end
     return true
 end
@@ -2694,8 +2729,6 @@ function RF:BuffProviders(col)
     end
     return out
 end
-
-local RF_TIP_ROWS = 10
 
 -- ============================================================
 -- NOME DEL BUFF NEGLI AVVISI
@@ -2756,215 +2789,94 @@ function RF:_BuffAssignShort(col, assign)
     return nil
 end
 
-function RF:_EnsureBuffCatTip()
-    if self._buffCatTip then return self._buffCatTip end
-    local f = CreateFrame("Frame", "RLSuiteBuffCatTip", self.frame or UIParent)
-    f:SetSize(250, 48)
-    f:SetFrameStrata("TOOLTIP")
-    f:EnableMouse(true)
-    -- GRAFICA = QUELLA DEL TOOLTIP DEL GIOCO, non un riquadro nostro.
-    -- Questo frame serve solo perche' il GameTooltip non sa contenere righe
-    -- cliccabili (le righe-fornitore si trascinano): il LOOK deve restare
-    -- quello standard, sfondo nero quasi pieno + bordo tooltip.
-    -- NB: senza SetBackdropColor il backdrop rende col colore di default
-    -- (bianco, 50%) -> il tooltip sembrava trasparente e il testo non si
-    -- leggeva. Era esattamente il difetto segnalato.
-    f:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 16,
-        insets = { left = 5, right = 5, top = 5, bottom = 5 },
-    })
-    f:SetBackdropColor(0, 0, 0, 0.9)
-    local function line(prev, anchorPt, dy, tmpl)
-        local fs = f:CreateFontString(nil, "OVERLAY", tmpl or "GameFontNormalSmall")
-        if prev then
-            fs:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, dy or -3)
-        else
-            fs:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
-        end
-        fs:SetPoint("RIGHT", f, "RIGHT", -10, 0)
-        fs:SetJustifyH("LEFT")
-        return fs
+local RF_TIP_ROWS = 10
+
+-- ============================================================
+-- TOOLTIP DELLA CATEGORIA: SOLO INFORMATIVO
+-- E' il tooltip di GIOCO (GameTooltip), quindi grafica standard del client.
+-- Prima era un frame custom perche' si trascinavano le righe-fornitore da li':
+-- NON e' quello che il raid leader ha chiesto. Il nome del player si trascina
+-- dalle BARRE (il drag che sposta di gruppo), e si rilascia sull'ICONA della
+-- categoria: vedi _BuffHeaderAtCursor + _FinishDrag.
+-- ============================================================
+-- Nome del buff che quella classe deve fare per la categoria (per il testo).
+function RF:_BuffProviderBuffName(col, member)
+    local list = col and col.spells or {}
+    if #list > 0 and col.classes and #col.classes == 1 and GetSpellInfo then
+        local n = GetSpellInfo(list[1])
+        if n then return n end
     end
-    f._title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    f._title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
-    f._title:SetPoint("RIGHT", f, "RIGHT", -10, 0)
-    f._title:SetJustifyH("LEFT")
-    f._status = line(f._title, nil, -3)
-    f._assign = line(f._status)
-    f._provLabel = line(f._assign, nil, -5)
-    f._rows = {}
-    f:Hide()
-    self._buffCatTip = f
-    return f
+    if col.classes and #col.classes > 1 and GetSpellInfo and col.spellNames then
+        local n = col.spellNames[member and member.class]
+        if n then return n end
+    end
+    return (col and (col.label or col.key)) or "?"
 end
 
-function RF:_BuffTipRow(i)
-    local f = self:_EnsureBuffCatTip()
-    local row = f._rows[i]
-    if not row then
-        row = CreateFrame("Button", nil, f)
-        row:SetHeight(14)
-        row:SetPoint("LEFT", f, "LEFT", 10, 0)
-        row:SetPoint("RIGHT", f, "RIGHT", -10, 0)
-        local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetAllPoints(row)
-        fs:SetJustifyH("LEFT")
-        row._text = fs
-        row:RegisterForClicks("LeftButtonUp")
-        -- Premere su un nome lo prende: da qui si trascina sull'icona.
-        row:SetScript("OnMouseDown", function(s, button)
-            if button ~= "LeftButton" then return end
-            local p = s._provider
-            if p and p.member then
-                RF:_StartAssignDrag(p.member.name, s._col)
+-- Fornitori PRESENTI in raid per quella categoria, in ordine di roster.
+function RF:BuffProviders(col)
+    local out = {}
+    if col and col.kind == "durability" then return out end
+    if not (col and col.classes and #col.classes > 0) then return out end
+    local groups = self:GetGroupedRoster()
+    for g = 1, #groups do
+        for s = 1, #groups[g] do
+            local m = groups[g][s]
+            if m and self:_BuffClassProvides(col, m.class) then
+                out[#out + 1] = { member = m, group = g, buff = self:_BuffProviderBuffName(col, m) }
             end
-        end)
-        -- Rilascio: se il cursore e' su un'icona di categoria si assegna li';
-        -- altrimenti vale come click (assegna alla categoria del tooltip).
-        row:SetScript("OnMouseUp", function(s, button)
-            if button ~= "LeftButton" then return end
-            RF:_DropAssignDrag(s)
-        end)
-        row:SetScript("OnEnter", function(s)
-            if s._text then s._text:SetTextColor(1, 1, 1) end
-        end)
-        row:SetScript("OnLeave", function(s)
-            if s._text then s._text:SetTextColor(0.85, 0.85, 0.85) end
-        end)
-        f._rows[i] = row
+        end
     end
-    return row
+    return out
 end
 
--- Mostra il tooltip custom della categoria: titolo, stato (lo stesso testo che
--- dava il GameTooltip), assegnazione e lista dei fornitori.
+-- Tooltip di gioco, righe informative e basta.
 function RF:ShowBuffCatTip(col, anchorBtn)
     if not col then return end
-    local f = self:_EnsureBuffCatTip()
-    f._col = col
-    f._anchor = anchorBtn
-    f._title:SetText(col.label or col.key or "")
-    f._title:SetTextColor(1, 0.82, 0)
-
-    local st = self:BuffCoverage(col)
-    local txt, r, g, b = nil, nil, nil, nil
-    if self._BuffStatusText then txt, r, g, b = self:_BuffStatusText(st) end
-    f._status:SetText(txt or "")
-    if r then f._status:SetTextColor(r, g, b) end
-
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(anchorBtn or self.frame or UIParent, "ANCHOR_TOPLEFT", 0, 4)
+    if GameTooltip.ClearLines then GameTooltip:ClearLines() end
+    if GameTooltip.AddLine then
+        GameTooltip:AddLine(col.label or col.key or "?", 1, 0.82, 0)
+    end
+    if GameTooltip.AddLine and self._BuffStatusText then
+        local txt, r, g, b = self:_BuffStatusText(self:BuffCoverage(col))
+        if txt then GameTooltip:AddLine(txt, r or 0.8, g or 0.8, b or 0.8) end
+    end
     local assigned = self:GetBuffAssign(col)
-    if assigned then
-        f._assign:SetText(string.format(L["Assigned to: %s"], assigned))
-        f._assign:SetTextColor(0.2, 1, 0.4)
-    else
-        f._assign:SetText(L["Not assigned"])
-        f._assign:SetTextColor(0.7, 0.7, 0.7)
-    end
-
-    local provs = self:BuffProviders(col)
-    if #provs > 0 then
-        f._provLabel:SetText(string.format(L["Providers (%d) - drag a name onto the icon:"], #provs))
-    else
-        f._provLabel:SetText(L["No provider available"])
-    end
-
-    local shown = 0
-    for i = 1, #f._rows do f._rows[i]:Hide() end
-    for i = 1, math.min(#provs, RF_TIP_ROWS) do
-        local p = provs[i]
-        local row = self:_BuffTipRow(i)
-        row._provider = p
-        row._col = col
-        row:SetText(row._text)
-        row._text:SetText(string.format("%s (%s): %s",
-            tostring(p.member.name or "?"), tostring(p.member.class or "?"), tostring(p.buff)))
-        row._text:SetTextColor(0.85, 0.85, 0.85)
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -(58 + (i - 1) * 14))
-        row:SetPoint("RIGHT", f, "RIGHT", -10, 0)
-        row:Show()
-        shown = shown + 1
-    end
-    if #provs > RF_TIP_ROWS then
-        local more = self:_BuffTipRow(RF_TIP_ROWS + 1)
-        more._provider = nil
-        more._text:SetText(string.format(L["... and %d more"], #provs - RF_TIP_ROWS))
-        more._text:SetTextColor(0.7, 0.7, 0.7)
-        more:ClearAllPoints()
-        more:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -(58 + RF_TIP_ROWS * 14))
-        more:SetPoint("RIGHT", f, "RIGHT", -10, 0)
-        more:Show()
-        shown = shown + 1
-    end
-    f:SetHeight(math.max(74, 66 + shown * 14))
-
-    local a = anchorBtn or f
-    f:ClearAllPoints()
-    if a and a.GetLeft then
-        local top = a.GetTop and a:GetTop()
-        local uiph = UIParent and UIParent.GetHeight and UIParent:GetHeight()
-        local h = f:GetHeight()
-        if type(top) ~= "number" then top = nil end
-        if type(uiph) ~= "number" then uiph = nil end
-        if type(h) ~= "number" then h = 0 end
-        if top and uiph and (top + h + 4) > uiph then
-            -- icona troppo in alto: il tooltip scende sotto l'icona
-            f:SetPoint("TOPLEFT", a, "BOTTOMLEFT", 0, -2)
+    if GameTooltip.AddLine then
+        if assigned then
+            GameTooltip:AddLine(string.format(L["Assigned to: %s"], assigned), 0.2, 1, 0.4)
         else
-            f:SetPoint("BOTTOMLEFT", a, "TOPLEFT", 0, 2)
+            GameTooltip:AddLine(L["Not assigned"], 0.7, 0.7, 0.7)
         end
-    else
-        f:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 200)
     end
-    f:Show()
+    local provs = self:BuffProviders(col)
+    if GameTooltip.AddLine then
+        if #provs > 0 then
+            GameTooltip:AddLine(string.format(L["Providers (%d):"], #provs), 0.9, 0.9, 0.9)
+        else
+            GameTooltip:AddLine(L["No provider available"], 0.7, 0.7, 0.7)
+        end
+        for i = 1, math.min(#provs, RF_TIP_ROWS) do
+            local p = provs[i]
+            GameTooltip:AddLine(string.format("   %s (%s): %s",
+                tostring(p.member.name or "?"), tostring(p.member.class or "?"), tostring(p.buff)),
+                0.8, 0.8, 0.8)
+        end
+        if #provs > RF_TIP_ROWS then
+            GameTooltip:AddLine(string.format(L["... and %d more"], #provs - RF_TIP_ROWS), 0.7, 0.7, 0.7)
+        end
+        GameTooltip:AddLine(L["Left-click: buff check. Right-click: clear assignment."], 0.5, 0.5, 0.5)
+    end
+    GameTooltip:Show()
 end
 
 function RF:HideBuffCatTip()
-    if self._buffCatTip then self._buffCatTip:Hide() end
+    if GameTooltip then GameTooltip:Hide() end
 end
 
--- ============================================================
--- Drag del nome (mini-drag dedicato: NON tocca il drag degli slot, che resta
--- intatto). Il "fantasma" col nome segue il cursore; al rilascio si cerca
--- l'icona di categoria sotto il cursore.
--- ============================================================
-function RF:_AssignGhost()
-    if self._assignGhost then return self._assignGhost end
-    local g = CreateFrame("Frame", "RLSuiteBuffAssignGhost", UIParent)
-    g:SetSize(140, 16)
-    g:SetFrameStrata("TOOLTIP")
-    g:EnableMouse(false)
-    g:Hide()
-    local fs = g:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetAllPoints(g)
-    fs:SetJustifyH("LEFT")
-    fs:SetTextColor(1, 0.82, 0)
-    g._text = fs
-    g:SetScript("OnUpdate", function(s)
-        if not GetCursorPosition then return end
-        local x, y = GetCursorPosition()
-        if not x then return end
-        -- GetCursorPosition e' in pixel fisici: si riporta alla scala dell'interfaccia
-        local sc = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-        if not sc or sc == 0 then sc = 1 end
-        s:ClearAllPoints()
-        s:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", (x / sc) + 12, (y / sc) - 8)
-    end)
-    self._assignGhost = g
-    return g
-end
 
-function RF:_StartAssignDrag(name, col)
-    if not name or name == "" then return false end
-    self._assignDrag = { name = name, col = col }
-    local g = self:_AssignGhost()
-    g._text:SetText(name)
-    g:Show()
-    rfDbg("assign drag: %s", tostring(name))
-    return true
-end
 
 -- Icona di categoria sotto il cursore (hit-test sui rettangoli dei bottoni).
 function RF:_BuffHeaderAtCursor()
@@ -2983,19 +2895,14 @@ function RF:_BuffHeaderAtCursor()
     return nil
 end
 
--- Chiude il mini-drag: icona sotto il cursore -> assegnazione li'; nessuna
--- icona -> se il rilascio e' sulla riga di partenza (o comunque nel tooltip)
--- vale come click e assegna alla categoria del tooltip.
-function RF:_DropAssignDrag(fromRow)
-    local drag = self._assignDrag
-    self._assignDrag = nil
-    if self._assignGhost then self._assignGhost:Hide() end
-    if not drag then return false end
-    local btn = self:_BuffHeaderAtCursor()
-    local col = (btn and btn._col) or drag.col or (fromRow and fromRow._col)
-    if not col then return false end
-    self:SetBuffAssign(col, drag.name)
-    RLSuite.utils:Print(string.format(L["%s assigned to %s."], drag.name, col.label or col.key or "?"))
+
+-- Assegna una categoria al player trascinato (la regola sta in
+-- SetBuffAssign, qui c'e' solo il riscontro per il raid leader).
+function RF:NewBuffAssignDrag(col, name)
+    if not (col and name) then return false end
+    self:SetBuffAssign(col, name)
+    RLSuite.utils:Print(string.format(L["%s assigned to %s."], name, col.label or col.key or "?"))
+    if self._buffTipCol == col then self:ShowBuffCatTip(col, self._buffTipAnchor) end
     return true
 end
 

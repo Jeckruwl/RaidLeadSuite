@@ -2562,9 +2562,16 @@ BP_HOVER_ON, BP_HOVER_OFF, BP_HOVER_TIP, BP_NODATA_HOVER = false, false, false, 
 if av then
     av._scripts.OnEnter(av)
     BP_HOVER_ON = (av._icon._vertex ~= nil and av._icon._vertex[1] == 1 and av._icon._vertex[2] == 1 and av._icon._vertex[3] == 1)
-    BP_HOVER_TIP = (RLSuite.raidFrame._buffCatTip ~= nil
-        and RLSuite.raidFrame._buffCatTip:IsShown() == true
-        and RLSuite.raidFrame._buffCatTip._title._text == av._col.label)
+    -- Tooltip = GameTooltip di gioco (informativo): catturo le righe.
+    HV_LINES = {}
+    local oAdd, oClear = GameTooltip.AddLine, GameTooltip.ClearLines
+    GameTooltip.AddLine = function(s2, txt) HV_LINES[#HV_LINES + 1] = tostring(txt) return s2 end
+    GameTooltip.ClearLines = function(s2) HV_LINES = {} return s2 end
+    RFM_HOVER_TXT = nil
+    if av._scripts.OnEnter then av._scripts.OnEnter(av) end
+    RFM_HOVER_TXT = table.concat(HV_LINES, " | ")
+    GameTooltip.AddLine, GameTooltip.ClearLines = oAdd, oClear
+    BP_HOVER_TIP = (RFM_HOVER_TXT ~= nil and RFM_HOVER_TXT:find(av._col.label, 1, true) ~= nil)
     av._scripts.OnLeave(av)
     BP_HOVER_OFF = (av._icon._vertex[1] == 0.8 and av._icon._vertex[2] == 0.8)
 end
@@ -2582,7 +2589,7 @@ for i = n0 + 1, #CHAT_LOG do
 end
 """)
 check(bool(rt.eval("BP_HOVER_ON")), "hovering an AVAILABLE category icon lights it up (full brightness)")
-check(bool(rt.eval("BP_HOVER_TIP")), "header hover: the custom category tip shows the category name (providers + assignment live there)")
+check(bool(rt.eval("BP_HOVER_TIP")), "header hover: GameTooltip (grafica di gioco) shows the category name -- %s" % rt.eval("tostring(RFM_HOVER_TXT)"))
 check(bool(rt.eval("BP_HOVER_OFF")), "hover-exit dims the icon again")
 check(bool(rt.eval("BP_HOVER_TIP")), "hovering a category icon shows its name in the tooltip")
 # (il caso "categoria non disponibile" e' verificato in modo deterministico
@@ -8083,24 +8090,36 @@ for _, pr in ipairs(provs) do
     V90.prov_names = V90.prov_names .. pr.member.name .. ","
     V90.prov_buff = tostring(pr.buff)
 end
--- tooltip: non assegnata -> elenco fornitori "<nome>: <buff>"
+-- TOOLTIP: e' il GameTooltip di gioco, informativo (nessun frame custom).
+V90.tip_shown = (RFM._buffCatTip == nil)
+TT_LINES = {}
+local oAdd, oClear = GameTooltip.AddLine, GameTooltip.ClearLines
+GameTooltip.AddLine = function(s2, txt) TT_LINES[#TT_LINES + 1] = tostring(txt) return s2 end
+GameTooltip.ClearLines = function(s2) TT_LINES = {} return s2 end
 RFM:ShowBuffCatTip(mp5, RFM._buffHdrBtns[mp5Idx])
-local tip = RFM._buffCatTip
-V90.tip_shown = (tip:IsShown() == true)
-V90.tip_title = tostring(tip._title._text)
-V90.tip_unassigned = tostring(tip._assign._text)
-V90.tip_status = tostring(tip._status._text)
-V90.tip_prov_label = tostring(tip._provLabel._text)
-V90.tip_row1 = tostring(tip._rows[1] and tip._rows[1]._text._text)
-V90.tip_row2 = tostring(tip._rows[2] and tip._rows[2]._text._text)
--- assegnata -> "Assigned to: <nome>"
+V90.tip_all = table.concat(TT_LINES, " | ")
+V90.tip_title = tostring(TT_LINES[1] or "")
+V90.tip_unassigned = tostring(V90.tip_all:find("Not assigned", 1, true) ~= nil)
+V90.tip_prov_label = tostring(V90.tip_all:find("Providers (2)", 1, true) ~= nil)
+V90.tip_row1 = tostring(V90.tip_all:find("PALADIN", 1, true) ~= nil)
+V90.tip_row2 = tostring(V90.tip_all:find("Lightwall", 1, true) ~= nil)
 RFM:SetBuffAssign(mp5, "Holymoon")
-V90.tip_assigned = tostring(tip._assign._text)
+TT_LINES = {}
+RFM:ShowBuffCatTip(mp5, RFM._buffHdrBtns[mp5Idx])
+V90.tip_all2 = table.concat(TT_LINES, " | ")
+V90.tip_assigned = tostring(V90.tip_all2:find("Assigned to: Holymoon", 1, true) ~= nil)
+GameTooltip.AddLine, GameTooltip.ClearLines = oAdd, oClear
 V90.assign_stored = tostring(RFM:GetBuffAssign(mp5))
--- drag del nome dal tooltip all'icona della categoria
+-- ASSEGNAZIONE COL DRAG DELLE BARRE (lo stesso drag che sposta di gruppo)
 RFM:SetBuffAssign(mp5, nil)
-RFM:_StartAssignDrag("Lightwall", mp5)
-V90.drag_on = (RFM._assignDrag ~= nil and RFM._assignGhost:IsShown() == true)
+local dragSlot
+for _, sl in ipairs(RFM.slots) do
+    if sl.member and sl.member.name == "Lightwall" then dragSlot = sl end
+end
+V90.dragslot = (dragSlot ~= nil)
+local before = {}
+for i, m in ipairs(RLSuite:DebugRoster()) do before[i] = tostring(m.name) .. ":" .. tostring(m.subgroup) end
+V90.roster_before = table.concat(before, ",")
 local hb = RFM._buffHdrBtns[mp5Idx]
 hb.GetLeft = function() return 100 end
 hb.GetRight = function() return 120 end
@@ -8108,10 +8127,18 @@ hb.GetBottom = function() return 100 end
 hb.GetTop = function() return 116 end
 local savedGCP = GetCursorPosition
 GetCursorPosition = function() return 110, 108 end
-RFM:_DropAssignDrag()
+RFM:_StartDragFromSlot(dragSlot)
+V90.drag_on = (RFM._rfDragSource == dragSlot)
+RFM:UpdateDropGlow()
+V90.hdr_glow = hb._icon._vertex
+RFM:_FinishDrag()
 GetCursorPosition = savedGCP
 V90.drag_assigned = tostring(RFM:GetBuffAssign(mp5))
-V90.drag_off = (RFM._assignGhost:IsShown() == false)
+V90.drag_cleared = (RFM._rfDragSource == nil)
+local after = {}
+for i, m in ipairs(RLSuite:DebugRoster()) do after[i] = tostring(m.name) .. ":" .. tostring(m.subgroup) end
+V90.roster_after = table.concat(after, ",")
+V90.no_group_move = (V90.roster_before == V90.roster_after)
 -- click destro sull'icona: toglie l'assegnazione
 RFM._buffHdrBtns[mp5Idx]._scripts.OnClick(RFM._buffHdrBtns[mp5Idx], "RightButton")
 V90.right_cleared = (RFM:GetBuffAssign(mp5) == nil)
@@ -8173,11 +8200,16 @@ check(bool(rt.eval("V90.ctrl_no_target == true")), "v1.11.90: il CTRL+click non 
 check(bool(rt.eval("V90.plain_sent == nil and V90.plain_target == true")), "v1.11.90: senza CTRL il click continua a targettare come prima")
 check(bool(rt.eval("V90.mp5_nil == true and V90.prov_n == 2")), "v1.11.90: nessuna assegnazione di partenza e 2 fornitori di MP5 (i due paladini) -- %s" % rt.eval("V90.prov_names"))
 check(bool(rt.eval("V90.tip_shown == true and V90.tip_title == 'MP5'")), "v1.11.90: il tooltip della categoria si apre col nome della categoria")
-check(bool(rt.eval("V90.tip_unassigned == 'Not assigned'")), "v1.11.90: senza assegnazione il tooltip dice 'Not assigned'")
-check(bool(rt.eval("V90.tip_row1:find('PALADIN', 1, true) ~= nil and V90.tip_row1:find(':', 1, true) ~= nil")), "v1.11.90: l'elenco fornitori mostra '<nome player> (<classe>): <nome buff>' -- %s" % rt.eval("V90.tip_row1"))
-check(bool(rt.eval("V90.tip_row2:find('Lightwall', 1, true) ~= nil")), "v1.11.90: tutti i fornitori presenti sono elencati (2/2)")
-check(bool(rt.eval("V90.tip_assigned == 'Assigned to: Holymoon'")), "v1.11.90: assegnata, il tooltip mostra 'Assigned to: <nome player>'")
-check(bool(rt.eval("V90.drag_on == true and V90.drag_assigned == 'Lightwall' and V90.drag_off == true")), "v1.11.90: trascinando un nome del tooltip sull'icona la categoria viene assegnata (e il fantasma sparisce)")
+check(bool(rt.eval("V90.tip_shown == true")), "v1.11.97: il tooltip categoria NON e' piu' un frame custom: e' il tooltip di gioco")
+check(bool(rt.eval("V90.tip_unassigned == 'true'")), "v1.11.97: senza assegnazione il tooltip dice 'Not assigned'")
+check(bool(rt.eval("V90.tip_row1 == 'true' and V90.tip_row2 == 'true'")), "v1.11.97: l'elenco fornitori e' nel tooltip di gioco")
+check(bool(rt.eval("V90.tip_prov_label == 'true'")), "v1.11.97: il tooltip dice quanti fornitori ci sono (Providers (2))")
+check(bool(rt.eval("V90.tip_assigned == 'true'")), "v1.11.97: assegnata, il tooltip mostra 'Assigned to: <nome player>'")
+check(bool(rt.eval("V90.dragslot == true")), "v1.11.97: (setup) trovata la barra del giocatore da trascinare")
+check(bool(rt.eval("V90.drag_on == true")), "v1.11.97: il drag parte dalla BARRA del giocatore (lo stesso drag che sposta di gruppo)")
+check(bool(rt.eval("V90.hdr_glow ~= nil and V90.hdr_glow[1] == 1 and V90.hdr_glow[2] == 0.82")), "v1.11.97: durante il drag l'icona di categoria sotto il cursore si accende")
+check(bool(rt.eval("V90.drag_assigned == 'Lightwall' and V90.drag_cleared == true")), "v1.11.97: lasciando la barra sull'icona la categoria va a quel giocatore")
+check(bool(rt.eval("V90.no_group_move == true")), "v1.11.97: e il giocatore NON viene spostato di gruppo")
 check(bool(rt.eval("V90.right_cleared == true")), "v1.11.90: click destro sull'icona = assegnazione rimossa")
 check(bool(rt.eval("V90.warn_sent ~= nil and V90.warn_sent:find('Lightwall', 1, true) ~= nil")), "v1.11.90: l'avviso di categoria whispera all'assegnato di provvedere col buff -- %s" % rt.eval("tostring(V90.warn_sent)"))
 check(bool(rt.eval("V90.warn_sent:find('Assignment: provide MP5 for the raid.', 1, true) ~= nil and V90.warn_sent:find('Hey', 1, true) == nil")), "v1.11.92: anche il whisper all'assegnato e' diretto: 'Assignment: provide <buff> for the raid.'")
@@ -8411,38 +8443,63 @@ _names = rt.eval("table.concat(V95.values, ',')")
 check(bool(_has), "v1.11.95: 'Loot' e' nell'albero di navigazione del pannello -- %s" % _names)
 check(bool(rt.eval("V95.path == 'loot' and V95.current == 'loot'")), "v1.11.95: selezionando 'Loot' il pannello apre il gruppo loot (non una pagina vuota)")
 check(bool(rt.eval("V95.list == true and V95.clear == true and V95.cats == 5")), "v1.11.95: dentro Loot ci sono il campo lista ignora, il clear e le 5 categorie")
-print("\n== v1.11.96: tooltip categoria = grafica del tooltip di gioco (leggibile) ==")
+print("\n== v1.11.97: tooltip categoria INFORMATIVO (tooltip di gioco) + assegnazione dal drag delle barre ==")
 rt.execute("""
 local RFM = RLSuite.raidFrame
 local cols = RFM:_MatrixCols()
-V96 = {}
+V97 = {}
 local mp5, idx
 for i, c in ipairs(cols) do if c.key == 'mp5' then mp5, idx = c, i end end
+V97.no_custom_tip = (RFM._buffCatTip == nil)
+V97.no_ghost = (RFM._assignGhost == nil)
+V97.no_tip_drag = ((RFM._StartAssignDrag == nil) and (RFM._DropAssignDrag == nil))
+TT2 = {}
+local oAdd, oClear = GameTooltip.AddLine, GameTooltip.ClearLines
+GameTooltip.AddLine = function(s2, txt) TT2[#TT2 + 1] = tostring(txt) return s2 end
+GameTooltip.ClearLines = function(s2) TT2 = {} return s2 end
 RFM:SetBuffAssign(mp5, 'Holymoon')
 RFM:ShowBuffCatTip(mp5, RFM._buffHdrBtns[idx])
-local tip = RFM._buffCatTip
--- FONDO: deve essere quello del tooltip (niente piu' default bianco 50%)
-V96.bg = tostring(tip._backdrop and tip._backdrop.bgFile)
-V96.edge = tostring(tip._backdrop and tip._backdrop.edgeFile)
-V96.insets = tip._backdrop and tip._backdrop.insets and tip._backdrop.insets.left
-V96.tile = (tip._backdrop and tip._backdrop.tile == true)
-V96.color = tip._backdropColor
-V96.a = tip._backdropColor and tip._backdropColor[4]
-V96.black = tip._backdropColor and tip._backdropColor[1] == 0 and tip._backdropColor[2] == 0 and tip._backdropColor[3] == 0
-V96.shown = (tip:IsShown() == true)
--- CONTENUTO intatto
-V96.title = tostring(tip._title._text)
-V96.assign = tostring(tip._assign._text)
-V96.row1 = tostring(tip._rows[1] and tip._rows[1]._text._text)
--- il drag continua a funzionare (la riga e' un bottone trascinabile)
-V96.row_drag = (tip._rows[1] ~= nil and tip._rows[1]._scripts and tip._rows[1]._scripts.OnMouseDown ~= nil)
-RFM:HideBuffCatTip()
+V97.txt = table.concat(TT2, " | ")
+GameTooltip.AddLine, GameTooltip.ClearLines = oAdd, oClear
+V97.has_title = (V97.txt:find('MP5', 1, true) ~= nil)
+V97.has_assign = (V97.txt:find('Assigned to: Holymoon', 1, true) ~= nil)
+V97.has_provs = (V97.txt:find('PALADIN', 1, true) ~= nil)
+V97.has_hint = (V97.txt:find('Right-click', 1, true) ~= nil)
+local atk, aidx
+for i, c in ipairs(cols) do if c.key == 'atkpower' then atk, aidx = c, i end end
+local slot
+for _, sl in ipairs(RFM.slots) do if sl.member and sl.member.name == 'Drakbot' then slot = sl end end
+RFM:SetBuffAssign(mp5, nil)
+RFM:SetBuffAssign(atk, nil)
+local hb = RFM._buffHdrBtns[aidx]
+hb.GetLeft = function() return 200 end
+hb.GetRight = function() return 220 end
+hb.GetBottom = function() return 100 end
+hb.GetTop = function() return 116 end
+local saved = GetCursorPosition
+GetCursorPosition = function() return 210, 108 end
+RFM:_StartDragFromSlot(slot)
+RFM:_FinishDrag()
+GetCursorPosition = saved
+V97.drag_assign = tostring(RFM:GetBuffAssign(atk))
+V97.other_untouched = (RFM:GetBuffAssign(mp5) == nil)
+GetCursorPosition = function() return 5000, 5000 end
+RFM:_StartDragFromSlot(slot)
+RFM:_FinishDrag()
+GetCursorPosition = saved
+V97.no_assign_offgrid = (RFM:GetBuffAssign(atk) == 'Drakbot')
+RFM._buffHdrBtns[aidx]._scripts.OnClick(RFM._buffHdrBtns[aidx], 'RightButton')
+V97.right_cleared = (RFM:GetBuffAssign(atk) == nil)
+RFM:SetBuffAssign(mp5, nil)
 """)
-check(bool(rt.eval("V96.bg:find('UI-Tooltip-Background', 1, true) ~= nil and V96.edge:find('UI-Tooltip-Border', 1, true) ~= nil")), "v1.11.96: il riquadro usa le texture del tooltip del gioco")
-check(bool(rt.eval("V96.black == true and V96.a ~= nil and V96.a >= 0.85")), "v1.11.96: FONDO NERO quasi pieno (alpha %s) - prima il colore non veniva mai impostato e rendeva col default bianco 50%%" % rt.eval("tostring(V96.a)"))
-check(bool(rt.eval("V96.insets == 5 and V96.tile == true")), "v1.11.96: bordo e riempimento con gli stessi margini del tooltip standard (insets 5, tiled)")
-check(bool(rt.eval("V96.shown == true and V96.title == 'MP5' and V96.assign == 'Assigned to: Holymoon'")), "v1.11.96: contenuto invariato (titolo + riga assegnazione) -- %s" % rt.eval("tostring(V96.assign)"))
-check(bool(rt.eval("V96.row1:find('Holymoon', 1, true) ~= nil and V96.row_drag == true")), "v1.11.96: l'elenco fornitori c'e' ancora ed e' trascinabile (solo la grafica e' cambiata)")
+check(bool(rt.eval("V97.no_custom_tip == true and V97.no_ghost == true and V97.no_tip_drag == true")), "v1.11.97: spariti frame custom, fantasma e drag dal tooltip (il tooltip e' SOLO informativo)")
+check(bool(rt.eval("V97.has_title == true and V97.has_assign == true and V97.has_provs == true")), "v1.11.97: il tooltip di gioco mostra categoria, assegnazione e fornitori -- %s" % rt.eval("tostring(V97.txt)"))
+check(bool(rt.eval("V97.has_hint == true")), "v1.11.97: e in coda ricorda cosa fanno i click (left = check buff, right = togli assegnazione)")
+check(bool(rt.eval("V97.drag_assign == 'Drakbot' and V97.other_untouched == true")), "v1.11.97: trascinando la BARRA e lasciandola su un'icona, quella categoria va a quel giocatore")
+check(bool(rt.eval("V97.no_assign_offgrid == true")), "v1.11.97: lasciando la barra lontano dalle icone non si assegna niente (comportamento di prima)")
+check(bool(rt.eval("V97.right_cleared == true")), "v1.11.97: click destro sull'icona = assegnazione tolta")
+
+
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
