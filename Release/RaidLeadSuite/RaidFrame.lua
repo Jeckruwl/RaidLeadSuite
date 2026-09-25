@@ -2839,18 +2839,20 @@ function RF:BuffProviders(col)
     return out
 end
 
--- Sfondo del tooltip: il raid leader lo vuole MENO OPACO (prima era pieno).
+-- Sfondo del tooltip: OPACITA' PIENA (1 = 100%). Il raid leader vuole il fondo
+-- pieno, non gli interessa vedere sotto: e' il fondo standard del tooltip di
+-- gioco, solo scritto qui esplicito perche' si regola da questa costante.
 -- Il tooltip di gioco NON tiene il colore che gli diamo: GameTooltip_OnHide
 -- rimette i default del client (SetBackdropColor con r,g,b dello sfondo
 -- standard) a OGNI Hide. Quindi lo stile va riapplicato a ogni Show.
-local RF_TIP_BG_ALPHA = 0.5
+local RF_TIP_BG_ALPHA = 1
 -- Il tooltip deve stare SOTTO l'icona (che non va coperta): punto TOP del
 -- tooltip sul BOTTOM del bottone, con un piccolo distacco.
 local RF_TIP_DROP_Y = -4
 
 -- Colore di sfondo del tooltip di gioco (3.3.5 FrameXML: TOOLTIP_DEFAULT_
--- BACKGROUND_COLOR = 0.09/0.09/0.19) con l'alpha abbassato: testo leggibile,
--- ma si vede attraverso. Il resto della grafica del tooltip non si tocca.
+-- BACKGROUND_COLOR = 0.09/0.09/0.19) a piena opacita'. Il resto della grafica
+-- del tooltip non si tocca.
 local function RF_StyleBuffCatTip()
     if not (GameTooltip and GameTooltip.SetBackdropColor) then return end
     local c = TOOLTIP_DEFAULT_BACKGROUND_COLOR or { r = 0.09, g = 0.09, b = 0.19 }

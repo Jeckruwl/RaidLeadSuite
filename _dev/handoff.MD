@@ -7,7 +7,7 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.101**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.102**.
 
 ## COME L'UTENTE PRENDE GLI AGGIORNAMENTI (DECISIONE, 25/09)
 
@@ -43,6 +43,26 @@ L'installazione nel client passa dallo **zip `RaidLeadSuite-<versione>-AddOns.zi
 scompattato in `Interface/AddOns`, quindi va generato a OGNI versione insieme a
 `RaidLeadSuite-<versione>.zip` (repo). Non riproporre hook, symlink, junction,
 rsync, branch alternativi ne' il flip della struttura: tutto rifiutato.
+
+## 1.11.102 — Tooltip: sfondo a opacita' PIENA (100%)
+
+Richiesta del raid leader: "il backdrop del tooltip e' piu' chiaro di prima.
+mettilo ad opacity 100 non mi interessa se non vedo sotto."
+
+* `RF_TIP_BG_ALPHA` in `RaidFrame.lua`: da 0.5 a **1** (100%). Con l'alpha a
+  meta' il fondo scuro lasciava passare lo sfondo di gioco e sembrava piu'
+  chiaro; ora e' il fondo standard del tooltip di gioco, pieno.
+* Il colore resta quello del client (`TOOLTIP_DEFAULT_BACKGROUND_COLOR`,
+  0.09/0.09/0.19) e lo stile continua a essere riapplicato a ogni Show
+  (il client rimette i default a ogni Hide): se un domani si vuole un fondo
+  piu' o meno trasparente, si cambia solo quella costante (0.5 -> 1 -> ...).
+* La posizione del tooltip (SOTTO l'icona) non cambia.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1240 PASS**. Il check sull'alpha e' passato da
+"0 < alpha < 1" a "alpha == 1" (opacita' piena) mantenendo la verifica sul
+colore di gioco, sul punto sotto l'icona e sulla riapplicazione a ogni Show.
 
 ## 1.11.101 — Tooltip, categoria libera: dice anche come si assegna
 

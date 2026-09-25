@@ -8235,7 +8235,7 @@ check(bool(rt.eval("V90.warn_lines_none == 1")), "v1.11.99: anche senza assegnaz
 check(bool(rt.eval("V90.warn_raid_none:find('Buff Check: Missing MP5', 1, true) ~= nil and V90.warn_raid_none:find('Provide for:', 1, true) ~= nil")), "v1.11.99: formato non assegnato: 'Buff Check: Missing <categoria> | Provide for: <nomi>' -- %s" % rt.eval("tostring(V90.warn_raid_none)"))
 
 
-print("\n== v1.11.100: tooltip della categoria SOTTO l'icona e sfondo meno opaco ==")
+print("\n== v1.11.100/1.11.102: tooltip della categoria SOTTO l'icona e sfondo PIENO (opacita' 100%) ==")
 rt.execute("""
 local RFM = RLSuite.raidFrame
 local cols = RFM:_MatrixCols()
@@ -8286,7 +8286,7 @@ V100.styled_again = (tonumber(V100.color[4]) == V100.bg_alpha)
 check(bool(rt.eval("V100.anchor_none and V100.anchor_owner and V100.n_points == 1")), "v1.11.100: il tooltip e' ancorato all'icona con ANCHOR_NONE + UN punto scritto da noi")
 check(bool(rt.eval("V100.below")), "v1.11.100: il tooltip sta SOTTO l'icona (TOP del tooltip sul BOTTOM dell'icona, y = %s) -- %s/%s" % (rt.eval("tostring(V100.point_y)"), rt.eval("V100.point"), rt.eval("V100.relPoint")))
 check(bool(rt.eval("V100.over_icon == false")), "v1.11.100: nessun punto che appoggi il tooltip SOPRA l'icona (l'icona resta visibile)")
-check(bool(rt.eval("V100.bg_alpha ~= nil and V100.bg_alpha < 1 and V100.bg_alpha > 0")), "v1.11.100: sfondo del tooltip MENO opaco (alpha = %s, prima era pieno) -- %s" % (rt.eval("tostring(V100.bg_alpha)"), rt.eval("tostring(V100.color[1]) .. '/' .. tostring(V100.color[2]) .. '/' .. tostring(V100.color[3])")))
+check(bool(rt.eval("V100.bg_alpha == 1")), "v1.11.102: sfondo del tooltip a OPACITA' PIENA (alpha = %s, 100%%: non si vede sotto) -- %s" % (rt.eval("tostring(V100.bg_alpha)"), rt.eval("tostring(V100.color[1]) .. '/' .. tostring(V100.color[2]) .. '/' .. tostring(V100.color[3])")))
 check(bool(rt.eval("V100.bg_dark == true")), "v1.11.100: resta il colore di sfondo del tooltip di gioco (testo leggibile, grafica non toccata)")
 check(bool(rt.eval("V100.styled_again == true")), "v1.11.100: lo stile viene riapplicato a OGNI Show (il client ripristina il fondo pieno a ogni Hide)")
 
