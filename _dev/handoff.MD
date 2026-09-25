@@ -7,7 +7,46 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.91**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.92**.
+
+## 1.11.92 — Avvisi diretti (raid leading, non giocosi)
+
+Richiesta del raid leader: "l'alert meno giocoso... piu' diretto". Il testo
+diventa:
+
+    Missing buffs on <nome>: <buff>(<chi lo deve fare>), <buff>, ...
+
+Esempio reale dalla suite (raid warning, CTRL+click sul nome di Holymoon):
+
+    Missing buffs on Holymoon: %stat(Lightwall), Int, Armor, MP5, ATK, HP,
+    MCrit, FM, Dmg%, Haste, DR%, Heal+, Repl, Ret
+
+* `GetDefaultAlertMessage("buff")` -> `L["Missing buffs on $name:"]` (era "Hey
+  $name, you're missing some raid buffs!"); il codice appende " " + elenco,
+  quindi i due punti e lo spazio vengono da soli.
+* La parentesi e' **attaccata** al nome del buff (`MP5(Lightwall)`), come nel
+  formato chiesto dal raid leader. Le categorie senza assegnatario restano senza
+  parentesi.
+* Nessun "Hey" e nessun giro di parole. In un messaggio di raid warning conta
+  anche lo spazio: 240 caratteri e' il limite, il troncamento resta.
+* **Profili vecchi:** non c'e' piu' un editor degli alert, ma un `db.alerts.buff`
+  salvato da una versione precedente avrebbe tenuto il testo giocoso per
+  sempre. Per questo, se il testo salvato e' esattamente il vecchio default
+  (`L["Hey $name, you're missing some raid buffs!"]`) viene riconosciuto e
+  sostituito col nuovo. Un testo scritto a mano dall'utente, invece, resta suo.
+* Stessa riga di tono per il whisper all'assegnato (click sull'icona di
+  categoria): `L["Assignment: provide %s for the raid."]`, prima era "Hey
+  $name, it's your turn to provide %s for the raid.".
+* Gli avvisi delle icone (`Buff check: ...`, `Gear check: ...`) erano e restano
+  diretti: non toccati.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1180 PASS**. Controlli: il messaggio comincia
+con "Missing buffs on ", NON contiene "Hey", il nome del player sta subito dopo
+col due punti, la categoria assegnata a Lightwall compare come `%stat(Lightwall)`
+(parentesi attaccate) e una categoria senza assegnatario resta senza parentesi; e
+il whisper all'assegnato dice "Assignment: provide <buff> for the raid.".
 
 ## 1.11.91 — Avviso buff mancanti in RAID (con chi li deve fare) + doppio roll
 
@@ -31,6 +70,8 @@ inventa un colpevole. Esempio reale dalla suite:
 
     Hey Holymoon, you're missing some raid buffs! %stat (Lightwall), Int, Armor,
     MP5, ATK, HP, MCrit, FM, Dmg%, Haste, DR%, Heal+, Repl, Ret
+
+**TESTO CAMBIATO in 1.11.92 (diretto, senza "Hey"): vedi la sezione 1.11.92.**
 
 Codice: `MissingBuffLabels` ora e' un wrapper di **`MissingBuffEntries`**, la
 versione che restituisce `{ label, assign }` per ogni categoria mancante (stesse
@@ -184,8 +225,9 @@ Da `db.buffAssign` (creato al volo: `{ [keyColonna] = "NomePlayer" }`).
   leader non lo vuole, si toglie in una riga).
 * `WarnBuffCategory` (click sinistro sull'icona) adesso, oltre al raid warning,
   whispera **anche all'assegnato** di provvedere col buff assegnato
-  (`db.alerts.buffassign`, default `"Hey $name, it's your turn to provide
-  <categoria> for the raid."`). Senza assegnazione nessun whisper.
+  (`db.alerts.buffassign`, default `"Assignment: provide <categoria> for the
+  raid."` dalla 1.11.92 — prima era "Hey $name, it's your turn to provide ...").
+  Senza assegnazione nessun whisper.
 * La colonna `durability` non ha fornitori (`BuffProviders` vuoto): li' nessuna
   assegnazione e' possibile.
 

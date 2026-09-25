@@ -1578,9 +1578,9 @@ function RF:MissingBuffLabels(member, group)
 end
 
 -- CTRL+click (sinistro) sul nome/barra del player: avviso IN RAID (raid
--- warning) con l'elenco dei buff che gli mancano e, fra parentesi, chi deve
--- provvedere ("MP5 (Lightwall)"). Il testo base e' quello degli avvisi
--- ("buff" in Configurazione -> Alert), con $name sostituito; in coda l'elenco.
+-- warning), diretto:
+--     Missing buffs on <nome>: <buff>(<chi lo fa>), <buff>, ...
+-- Nessun "Hey", nessun giro di parole: e' un messaggio da raid leading.
 -- Non e' piu' un whisper al singolo: la richiesta era che l'avviso lo vedesse
 -- il raid. Se non manca niente non si manda niente in raid: lo dice solo al
 -- leader.
@@ -1599,12 +1599,12 @@ function RF:SendMissingBuffsAlert(row)
         RLSuite.utils:Print(string.format(L["%s has all the raid buffs."], name))
         return false
     end
-    -- "MP5 (Lightwall)": il nome del buff e, fra parentesi, chi deve farlo.
+    -- "MP5(Lightwall)": il nome del buff e, fra parentesi, chi deve farlo.
     -- Se nessuno e' assegnato resta il solo nome del buff (nessuno da citare).
     local parts = {}
     for _, e in ipairs(entries) do
         if e.assign and e.assign ~= "" then
-            parts[#parts + 1] = string.format("%s (%s)", e.label, e.assign)
+            parts[#parts + 1] = string.format("%s(%s)", e.label, e.assign)
         else
             parts[#parts + 1] = e.label
         end
@@ -1612,7 +1612,10 @@ function RF:SendMissingBuffsAlert(row)
     local list = table.concat(parts, ", ")
     local alerts = self.db.alerts or {}
     local msg = alerts.buff
-    if not msg or msg == "" then msg = self:GetDefaultAlertMessage("buff") end
+    -- Un profilo vecchio puo' avere salvato il testo "giocoso": si riconosce e
+    -- si passa al testo diretto nuovo (non c'e' piu' un editor degli alert).
+    local legacy = L["Hey $name, you're missing some raid buffs!"]
+    if not msg or msg == "" or msg == legacy then msg = self:GetDefaultAlertMessage("buff") end
     msg = string.gsub(msg or "", "%$name", name)
     msg = msg .. " " .. list
     -- RAID WARNING (Utils:SendChat torna a RAID se non sei leader/officer):
@@ -1673,7 +1676,7 @@ function RF:GetDefaultAlertMessage(alertType)
     local msgs = {
         flask = L["Hey $name, you're missing a flask!"],
         food = L["Hey $name, you're missing food buff!"],
-        buff = L["Hey $name, you're missing some raid buffs!"],
+        buff = L["Missing buffs on $name:"],
     }
     return msgs[alertType]
 end
@@ -2919,7 +2922,7 @@ function RF:BuffAssignWhisper(col)
     local alerts = self.db.alerts or {}
     local msg = alerts.buffassign
     if not msg or msg == "" then
-        msg = string.format(L["Hey $name, it's your turn to provide %s for the raid."],
+        msg = string.format(L["Assignment: provide %s for the raid."],
             col.label or col.key or "?")
     end
     msg = string.gsub(msg, "%$name", name)

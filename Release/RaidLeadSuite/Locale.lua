@@ -273,7 +273,12 @@ L["Start the spammer first, then Whisp test sends the fake whispers."] = "Avvia 
     L["Cannot assign Main Tank / Main Assist while in combat."] = true
     L["Main assist"] = true
     L["Hey $name, you're missing food buff!"] = true
+    -- Avvisi in stile raid leading: dritti al punto, nessun "Hey". Il vecchio
+    -- testo resta registrato perche' un profilo salvato che lo contiene viene
+    -- riconosciuto e sostituito dal nuovo.
     L["Hey $name, you're missing some raid buffs!"] = true
+    L["Missing buffs on $name:"] = true
+    L["Assignment: provide %s for the raid."] = true
     L["Left click: whisper"] = true
     L["Right click: raid warning"] = true
     L["Right click: raid warning (everyone missing)"] = true
