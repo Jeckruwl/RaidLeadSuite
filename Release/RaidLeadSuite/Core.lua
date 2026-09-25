@@ -63,7 +63,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.89"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.90"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -1030,6 +1030,12 @@ RLSuite.raidBuffColumns = {
       classes = {}, spells = { 53755, 53760, 54212, 53758, 67016, 67017, 67018 } },
     { key = "wellfed",     label = "Food",    icon = "Interface\\Icons\\Spell_Misc_Food",
       classes = {}, byNameSpell = 57399 },
+    -- DURABILITY: colonna di SERVIZIO del Raid Frame, non un buff. Sta nella
+    -- stessa matrice (ultima a destra) e usa l'icona dell'equipaggiamento del
+    -- client (lo slot "petto" della scheda personaggio). `kind` la distingue
+    -- dalle categorie di buff in tutto il resto del codice.
+    { key = "durability",  label = "Dur",     icon = "Interface\\PaperDoll\\UI-PaperDoll-Slot-Chest",
+      kind = "durability", classes = {} },
 }
 
 RLSuite.raidBuffChecks = {

@@ -7,7 +7,145 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.89**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.90**.
+
+## 1.11.90 — Raid Frame: durability, fade per distanza, avvisi, assegnazione buff
+
+Sei richieste del raid leader sul Raid Frame, piu' una verifica sul LootManager.
+Nessun'altra parte dell'addon e' stata toccata: il parser resta quello della
+1.11.89, invariato.
+
+### 1) Durability come colonna di servizio della matrice buff
+
+`Core.lua` -> `raidBuffColumns`: nuova voce
+
+    { key = "durability", label = "Dur",
+      icon = "Interface\\PaperDoll\\UI-PaperDoll-Slot-Chest", kind = "durability",
+      classes = {} }
+
+E' l'**ultima colonna a destra** (la 26esima), e' l'unica con `kind` diverso da
+nil: tutto il resto del codice la riconosce da li'. `icon` e' l'icona
+dell'equipaggiamento del client (slot "petto" della scheda personaggio), come
+chiesto ("icona = icona dell'equipaggiamento"): NON e' un `.tga` di `BCI`, quindi
+l'indice delle icone BCI (calcolato sulla posizione) resta invariato. L'header
+disegna proprio quell'icona (`_BuffHeaderIconPath(col, c)`: se la colonna non ha
+`bci` usa `col.icon`).
+
+Stati della cella (`MemberDurability` -> `_DurCellOk` / `_DurColor` / `_DurText`):
+
+* `ok`      verde  (0.2 / 1 / 0.2)
+* `low`     giallo (equip sotto `RF_DUR_ALERT_PCT` = 20 per cento)
+* `broken`  rosso  (1 / 0.15 / 0.15)
+* `unknown` grigio (0.5 / 0.5 / 0.5) — "nessun dato", non accusa nessuno
+
+API 3.3.5: `GetInventoryItemDurability(invSlot)` esiste **solo per il player**
+(percentuale reale), `GetInventoryItemBroken(unit, invSlot)` accetta qualsiasi
+unit (solo "rotto si'/no"). Quindi: per il proprio pg la percentuale vera, per
+gli altri il flag "rotto" (piu' eventuale "low" non quantificabile). Gli slot
+controllati sono `RF_DUR_SLOTS` (17 slot, esclusi i due anelli e le due
+trinket/off-hand: 1,2,3,5..18) e la lettura e' in cache per `RF_DUR_REFRESH` = 4
+tick del poller (il Raid Frame si aggiorna ogni 0.5 s -> ~2 s), perche'
+`GetInventoryItemDurability` e' una chiamata pesante da ripetere 25 volte.
+
+Cella e aggregati: la cella e' disegnata come le altre ma con tinta dallo stato
+(`_BuffCellIconFor`, ramo `kind == "durability"`) e `has` esplicito (non e' una
+aura: senza gear rotto la cella e' **verde**, non "vuota"). `BuffCoverage` /
+`_BuffStatusText` / `WarnBuffCategory` hanno il ramo durability:
+
+* stato soddisfatto -> "No broken or low durability gear"
+* altrimenti        -> "Gear to repair: N: nomi" (testo ROSSO)
+* raid warning       -> "Gear check: repair needed for ..." / "Gear check: everyone is fine"
+
+In modalita' debug il simulatore rompe il gear dell'**ultimo gruppo che ha
+membri** (serve a vedere i tre colori insieme); `_DebugRosterBuffSets` salta le
+colonne `kind == "durability"` perche' li' il "soddisfatto si'/no" non e' un
+elenco di buff.
+
+### 2) Fade delle barre in base alla distanza
+
+`RF:UnitDistanceYards(unit)`: usa `UnitInRange` (booleano, distanza) quando c'e',
+altrimenti `RF_FAR_YARDS` = 999 ("fuori portata"). Proprio pg = 0 yard.
+`RF:ApplyDistanceFade(row)` (chiamata da `UpdateAll` per ogni riga player, ogni
+0.5 s) mette `SetAlpha`:
+
+* entro la soglia  -> alpha 1
+* oltre la soglia  -> alpha `distanceAlpha` (default 0.40)
+* soglia 0         -> fade SPENTO (tutte le barre a 1)
+
+Le barre **MT/OT non vengono toccate** (il fade e' solo sulle righe player:
+i tank restano sempre pieni). Config -> `Raid Frame` -> Aspetto:
+
+* `rf.appearance.distanceFade`  ord. 17 — select: Off / 10 / 15 / 20 / 25 / 30 / 35 / 40 yard (default 0)
+* `rf.appearance.distanceAlpha` ord. 18 — slider 0.20 → 1.00 step 0.05 (default 0.40, "Fade transparency")
+
+### 3) CTRL+click sul nome = avviso buff mancanti a QUEL player
+
+`RowPlainClick`: se `LeftButton` + `IsControlKeyDown()` -> `SendMissingBuffsAlert(row)`
+e **stop** (nessun target, nessun consumabile: il gesto con CTRL e' solo un
+avviso). Il messaggio e' quello configurato in Alert → "buff" (`db.alerts.buff`)
+con `$name` sostituito dal nome del player e, in coda, l'elenco delle categorie
+davvero mancanti (`MissingBuffLabels`: stesse condizioni di usabilità/copertura
+della matrice, categoria `durability` esclusa). Rispetto all'alert dell'icona:
+li' il messaggio va in RAID_WARNING, qui va **in whisper al singolo player** (+
+una riga di print al leader con l'elenco). Se non manca niente NON si whispera
+nulla al player: solo `"<nome> has all the raid buffs."` al leader. Dedup 0.3 s
+per riga (`row._buffAlertT`) perche' OnMouseUp + poller possono vedere lo stesso
+click.
+
+### 4) Font dei cooldown
+
+`RF_CD_FONT = 10` (era 8 a lettere dure nei due timer delle icone CD a destra
+delle barre): "aumentare un po'", quindi +2. Sono i due `SetFont(FRIZQT, 8,
+"OUTLINE")` -> ora `RF_CD_FONT`.
+
+### 5) Assegnazione dei buff (tooltip categoria + drag + whisper)
+
+Da `db.buffAssign` (creato al volo: `{ [keyColonna] = "NomePlayer" }`).
+
+* L'header della colonna NON usa piu' il GameTooltip: c'e' un frame CUSTOM
+  (`RLSuiteBuffCatTip`) fatto a mano, perche' il tooltip di WoW non contiene
+  frame cliccabili/trascinabili dentro. Contiene: titolo (nome categoria), stato
+  della categoria, riga assegnazione, e la lista dei fornitori.
+  - **non assegnata** -> `Not assigned` + `Providers (N) - drag a name onto the icon:` e una riga per fornitore nel formato `<nome player> (<CLASSE>): <nome buff>` (il nome del buff si ricava da `GetSpellInfo` quando il provider ha una sola classe possibile, altrimenti resta la classe).
+  - **assegnata**     -> `Assigned to: <nomeplayer>`.
+* Trascinare una riga-fornitore (OnMouseDown) -> `_StartAssignDrag` apre un
+  "fantasma" (`RLSuiteBuffAssignGhost`) che segue il cursore; il rilascio
+  (`OnMouseUp` / `OnUpdate` se il mouse esce dal frame) -> `_DropAssignDrag` fa
+  l'hit-test dell'header sotto il cursore (`_BuffHeaderAtCursor`) e assegna;
+  se il rilascio non e' su nessuna icona vale la categoria del tooltip di
+  partenza. Print di conferma: `"<nome> assigned to <categoria>."`
+* **Click destro** sull'icona = rimozione dell'assegnazione (non era nella
+  richiesta, ma senza non si poteva piu' disfare l'assegnazione: se il raid
+  leader non lo vuole, si toglie in una riga).
+* `WarnBuffCategory` (click sinistro sull'icona) adesso, oltre al raid warning,
+  whispera **anche all'assegnato** di provvedere col buff assegnato
+  (`db.alerts.buffassign`, default `"Hey $name, it's your turn to provide
+  <categoria> for the raid."`). Senza assegnazione nessun whisper.
+* La colonna `durability` non ha fornitori (`BuffProviders` vuoto): li' nessuna
+  assegnazione e' possibile.
+
+### 6) Verifica LootManager (roll multipli) — risposta al raid leader
+
+`LootManager.lua`: `LM:OnSystemRoll` (riga 952 circa) fa `table.insert` di OGNI
+roll che matcha il pattern di `RANDOM_ROLL_RESULT` senza nessun controllo sul
+nome: **il secondo roll NON viene ignorato**, viene aggiunto alla lista. Vince
+il piu' alto (ordinamento decrescente, il vincitore si annuncia subito); a pari
+punteggio finiscono tutti nella lista di spareggio (`rerollWinners`/`rerollBtn`)
+e il nome puo' quindi comparire due volte. Se serve "il secondo roll conta come
+il primo" (o va ignorato) e' una riga da aggiungere in `OnSystemRoll`.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1163 PASS** (erano 1129). I check nuovi coprono
+tutti i punti qui sopra: font CD = 10, 26esima colonna durability + icona
+PaperDoll (cella e header), i tre colori + grigio "no data", gli stati/elenchi
+della categoria, il warning di riparazione, la durability del proprio pg
+(12% = low, 100% = ok), distanza (12/34/999/0 yard), fade 1 vs 0.40, fade
+spento, MT/OT intoccati, CTRL+click (whisper al player giusto con l'elenco
+mancante, niente target), click normale invariato, tooltip custom (nome
+categoria, "Not assigned", 2 fornitori con `PALADIN`: formato richiesto),
+"Assigned to: X", drag → assegnazione, click destro → rimozione, whisper
+all'assegnato + raid warning che resta, nessun whisper senza assegnazione.
 
 ## 1.11.89 — Regola generale: nessuno spazio obbligatorio
 

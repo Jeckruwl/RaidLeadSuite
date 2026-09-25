@@ -72,6 +72,17 @@ end
 local RF_GROUPS = 6
 local RF_PER_GROUP = 5
 local RF_MAX_CDS = 4
+-- Font dei timer dei cooldown nelle icone a destra della barra (era 8: si
+-- leggeva male). Il nome del player resta a nameFontSize, configurabile.
+local RF_CD_FONT = 10
+-- DURABILITY: slot di equipaggiamento controllati (4 = camicia e 19 = tabard
+-- non hanno durability). Per gli ALTRI player il client espone solo "oggetto
+-- rotto" (GetInventoryItemBroken); la percentuale esatta si legge solo sul
+-- proprio personaggio (GetInventoryItemDurability).
+local RF_DUR_SLOTS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 }
+local RF_DUR_ALERT_PCT = 20      -- sotto questa % conta come "da riparare"
+local RF_DUR_REFRESH = 4         -- ricalcolo ogni N passate da 0,5s (2s)
+local RF_FAR_YARDS = 999         -- oltre le 40 yard UnitInRange non da' numeri
 -- Tolleranza del gesto di trascinamento (px): prendere una barra a 5-6 px di
 -- distanza deve FUNZIONARE. Con le righe da ~20 px un click "a filo" finiva
 -- nel vuoto e il gesto non faceva niente: da fuori sembrava che quel player
@@ -586,7 +597,7 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
         cd:Hide() -- le barre tank non li usano mai (restano spenti)
         local timer = cdHolder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         timer:SetPoint("CENTER", cd, "CENTER", 0, 0)
-        timer:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
+        timer:SetFont("Fonts\\FRIZQT__.TTF", RF_CD_FONT, "OUTLINE")
         timer:SetText("")
         cd.timer = timer
         row.cdIcons[j] = cd
@@ -839,7 +850,7 @@ function RF:LayoutSlotGeometry(slot, m)
         end
         for j, cd in ipairs(slot.cdIcons or {}) do
             if cd and cd.timer then
-                cd.timer:SetFont(fontFile, 8, flags)
+                cd.timer:SetFont(fontFile, RF_CD_FONT, flags)
             end
         end
     end
@@ -1219,6 +1230,11 @@ function RF:UpdateAll()
         self:UpdateRow(t)
     end
     self:UpdateTankTargets()
+    -- Fade per distanza: solo le barre dei giocatori nei gruppi (le barre
+    -- MT/OT restano come sono, sempre piene).
+    for _, row in ipairs(self.rows) do
+        self:ApplyDistanceFade(row)
+    end
     self:RefreshBuffMatrix()
 end
 
@@ -1523,7 +1539,69 @@ end
 -- Click nudo (qualsiasi tasto) sulla BARRA di una riga: prima prova il
 -- hit-test sulle icone (messaggi missing buff); se nessuna icona, un click
 -- SINISTRO sulla barra = target del player.
+-- Buff mancanti di UN membro: le categorie che lo riguardano, che la
+-- composizione puo' coprire e che NON ha attive. Stessa logica della matrice
+-- (destinatari + fornitori presenti), quindi nessun falso allarme.
+function RF:MissingBuffLabels(member, group)
+    local out = {}
+    if not member then return out end
+    local entries = {}
+    local groups = self:GetGroupedRoster()
+    for g = 1, #groups do
+        for s = 1, #groups[g] do
+            local m = groups[g][s]
+            if m then entries[#entries + 1] = { member = m, group = g } end
+        end
+    end
+    for _, col in ipairs(self:_MatrixCols()) do
+        if col.kind ~= "durability" then
+            local ctx = self:_BuffProviderContext(col, entries)
+            if self:_BuffApplicable(member, col) and self:_BuffCoverable(col, ctx, group) then
+                if self:_BuffCellIconFor(member, col, group) == nil then
+                    out[#out + 1] = col.label or col.key
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- CTRL+click (sinistro) sul nome/barra del player: whisper a quel player con
+-- l'elenco dei buff che gli mancano. Il testo base e' quello degli avvisi
+-- ("buff" in Configurazione -> Alert), con $name sostituito; in coda l'elenco.
+-- Se non manca niente NON si manda nulla al player: lo dice solo al leader.
+function RF:SendMissingBuffsAlert(row)
+    if not row then return false end
+    local now = (GetTime and GetTime()) or 0
+    -- dedup: pressione, rilascio e poller possono convergere nello stesso click
+    if row._buffAlertT and (now - row._buffAlertT) < 0.3 then return true end
+    row._buffAlertT = now
+
+    local member = row.member
+    local name = row.name or (member and member.name)
+    if not name or name == "" then return false end
+    local labels = self:MissingBuffLabels(member, row.group)
+    if #labels == 0 then
+        RLSuite.utils:Print(string.format(L["%s has all the raid buffs."], name))
+        return false
+    end
+    local alerts = self.db.alerts or {}
+    local msg = alerts.buff
+    if not msg or msg == "" then msg = self:GetDefaultAlertMessage("buff") end
+    msg = string.gsub(msg or "", "%$name", name)
+    msg = msg .. " " .. table.concat(labels, ", ")
+    RLSuite.utils:Whisper(name, msg)
+    RLSuite.utils:Print(string.format(L["Missing buffs for %s: %s"], name, table.concat(labels, ", ")))
+    return true
+end
+
 function RF:RowPlainClick(row, button)
+    -- CTRL+click sinistro: avviso buff mancanti a quel player (e niente
+    -- target: il gesto con CTRL non deve cambiare bersaglio).
+    if button == "LeftButton" and IsControlKeyDown and IsControlKeyDown() then
+        self:SendMissingBuffsAlert(row)
+        return true
+    end
     local fired = self:FireConsumableFromCursor(row, button)
     if not fired and button == "LeftButton" then
         self:TargetRow(row)
@@ -2045,7 +2123,7 @@ function RF:ApplyLayout()
         for c, col in ipairs(mCols) do
             local btn = self:_MatrixHeaderBtn(c)
             btn._col = col
-            btn._icon:SetTexture(self:_BuffCatIconPath(c))
+            btn._icon:SetTexture(self:_BuffHeaderIconPath(col, c))
             btn._icon:ClearAllPoints()
             btn._icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
             btn._icon:SetSize(m.cellW, m.cellW) -- size = iconSize + iconSpacing, FISSO
@@ -2242,6 +2320,14 @@ function RF:_BuffCatIconPath(c)
     return RLSuite:AddonTexture("media\\BUFFCATICONS\\BCI_" .. (c - 1) .. ".tga")
 end
 
+-- Icona di intestazione di una colonna: le categorie di buff usano i tga
+-- caricati dall'utente (BCI_<c-1>.tga, indici INVARIATI perche' la durability
+-- sta in fondo), le colonne di servizio usano la loro icona di gioco.
+function RF:_BuffHeaderIconPath(col, c)
+    if col and col.kind == "durability" then return col.icon end
+    return self:_BuffCatIconPath(c)
+end
+
 function RF:_MatrixHeaderBtn(c)
     self._buffHdrBtns = self._buffHdrBtns or {}
     local btn = self._buffHdrBtns[c]
@@ -2271,26 +2357,32 @@ function RF:_MatrixHeaderBtn(c)
                 local v = s._nodata and RF_HDR_NODATA or 1
                 s._icon:SetVertexColor(v, v, v)
             end
-            if GameTooltip and GameTooltip.SetOwner and s._col then
-                GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
-                GameTooltip:SetText(s._col.label or s._col.key or "")
-                if s._status and GameTooltip.AddLine then
-                    local txt, r, g, b = RF:_BuffStatusText(s._status)
-                    if txt then GameTooltip:AddLine(txt, r, g, b) end
-                end
-                GameTooltip:Show()
-            end
+            -- Tooltip CUSTOM (frame, non GameTooltip): deve contenere la lista
+            -- dei fornitori su cui si preme e si trascina.
+            if s._col then RF:ShowBuffCatTip(s._col, s) end
         end)
         btn:SetScript("OnLeave", function(s)
             if s._icon then
                 local v = s._nodata and RF_HDR_NODATA or RF_HDR_NORMAL
                 s._icon:SetVertexColor(v, v, v)
             end
-            if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+            -- Durante un trascinamento il tooltip resta APERTO: e' la
+            -- sorgente da cui si e' preso il nome.
+            if not RF._assignDrag then RF:HideBuffCatTip() end
         end)
-        btn:RegisterForClicks("LeftButtonUp")
-        btn:SetScript("OnClick", function(s)
-            if s._col then RF:WarnBuffCategory(s._col) end
+        btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        btn:SetScript("OnClick", function(s, button)
+            if not s._col then return end
+            if button == "RightButton" then
+                -- Destro: toglie l'assegnazione (se c'e').
+                if RF:GetBuffAssign(s._col) then
+                    RF:SetBuffAssign(s._col, nil)
+                    RLSuite.utils:Print(string.format(L["Assignment removed for %s."],
+                        s._col.label or s._col.key or "?"))
+                end
+                return
+            end
+            RF:WarnBuffCategory(s._col)
         end)
         btn:Hide()
         self._buffHdrBtns[c] = btn
@@ -2313,7 +2405,7 @@ function RF:DiagnoseBuffCatIcons()
         local tex = btn and btn._icon
         local sz = tex and (tostring(tex:GetWidth()) .. "x" .. tostring(tex:GetHeight())) or "?"
         p(string.format("  %d %s: %s btn=%s size=%s", c,
-            tostring(col and col.key or "?"), tostring(self:_BuffCatIconPath(c)),
+            tostring(col and col.key or "?"), tostring(self:_BuffHeaderIconPath(col, c)),
             btn and "Y" or "N", sz))
     end
 end
@@ -2385,6 +2477,8 @@ end
 
 -- Questo membro PUO' ricevere la categoria?
 function RF:_BuffCoverable(col, ctx, group)
+    -- Le colonne di servizio (durability) non hanno fornitori: valgono per tutti.
+    if col.kind == "durability" then return true end
     if ctx.hasRaidProvider then return true end
     if group and ctx.partyProvider[group] then return true end
     return false
@@ -2425,6 +2519,7 @@ function RF:_BuffStatusFromAgg(agg)
     local st = {
         key = col.key, label = col.label or col.key,
         scope = col.scope or "raid",
+        kind = col.kind,
         count = agg.count, applicable = agg.applicable, coverable = agg.coverable,
         missing = agg.missing, missingProviders = {},
     }
@@ -2477,9 +2572,317 @@ function RF:BuffCoverage(col)
     end
     local agg = self:_BuffAggNew(col, entries)
     for _, e in ipairs(entries) do
-        self:_BuffAggAdd(agg, e.member, e.group, self:_BuffCellIconFor(e.member, col) ~= nil)
+        local icon, _, _, _, _, has = self:_BuffCellIconFor(e.member, col, e.group)
+        if has == nil then has = (icon ~= nil) end
+        self:_BuffAggAdd(agg, e.member, e.group, has)
     end
     return self:_BuffStatusFromAgg(agg)
+end
+
+-- ============================================================
+-- ASSEGNAZIONE DEI BUFF (chi deve dare quale categoria)
+--   db.buffAssign = { [keyColonna] = "NomePlayer" }
+-- Il tooltip della categoria NON e' piu' il GameTooltip: e' un frame custom
+-- con la lista dei fornitori, perche' su quei nomi bisogna poter PREMERE e
+-- TRASCINARE fino all'icona. Regole:
+--   * non assegnata -> tooltip con "Provider:" e "<nome player>: <nome buff>"
+--   * assegnata     -> tooltip con "Assigned to: <nome player>"
+--   * trascina (o clicca) un nome del tooltip sull'icona = assegna
+--   * click destro sull'icona = togli l'assegnazione
+--   * click sinistro (avviso di categoria) = raid warning + whisper
+--     all'assegnato, che deve provvedere col buff assegnato
+-- ============================================================
+function RF:BuffAssignTable()
+    if not self.db.buffAssign then self.db.buffAssign = {} end
+    return self.db.buffAssign
+end
+
+function RF:GetBuffAssign(col)
+    local key = col and (col.key or col.label)
+    if not key then return nil end
+    local name = self:BuffAssignTable()[key]
+    if not name or name == "" then return nil end
+    return name
+end
+
+function RF:SetBuffAssign(col, name)
+    local key = col and (col.key or col.label)
+    if not key then return false end
+    local t = self:BuffAssignTable()
+    t[key] = (name and name ~= "") and name or nil
+    rfDbg("buff assign: %s -> %s", tostring(key), tostring(t[key]))
+    if self._buffCatTip and self._buffCatTip._col == col then
+        self:ShowBuffCatTip(col, self._buffCatTip._anchor)
+    end
+    return true
+end
+
+-- "<nome player>: <nome buff>". Il nome del buff e' quello vero di gioco
+-- (GetSpellInfo) quando la categoria ha UNA sola classe fornitrice: cosi' non
+-- si attribuisce a un mago la spell di un paladino. Altrimenti la sigla della
+-- categoria (es. MP5).
+function RF:_BuffProviderBuffName(col, member)
+    local list = col.spells or {}
+    if #list > 0 and col.classes and #col.classes == 1 and GetSpellInfo then
+        local n = GetSpellInfo(list[1])
+        if n then return n end
+    end
+    if col.classes and #col.classes > 1 and GetSpellInfo and col.spellNames then
+        local n = col.spellNames[member and member.class]
+        if n then return n end
+    end
+    return col.label or col.key or "?"
+end
+
+-- Fornitori PRESENTI in raid per quella categoria, in ordine di roster.
+function RF:BuffProviders(col)
+    local out = {}
+    if col and col.kind == "durability" then return out end
+    if not (col and col.classes and #col.classes > 0) then return out end
+    local groups = self:GetGroupedRoster()
+    for g = 1, #groups do
+        for s = 1, #groups[g] do
+            local m = groups[g][s]
+            if m and self:_BuffClassProvides(col, m.class) then
+                out[#out + 1] = { member = m, group = g, buff = self:_BuffProviderBuffName(col, m) }
+            end
+        end
+    end
+    return out
+end
+
+local RF_TIP_ROWS = 10
+
+function RF:_EnsureBuffCatTip()
+    if self._buffCatTip then return self._buffCatTip end
+    local f = CreateFrame("Frame", "RLSuiteBuffCatTip", self.frame or UIParent)
+    f:SetSize(250, 48)
+    f:SetFrameStrata("TOOLTIP")
+    f:EnableMouse(true)
+    RLSuite.utils:WindowBackdrop(f)
+    local function line(prev, anchorPt, dy, tmpl)
+        local fs = f:CreateFontString(nil, "OVERLAY", tmpl or "GameFontNormalSmall")
+        if prev then
+            fs:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, dy or -3)
+        else
+            fs:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -6)
+        end
+        fs:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+        fs:SetJustifyH("LEFT")
+        return fs
+    end
+    f._title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f._title:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -6)
+    f._title:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+    f._title:SetJustifyH("LEFT")
+    f._status = line(f._title, nil, -3)
+    f._assign = line(f._status)
+    f._provLabel = line(f._assign, nil, -5)
+    f._rows = {}
+    f:Hide()
+    self._buffCatTip = f
+    return f
+end
+
+function RF:_BuffTipRow(i)
+    local f = self:_EnsureBuffCatTip()
+    local row = f._rows[i]
+    if not row then
+        row = CreateFrame("Button", nil, f)
+        row:SetHeight(14)
+        row:SetPoint("LEFT", f, "LEFT", 8, 0)
+        row:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+        local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetAllPoints(row)
+        fs:SetJustifyH("LEFT")
+        row._text = fs
+        row:RegisterForClicks("LeftButtonUp")
+        -- Premere su un nome lo prende: da qui si trascina sull'icona.
+        row:SetScript("OnMouseDown", function(s, button)
+            if button ~= "LeftButton" then return end
+            local p = s._provider
+            if p and p.member then
+                RF:_StartAssignDrag(p.member.name, s._col)
+            end
+        end)
+        -- Rilascio: se il cursore e' su un'icona di categoria si assegna li';
+        -- altrimenti vale come click (assegna alla categoria del tooltip).
+        row:SetScript("OnMouseUp", function(s, button)
+            if button ~= "LeftButton" then return end
+            RF:_DropAssignDrag(s)
+        end)
+        row:SetScript("OnEnter", function(s)
+            if s._text then s._text:SetTextColor(1, 1, 1) end
+        end)
+        row:SetScript("OnLeave", function(s)
+            if s._text then s._text:SetTextColor(0.85, 0.85, 0.85) end
+        end)
+        f._rows[i] = row
+    end
+    return row
+end
+
+-- Mostra il tooltip custom della categoria: titolo, stato (lo stesso testo che
+-- dava il GameTooltip), assegnazione e lista dei fornitori.
+function RF:ShowBuffCatTip(col, anchorBtn)
+    if not col then return end
+    local f = self:_EnsureBuffCatTip()
+    f._col = col
+    f._anchor = anchorBtn
+    f._title:SetText(col.label or col.key or "")
+    f._title:SetTextColor(1, 0.82, 0)
+
+    local st = self:BuffCoverage(col)
+    local txt, r, g, b = nil, nil, nil, nil
+    if self._BuffStatusText then txt, r, g, b = self:_BuffStatusText(st) end
+    f._status:SetText(txt or "")
+    if r then f._status:SetTextColor(r, g, b) end
+
+    local assigned = self:GetBuffAssign(col)
+    if assigned then
+        f._assign:SetText(string.format(L["Assigned to: %s"], assigned))
+        f._assign:SetTextColor(0.2, 1, 0.4)
+    else
+        f._assign:SetText(L["Not assigned"])
+        f._assign:SetTextColor(0.7, 0.7, 0.7)
+    end
+
+    local provs = self:BuffProviders(col)
+    if #provs > 0 then
+        f._provLabel:SetText(string.format(L["Providers (%d) - drag a name onto the icon:"], #provs))
+    else
+        f._provLabel:SetText(L["No provider available"])
+    end
+
+    local y = -70
+    local shown = 0
+    for i = 1, #f._rows do f._rows[i]:Hide() end
+    for i = 1, math.min(#provs, RF_TIP_ROWS) do
+        local p = provs[i]
+        local row = self:_BuffTipRow(i)
+        row._provider = p
+        row._col = col
+        row:SetText(row._text)
+        row._text:SetText(string.format("%s (%s): %s",
+            tostring(p.member.name or "?"), tostring(p.member.class or "?"), tostring(p.buff)))
+        row._text:SetTextColor(0.85, 0.85, 0.85)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -(56 + (i - 1) * 14))
+        row:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+        row:Show()
+        shown = shown + 1
+    end
+    if #provs > RF_TIP_ROWS then
+        local more = self:_BuffTipRow(RF_TIP_ROWS + 1)
+        more._provider = nil
+        more._text:SetText(string.format(L["... and %d more"], #provs - RF_TIP_ROWS))
+        more._text:SetTextColor(0.7, 0.7, 0.7)
+        more:ClearAllPoints()
+        more:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -(56 + RF_TIP_ROWS * 14))
+        more:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+        more:Show()
+        shown = shown + 1
+    end
+    f:SetHeight(math.max(70, 62 + shown * 14))
+
+    local a = anchorBtn or f
+    f:ClearAllPoints()
+    if a and a.GetLeft then
+        f:SetPoint("BOTTOMLEFT", a, "TOPLEFT", 0, 2)
+    else
+        f:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 200)
+    end
+    f:Show()
+end
+
+function RF:HideBuffCatTip()
+    if self._buffCatTip then self._buffCatTip:Hide() end
+end
+
+-- ============================================================
+-- Drag del nome (mini-drag dedicato: NON tocca il drag degli slot, che resta
+-- intatto). Il "fantasma" col nome segue il cursore; al rilascio si cerca
+-- l'icona di categoria sotto il cursore.
+-- ============================================================
+function RF:_AssignGhost()
+    if self._assignGhost then return self._assignGhost end
+    local g = CreateFrame("Frame", "RLSuiteBuffAssignGhost", UIParent)
+    g:SetSize(140, 16)
+    g:SetFrameStrata("TOOLTIP")
+    g:EnableMouse(false)
+    g:Hide()
+    local fs = g:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetAllPoints(g)
+    fs:SetJustifyH("LEFT")
+    fs:SetTextColor(1, 0.82, 0)
+    g._text = fs
+    g:SetScript("OnUpdate", function(s)
+        if not GetCursorPosition then return end
+        local x, y = GetCursorPosition()
+        if x then s:ClearAllPoints(); s:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x + 12, y - 8) end
+    end)
+    self._assignGhost = g
+    return g
+end
+
+function RF:_StartAssignDrag(name, col)
+    if not name or name == "" then return false end
+    self._assignDrag = { name = name, col = col }
+    local g = self:_AssignGhost()
+    g._text:SetText(name)
+    g:Show()
+    rfDbg("assign drag: %s", tostring(name))
+    return true
+end
+
+-- Icona di categoria sotto il cursore (hit-test sui rettangoli dei bottoni).
+function RF:_BuffHeaderAtCursor()
+    if not GetCursorPosition then return nil end
+    local x, y = GetCursorPosition()
+    if not x then return nil end
+    for c, btn in ipairs(self._buffHdrBtns or {}) do
+        if btn and btn:IsShown() then
+            local l, r = btn:GetLeft(), btn:GetRight()
+            local b, t = btn:GetBottom(), btn:GetTop()
+            if l and r and b and t and x >= l and x <= r and y >= b and y <= t then
+                return btn, c
+            end
+        end
+    end
+    return nil
+end
+
+-- Chiude il mini-drag: icona sotto il cursore -> assegnazione li'; nessuna
+-- icona -> se il rilascio e' sulla riga di partenza (o comunque nel tooltip)
+-- vale come click e assegna alla categoria del tooltip.
+function RF:_DropAssignDrag(fromRow)
+    local drag = self._assignDrag
+    self._assignDrag = nil
+    if self._assignGhost then self._assignGhost:Hide() end
+    if not drag then return false end
+    local btn = self:_BuffHeaderAtCursor()
+    local col = (btn and btn._col) or drag.col or (fromRow and fromRow._col)
+    if not col then return false end
+    self:SetBuffAssign(col, drag.name)
+    RLSuite.utils:Print(string.format(L["%s assigned to %s."], drag.name, col.label or col.key or "?"))
+    return true
+end
+
+-- Whisper all'assegnato quando si clicca l'icona della categoria: chi e'
+-- assegnato deve provvedere col buff assegnato.
+function RF:BuffAssignWhisper(col)
+    local name = self:GetBuffAssign(col)
+    if not name or name == "" then return false end
+    local alerts = self.db.alerts or {}
+    local msg = alerts.buffassign
+    if not msg or msg == "" then
+        msg = string.format(L["Hey $name, it's your turn to provide %s for the raid."],
+            col.label or col.key or "?")
+    end
+    msg = string.gsub(msg, "%$name", name)
+    RLSuite.utils:Whisper(name, msg)
+    rfDbg("assign whisper -> %s: %s", tostring(name), tostring(msg))
+    return true
 end
 
 -- Icona di intestazione: grigio scuro se la categoria NON e' disponibile con
@@ -2508,6 +2911,14 @@ function RF:_BuffStatusText(st)
     if st.available == false then
         return L["Not available in this composition"], 0.6, 0.6, 0.6
     end
+    if st.kind == "durability" then
+        if st.satisfied then return L["No broken or low durability gear"], 0.2, 1, 0.2 end
+        local shown = {}
+        for i = 1, math.min(#st.missing, 4) do shown[i] = st.missing[i] end
+        local txt = string.format(L["Gear to repair: %d"], #st.missing)
+        if #shown > 0 then txt = txt .. ": " .. table.concat(shown, ", ") end
+        return txt, 1, 0.35, 0.35
+    end
     if st.scope == "single" or st.scope == "capped" then
         local txt = string.format(L["Covered: %d/%d"], st.count, st.expected)
         if st.satisfied then return txt, 0.2, 1, 0.2 end
@@ -2534,7 +2945,15 @@ function RF:WarnBuffCategory(col)
     if not st then return end
     local label = st.label
     local msg
-    if st.available == false then
+    if st.kind == "durability" then
+        -- Avviso attrezzatura: elenco di chi ha oggetti rotti (e, per il
+        -- proprio pg, anche la percentuale bassa).
+        if st.satisfied then
+            msg = L["Gear check: everyone is fine"]
+        else
+            msg = string.format(L["Gear check: repair needed for %s"], table.concat(st.missing, ", "))
+        end
+    elseif st.available == false then
         msg = string.format(L["Buff check: %s - not available in this composition"], label)
     elseif st.scope == "single" then
         msg = string.format(L["Buff check: %s - %d/%d"], label, st.count, st.expected)
@@ -2553,6 +2972,42 @@ function RF:WarnBuffCategory(col)
     if #msg > 240 then msg = msg:sub(1, 237) .. "..." end
     if RLSuite.utils and RLSuite.utils.SendChat then
         RLSuite.utils:SendChat(msg, "RAID_WARNING")
+    end
+    -- Chi e' assegnato a questa categoria riceve anche il whisper: l'avviso
+    -- in raid dice cosa manca, il whisper dice a CHI tocca provvedere.
+    self:BuffAssignWhisper(col)
+end
+
+-- ============================================================
+-- FADE PER DISTANZA (barre giocatore)
+-- In 3.3.5 l'unica lettura numerica della distanza e' UnitInRange(unit)
+-- (party/raid): restituisce inRange, inYards (0-40). Oltre le 40 yard il
+-- numero non c'e' piu' -> RF_FAR_YARDS, cioe' "lontanissimo".
+-- Soglia e trasparenza si scelgono in Configurazione -> Raid Frame.
+-- ============================================================
+function RF:UnitDistanceYards(unit)
+    if not unit then return nil end
+    if unit == "player" then return 0 end
+    if UnitInRange then
+        local inRange, yards = UnitInRange(unit)
+        if yards then return yards end
+        if inRange == false then return RF_FAR_YARDS end
+    end
+    return nil
+end
+
+function RF:ApplyDistanceFade(row)
+    if not row then return end
+    local app = (self.db and self.db.appearance) or {}
+    local thr = tonumber(app.distanceFade) or 0
+    local alpha = 1
+    if thr > 0 then
+        local d = self:UnitDistanceYards(row.unit)
+        if d and d > thr then alpha = tonumber(app.distanceAlpha) or 0.40 end
+    end
+    if row._fadeAlpha ~= alpha then
+        row._fadeAlpha = alpha
+        if row.SetAlpha then row:SetAlpha(alpha) end
     end
 end
 
@@ -2606,6 +3061,13 @@ end
 -- Riempie la matrice: icona del buff attivo del player per categoria,
 -- nascosta quando manca / matrice spenta / riga senza unita' reale.
 function RF:RefreshBuffMatrix()
+    -- Le letture di durability costano (19 slot x membro): si rifanno ogni
+    -- RF_DUR_REFRESH passate, non a ogni tick da 0,5s.
+    self._durPass = (self._durPass or 0) + 1
+    if self._durPass >= RF_DUR_REFRESH then
+        self._durPass = 0
+        self._durStamp = (self._durStamp or 0) + 1
+    end
     local on = self.buffMatrixOn and self.rows and self.rows[1] ~= nil
     local cols = on and self:_MatrixCols() or nil
     local headersOn = self.rows and self.rows[1] ~= nil
@@ -2630,18 +3092,22 @@ function RF:RefreshBuffMatrix()
     for _, slot in ipairs(self.slots or {}) do
         for c = 1, #(slot._buffCells or {}) do
             local tex = slot._buffCells[c]
-            local icon
+            local icon, _, tr, tg, tb, has
             if on and slot:IsShown() and slot.member and cols and cols[c] then
-                icon = self:_BuffCellIconFor(slot.member, cols[c])
+                icon, _, tr, tg, tb, has = self:_BuffCellIconFor(slot.member, cols[c], slot.group)
             end
             if icon then
                 tex:SetTexture(icon)
+                -- Tinta per cella (usata dalla durability per stato); le
+                -- categorie di buff restano bianche come prima.
+                tex:SetVertexColor(tr or 1, tg or 1, tb or 1)
                 tex:Show()
             else
                 tex:Hide()
             end
             if aggs and aggs[c] and slot.member and cols and cols[c] and slot:IsShown() then
-                self:_BuffAggAdd(aggs[c], slot.member, slot.group, icon ~= nil)
+                if has == nil then has = (icon ~= nil) end
+                self:_BuffAggAdd(aggs[c], slot.member, slot.group, has)
             end
         end
     end
@@ -2730,6 +3196,7 @@ function RF:_DebugRosterBuffSets()
     local cols = RLSuite.raidBuffColumns or {}
 
     for _, col in ipairs(cols) do
+        if col.kind ~= "durability" then
         local providers = 0
         for _, m in ipairs(roster) do
             if self:_BuffClassProvides(col, m.class) then providers = providers + 1 end
@@ -2788,6 +3255,7 @@ function RF:_DebugRosterBuffSets()
         end
         -- providers == 0 e categoria non personale: nessuna classe in raid la
         -- fornisce -> nessuno ha l'aura (header grigio). Nessuna azione.
+        end   -- fine if col.kind ~= "durability"
     end
 
     RLSuite.debugBuffs = sets
@@ -2803,10 +3271,119 @@ function RF:_DebugMemberBuffSet(member)
     return sets[member.name] or {}
 end
 
+-- ============================================================
+-- DURABILITY (colonna "Dur" della matrice Raid Buffs)
+-- In 3.3.5 GetInventoryItemBroken(unit, slot) funziona su QUALSIASI unit:
+-- quindi "rotto" si vede per tutti. La percentuale, invece, si legge solo
+-- sul proprio pg (GetInventoryItemDurability non prende l'unita'): per gli
+-- altri la cella si colora in base a "nessun oggetto rotto". In debug il
+-- roster e' finto: l'ULTIMO GRUPPO con membri ha attrezzatura rotta, cosi'
+-- avviso e tooltip restano provabili come per le categorie di buff.
+-- ============================================================
+function RF:_LastMemberGroup()
+    if RLSuite.DebugMode and RLSuite:DebugMode() then
+        local last = 1
+        for _, m in ipairs(RLSuite:DebugRoster()) do
+            local g = m.subgroup or 1
+            if g > last then last = g end
+        end
+        return last
+    end
+    -- Fuori dal debug la simulazione non serve (i membri non sono fake).
+    return 0
+end
+
+function RF:MemberDurability(member, group)
+    if not member then return { state = "unknown", broken = 0 } end
+    self._durCache = self._durCache or {}
+    local key = member.name or member.unit or "?"
+    local stamp = self._durStamp or 0
+    local cached = self._durCache[key]
+    if cached and cached.stamp == stamp then return cached end
+
+    local broken, pct, known = 0, nil, true
+    if member.fake and RLSuite.DebugMode and RLSuite:DebugMode() then
+        local g = group or member.subgroup or 1
+        if g >= self:_LastMemberGroup() then broken = 1 end
+        pct = 100
+    else
+        local unit = member.unit
+        if unit and GetInventoryItemBroken then
+            for i = 1, #RF_DUR_SLOTS do
+                local slot = RF_DUR_SLOTS[i]
+                local link = GetInventoryItemLink and GetInventoryItemLink(unit, slot)
+                if link and GetInventoryItemBroken(unit, slot) then
+                    broken = broken + 1
+                end
+            end
+        else
+            known = false
+        end
+        if unit == "player" and GetInventoryItemDurability then
+            for i = 1, #RF_DUR_SLOTS do
+                local cur, max = GetInventoryItemDurability(RF_DUR_SLOTS[i])
+                if cur and max and max > 0 then
+                    local p = cur / max * 100
+                    if not pct or p < pct then pct = p end
+                end
+            end
+        end
+    end
+
+    local state = "ok"
+    if not known then
+        state = "unknown"
+    elseif broken > 0 then
+        state = "broken"
+    elseif pct and pct < RF_DUR_ALERT_PCT then
+        state = "low"
+    end
+    local e = { state = state, broken = broken, pct = pct, known = known, stamp = stamp }
+    self._durCache[key] = e
+    return e
+end
+
+-- La cella e' "a posto" se non c'e' niente di rotto e la percentuale (quando
+-- nota) e' sopra la soglia. Ignota = a posto: non si accusa nessuno.
+function RF:_DurCellOk(st)
+    if not st then return true end
+    if st.broken and st.broken > 0 then return false end
+    if st.pct and st.pct < RF_DUR_ALERT_PCT then return false end
+    return true
+end
+
+function RF:_DurColor(st)
+    if not st or st.state == "unknown" then return 0.55, 0.55, 0.55 end
+    if st.state == "broken" then return 1, 0.15, 0.15 end
+    if st.state == "low" then return 1, 0.75, 0.15 end
+    return 0.2, 1, 0.2
+end
+
+function RF:_DurText(st)
+    if not st or st.state == "unknown" then return L["no data"], 0.6, 0.6, 0.6 end
+    if st.broken and st.broken > 0 then
+        return string.format(L["%d broken item(s)"], st.broken), 1, 0.35, 0.35
+    end
+    if st.pct then
+        if st.pct < RF_DUR_ALERT_PCT then
+            return string.format(L["%d%% durability"], st.pct), 1, 0.75, 0.15
+        end
+        return string.format(L["%d%% durability"], st.pct), 0.2, 1, 0.2
+    end
+    return L["no broken items"], 0.2, 1, 0.2
+end
+
 -- Icona della cella per un MEMBER: fake in debug -> set simulato (per
 -- spellId, tessera della spell reale); altrimenti -> scan aure reale.
-function RF:_BuffCellIconFor(member, col)
+function RF:_BuffCellIconFor(member, col, group)
     if not (member and col) then return nil end
+    if col.kind == "durability" then
+        -- Colonna di servizio: icona dell'equip, tinta dallo stato, e "has"
+        -- (per l'aggregato dell'intestazione) = attrezzatura a posto.
+        local st = self:MemberDurability(member, group)
+        local r, g, b = self:_DurColor(st)
+        return col.icon, nil, r, g, b, self:_DurCellOk(st)
+    end
     if member.fake and RLSuite.DebugMode and RLSuite:DebugMode() then
         local set = self:_DebugMemberBuffSet(member)
         if col.byNameSpell then

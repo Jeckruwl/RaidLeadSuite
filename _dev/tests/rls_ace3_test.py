@@ -2415,7 +2415,9 @@ check(bool(rt.eval("TANK_TBAR_FAKE")), "debug/fake tanks leave the target bar em
 check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn ~= nil and RLSuite.raidFrame.buffPanelBtn.label:GetText() == 'Raid Buffs'")), "'Raid Buffs' toggle button exists with its label")
 check(bool(rt.eval("(function() local b = RLSuite.raidFrame.buffPanelBtn; local p = b and b._points[#b._points]; local gh = RLSuite.raidFrame.groupHeaders[1]._points[#RLSuite.raidFrame.groupHeaders[1]._points]; return p ~= nil and p[1] == 'BOTTOMRIGHT' and p[3] == 'TOPLEFT' and gh ~= nil and math.abs((p[5] or 0) - (gh[5] or 0)) < 0.001 end)()")), "'Raid Buffs' button aligned like the G1 header: bottom edge on the G1 text line below the tank target bars")
 check(bool(rt.eval("RLSuite.raidFrame.buffPanel == nil")), "no floating side panel: the buff matrix is PART of the raid frame")
-check(bool(rt.eval("#RLSuite.raidFrame:_MatrixCols() == 25")), "25 visible columns (all Icy-Veins raid-buff categories incl. AP%%, DR%%, Heal+, Repl, SpellHaste; flask/food excluded)")
+check(bool(rt.eval("_G.RLS_MC_N == nil or true")) and bool(rt.eval(
+    "(function() local n = 0 local d = 0 for _, c in ipairs(RLSuite.raidFrame:_MatrixCols()) do n = n + 1 if c.kind == 'durability' then d = d + 1 end end "
+    "return (n == 26 and d == 1) end)()")), "26 visible columns: the 25 Icy-Veins raid-buff categories (flask/food excluded) + the Durability service column")
 rt.execute("""
 local function colHas(key, id)
     for _, c in ipairs(RLSuite.raidBuffColumns) do
@@ -2464,13 +2466,15 @@ BP_ON = (RLSuite.raidFrame.buffMatrixOn == true)
 local cols = RLSuite.raidFrame:_MatrixCols()
 BP_PRIO1 = (cols[1].key == 'stats')
 NC = #cols
-BP_PRIOLAST = (cols[NC].key == 'retAura')
+BP_PRIOLAST = (cols[NC].key == 'durability') and (cols[NC - 1].key == 'retAura')
 BP_HDR1 = (RLSuite.raidFrame._buffHdrBtns[1]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true
     and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture ~= nil
     and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BUFFCATICONS', 1, true) ~= nil
     and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BCI_0.tga', 1, true) ~= nil)
-BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[NC]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture ~= nil
-    and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture:find('BCI_' .. (NC - 1) .. '.tga', 1, true) ~= nil)
+BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[NC - 1]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[NC - 1]._icon._texture ~= nil
+    and RLSuite.raidFrame._buffHdrBtns[NC - 1]._icon._texture:find('BCI_' .. (NC - 2) .. '.tga', 1, true) ~= nil)
+BP_HDRDUR = (RLSuite.raidFrame._buffHdrBtns[NC]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture ~= nil
+    and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture:find('PaperDoll', 1, true) ~= nil)
 BP_HDR_ICONSZ = (RLSuite.raidFrame._buffHdrBtns[1]._icon._w == (RLSuite.raidFrame:LayoutMetrics().iconSize + RLSuite.raidFrame:LayoutMetrics().iconSpacing)
     and RLSuite.raidFrame._buffHdrBtns[1]._icon._h == (RLSuite.raidFrame:LayoutMetrics().iconSize + RLSuite.raidFrame:LayoutMetrics().iconSpacing))
 BP_HDR_H = (RLSuite.raidFrame._buffHdrBtns[1].height == 80 or (RLSuite.raidFrame._buffHdrBtns[1]._h == 80) or true)
@@ -2528,7 +2532,8 @@ RB_RGB0 = BP_PSLOT._matrixBg and BP_PSLOT._matrixBg._texRGBA
 check(bool(rt.eval("BP_ON")), "click on 'Raid Buffs' activates the matrix")
 check(bool(rt.eval("BP_PRIO1")), "most important buffs first: column 1 is the Kings/stats column")
 check(bool(rt.eval("BP_PRIOLAST")), "least priority last: retribution-aura column closes the row")
-check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "column headers show the user's BCI icons (media/BUFFCATICONS/BCI_<c-1>.tga, current column order): one direct SetTexture, no fallbacks")
+check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "buff column headers show the user's BCI icons (media/BUFFCATICONS/BCI_<c-1>.tga, same indices as before: the new column is appended last)")
+check(bool(rt.eval("BP_HDRDUR")), "the Durability header uses its own game icon (paperdoll equip slot), not a BCI file")
 check(bool(rt.eval("BP_HDR_ICONSZ")), "header icons are square with fixed size = iconSize + iconSpacing (the column pitch)")
 check(bool(rt.eval("BP_HDR_TOP")), "G1 header attaches to the BOTTOM of its permanent strip zone; icons live in the zone above the text")
 check(bool(rt.eval("BP_LAYOUT_DONE")), "matrix header build can never abort ApplyLayout half-way: whole layout completes (groups + backdrop + cells)")
@@ -2554,7 +2559,9 @@ BP_HOVER_ON, BP_HOVER_OFF, BP_HOVER_TIP, BP_NODATA_HOVER = false, false, false, 
 if av then
     av._scripts.OnEnter(av)
     BP_HOVER_ON = (av._icon._vertex ~= nil and av._icon._vertex[1] == 1 and av._icon._vertex[2] == 1 and av._icon._vertex[3] == 1)
-    BP_HOVER_TIP = (GameTooltip._text == av._col.label)
+    BP_HOVER_TIP = (RLSuite.raidFrame._buffCatTip ~= nil
+        and RLSuite.raidFrame._buffCatTip:IsShown() == true
+        and RLSuite.raidFrame._buffCatTip._title._text == av._col.label)
     av._scripts.OnLeave(av)
     BP_HOVER_OFF = (av._icon._vertex[1] == 0.8 and av._icon._vertex[2] == 0.8)
 end
@@ -2572,6 +2579,7 @@ for i = n0 + 1, #CHAT_LOG do
 end
 """)
 check(bool(rt.eval("BP_HOVER_ON")), "hovering an AVAILABLE category icon lights it up (full brightness)")
+check(bool(rt.eval("BP_HOVER_TIP")), "header hover: the custom category tip shows the category name (providers + assignment live there)")
 check(bool(rt.eval("BP_HOVER_OFF")), "hover-exit dims the icon again")
 check(bool(rt.eval("BP_HOVER_TIP")), "hovering a category icon shows its name in the tooltip")
 # (il caso "categoria non disponibile" e' verificato in modo deterministico
@@ -7893,6 +7901,248 @@ RLSuite.groupmaking.whisperDB.entries = {}
 RLSuite.db.profile.debug = saved
 """)
 check(bool(rt.eval("V87W.n == 10 and V87W.parsed == 10")), "v1.11.89: i 10 whisper finti del test Whisplist vengono riletti dal parser (classe+spec+GS) -- %s" % rt.eval("table.concat(V87W.bad, ' | ')"))
+# =====================================================================
+# v1.11.90 — Raid Frame: durability, fade per distanza, ctrl-click buff,
+#            assegnazione dei buff (tooltip custom + drag + whisper)
+# =====================================================================
+rt.execute("""
+local RFM = RLSuite.raidFrame
+V90 = {}
+-- Roster di prova: player + 2 paladini (fornitori di MP5) + 2 warrior + un mago.
+RLSuite:ResetDebugRaid()
+RLSuite:DebugInviteAccept("Holymoon", "PALADIN")
+RLSuite:DebugInviteAccept("Lightwall", "PALADIN")
+RLSuite:DebugInviteAccept("Drakbot", "WARRIOR")
+RLSuite:DebugInviteAccept("Ironclad", "WARRIOR")
+RLSuite:DebugInviteAccept("Zapdora", "MAGE")
+RFM.buffMatrixOn = true
+RFM:Rebuild()
+RFM:ApplyLayout()
+RFM._durStamp = (RFM._durStamp or 0) + 1      -- forza il ricalcolo della durability
+RFM:RefreshBuffMatrix()
+
+-- --- font dei CD ---
+local cd = RFM.rows[1] and RFM.rows[1].cdIcons and RFM.rows[1].cdIcons[1]
+V90.cd_font = cd and cd.timer and cd.timer._fontArgs and cd.timer._fontArgs[2]
+
+-- --- durability: colonna di servizio in fondo, con l'icona dell'equip ---
+local cols = RFM:_MatrixCols()
+V90.n_cols = #cols
+V90.dur_key = cols[#cols].key
+V90.dur_kind = cols[#cols].kind
+V90.dur_icon = tostring(cols[#cols].icon)
+V90.dur_hdr = tostring(RFM._buffHdrBtns[#cols] and RFM._buffHdrBtns[#cols]._icon._texture)
+local function durTintSlot(slot)
+    local tex = slot and slot._buffCells and slot._buffCells[#cols]
+    return tex and tex._vertex
+end
+local function findSlot(pred)
+    for _, slot in ipairs(RFM.slots) do if pred(slot) then return slot end end
+end
+-- Senza le API di inventario (caso "nessun dato") il proprio pg e' GRIGIO:
+-- non si accusa nessuno per un'informazione che non c'e'.
+V90.tint_nodata = durTintSlot(findSlot(function(sl) return sl.member and sl.member.isPlayer end))
+-- Con le API: verde per chi ha l'attrezzatura a posto...
+GetInventoryItemLink = function() return "|Hitem:1|h[Item]|h" end
+GetInventoryItemBroken = function() return false end
+GetInventoryItemDurability = function() return 100, 100 end
+RFM._durCache = nil
+RFM._durStamp = (RFM._durStamp or 0) + 1
+RFM:RefreshBuffMatrix()
+V90.tint_g1 = durTintSlot(findSlot(function(sl) return sl.member and sl.member.fake and sl.group == 1 end))
+-- ...e ROSSA per l'ultimo gruppo (simulazione debug: oggetti rotti)
+V90.tint_g2 = durTintSlot(findSlot(function(sl) return sl.member and sl.member.fake and sl.group == 2 end))
+-- stato della categoria: chi ha roba rotta finisce nell'elenco
+local st = RFM:BuffCoverage(cols[#cols])
+V90.dur_satisfied = st and st.satisfied
+V90.dur_missing = st and table.concat(st.missing, ",")
+local txt, r, g, b = RFM:_BuffStatusText(st)
+V90.dur_text = tostring(txt)
+V90.dur_text_red = (r == 1 and g == 0.35)
+-- la durability non ha fornitori: mai un'assegnazione
+V90.dur_providers = #RFM:BuffProviders(cols[#cols])
+
+-- --- durability: alert (click sull'icona) ---
+local n0 = #CHAT_LOG
+local hbDur = RFM._buffHdrBtns[#cols]
+hbDur._scripts.OnClick(hbDur, "LeftButton")
+V90.dur_warn = CHAT_LOG[#CHAT_LOG]
+
+-- --- durability del PROPRIO pg: % letta, sotto soglia = "low" ---
+GetInventoryItemDurability = function(slot) return 12, 100 end
+RFM._durCache = nil
+RFM._durStamp = (RFM._durStamp or 0) + 1
+local meSt = RFM:MemberDurability({ name = "Testplayer", unit = "player" })
+V90.me_state = meSt.state
+V90.me_pct = meSt.pct
+V90.me_ok = RFM:_DurCellOk(meSt)
+GetInventoryItemDurability = function() return 100, 100 end
+RFM._durCache = nil
+RFM._durStamp = (RFM._durStamp or 0) + 1
+local meSt2 = RFM:MemberDurability({ name = "Testplayer", unit = "player" })
+V90.me_state2 = meSt2.state
+GetInventoryItemDurability = nil
+GetInventoryItemBroken = nil
+GetInventoryItemLink = nil
+
+-- --- fade per distanza ---
+UnitInRange = function(unit)
+    if unit == "raid3" then return true, 12 end
+    if unit == "raid4" then return true, 34 end
+    return false, nil
+end
+V90.y_near = RFM:UnitDistanceYards("raid3")
+V90.y_far = RFM:UnitDistanceYards("raid4")
+V90.y_offgrid = RFM:UnitDistanceYards("raid5")
+V90.y_player = RFM:UnitDistanceYards("player")
+local app = RLSuite.db.profile.raidframe.appearance
+app.distanceFade = 25
+app.distanceAlpha = 0.35
+local rNear, rFar = nil, nil
+for _, r in ipairs(RFM.rows) do
+    if r.slot == 2 then rNear = r elseif r.slot == 4 then rFar = r end
+end
+rNear.unit = "raid3"
+rFar.unit = "raid4"
+RFM:ApplyDistanceFade(rNear)
+RFM:ApplyDistanceFade(rFar)
+V90.fade_near = rNear._alpha
+V90.fade_far = rFar._alpha
+app.distanceFade = 0
+RFM:ApplyDistanceFade(rFar)
+V90.fade_off = rFar._alpha
+-- le barre MT/OT non vengono toccate dal fade (restano piene)
+V90.tanks_untouched = true
+for _, t in ipairs(RFM.tankSlots or {}) do
+    if t._fadeAlpha and t._fadeAlpha ~= 1 then V90.tanks_untouched = false end
+end
+
+-- --- CTRL+click sulla barra del nome: avviso buff mancanti a quel player ---
+local origWhisper = RLSuite.utils.Whisper
+local SENT = {}
+RLSuite.utils.Whisper = function(self2, name, msg) SENT[#SENT+1] = tostring(name) .. "|" .. tostring(msg) end
+local origIconFor = RFM._BuffCellIconFor
+RFM._BuffCellIconFor = function(self2, member, col, group)
+    -- "nessuna aura addosso": cosi' l'avviso ha davvero qualcosa da elencare
+    -- (in debug il simulatore riempie le categorie coperte dalla comp).
+    if col and col.kind == "durability" then return origIconFor(self2, member, col, group) end
+    return nil
+end
+IsControlKeyDown = function() return true end
+local row = RFM.rows[2]
+row._targetT = nil
+RFM:RowPlainClick(row, "LeftButton")
+V90.ctrl_sent = SENT[1]
+V90.ctrl_target = row.member.name
+V90.ctrl_no_target = (row._targetT == nil)
+SENT = {}
+IsControlKeyDown = function() return false end
+RFM:RowPlainClick(row, "LeftButton")
+V90.plain_sent = SENT[1]
+V90.plain_target = (row._targetT ~= nil)
+RFM._BuffCellIconFor = origIconFor
+IsControlKeyDown = nil
+RLSuite.utils.Whisper = origWhisper
+
+-- --- assegnazione dei buff ---
+local mp5, mp5Idx
+for i, c in ipairs(cols) do if c.key == "mp5" then mp5, mp5Idx = c, i end end
+V90.mp5_nil = (RFM:GetBuffAssign(mp5) == nil)
+local provs = RFM:BuffProviders(mp5)
+V90.prov_n = #provs
+V90.prov_names = ""
+V90.prov_buff = ""
+for _, pr in ipairs(provs) do
+    V90.prov_names = V90.prov_names .. pr.member.name .. ","
+    V90.prov_buff = tostring(pr.buff)
+end
+-- tooltip: non assegnata -> elenco fornitori "<nome>: <buff>"
+RFM:ShowBuffCatTip(mp5, RFM._buffHdrBtns[mp5Idx])
+local tip = RFM._buffCatTip
+V90.tip_shown = (tip:IsShown() == true)
+V90.tip_title = tostring(tip._title._text)
+V90.tip_unassigned = tostring(tip._assign._text)
+V90.tip_status = tostring(tip._status._text)
+V90.tip_prov_label = tostring(tip._provLabel._text)
+V90.tip_row1 = tostring(tip._rows[1] and tip._rows[1]._text._text)
+V90.tip_row2 = tostring(tip._rows[2] and tip._rows[2]._text._text)
+-- assegnata -> "Assigned to: <nome>"
+RFM:SetBuffAssign(mp5, "Holymoon")
+V90.tip_assigned = tostring(tip._assign._text)
+V90.assign_stored = tostring(RFM:GetBuffAssign(mp5))
+-- drag del nome dal tooltip all'icona della categoria
+RFM:SetBuffAssign(mp5, nil)
+RFM:_StartAssignDrag("Lightwall", mp5)
+V90.drag_on = (RFM._assignDrag ~= nil and RFM._assignGhost:IsShown() == true)
+local hb = RFM._buffHdrBtns[mp5Idx]
+hb.GetLeft = function() return 100 end
+hb.GetRight = function() return 120 end
+hb.GetBottom = function() return 100 end
+hb.GetTop = function() return 116 end
+local savedGCP = GetCursorPosition
+GetCursorPosition = function() return 110, 108 end
+RFM:_DropAssignDrag()
+GetCursorPosition = savedGCP
+V90.drag_assigned = tostring(RFM:GetBuffAssign(mp5))
+V90.drag_off = (RFM._assignGhost:IsShown() == false)
+-- click destro sull'icona: toglie l'assegnazione
+RFM._buffHdrBtns[mp5Idx]._scripts.OnClick(RFM._buffHdrBtns[mp5Idx], "RightButton")
+V90.right_cleared = (RFM:GetBuffAssign(mp5) == nil)
+-- l'avviso della categoria whispera ANCHE all'assegnato
+RFM:SetBuffAssign(mp5, "Lightwall")
+SENT = {}
+RLSuite.utils.Whisper = function(self2, name, msg) SENT[#SENT+1] = tostring(name) .. "|" .. tostring(msg) end
+local n1 = #CHAT_LOG
+RFM:WarnBuffCategory(mp5)
+V90.warn_sent = SENT[1]
+V90.warn_raid = ""
+for i = #CHAT_LOG, n1, -1 do
+    if CHAT_LOG[i]:find("RAID_WARNING", 1, true) then V90.warn_raid = CHAT_LOG[i]; break end
+end
+RLSuite.utils.Whisper = origWhisper
+-- e senza assegnazione non whispera nessuno
+RFM:SetBuffAssign(mp5, nil)
+SENT = {}
+RLSuite.utils.Whisper = function(self2, name, msg) SENT[#SENT+1] = tostring(name) .. "|" .. tostring(msg) end
+RFM:WarnBuffCategory(mp5)
+V90.warn_sent_none = SENT[1]
+RLSuite.utils.Whisper = origWhisper
+RFM:HideBuffCatTip()
+UnitInRange = nil
+""")
+
+check(bool(rt.eval("V90.cd_font == 10")), "v1.11.90: i timer dei cooldown usano font 10 (prima 8): si leggono")
+check(bool(rt.eval("V90.dur_key == 'durability' and V90.dur_kind == 'durability'")), "v1.11.90: la colonna Durability e' una colonna di servizio della matrice (kind = durability)")
+check(bool(rt.eval("V90.n_cols == 26")), "v1.11.90: 26 colonne (25 categorie + Durability), la nuova e' l'ULTIMA a destra")
+check(bool(rt.eval("V90.dur_icon:find('PaperDoll', 1, true) ~= nil")), "v1.11.90: la colonna durability usa l'icona dell'equipaggiamento del client")
+check(bool(rt.eval("V90.dur_hdr:find('PaperDoll', 1, true) ~= nil")), "v1.11.90: l'intestazione Durability usa quell'icona (non un file BCI)")
+check(bool(rt.eval("V90.tint_g1 ~= nil and V90.tint_g1[1] == 0.2 and V90.tint_g1[2] == 1")), "v1.11.90: cella durability verde quando l'attrezzatura e' a posto")
+check(bool(rt.eval("V90.tint_g2 ~= nil and V90.tint_g2[1] == 1 and V90.tint_g2[2] == 0.15")), "v1.11.90: cella durability ROSSA quando ci sono oggetti rotti")
+check(bool(rt.eval("V90.dur_satisfied == false and V90.dur_missing ~= ''")), "v1.11.90: la categoria durability risulta NON soddisfatta e sa dire i nomi -- %s" % rt.eval("V90.dur_missing"))
+check(bool(rt.eval("V90.dur_text:find('Gear to repair', 1, true) ~= nil and V90.dur_text_red")), "v1.11.90: tooltip/stato della durability in rosso con l'elenco di chi deve riparare")
+check(bool(rt.eval("V90.dur_warn:find('RAID_WARNING', 1, true) ~= nil and V90.dur_warn:find('Gear check', 1, true) ~= nil")), "v1.11.90: click sull'icona Durability = raid warning di riparazione")
+check(bool(rt.eval("V90.dur_providers == 0")), "v1.11.90: la durability non ha fornitori (nessuna assegnazione possibile)")
+check(bool(rt.eval("V90.me_state == 'low' and V90.me_pct == 12 and V90.me_ok == false")), "v1.11.90: la durability del PROPRIO pg legge la percentuale (12%% = sotto soglia)")
+check(bool(rt.eval("V90.me_state2 == 'ok'")), "v1.11.90: con il 100%% di durability lo stato torna ok")
+check(bool(rt.eval("V90.y_near == 12 and V90.y_far == 34 and V90.y_offgrid == 999 and V90.y_player == 0")), "v1.11.90: distanza in yard (UnitInRange): vicino/lontano/fuori portata/proprio pg")
+check(bool(rt.eval("V90.fade_near == 1 and V90.fade_far == 0.35")), "v1.11.90: fade per distanza: entro la soglia barra piena, oltre la soglia trasparente al livello scelto")
+check(bool(rt.eval("V90.fade_off == 1")), "v1.11.90: con il fade spento (soglia 0) la barra torna piena")
+check(bool(rt.eval("V90.tanks_untouched == true")), "v1.11.90: le barre MT/OT non vengono toccate dal fade")
+check(bool(rt.eval("V90.ctrl_sent ~= nil and V90.ctrl_sent:find(V90.ctrl_target, 1, true) ~= nil")), "v1.11.90: CTRL+click sul nome whispera a QUEL player l'elenco dei buff mancanti -- %s" % rt.eval("tostring(V90.ctrl_sent)"))
+check(bool(rt.eval("V90.ctrl_sent:find('missing some raid buffs', 1, true) ~= nil and V90.ctrl_sent:find('MP5', 1, true) ~= nil")), "v1.11.90: il whisper elenca le categorie davvero mancanti a quel player")
+check(bool(rt.eval("V90.ctrl_no_target == true")), "v1.11.90: il CTRL+click non cambia il target (gesto solo di avviso)")
+check(bool(rt.eval("V90.plain_sent == nil and V90.plain_target == true")), "v1.11.90: senza CTRL il click continua a targettare come prima")
+check(bool(rt.eval("V90.mp5_nil == true and V90.prov_n == 2")), "v1.11.90: nessuna assegnazione di partenza e 2 fornitori di MP5 (i due paladini) -- %s" % rt.eval("V90.prov_names"))
+check(bool(rt.eval("V90.tip_shown == true and V90.tip_title == 'MP5'")), "v1.11.90: il tooltip della categoria si apre col nome della categoria")
+check(bool(rt.eval("V90.tip_unassigned == 'Not assigned'")), "v1.11.90: senza assegnazione il tooltip dice 'Not assigned'")
+check(bool(rt.eval("V90.tip_row1:find('PALADIN', 1, true) ~= nil and V90.tip_row1:find(':', 1, true) ~= nil")), "v1.11.90: l'elenco fornitori mostra '<nome player> (<classe>): <nome buff>' -- %s" % rt.eval("V90.tip_row1"))
+check(bool(rt.eval("V90.tip_row2:find('Lightwall', 1, true) ~= nil")), "v1.11.90: tutti i fornitori presenti sono elencati (2/2)")
+check(bool(rt.eval("V90.tip_assigned == 'Assigned to: Holymoon'")), "v1.11.90: assegnata, il tooltip mostra 'Assigned to: <nome player>'")
+check(bool(rt.eval("V90.drag_on == true and V90.drag_assigned == 'Lightwall' and V90.drag_off == true")), "v1.11.90: trascinando un nome del tooltip sull'icona la categoria viene assegnata (e il fantasma sparisce)")
+check(bool(rt.eval("V90.right_cleared == true")), "v1.11.90: click destro sull'icona = assegnazione rimossa")
+check(bool(rt.eval("V90.warn_sent ~= nil and V90.warn_sent:find('Lightwall', 1, true) ~= nil")), "v1.11.90: l'avviso di categoria whispera all'assegnato di provvedere col buff -- %s" % rt.eval("tostring(V90.warn_sent)"))
+check(bool(rt.eval("V90.warn_raid ~= '' and V90.warn_raid:find('MP5', 1, true) ~= nil")), "v1.11.90: l'avviso in raid resta (il whisper si aggiunge, non sostituisce) -- %s" % rt.eval("tostring(V90.warn_raid)"))
+check(bool(rt.eval("V90.warn_sent_none == nil")), "v1.11.90: senza assegnazione nessun whisper")
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
