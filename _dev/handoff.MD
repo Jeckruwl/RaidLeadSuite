@@ -7,7 +7,7 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.98**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.99**.
 
 ## COME L'UTENTE PRENDE GLI AGGIORNAMENTI (DECISIONE, 25/09)
 
@@ -43,6 +43,44 @@ L'installazione nel client passa dallo **zip `RaidLeadSuite-<versione>-AddOns.zi
 scompattato in `Interface/AddOns`, quindi va generato a OGNI versione insieme a
 `RaidLeadSuite-<versione>.zip` (repo). Non riproporre hook, symlink, junction,
 rsync, branch alternativi ne' il flip della struttura: tutto rifiutato.
+
+## 1.11.99 — Avviso di categoria: UNA riga in raid (via il whisper)
+
+Richiesta del raid leader: "elimina il secondo messaggio. usa solo il primo" con
+questo formato:
+
+    assegnata     -> Buff Check: Missing <nome buff> | <assegnato> Provide for: <nomi missing>
+    non assegnata -> Buff Check: Missing <categoria> | Provide for: <nomi missing>
+
+Esempio reale dalla suite (MP5 assegnato a Lightwall, tre player senza l'aura):
+
+    Buff Check: Missing Wisdom | Lightwall Provide for: Holymoon, Lightwall, Zapdora
+    Buff Check: Missing MP5 | Provide for: Holymoon, Lightwall, Zapdora
+
+* `RF:BuffAssignWhisper` **rimossa del tutto** (e con lei la chiamata in
+  `WarnBuffCategory`): niente piu' "Assignment: provide %stat for the raid."
+  all'assegnato. L'avviso in raid lo vede anche lui, una riga e basta.
+* Il nome del buff e' quello della tabella `RF_BUFF_SHORT` (1.11.93): `Kings`
+  per `%stat` di un paladino, `Wisdom` per `MP5` di un paladino, ecc. Se il
+  nome per quella classe non e' noto (o se l'assegnato non e' piu' un fornitore
+  di quella categoria) si scrive la **sigla della categoria**, mai un nome
+  inventato.
+* I casi senza nomi da citare restano i riquadri di riepilogo
+  (`Buff check: X - OK on everyone`, `X - n/m` per Focus Magic/Replenishment).
+  Per **Focus Magic** l'informazione storica resta in coda al nuovo formato:
+  `Buff Check: Missing Focus Magic | <assegnato> Provide for: <nomi> (1/2) -
+  mages missing: Mago2` (era una richiesta esplicita, il test la controlla).
+* **Le `|` in chat vanno mandate doppie** (`Utils:SanitizeChat` trasforma un `|`
+  letterale in `||`, altrimenti il client prova a leggerlo come escape di link):
+  in gioco il raid leader legge una pipe singola. Nei test quindi il check e'
+  spezzato in due meta' + un check dedicato che ricorda la regola.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1230 PASS**. Check: una sola riga in chat al
+click sull'icona (niente whisper, sia assegnata sia no), formato esatto nei due
+casi (nome buff + assegnato + Provide for coi nomi), nomi mancanti presenti in
+coda, pipe doppia nel canale, e il vecchio check di Focus Magic ancora verde.
 
 ## 1.11.98 — FIX: "rilascio senza bersaglio" lasciando il player sull'icona
 

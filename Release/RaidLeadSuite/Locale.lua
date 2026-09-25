@@ -383,6 +383,9 @@ L["Start the spammer first, then Whisp test sends the fake whispers."] = "Avvia 
     L["Left-click: buff check. Right-click: clear assignment."] = true
     L["%s assigned to %s."] = true
     L["Assignment removed for %s."] = true
+    -- Avviso di categoria (click sull'icona): UNA riga in raid warning
+    L["Buff Check: Missing %s | Provide for: %s"] = true
+    L["Buff Check: Missing %s | %s Provide for: %s"] = true
     L["Clear ignored items"] = true
     L["Removes every item from the ignore list: loot that was ignored starts being captured again."] = true
     L["Ignore list saved (%d items)."] = true

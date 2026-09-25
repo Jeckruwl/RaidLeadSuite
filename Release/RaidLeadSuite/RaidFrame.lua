@@ -2666,15 +2666,16 @@ end
 -- ============================================================
 -- ASSEGNAZIONE DEI BUFF (chi deve dare quale categoria)
 --   db.buffAssign = { [keyColonna] = "NomePlayer" }
--- Il tooltip della categoria NON e' piu' il GameTooltip: e' un frame custom
--- con la lista dei fornitori, perche' su quei nomi bisogna poter PREMERE e
--- TRASCINARE fino all'icona. Regole:
---   * non assegnata -> tooltip con "Provider:" e "<nome player>: <nome buff>"
---   * assegnata     -> tooltip con "Assigned to: <nome player>"
---   * trascina (o clicca) un nome del tooltip sull'icona = assegna
+-- Regole:
+--   * tooltip della categoria = GameTooltip, SOLO informativo (fornitori,
+--     assegnazione, stato)
+--   * si assegna trascinando la BARRA del giocatore (lo stesso drag che sposta
+--     di gruppo) e lasciandola sull'ICONA della categoria
 --   * click destro sull'icona = togli l'assegnazione
---   * click sinistro (avviso di categoria) = raid warning + whisper
---     all'assegnato, che deve provvedere col buff assegnato
+--   * click sinistro sull'icona = UNA riga in raid warning col formato:
+--       "Buff Check: Missing <buff> | <assegnato> Provide for: <nomi>"
+--     (senza assegnazione: "Buff Check: Missing <categoria> | Provide for: ...")
+--     NIENTE whisper all'assegnato: l'avviso in raid lo vede anche lui.
 -- ============================================================
 function RF:BuffAssignTable()
     if not self.db.buffAssign then self.db.buffAssign = {} end
@@ -2928,22 +2929,6 @@ function RF:NewBuffAssignDrag(col, name)
     return true
 end
 
--- Whisper all'assegnato quando si clicca l'icona della categoria: chi e'
--- assegnato deve provvedere col buff assegnato.
-function RF:BuffAssignWhisper(col)
-    local name = self:GetBuffAssign(col)
-    if not name or name == "" then return false end
-    local alerts = self.db.alerts or {}
-    local msg = alerts.buffassign
-    if not msg or msg == "" then
-        msg = string.format(L["Assignment: provide %s for the raid."],
-            col.label or col.key or "?")
-    end
-    msg = string.gsub(msg, "%$name", name)
-    RLSuite.utils:Whisper(name, msg)
-    rfDbg("assign whisper -> %s: %s", tostring(name), tostring(msg))
-    return true
-end
 
 -- Icona di intestazione: grigio scuro se la categoria NON e' disponibile con
 -- questa composizione; overlay rosso se e' disponibile ma il check non e'
@@ -3015,27 +3000,51 @@ function RF:WarnBuffCategory(col)
         end
     elseif st.available == false then
         msg = string.format(L["Buff check: %s - not available in this composition"], label)
-    elseif st.scope == "single" then
-        msg = string.format(L["Buff check: %s - %d/%d"], label, st.count, st.expected)
-        if #st.missingProviders > 0 then
-            msg = msg .. string.format(L[" - mages missing: %s"],
-                table.concat(st.missingProviders, ", "))
-        end
-    elseif st.scope == "capped" then
-        msg = string.format(L["Buff check: %s - %d/%d"], label, st.count, st.expected)
     elseif #st.missing == 0 then
-        msg = string.format(L["Buff check: %s - OK on everyone"], label)
+        -- Nessuno da citare: resta il riassunto (categoria disponibile e ok).
+        if st.scope == "single" then
+            msg = string.format(L["Buff check: %s - %d/%d"], label, st.count, st.expected)
+            if #st.missingProviders > 0 then
+                msg = msg .. string.format(L[" - mages missing: %s"],
+                    table.concat(st.missingProviders, ", "))
+            end
+        elseif st.scope == "capped" then
+            msg = string.format(L["Buff check: %s - %d/%d"], label, st.count, st.expected)
+        else
+            msg = string.format(L["Buff check: %s - OK on everyone"], label)
+        end
     else
-        msg = string.format(L["Buff check: %s - missing: %s"], label,
-            table.concat(st.missing, ", "))
+        -- FORMATO CHIESTO DAL RAID LEADER, una sola riga in raid:
+        --   assegnata     -> "Buff Check: Missing <nome buff> | <assegnato> Provide for: <nomi>"
+        --   non assegnata -> "Buff Check: Missing <categoria> | Provide for: <nomi>"
+        -- Se la categoria e' assegnata si scrive il NOME DEL BUFF di chi deve
+        -- farlo ("Kings" per %stat di un paladino), non la sigla; se il nome
+        -- per quella classe non e' noto resta la sigla della categoria.
+        local who = table.concat(st.missing, ", ")
+        local assign = self:GetBuffAssign(col)
+        local title = label
+        if assign and assign ~= "" then
+            local short = self:_BuffAssignShort(col, assign)
+            if short then title = short end
+            msg = string.format(L["Buff Check: Missing %s | %s Provide for: %s"],
+                title, assign, who)
+        else
+            msg = string.format(L["Buff Check: Missing %s | Provide for: %s"], title, who)
+        end
+        -- Focus Magic: si tiene ANCHE il conteggio e il nome del mago che non
+        -- l'ha ancora data (informazione chiesta a suo tempo, resta in coda).
+        if st.scope == "single" then
+            msg = msg .. string.format(" (%d/%d)", st.count, st.expected)
+            if #st.missingProviders > 0 then
+                msg = msg .. string.format(L[" - mages missing: %s"],
+                    table.concat(st.missingProviders, ", "))
+            end
+        end
     end
     if #msg > 240 then msg = msg:sub(1, 237) .. "..." end
     if RLSuite.utils and RLSuite.utils.SendChat then
         RLSuite.utils:SendChat(msg, "RAID_WARNING")
     end
-    -- Chi e' assegnato a questa categoria riceve anche il whisper: l'avviso
-    -- in raid dice cosa manca, il whisper dice a CHI tocca provvedere.
-    self:BuffAssignWhisper(col)
 end
 
 -- ============================================================

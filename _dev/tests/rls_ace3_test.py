@@ -8142,25 +8142,37 @@ V90.no_group_move = (V90.roster_before == V90.roster_after)
 -- click destro sull'icona: toglie l'assegnazione
 RFM._buffHdrBtns[mp5Idx]._scripts.OnClick(RFM._buffHdrBtns[mp5Idx], "RightButton")
 V90.right_cleared = (RFM:GetBuffAssign(mp5) == nil)
--- l'avviso della categoria whispera ANCHE all'assegnato
+-- AVVISO DI CATEGORIA (click sull'icona): UNA sola riga in raid warning.
+-- Assegnata a Lightwall (paladino) -> col NOME DEL BUFF, non con la sigla.
+-- In debug il simulatore riempie le categorie coperte dalla comp: per provare
+-- l'avviso si azzera la lettura delle aure di MP5.
+local origIconFor2 = RFM._BuffCellIconFor
+RFM._BuffCellIconFor = function(self2, member, col2, group)
+    if col2 and col2.key == "mp5" then return nil end
+    return origIconFor2(self2, member, col2, group)
+end
 RFM:SetBuffAssign(mp5, "Lightwall")
-SENT = {}
-RLSuite.utils.Whisper = function(self2, name, msg) SENT[#SENT+1] = tostring(name) .. "|" .. tostring(msg) end
 local n1 = #CHAT_LOG
 RFM:WarnBuffCategory(mp5)
-V90.warn_sent = SENT[1]
 V90.warn_raid = ""
 for i = #CHAT_LOG, n1, -1 do
     if CHAT_LOG[i]:find("RAID_WARNING", 1, true) then V90.warn_raid = CHAT_LOG[i]; break end
 end
-RLSuite.utils.Whisper = origWhisper
--- e senza assegnazione non whispera nessuno
+V90.warn_lines = #CHAT_LOG - n1
+-- senza assegnazione: solo la categoria
 RFM:SetBuffAssign(mp5, nil)
-SENT = {}
-RLSuite.utils.Whisper = function(self2, name, msg) SENT[#SENT+1] = tostring(name) .. "|" .. tostring(msg) end
+local n2 = #CHAT_LOG
 RFM:WarnBuffCategory(mp5)
-V90.warn_sent_none = SENT[1]
-RLSuite.utils.Whisper = origWhisper
+V90.warn_raid_none = ""
+for i = #CHAT_LOG, n2, -1 do
+    if CHAT_LOG[i]:find("RAID_WARNING", 1, true) then V90.warn_raid_none = CHAT_LOG[i]; break end
+end
+V90.warn_lines_none = #CHAT_LOG - n2
+V90.warn_missing_names = table.concat((function()
+    local st = RFM:BuffCoverage(mp5)
+    return st.missing or {}
+end)(), ", ")
+RFM._BuffCellIconFor = origIconFor2
 RFM:HideBuffCatTip()
 UnitInRange = nil
 """)
@@ -8211,10 +8223,13 @@ check(bool(rt.eval("V90.hdr_glow ~= nil and V90.hdr_glow[1] == 1 and V90.hdr_glo
 check(bool(rt.eval("V90.drag_assigned == 'Lightwall' and V90.drag_cleared == true")), "v1.11.97: lasciando la barra sull'icona la categoria va a quel giocatore")
 check(bool(rt.eval("V90.no_group_move == true")), "v1.11.97: e il giocatore NON viene spostato di gruppo")
 check(bool(rt.eval("V90.right_cleared == true")), "v1.11.90: click destro sull'icona = assegnazione rimossa")
-check(bool(rt.eval("V90.warn_sent ~= nil and V90.warn_sent:find('Lightwall', 1, true) ~= nil")), "v1.11.90: l'avviso di categoria whispera all'assegnato di provvedere col buff -- %s" % rt.eval("tostring(V90.warn_sent)"))
-check(bool(rt.eval("V90.warn_sent:find('Assignment: provide MP5 for the raid.', 1, true) ~= nil and V90.warn_sent:find('Hey', 1, true) == nil")), "v1.11.92: anche il whisper all'assegnato e' diretto: 'Assignment: provide <buff> for the raid.'")
-check(bool(rt.eval("V90.warn_raid ~= '' and V90.warn_raid:find('MP5', 1, true) ~= nil")), "v1.11.90: l'avviso in raid resta (il whisper si aggiunge, non sostituisce) -- %s" % rt.eval("tostring(V90.warn_raid)"))
-check(bool(rt.eval("V90.warn_sent_none == nil")), "v1.11.90: senza assegnazione nessun whisper")
+check(bool(rt.eval("V90.warn_lines == 1")), "v1.11.99: click sull'icona = UNA sola riga (niente piu' il whisper all'assegnato) -- %s" % rt.eval("tostring(V90.warn_raid)"))
+check(bool(rt.eval("V90.warn_raid:find('Buff Check: Missing Wisdom', 1, true) ~= nil and V90.warn_raid:find('Lightwall Provide for:', 1, true) ~= nil")), "v1.11.99: formato assegnato: 'Buff Check: Missing <nome buff> | <assegnato> Provide for: <nomi>' -- %s" % rt.eval("tostring(V90.warn_raid)"))
+check(bool(rt.eval("V90.warn_raid:find('||', 1, true) ~= nil")), "v1.11.99: la pipe del separatore arriva in chat doppia (un '|' letterale in chat si scrive cosi': in gioco si legge singolo)")
+check(bool(rt.eval("V90.warn_missing_names ~= '' and V90.warn_raid:find(V90.warn_missing_names, 1, true) ~= nil")), "v1.11.99: in coda ci sono i NOMI di chi non l'ha -- %s" % rt.eval("tostring(V90.warn_missing_names)"))
+check(bool(rt.eval("V90.warn_raid ~= '' and V90.warn_raid:find('Buff Check', 1, true) ~= nil")), "v1.11.90: l'avviso in raid resta (una riga sola, il whisper non c'e' piu') -- %s" % rt.eval("tostring(V90.warn_raid)"))
+check(bool(rt.eval("V90.warn_lines_none == 1")), "v1.11.99: anche senza assegnazione una sola riga")
+check(bool(rt.eval("V90.warn_raid_none:find('Buff Check: Missing MP5', 1, true) ~= nil and V90.warn_raid_none:find('Provide for:', 1, true) ~= nil")), "v1.11.99: formato non assegnato: 'Buff Check: Missing <categoria> | Provide for: <nomi>' -- %s" % rt.eval("tostring(V90.warn_raid_none)"))
 print("\n== v1.11.91: doppio roll ignorato (vale solo il primo) ==")
 rt.execute("""
 local lm = RLSuite.lootManager
