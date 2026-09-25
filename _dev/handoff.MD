@@ -11,15 +11,29 @@ target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Version
 
 ## COME L'UTENTE PRENDE GLI AGGIORNAMENTI (DECISIONE, 25/09)
 
-Niente hook, niente sparse-checkout, niente script: la post-merge hook e'
-stata **SCARTATA** dall'utente ("senza hook del cavolo"). Vuole una cosa sola:
+Niente hook, niente script: la post-merge hook e' stata **SCARTATA** dall'utente
+("senza hook del cavolo"). Meccanismo accettato, una volta sola nel clone:
 
+    git sparse-checkout set --no-cone '/Release/'
     git pull
 
-sulla **repo intera** (un `git clone` una volta, poi sempre `git pull`). Se in
-un clone e' rimasto il sparse dei giri precedenti, una volta sola:
+Da li' in poi `git pull` e basta, e nel suo clone arriva **solo `Release/`**
+(richiesta esplicita: "quando faccio pull voglio solo release"): README.md e
+`_dev/` restano nel repo su GitHub ma non scendono nel suo clone. Verificato:
+il pull di un commit che tocca `Release/` porta il file, un commit in `_dev/`
+non porta niente in locale. Va detto una volta e non ripetuto: `git pull` non
+puo' "saltare" file tracciati senza sparse-checkout — sono le regole di git.
 
-    git sparse-checkout disable
+Conseguenza da rispettare: nel checkout l'addon e' una **sottocartella**
+(`Release/RaidLeadSuite/`), quindi un clone dentro `Interface/AddOns/` NON e'
+caricabile dal gioco — git non sa promuovere una sottocartella a radice del
+checkout, e la struttura della repo resta quella (scelta esplicita dell'utente).
+L'installazione nel client passa dallo **zip `RaidLeadSuite-<versione>-AddOns.zip`**
+scompattato in `Interface/AddOns`, quindi va generato a OGNI versione insieme a
+`RaidLeadSuite-<versione>.zip` (repo). Non riproporre hook, symlink, junction,
+rsync ne' branch alternativi: tutto rifiutato. Se un giorno vuole che il solo
+`git pull` basti anche per il gioco, l'unica strada e' spostare l'addon in
+radice alla repo: chiedere prima.
 
 Conseguenza da rispettare: nel checkout l'addon e' una **sottocartella**
 (`Release/RaidLeadSuite/`), quindi un clone dentro `Interface/AddOns/` NON e'
@@ -710,15 +724,13 @@ tutti i file non dell'addon in una directory separata e ignorata dai git pull"*.
   - per NON averli nel proprio client: un comando una volta sola
     (`git sparse-checkout set --no-cone '/*' '!/_dev/'`, git >= 2.25), poi
     `git pull` non li materializza piu'; `git sparse-checkout disable` annulla.
-  - CLIENT DELL'UTENTE — SOLUZIONE ADOTTATA (24/09): il clone sta in
+  - CLIENT DELL'UTENTE — hook SCARTATA dall'utente il 25/09 (vedi la sezione in
+    testa al file; questo paragrafo resta solo come storia). Il clone sta in
     `Interface/AddOns/RaidLeadSuite` e il gioco carica QUELLA cartella, ma
     l'addon e' in `Release/RaidLeadSuite`: git non sa promuovere una
     sottocartella a radice (nessuna impostazione di remote/source lo fa).
-    Quindi: hook `post-merge` che copia `Release/RaidLeadSuite` nella radice del
-    clone (script: `_dev/client-sync-hook.sh`) + `.git/info/exclude` per tenere
-    pulito `git status`. Da li' in poi **basta `git pull`** e l'addon in gioco e'
-    aggiornato (verificato con un push di prova e un pull). Se il clone viene
-    rifatto, l'hook va reinstallato (una riga).
+    L'hook `post-merge` che copiava `Release/RaidLeadSuite` nella radice del
+    clone e' stato rifiutato: non riproporlo, e lo script non e' piu' nel repo.
   - varianti testate: con
     `git sparse-checkout set --no-cone '/Release/RaidLeadSuite/'` il suo clone
     materializza SOLO l'addon (105 file, niente `_dev`, niente README); con
