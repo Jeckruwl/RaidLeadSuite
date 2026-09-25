@@ -7,7 +7,59 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.92**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.93**.
+
+## 1.11.93 — Nell'avviso, se la categoria e' assegnata si scrive il NOME DEL BUFF
+
+Richiesta: "voglio che il buff sia messo con il nome del buff se e' assegnato
+invece della categoria (se ho assegnato %stat ad un pally voglio che ci sia
+scritto Kings)".
+
+In `SendMissingBuffsAlert` (CTRL+click sul nome) l'elenco ora scrive:
+
+    Missing buffs on Holymoon: Kings(Lightwall), Int, Armor, MP5, ATK, ...
+
+Cioe': categoria **assegnata** -> nome del buff di chi deve farlo; categoria
+senza assegnatario -> sigla come prima (nessuno da citare). La risoluzione:
+
+* `RF:BuffShortName(col, class)` legge `RF_BUFF_SHORT[key][CLASSE]`, tabella
+  locale a `RaidFrame.lua` accanto alle altre costanti (commentata: "solo per il
+  TESTO"). E' l'UNICO posto dove il nome del buff e' scritto a mano; se la
+  categoria o la classe non sono in tabella si torna alla sigla, mai un nome
+  inventato a meta'.
+* `RF:_BuffAssignShort(col, assign)` cerca l'assegnatario fra i fornitori
+  presenti (`BuffProviders`) e prende la sua classe: se non e' in raid (o non e'
+  un fornitore di quella categoria) non si azzarda niente -> sigla.
+* `MissingBuffEntries` porta con se' il campo `buff` accanto a `label`;
+  `MissingBuffLabels` resta la versione "solo sigle" (usata altrove).
+
+La tabella copre le categorie della matrice: `stats` PALADIN = Kings, `mp5`
+PALADIN = Wisdom / SHAMAN = Mana Spring, `atkpower` PALADIN = Might / WARRIOR =
+Battle Shout, `hp` WARRIOR = Commanding Shout / WARLOCK = Blood Pact, `spirit`
+= Divine Spirit / Fel Intel, `stamina` = Fortitude, `intellect` = Arcane Int /
+Fel Intel, `armor` = Devotion / Mark of the Wild, `wild` = Gift of the Wild,
+`strAgi` = Horn of Winter / Strength of Earth, `focusMagic` = Focus Magic,
+`haste` = Moonkin / Swift Ret, `spellCrit` = Moonkin / Elemental Oath, `shadow`
+= Shadow Prot, `retAura` = Retribution, `meleeCrit` = Leader of the Pack /
+Rampage, `meleeHaste` = Windfury / Icy Talons, `spellPower` = Demonic Pact /
+Totem of Wrath, `damage` = Fero Inspiration / Sanctified Ret, `apIncrease` =
+Trueshot / Unleashed Rage / Abom Might, `dmgReduction` = Sanctuary,
+`healReceived` = Tree of Life, `physReduction` = Ancestral Healing /
+Inspiration, `spellHaste` = Wrath of Air. **`replen` (Repl) non e' in tabella
+di proposito**: li' la sigla e' gia' chiara e i nomi per classe sono tanti;
+l'assegnato resta visibile fra parentesi.
+
+Nota: il nome corto vale SOLO per questo avviso. Il tooltip della categoria
+continua a mostrare i nomi veri di gioco (`Blessing of Kings` ecc. via
+`GetSpellInfo`) e la matrice/controlli non passano da questa tabella.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1187 PASS**. Controlli sul caso esatto del
+raid leader (`%stat` + paladino = `Kings`), sulla sigla che NON compare piu' nel
+messaggio, sul nome che cambia secondo la classe (`mp5`: pala = `Wisdom`, shaman
+= `Mana Spring`) e sui ripieghi (classe non fornitrice, categoria non in
+tabella, colonna di servizio, col nil) che restano sulla sigla.
 
 ## 1.11.92 — Avvisi diretti (raid leading, non giocosi)
 
@@ -20,6 +72,9 @@ Esempio reale dalla suite (raid warning, CTRL+click sul nome di Holymoon):
 
     Missing buffs on Holymoon: %stat(Lightwall), Int, Armor, MP5, ATK, HP,
     MCrit, FM, Dmg%, Haste, DR%, Heal+, Repl, Ret
+
+**NOME DEL BUFF al posto della sigla dalla 1.11.93: %stat(Lightwall) ->
+Kings(Lightwall). Vedi la sezione 1.11.93.**
 
 * `GetDefaultAlertMessage("buff")` -> `L["Missing buffs on $name:"]` (era "Hey
   $name, you're missing some raid buffs!"); il codice appende " " + elenco,

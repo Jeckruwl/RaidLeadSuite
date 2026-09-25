@@ -8040,7 +8040,12 @@ local firstCol
 for _, c in ipairs(cols) do
     if (c.label or c.key) == miss[1] then firstCol = c end
 end
+V90.first_key = firstCol and firstCol.key
 RFM:SetBuffAssign(firstCol, "Lightwall")
+-- il nome del BUFF dell'assegnatario (Lightwall = PALADIN): per %stat deve
+-- essere "Kings", non la sigla della categoria
+V90.assign_short = tostring(RFM:_BuffAssignShort(firstCol, "Lightwall"))
+V90.assign_none = tostring(RFM:_BuffAssignShort(firstCol, "Nessuno"))
 local n2 = #CHAT_LOG
 IsControlKeyDown = function() return true end
 row._targetT = nil
@@ -8153,9 +8158,13 @@ check(bool(rt.eval("V90.ctrl_target ~= nil and V90.ctrl_raid:find(V90.ctrl_targe
 check(bool(rt.eval("V90.ctrl_raid:find('Missing buffs on ', 1, true) ~= nil")), "v1.11.92: testo diretto da raid leading: 'Missing buffs on ...'")
 check(bool(rt.eval("V90.ctrl_raid:find('Hey', 1, true) == nil")), "v1.11.92: niente piu' 'Hey ... you're missing some raid buffs' (alert non piu' giocoso)")
 check(bool(rt.eval("V90.ctrl_target ~= nil and V90.ctrl_raid:find('Missing buffs on ' .. V90.ctrl_target .. ':', 1, true) ~= nil")), "v1.11.92: il nome sta subito dopo, col due punti -- %s" % rt.eval("tostring(V90.ctrl_raid)"))
-check(bool(rt.eval("V90.ctrl_raid:find(V90.miss_first .. '(Lightwall)', 1, true) ~= nil")), "v1.11.92: fra parentesi (attaccate) c'e' CHI deve provvedere -- %s" % rt.eval("tostring(V90.miss_first)"))
+check(bool(rt.eval("V90.ctrl_raid:find(V90.assign_short .. '(Lightwall)', 1, true) ~= nil")), "v1.11.93: la categoria assegnata compare col NOME DEL BUFF dell'assegnatario, non con la sigla -- %s" % rt.eval("tostring(V90.assign_short)"))
+check(bool(rt.eval("V90.assign_short == 'Kings' and V90.first_key == 'stats'")), "v1.11.93: %stat assegnato a un paladino si legge 'Kings' (esempio esatto del raid leader)")
+check(bool(rt.eval("V90.assign_none == 'nil'")), "v1.11.93: assegnatario che non e' un fornitore di quella categoria -> nessun nome inventato (si torna alla sigla)")
+check(bool(rt.eval("V90.ctrl_raid:find('Kings', 1, true) ~= nil and V90.ctrl_raid:find('%%stat', 1, true) == nil")), "v1.11.93: nel messaggio la sigla %stat NON compare piu': al suo posto il nome del buff")
 check(bool(rt.eval("V90.ctrl_raid:find(V90.miss_last, 1, true) ~= nil and V90.ctrl_raid:find(V90.miss_last .. '(', 1, true) == nil")), "v1.11.92: la categoria senza assegnatario resta senza parentesi (nessuno da citare)")
-check(bool(rt.eval("V90.ctrl_raid:find(V90.miss_first, 1, true) ~= nil and V90.ctrl_raid:find(V90.miss_last, 1, true) ~= nil")), "v1.11.91: il messaggio elenca davvero i buff mancanti, non solo il primo")
+
+check(bool(rt.eval("V90.ctrl_raid:find(V90.assign_short, 1, true) ~= nil and V90.ctrl_raid:find(V90.miss_last, 1, true) ~= nil")), "v1.11.91: il messaggio elenca davvero tutti i buff mancanti, non solo il primo (il primo col nome del buff)")
 check(bool(rt.eval("V90.ctrl_no_target == true")), "v1.11.90: il CTRL+click non cambia il target (gesto solo di avviso)")
 check(bool(rt.eval("V90.plain_sent == nil and V90.plain_target == true")), "v1.11.90: senza CTRL il click continua a targettare come prima")
 check(bool(rt.eval("V90.mp5_nil == true and V90.prov_n == 2")), "v1.11.90: nessuna assegnazione di partenza e 2 fornitori di MP5 (i due paladini) -- %s" % rt.eval("V90.prov_names"))
@@ -8230,6 +8239,26 @@ check(bool(rt.eval("DR_PRINT ~= '' and DR_PRINT:find('Furbetto', 1, true) ~= nil
 check(bool(rt.eval("DR_WINNER == 'Onesto'")), "v1.11.91: vince Onesto con 77 -- senza la correzione avrebbe vinto Furbetto col 99 del secondo roll")
 check(bool(rt.eval("DR_TIE_REROLL_BTN == true and DR_REROLL_N >= 1")), "v1.11.91: dopo un pareggio i pareggiati possono rollare di nuovo (il 'primo roll' riparte)")
 check(bool(rt.eval("DR_REROLL_ASSIGNED == 'Tankbot' or DR_REROLL_ASSIGNED == 'Healbot'")), "v1.11.91: lo spareggio si risolve e assegna l'oggetto a uno dei pareggiati")
+print("\n== v1.11.93: nome del buff dell'assegnato negli avvisi ==")
+rt.execute("""
+local RFM = RLSuite.raidFrame
+local cols = RFM:_MatrixCols()
+V93 = {}
+local function findCol(key)
+    for _, c in ipairs(cols) do if c.key == key then return c end end
+end
+V93.kings  = tostring(RFM:BuffShortName(findCol("stats"), "PALADIN"))
+V93.wisdom = tostring(RFM:BuffShortName(findCol("mp5"), "PALADIN"))
+V93.spring = tostring(RFM:BuffShortName(findCol("mp5"), "SHAMAN"))
+V93.rider  = tostring(RFM:BuffShortName(findCol("stats"), "MAGE"))     -- classe non fornitrice
+V93.repl   = tostring(RFM:BuffShortName(findCol("replen"), "MAGE"))    -- categoria senza nome corto
+V93.dur    = tostring(RFM:BuffShortName(findCol("durability"), "PALADIN"))
+V93.none   = tostring(RFM:BuffShortName(nil, "PALADIN"))
+""")
+check(bool(rt.eval("V93.kings == 'Kings'")), "v1.11.93: %stat + paladino = 'Kings'")
+check(bool(rt.eval("V93.wisdom == 'Wisdom' and V93.spring == 'Mana Spring'")), "v1.11.93: MP5 cambia nome secondo la classe che lo fa (pala = Wisdom, shaman = Mana Spring)")
+check(bool(rt.eval("V93.rider == 'nil'")), "v1.11.93: classe non fornitrice di quella categoria -> nessun nome (si usa la sigla)")
+check(bool(rt.eval("V93.repl == 'nil' and V93.dur == 'nil' and V93.none == 'nil'")), "v1.11.93: categoria/classe non in tabella (e colonna di servizio) -> nessun nome inventato")
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

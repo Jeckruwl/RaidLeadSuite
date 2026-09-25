@@ -1561,7 +1561,15 @@ function RF:MissingBuffEntries(member, group)
             local ctx = self:_BuffProviderContext(col, entries)
             if self:_BuffApplicable(member, col) and self:_BuffCoverable(col, ctx, group) then
                 if self:_BuffCellIconFor(member, col, group) == nil then
-                    out[#out + 1] = { label = col.label or col.key, assign = self:GetBuffAssign(col) }
+                    local assign = self:GetBuffAssign(col)
+                    -- Assente -> sigla della categoria. Assegnata -> NOME DEL
+                    -- BUFF di chi deve farlo (es. %stat assegnato a un pala =
+                    -- "Kings").
+                    out[#out + 1] = {
+                        label = col.label or col.key,
+                        assign = assign,
+                        buff = self:_BuffAssignShort(col, assign),
+                    }
                 end
             end
         end
@@ -1581,6 +1589,8 @@ end
 -- warning), diretto:
 --     Missing buffs on <nome>: <buff>(<chi lo fa>), <buff>, ...
 -- Nessun "Hey", nessun giro di parole: e' un messaggio da raid leading.
+-- Se la categoria e' assegnata si scrive il NOME DEL BUFF dell'assegnatario
+-- ("Kings(Lightwall)"), non la sigla della categoria.
 -- Non e' piu' un whisper al singolo: la richiesta era che l'avviso lo vedesse
 -- il raid. Se non manca niente non si manda niente in raid: lo dice solo al
 -- leader.
@@ -1599,14 +1609,17 @@ function RF:SendMissingBuffsAlert(row)
         RLSuite.utils:Print(string.format(L["%s has all the raid buffs."], name))
         return false
     end
-    -- "MP5(Lightwall)": il nome del buff e, fra parentesi, chi deve farlo.
-    -- Se nessuno e' assegnato resta il solo nome del buff (nessuno da citare).
+    -- "Kings(Lightwall)": nome del BUFF di chi lo deve fare e, fra parentesi,
+    -- il suo nome. Se nessuno e' assegnato resta la sigla della categoria
+    -- (nessuno da citare); se la categoria e' assegnata ma il buff per quella
+    -- classe non e' in tabella, sempre la sigla.
     local parts = {}
     for _, e in ipairs(entries) do
+        local nm = e.buff or e.label
         if e.assign and e.assign ~= "" then
-            parts[#parts + 1] = string.format("%s(%s)", e.label, e.assign)
+            parts[#parts + 1] = string.format("%s(%s)", nm, e.assign)
         else
-            parts[#parts + 1] = e.label
+            parts[#parts + 1] = nm
         end
     end
     local list = table.concat(parts, ", ")
@@ -2683,6 +2696,65 @@ function RF:BuffProviders(col)
 end
 
 local RF_TIP_ROWS = 10
+
+-- ============================================================
+-- NOME DEL BUFF NEGLI AVVISI
+-- Quando la categoria e' ASSEGNATA, l'avviso in raid non scrive la sigla
+-- della categoria ma il nome del buff che quel giocatore deve fare:
+-- "%stat(Lightwall)" diventa "Kings(Lightwall)". E' la stessa informazione
+-- che il raid leader ha in testa quando assegna, e in un raid warning vale
+-- piu' della sigla.
+-- Tabella [keyColonna][CLASSE] = nome del buff. Solo per il TESTO: i controlli
+-- della matrice, il tooltip e i log non passano di qui. Se la categoria o la
+-- classe non sono elencate resta la sigla della categoria (mai un nome
+-- inventato a meta').
+local RF_BUFF_SHORT = {
+    stats        = { PALADIN = "Kings" },
+    mp5          = { PALADIN = "Wisdom", SHAMAN = "Mana Spring" },
+    atkpower     = { PALADIN = "Might", WARRIOR = "Battle Shout" },
+    hp           = { WARRIOR = "Commanding Shout", WARLOCK = "Blood Pact" },
+    spirit       = { PRIEST = "Divine Spirit", WARLOCK = "Fel Intel" },
+    stamina      = { PRIEST = "Fortitude" },
+    intellect    = { MAGE = "Arcane Int", WARLOCK = "Fel Intel" },
+    armor        = { PALADIN = "Devotion", DRUID = "Mark of the Wild" },
+    wild         = { DRUID = "Gift of the Wild" },
+    strAgi       = { DEATHKNIGHT = "Horn of Winter", SHAMAN = "Strength of Earth" },
+    focusMagic   = { MAGE = "Focus Magic" },
+    haste        = { DRUID = "Moonkin", PALADIN = "Swift Ret" },
+    spellCrit    = { DRUID = "Moonkin", SHAMAN = "Elemental Oath" },
+    shadow       = { PRIEST = "Shadow Prot" },
+    retAura      = { PALADIN = "Retribution" },
+    meleeCrit    = { DRUID = "Leader of the Pack", WARRIOR = "Rampage" },
+    meleeHaste   = { SHAMAN = "Windfury", DEATHKNIGHT = "Icy Talons" },
+    spellPower   = { WARLOCK = "Demonic Pact", SHAMAN = "Totem of Wrath" },
+    damage       = { HUNTER = "Fero Inspiration", PALADIN = "Sanctified Ret" },
+    apIncrease   = { HUNTER = "Trueshot", SHAMAN = "Unleashed Rage", DEATHKNIGHT = "Abom Might" },
+    dmgReduction = { PALADIN = "Sanctuary" },
+    healReceived = { DRUID = "Tree of Life" },
+    physReduction = { SHAMAN = "Ancestral Healing", PRIEST = "Inspiration" },
+    spellHaste   = { SHAMAN = "Wrath of Air" },
+}
+
+-- Nome del buff per quella categoria e quella classe (nil se non lo sappiamo).
+function RF:BuffShortName(col, class)
+    if not (col and class) then return nil end
+    local m = RF_BUFF_SHORT[col.key]
+    if not m then return nil end
+    return m[class]
+end
+
+-- Nome del buff dell'ASSEGNATARIO di quella categoria: si cerca fra i fornitori
+-- presenti (se non e' piu' in raid, o non e' un fornitore di quella categoria,
+-- si torna alla sigla: nessun nome dato a caso).
+function RF:_BuffAssignShort(col, assign)
+    if not (col and assign and assign ~= "") then return nil end
+    for _, p in ipairs(self:BuffProviders(col)) do
+        if p.member and p.member.name == assign then
+            return self:BuffShortName(col, p.member.class)
+        end
+    end
+    return nil
+end
 
 function RF:_EnsureBuffCatTip()
     if self._buffCatTip then return self._buffCatTip end
