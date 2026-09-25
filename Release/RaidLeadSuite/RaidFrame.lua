@@ -2754,7 +2754,6 @@ function RF:ShowBuffCatTip(col, anchorBtn)
         f._provLabel:SetText(L["No provider available"])
     end
 
-    local y = -70
     local shown = 0
     for i = 1, #f._rows do f._rows[i]:Hide() end
     for i = 1, math.min(#provs, RF_TIP_ROWS) do
@@ -2788,7 +2787,18 @@ function RF:ShowBuffCatTip(col, anchorBtn)
     local a = anchorBtn or f
     f:ClearAllPoints()
     if a and a.GetLeft then
-        f:SetPoint("BOTTOMLEFT", a, "TOPLEFT", 0, 2)
+        local top = a.GetTop and a:GetTop()
+        local uiph = UIParent and UIParent.GetHeight and UIParent:GetHeight()
+        local h = f:GetHeight()
+        if type(top) ~= "number" then top = nil end
+        if type(uiph) ~= "number" then uiph = nil end
+        if type(h) ~= "number" then h = 0 end
+        if top and uiph and (top + h + 4) > uiph then
+            -- icona troppo in alto: il tooltip scende sotto l'icona
+            f:SetPoint("TOPLEFT", a, "BOTTOMLEFT", 0, -2)
+        else
+            f:SetPoint("BOTTOMLEFT", a, "TOPLEFT", 0, 2)
+        end
     else
         f:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 200)
     end
@@ -2819,7 +2829,12 @@ function RF:_AssignGhost()
     g:SetScript("OnUpdate", function(s)
         if not GetCursorPosition then return end
         local x, y = GetCursorPosition()
-        if x then s:ClearAllPoints(); s:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x + 12, y - 8) end
+        if not x then return end
+        -- GetCursorPosition e' in pixel fisici: si riporta alla scala dell'interfaccia
+        local sc = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        if not sc or sc == 0 then sc = 1 end
+        s:ClearAllPoints()
+        s:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", (x / sc) + 12, (y / sc) - 8)
     end)
     self._assignGhost = g
     return g

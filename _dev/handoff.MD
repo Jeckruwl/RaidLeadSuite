@@ -114,6 +114,9 @@ Da `db.buffAssign` (creato al volo: `{ [keyColonna] = "NomePlayer" }`).
   l'hit-test dell'header sotto il cursore (`_BuffHeaderAtCursor`) e assegna;
   se il rilascio non e' su nessuna icona vale la categoria del tooltip di
   partenza. Print di conferma: `"<nome> assigned to <categoria>."`
+* Se l'icona e' in alto il tooltip si apre **sotto** l'icona (altrimenti
+  uscirebbe dallo schermo); il "fantasma" segue il cursore tenendo conto della
+  scala dell'interfaccia (`GetCursorPosition` da' pixel fisici).
 * **Click destro** sull'icona = rimozione dell'assegnazione (non era nella
   richiesta, ma senza non si poteva piu' disfare l'assegnazione: se il raid
   leader non lo vuole, si toglie in una riga).
