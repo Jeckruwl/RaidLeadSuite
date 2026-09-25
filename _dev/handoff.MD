@@ -7,9 +7,44 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.88**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.89**.
 
-## 1.11.88 — Parser classe/spec/GS secondo la tabella dell'utente
+## 1.11.89 — Regola generale: nessuno spazio obbligatorio
+
+Chiarimento del raid leader: PREFIX, BODY e SUFFIX possono essere ATTACCATI fra
+loro, in tutte le combinazioni. Esempi suoi: `fdudu`, `UDK`, `MMHunt`, `6kGS`,
+`gs6,5k`.
+
+Non e' un caso speciale: e' la stessa grammatica con lo spazio reso opzionale.
+`ParseClassSpec` ora, per ogni parola che non sia gia' un corpo di classe,
+prova a SEGMENTARLA in `[prefisso][corpo][suffisso]`:
+
+* le lettere a sinistra del corpo devono essere un PREFISSO vero della classe,
+  quelle a destra un SUFFISSO vero (o un plurale "s"/"es"): funzionano
+  `protpala`, `retpala`, `holypala`, `fdudu`, `dudubear`, `restodudu`,
+  `mmhunt`, `bmhunt`, `udk`, `bdk`, `fdk`, `afflock`, `destrolock`,
+  `furywar`, `restosham`, `beastmasteryhunt`;
+* se le lettere restanti NON sono alias della classe, non si tocca niente: e'
+  il motivo per cui "Warmane" non diventa un warrior e "warmane warlock" resta
+  Warlock ("war" + "mane" non e' un prefisso/suffisso valido);
+* un corpo che porta gia' la spec (Boomkin/Boomie/Disco) NON accetta ne'
+  prefisso ne' suffisso attaccati, come da tabella;
+* il plurale e' riconosciuto: `warriors`, `rogues`, `warlocks`, `paladins`
+  danno la classe (e la spec se il resto del messaggio la dice);
+* prefisso e suffisso ATTACCATI insieme valgono solo dove la tabella li ammette
+  (il ferale: `fdudubear` -> Feral Bear); altrove la classe resta e la spec
+  cade, come per le forme con gli spazi (`protpala holy` -> PALADIN);
+* il prefisso puo' essere di due parole, attaccate o no (`beastmastery hunt`,
+  `beast mastery hunt`, `mm hunt`).
+
+GS: gli spazi erano gia' opzionali, quindi valgono `6kgs`, `5500gs`, `gs6,5k`,
+`6KGS`, `6,5kgs`. Le lettere del GS restano fuori dal parser ("kgs"/"kg" fra le
+parole ignorate), cosi' "udk 6kgs" legge 6000 senza sporcare la classe.
+
+Scelta: se la classe si riconosce ma la spec no, si tiene la CLASSE (come per
+le forme con gli spazi); "feral"/"f" da soli restano "Feral" (decide il RL).
+
+## 1.11.89 — Parser classe/spec/GS secondo la tabella dell'utente
 
 Il file delle regole e' `_dev/Class_Spec_and_GS_parser.md` (lo ha caricato
 l'utente). 1.11.87 = prima stesura; 1.11.88 = le tre correzioni chieste dal
@@ -87,7 +122,7 @@ Scelte fuori tabella:
 4. una forma corta NUDA non e' un GS ("6"), ma "gs 6" si' (forma corta col
    prefisso, come da chiarimento del raid leader).
 
-Test: 1127 PASS (11 nuovi; ~165 forme della tabella in un blocco solo, GS incluso).
+Test: 1129 PASS (13 nuovi; ~212 forme della tabella in un blocco solo, GS incluso).
 
 ## 1.11.86 — Fill Raid: 24 finti e buff generati dalla COMPOSIZIONE
 
