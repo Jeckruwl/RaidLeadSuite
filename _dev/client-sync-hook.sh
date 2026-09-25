@@ -1,6 +1,10 @@
 #!/bin/sh
 # RLSuite — sync del client dell'utente.
 #
+# *** SCARTATO DALL'UTENTE (25/09/2026): niente hook, niente script. ***
+# Vuole solo "git pull" sulla repo intera. File tenuto come riferimento
+# tecnico, NON riproporlo (vedi _dev/handoff.MD, in testa).
+#
 # PROBLEMA: l'addon vive in Release/RaidLeadSuite/ dentro il repo, ma il gioco
 # carica SOLO la cartella AddOns/RaidLeadSuite/ (il .toc deve stare li').
 # Git non sa "promuovere" una sottocartella a radice del checkout: non esiste

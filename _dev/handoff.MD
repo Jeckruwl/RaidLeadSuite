@@ -9,6 +9,27 @@ Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.94**.
 
+## COME L'UTENTE PRENDE GLI AGGIORNAMENTI (DECISIONE, 25/09)
+
+Niente hook, niente sparse-checkout, niente script: la post-merge hook e'
+stata **SCARTATA** dall'utente ("senza hook del cavolo"). Vuole una cosa sola:
+
+    git pull
+
+sulla **repo intera** (un `git clone` una volta, poi sempre `git pull`). Se in
+un clone e' rimasto il sparse dei giri precedenti, una volta sola:
+
+    git sparse-checkout disable
+
+Conseguenza da rispettare: nel checkout l'addon e' una **sottocartella**
+(`Release/RaidLeadSuite/`), quindi un clone dentro `Interface/AddOns/` NON e'
+caricabile dal gioco — git non sa promuovere una sottocartella a radice del
+checkout, e la struttura della repo resta quella (scelta esplicita dell'utente).
+L'installazione nel client passa dallo **zip `RaidLeadSuite-<versione>-AddOns.zip`**
+scompattato in `Interface/AddOns`, quindi va generato a OGNI versione insieme a
+`RaidLeadSuite-<versione>.zip` (repo). Non riproporre hook, symlink, junction,
+rsync, branch alternativi ne' il flip della struttura: tutto rifiutato.
+
 ## 1.11.94 — Loot: category "projectiles" + LISTA IGNORA (ctrl+click, config)
 
 Due richieste del raid leader.
