@@ -7,7 +7,7 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.94**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.95**.
 
 ## COME L'UTENTE PRENDE GLI AGGIORNAMENTI (DECISIONE, 25/09)
 
@@ -43,6 +43,29 @@ L'installazione nel client passa dallo **zip `RaidLeadSuite-<versione>-AddOns.zi
 scompattato in `Interface/AddOns`, quindi va generato a OGNI versione insieme a
 `RaidLeadSuite-<versione>.zip` (repo). Non riproporre hook, symlink, junction,
 rsync, branch alternativi ne' il flip della struttura: tutto rifiutato.
+
+## 1.11.95 — FIX: la voce Loot non compariva nel pannello Config
+
+L'utente: "non vedo loot in config". Causa: il pannello ha **due liste** della
+navigazione — la tabella opzioni (`BuildOptionsTable`) E l'albero AceGUI
+(`CATEGORIES` + mappa `NODES`, righe ~74-101 di `Config.lua`). Nella 1.11.94 avevo
+aggiunto il gruppo solo alla prima: il contenuto c'era gia', ma **senza la voce
+nell'albero non c'era modo di aprirlo**. Aggiunte:
+
+* `CATEGORIES` -> `{ value = "loot", text = "Loot" }` (subito prima di Debug);
+* `NODES["loot"] = { "loot" }`.
+
+**Regola per il futuro:** una pagina nuova di Config vuole SEMPRE tre cose —
+gruppo in `BuildOptionsTable`, voce in `CATEGORIES`, voce in `NODES`. Se manca
+la seconda o la terza, la pagina non si vede.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1211 PASS**. Il check storico "tree lists the
+reformed 7 categories" era proprio quello che teneva fuori `loot` (`CATS.loot
+== nil`): aggiornato a 8 categorie + check dedicato che `Loot` sta nell'albero,
+che selezionandolo `OnNodeSelected` apre il percorso `loot` (non una pagina
+vuota) e che dentro ci sono il campo multiriga, il clear e le 5 categorie.
 
 ## 1.11.94 — Loot: category "projectiles" + LISTA IGNORA (ctrl+click, config)
 

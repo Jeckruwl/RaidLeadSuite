@@ -853,7 +853,8 @@ check(rt.eval("HUD_COUNT") == 0, "Macro editor 'Show HUD' (HUD on/off) button re
 
 # The navigation tree lists the reformed 7 categories, with the Macro Editor as a node.
 rt.execute("local t = RLSuite.config.tree.tree; CATS = {}; for _,n in ipairs(t) do CATS[n.value] = n end")
-check(bool(rt.eval("CATS.general ~= nil and CATS.modulemenu ~= nil and CATS.savedraids ~= nil and CATS.groupmaking ~= nil and CATS.macros ~= nil and CATS.raidframe ~= nil and CATS.debug ~= nil and CATS.ms == nil and CATS.loot == nil")), "tree lists the reformed 7 categories")
+check(bool(rt.eval("CATS.general ~= nil and CATS.modulemenu ~= nil and CATS.savedraids ~= nil and CATS.groupmaking ~= nil and CATS.macros ~= nil and CATS.raidframe ~= nil and CATS.debug ~= nil and CATS.ms == nil")), "tree lists the categories (8, MS still absent)")
+check(bool(rt.eval("CATS.loot ~= nil")), "v1.11.95: the tree lists 'Loot' too (it was only in the options table, so the panel hid it)")
 check(bool(rt.eval("CATS.macros.children[1].value == 'layout' and CATS.macros.children[2].value == 'editor'")), "Macros node has Bar Layout + Macro Editor children")
 check(bool(rt.eval("CATS.general.children == nil")), "General is a flat leaf (no children)")
 
@@ -8372,6 +8373,44 @@ check(bool(rt.eval("V94.ids == '99011,67890,333,'")), "v1.11.94: il testo accett
 check(bool(rt.eval("V94.dedup == false and V94.count_after_dedup == 3")), "v1.11.94: niente doppioni nella lista (aggiungere un id gia' presente non fa nulla)")
 check(bool(rt.eval("V94.toggle == true and V94.cat_from_cfg == true and V94.cb_from_cfg == true")), "v1.11.94: le 5 categorie ignorabili si comandano anche dalla configurazione (stessa scrittura della finestra)")
 check(bool(rt.eval("V94.cleared_n == 0 and V94.txt3 == ''")), "v1.11.94: 'Clear ignored items' svuota la lista e il campo torna vuoto")
+print("\n== v1.11.95: la voce Loot c'e' nell'albero del Config (non solo nelle opzioni) ==")
+rt.execute("""
+local CFG = RLSuite.config
+V95 = {}
+-- 1) l'albero di navigazione: le voci visibili nel pannello
+V95.values = {}
+local function walk(nodes)
+    for _, n in ipairs(nodes or {}) do
+        V95.values[#V95.values + 1] = tostring(n.value)
+        if n.children then walk(n.children) end
+    end
+end
+-- SetTree e' stato chiamato in CreateWindow: lo ripeto su un albero nuovo per
+-- leggere quello che il pannello riceve davvero.
+-- l'albero vero del pannello (le voci che l'utente vede a sinistra)
+local tree = CFG.tree and CFG.tree.tree
+V95.tree_created = (tree ~= nil)
+walk(tree)
+-- 2) selezionando la voce, il contenuto aperto deve essere il gruppo Loot
+local origFeed = CFG.FeedNode
+CFG.FeedNode = function(self2, path) V95.path = table.concat(path or {}, "/") end
+CFG:OnNodeSelected("loot")
+V95.current = tostring(CFG.currentNode)
+CFG.FeedNode = origFeed
+-- 3) il gruppo Loot ha davvero i controlli (campo lista + clear + categorie)
+local args = CFG:BuildOptionsTable().args.loot.args
+V95.list = (args.ignoreList ~= nil)
+V95.clear = (args.ignoreClear ~= nil)
+V95.cats = ((args.fRecipes and 1 or 0) + (args.fBoe and 1 or 0) + (args.fGems and 1 or 0)
+    + (args.fShards and 1 or 0) + (args.fProjectiles and 1 or 0))
+CFG:OnNodeSelected("general")
+""")
+check(bool(rt.eval("V95.tree_created == true and V95.values ~= nil")), "v1.11.95: (setup) albero del Config catturato")
+_has = rt.eval("(function() for _, v in ipairs(V95.values) do if v == 'loot' then return true end end return false end)()")
+_names = rt.eval("table.concat(V95.values, ',')")
+check(bool(_has), "v1.11.95: 'Loot' e' nell'albero di navigazione del pannello -- %s" % _names)
+check(bool(rt.eval("V95.path == 'loot' and V95.current == 'loot'")), "v1.11.95: selezionando 'Loot' il pannello apre il gruppo loot (non una pagina vuota)")
+check(bool(rt.eval("V95.list == true and V95.clear == true and V95.cats == 5")), "v1.11.95: dentro Loot ci sono il campo lista ignora, il clear e le 5 categorie")
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

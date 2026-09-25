@@ -78,6 +78,9 @@ local CATEGORIES = {
     } },
     { value = "raidframe", text = "Raid Frame" },
     { value = "savedraids", text = "Saved Raids" },
+    -- Lista ignora degli item di loot (v1.11.94): la voce va anche QUI,
+    -- non solo nella tabella opzioni, altrimenti nel pannello non compare.
+    { value = "loot", text = "Loot" },
     { value = "debug", text = "Debug" },
 }
 
@@ -94,6 +97,7 @@ local NODES = {
     -- positions e alerts sono stati eliminati dal pannello).
     ["raidframe"]          = { "raidframe" },
     ["savedraids"]         = { "savedraids" },
+    ["loot"]               = { "loot" },
     ["debug"]              = { "debug" },
 }
 
