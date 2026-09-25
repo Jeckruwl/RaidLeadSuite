@@ -8500,6 +8500,58 @@ check(bool(rt.eval("V97.no_assign_offgrid == true")), "v1.11.97: lasciando la ba
 check(bool(rt.eval("V97.right_cleared == true")), "v1.11.97: click destro sull'icona = assegnazione tolta")
 
 
+print("\n== v1.11.98: il rilascio sull'icona trova la categoria anche con la scala UI ==")
+rt.execute("""
+local RFM = RLSuite.raidFrame
+local cols = RFM:_MatrixCols()
+V98 = {}
+local atk, aidx
+for i, c in ipairs(cols) do if c.key == 'atkpower' then atk, aidx = c, i end end
+local slot
+for _, sl in ipairs(RFM.slots) do if sl.member and sl.member.name == 'Drakbot' then slot = sl end end
+RFM:SetBuffAssign(atk, nil)
+
+-- Icona: rettangolo 200..220 x 100..116 in COORDINATE UI, scala effettiva 0.8
+-- (come un client con UI non al 100%): il cursore e' in pixel FISICI.
+local hb = RFM._buffHdrBtns[aidx]
+hb.GetLeft = function() return 200 end
+hb.GetRight = function() return 220 end
+hb.GetBottom = function() return 100 end
+hb.GetTop = function() return 116 end
+hb.GetEffectiveScale = function() return 0.8 end
+local saved = GetCursorPosition
+-- centro dell'icona in pixel fisici = coordinate UI * scala
+GetCursorPosition = function() return 210 * 0.8, 108 * 0.8 end
+V98.hit_center = (RFM:_BuffHeaderAtCursor() == hb)
+RFM:_StartDragFromSlot(slot)
+RFM:_FinishDrag()
+V98.assigned_scaled = tostring(RFM:GetBuffAssign(atk))
+-- bordo dell'icona (dentro il margine): deve prendere lo stesso
+RFM:SetBuffAssign(atk, nil)
+GetCursorPosition = function() return (200 - 5) * 0.8, (116 + 5) * 0.8 end
+V98.hit_margin = (RFM:_BuffHeaderAtCursor() == hb)
+RFM:_StartDragFromSlot(slot)
+RFM:_FinishDrag()
+V98.assigned_margin = tostring(RFM:GetBuffAssign(atk))
+-- lontano: nessuna assegnazione, nessun errore
+RFM:SetBuffAssign(atk, nil)
+GetCursorPosition = function() return 9000, 9000 end
+V98.hit_far = (RFM:_BuffHeaderAtCursor() == nil)
+RFM:_StartDragFromSlot(slot)
+RFM:_FinishDrag()
+V98.assigned_far = tostring(RFM:GetBuffAssign(atk))
+-- scala 1 (client normale): deve continuare a funzionare
+hb.GetEffectiveScale = function() return 1 end
+GetCursorPosition = function() return 210, 108 end
+V98.hit_scale1 = (RFM:_BuffHeaderAtCursor() == hb)
+GetCursorPosition = saved
+RFM:SetBuffAssign(atk, nil)
+""")
+check(bool(rt.eval("V98.hit_center == true")), "v1.11.98: con la scala UI (0.8) il cursore sull'icona viene riconosciuto (prima: pixel fisici vs coordinate UI -> mai trovata)")
+check(bool(rt.eval("V98.assigned_scaled == 'Drakbot'")), "v1.11.98: rilasciando li' la categoria viene assegnata (niente piu' 'rilascio senza bersaglio')")
+check(bool(rt.eval("V98.hit_margin == true and V98.assigned_margin == 'Drakbot'")), "v1.11.98: un rilascio a 5 px dal bordo icona vale lo stesso (margine di 8 px)")
+check(bool(rt.eval("V98.hit_far == true and V98.assigned_far == 'nil'")), "v1.11.98: lontano dalle icone non si assegna niente (comportamento invariato)")
+check(bool(rt.eval("V98.hit_scale1 == true")), "v1.11.98: con la scala a 1 (client normale) l'hit-test resta identico")
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

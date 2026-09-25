@@ -1793,6 +1793,11 @@ function RF:_FinishDrag()
             self:MoveSlot(src, t)
         else
             rfDbg("drag: rilascio senza bersaglio (annullo)")
+            -- Diagnostica utile per il raid leader: eri sopra la finestra del
+            -- Raid Frame ma non su un'icona? Allora non e' un'assegnazione.
+            if self:IsCursorOverFrame() then
+                rfDbg("drag: cursore sulla finestra Raid Frame ma NON su un'icona di categoria")
+            end
         end
     end
     self._dropActive = nil
@@ -2790,6 +2795,9 @@ function RF:_BuffAssignShort(col, assign)
 end
 
 local RF_TIP_ROWS = 10
+-- Margine (px UI) attorno all'icona di categoria per il rilascio del drag:
+-- un drop "sull'icona" non deve chiedere la precisione al pixel.
+local RF_HDR_DROP_MARGIN = 8
 
 -- ============================================================
 -- TOOLTIP DELLA CATEGORIA: SOLO INFORMATIVO
@@ -2879,15 +2887,29 @@ end
 
 
 -- Icona di categoria sotto il cursore (hit-test sui rettangoli dei bottoni).
+-- Icona di categoria sotto il cursore (hit-test sui rettangoli dei bottoni).
+-- SCALA, stessa regola di _SlotUnderCursor: GetCursorPosition da' pixel
+-- FISICI, GetLeft/GetTop coordinate nella scala effettiva del bottone. Senza
+-- normalizzare (x / scale) il confronto non becca MAI l'icona e il rilascio
+-- finisce in "nessun bersaglio": era il difetto segnalato dal raid leader.
+-- C'e' anche un margine (RF_HDR_DROP_MARGIN): lasciare un player sull'icona
+-- non deve richiedere la precisione al pixel.
 function RF:_BuffHeaderAtCursor()
     if not GetCursorPosition then return nil end
     local x, y = GetCursorPosition()
-    if not x then return nil end
+    if not x or not y then return nil end
+    local margin = RF_HDR_DROP_MARGIN
     for c, btn in ipairs(self._buffHdrBtns or {}) do
         if btn and btn:IsShown() then
+            local scale = (btn.GetEffectiveScale and btn:GetEffectiveScale()) or 1
+            if not (scale and scale > 0) then scale = 1 end
+            local cx, cy = x / scale, y / scale
             local l, r = btn:GetLeft(), btn:GetRight()
             local b, t = btn:GetBottom(), btn:GetTop()
-            if l and r and b and t and x >= l and x <= r and y >= b and y <= t then
+            if type(l) == "number" and type(r) == "number"
+                and type(b) == "number" and type(t) == "number"
+                and cx >= (l - margin) and cx <= (r + margin)
+                and cy >= (b - margin) and cy <= (t + margin) then
                 return btn, c
             end
         end

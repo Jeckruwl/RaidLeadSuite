@@ -7,7 +7,7 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.97**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.98**.
 
 ## COME L'UTENTE PRENDE GLI AGGIORNAMENTI (DECISIONE, 25/09)
 
@@ -43,6 +43,40 @@ L'installazione nel client passa dallo **zip `RaidLeadSuite-<versione>-AddOns.zi
 scompattato in `Interface/AddOns`, quindi va generato a OGNI versione insieme a
 `RaidLeadSuite-<versione>.zip` (repo). Non riproporre hook, symlink, junction,
 rsync, branch alternativi ne' il flip della struttura: tutto rifiutato.
+
+## 1.11.98 — FIX: "rilascio senza bersaglio" lasciando il player sull'icona
+
+Segnalazione: trascinando un giocatore dalle barre e lasciandolo sulla matrice
+il Raid Frame rispondeva "rilascio senza bersaglio". Causa: nel mio
+`_BuffHeaderAtCursor` (hit-test dell'icona di categoria) confrontavo
+`GetCursorPosition()` — che da' **pixel FISICI** — con `GetLeft/GetTop`
+dell'icona, che sono in **coordinate UI** (scala effettiva del frame). Con un
+client con UI non al 100%, o con la scala del Raid Frame diversa da 1, il
+confronto non becca MAI l'icona. E' lo stesso errore gia' documentato e risolto
+per le barre in `_SlotUnderCursor` ("SCALA: ... il cursore va riportato in QUELLA
+scala"), che infatti funziona.
+
+Fix: `_BuffHeaderAtCursor` normalizza come `_SlotUnderCursor`
+(`cx, cy = x / btn:GetEffectiveScale()`), controlla che i numeri siano numeri, e
+accetta un **margine di `RF_HDR_DROP_MARGIN` = 8 px UI** attorno all'icona (un
+drop "sull'icona" non deve chiedere la precisione al pixel: copre anche i buchi
+da 8 px dell'`iconSpacing` predefinito).
+
+Diagnostica in piu': se il rilascio non trova bersaglio **ed** il cursore e' sulla
+finestra del Raid Frame, la traccia dice
+"cursore sulla finestra Raid Frame ma NON su un'icona di categoria" — cosi' un
+gesto a vuoto si spiega da solo invece di sembrare un bug.
+
+Il resto del gesto non cambia: icona accesa durante il drag, assegnazione della
+categoria a quel giocatore, NESSUNO spostamento di gruppo (verificato dai test
+confrontando il roster prima e dopo).
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1227 PASS**. Check nuovi, tutti con icona a
+scala 0.8 e cursore in pixel fisici come nel client reale: centro icona
+riconosciuto, drop che assegna (`Drakbot`), 5 px fuori dal bordo che valgono
+(margine), drop lontano che non assegna niente, e scala 1 che resta identica.
 
 ## 1.11.97 — Tooltip categoria INFORMATIVO + assegnazione col drag delle BARRE
 
