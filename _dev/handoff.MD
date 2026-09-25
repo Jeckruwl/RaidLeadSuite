@@ -7,7 +7,7 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.95**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.96**.
 
 ## COME L'UTENTE PRENDE GLI AGGIORNAMENTI (DECISIONE, 25/09)
 
@@ -43,6 +43,45 @@ L'installazione nel client passa dallo **zip `RaidLeadSuite-<versione>-AddOns.zi
 scompattato in `Interface/AddOns`, quindi va generato a OGNI versione insieme a
 `RaidLeadSuite-<versione>.zip` (repo). Non riproporre hook, symlink, junction,
 rsync, branch alternativi ne' il flip della struttura: tutto rifiutato.
+
+## 1.11.96 — Tooltip categoria: grafica del tooltip di gioco (era inguardabile)
+
+Segnalazione dell'utente: "i tooltip di raid buffs fanno schio, sono trasparenti
+e non si legge... ti avevo solo chiesto di cambiare il contenuto".
+
+**Colpa mia, e la causa e' precisa:** dalla 1.11.90 il tooltip della categoria
+NON e' il GameTooltip ma un frame custom (`RLSuiteBuffCatTip`) — serve perche' il
+GameTooltip di WoW non sa contenere righe cliccabili/trascinabili, e le righe
+fornitore devono essere trascinabili per l'assegnazione. Solo che in
+`_EnsureBuffCatTip` chiamavo `RLSuite.utils:WindowBackdrop(f)` **buttando via il
+valore di ritorno**: quel helper restituisce la tabella del backdrop, non la
+applica, e il colore va impostato a parte (come fa `SkinBox`/`SkinFrame`). Senza
+`SetBackdropColor` il backdrop rende col **default (bianco, 50%)**: il riquadro
+sembrava trasparente e il testo si perdeva.
+
+Fix: il frame si disegna con **le stesse impostazioni del tooltip standard**:
+
+    bgFile   = Interface\Tooltips\UI-Tooltip-Background
+    edgeFile = Interface\Tooltips\UI-Tooltip-Border
+    tile = true, tileSize = 16, edgeSize = 16
+    insets = { left = 5, right = 5, top = 5, bottom = 5 }
+    SetBackdropColor(0, 0, 0, 0.9)
+
+Piu' padding interno allineato al bordo (10 px, righe a -58) e altezza minima
+74. **Contenuto e funzioni invariati**: titolo, stato, `Assigned to: X`,
+`Not assigned`, elenco `Providers (N)` con righe trascinabili, click destro che
+toglie l'assegnazione.
+
+Regola per il futuro (vale per ogni frame decorato a mano): `WindowBackdrop` /
+`SkinBox` **non** applicano niente da soli — il colore va sempre impostato, o il
+backdrop esce col default bianco 50%.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1216 PASS**. Check nuovi: texture tooltip +
+bordo, fondo **nero con alpha >= 0.85** (prima era il default: il check
+fallirebbe sulla versione vecchia), insets 5 + tiled, contenuto invariato
+(titolo/riga assegnazione) e riga fornitore ancora trascinabile.
 
 ## 1.11.95 — FIX: la voce Loot non compariva nel pannello Config
 

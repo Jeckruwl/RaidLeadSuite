@@ -8411,6 +8411,38 @@ _names = rt.eval("table.concat(V95.values, ',')")
 check(bool(_has), "v1.11.95: 'Loot' e' nell'albero di navigazione del pannello -- %s" % _names)
 check(bool(rt.eval("V95.path == 'loot' and V95.current == 'loot'")), "v1.11.95: selezionando 'Loot' il pannello apre il gruppo loot (non una pagina vuota)")
 check(bool(rt.eval("V95.list == true and V95.clear == true and V95.cats == 5")), "v1.11.95: dentro Loot ci sono il campo lista ignora, il clear e le 5 categorie")
+print("\n== v1.11.96: tooltip categoria = grafica del tooltip di gioco (leggibile) ==")
+rt.execute("""
+local RFM = RLSuite.raidFrame
+local cols = RFM:_MatrixCols()
+V96 = {}
+local mp5, idx
+for i, c in ipairs(cols) do if c.key == 'mp5' then mp5, idx = c, i end end
+RFM:SetBuffAssign(mp5, 'Holymoon')
+RFM:ShowBuffCatTip(mp5, RFM._buffHdrBtns[idx])
+local tip = RFM._buffCatTip
+-- FONDO: deve essere quello del tooltip (niente piu' default bianco 50%)
+V96.bg = tostring(tip._backdrop and tip._backdrop.bgFile)
+V96.edge = tostring(tip._backdrop and tip._backdrop.edgeFile)
+V96.insets = tip._backdrop and tip._backdrop.insets and tip._backdrop.insets.left
+V96.tile = (tip._backdrop and tip._backdrop.tile == true)
+V96.color = tip._backdropColor
+V96.a = tip._backdropColor and tip._backdropColor[4]
+V96.black = tip._backdropColor and tip._backdropColor[1] == 0 and tip._backdropColor[2] == 0 and tip._backdropColor[3] == 0
+V96.shown = (tip:IsShown() == true)
+-- CONTENUTO intatto
+V96.title = tostring(tip._title._text)
+V96.assign = tostring(tip._assign._text)
+V96.row1 = tostring(tip._rows[1] and tip._rows[1]._text._text)
+-- il drag continua a funzionare (la riga e' un bottone trascinabile)
+V96.row_drag = (tip._rows[1] ~= nil and tip._rows[1]._scripts and tip._rows[1]._scripts.OnMouseDown ~= nil)
+RFM:HideBuffCatTip()
+""")
+check(bool(rt.eval("V96.bg:find('UI-Tooltip-Background', 1, true) ~= nil and V96.edge:find('UI-Tooltip-Border', 1, true) ~= nil")), "v1.11.96: il riquadro usa le texture del tooltip del gioco")
+check(bool(rt.eval("V96.black == true and V96.a ~= nil and V96.a >= 0.85")), "v1.11.96: FONDO NERO quasi pieno (alpha %s) - prima il colore non veniva mai impostato e rendeva col default bianco 50%%" % rt.eval("tostring(V96.a)"))
+check(bool(rt.eval("V96.insets == 5 and V96.tile == true")), "v1.11.96: bordo e riempimento con gli stessi margini del tooltip standard (insets 5, tiled)")
+check(bool(rt.eval("V96.shown == true and V96.title == 'MP5' and V96.assign == 'Assigned to: Holymoon'")), "v1.11.96: contenuto invariato (titolo + riga assegnazione) -- %s" % rt.eval("tostring(V96.assign)"))
+check(bool(rt.eval("V96.row1:find('Holymoon', 1, true) ~= nil and V96.row_drag == true")), "v1.11.96: l'elenco fornitori c'e' ancora ed e' trascinabile (solo la grafica e' cambiata)")
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

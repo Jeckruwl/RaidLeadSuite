@@ -2762,21 +2762,34 @@ function RF:_EnsureBuffCatTip()
     f:SetSize(250, 48)
     f:SetFrameStrata("TOOLTIP")
     f:EnableMouse(true)
-    RLSuite.utils:WindowBackdrop(f)
+    -- GRAFICA = QUELLA DEL TOOLTIP DEL GIOCO, non un riquadro nostro.
+    -- Questo frame serve solo perche' il GameTooltip non sa contenere righe
+    -- cliccabili (le righe-fornitore si trascinano): il LOOK deve restare
+    -- quello standard, sfondo nero quasi pieno + bordo tooltip.
+    -- NB: senza SetBackdropColor il backdrop rende col colore di default
+    -- (bianco, 50%) -> il tooltip sembrava trasparente e il testo non si
+    -- leggeva. Era esattamente il difetto segnalato.
+    f:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 5, right = 5, top = 5, bottom = 5 },
+    })
+    f:SetBackdropColor(0, 0, 0, 0.9)
     local function line(prev, anchorPt, dy, tmpl)
         local fs = f:CreateFontString(nil, "OVERLAY", tmpl or "GameFontNormalSmall")
         if prev then
             fs:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, dy or -3)
         else
-            fs:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -6)
+            fs:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
         end
-        fs:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+        fs:SetPoint("RIGHT", f, "RIGHT", -10, 0)
         fs:SetJustifyH("LEFT")
         return fs
     end
     f._title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    f._title:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -6)
-    f._title:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+    f._title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
+    f._title:SetPoint("RIGHT", f, "RIGHT", -10, 0)
     f._title:SetJustifyH("LEFT")
     f._status = line(f._title, nil, -3)
     f._assign = line(f._status)
@@ -2793,8 +2806,8 @@ function RF:_BuffTipRow(i)
     if not row then
         row = CreateFrame("Button", nil, f)
         row:SetHeight(14)
-        row:SetPoint("LEFT", f, "LEFT", 8, 0)
-        row:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+        row:SetPoint("LEFT", f, "LEFT", 10, 0)
+        row:SetPoint("RIGHT", f, "RIGHT", -10, 0)
         local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         fs:SetAllPoints(row)
         fs:SetJustifyH("LEFT")
@@ -2869,8 +2882,8 @@ function RF:ShowBuffCatTip(col, anchorBtn)
             tostring(p.member.name or "?"), tostring(p.member.class or "?"), tostring(p.buff)))
         row._text:SetTextColor(0.85, 0.85, 0.85)
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -(56 + (i - 1) * 14))
-        row:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+        row:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -(58 + (i - 1) * 14))
+        row:SetPoint("RIGHT", f, "RIGHT", -10, 0)
         row:Show()
         shown = shown + 1
     end
@@ -2880,12 +2893,12 @@ function RF:ShowBuffCatTip(col, anchorBtn)
         more._text:SetText(string.format(L["... and %d more"], #provs - RF_TIP_ROWS))
         more._text:SetTextColor(0.7, 0.7, 0.7)
         more:ClearAllPoints()
-        more:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -(56 + RF_TIP_ROWS * 14))
-        more:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+        more:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -(58 + RF_TIP_ROWS * 14))
+        more:SetPoint("RIGHT", f, "RIGHT", -10, 0)
         more:Show()
         shown = shown + 1
     end
-    f:SetHeight(math.max(70, 62 + shown * 14))
+    f:SetHeight(math.max(74, 66 + shown * 14))
 
     local a = anchorBtn or f
     f:ClearAllPoints()
