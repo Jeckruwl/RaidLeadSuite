@@ -2839,11 +2839,36 @@ function RF:BuffProviders(col)
     return out
 end
 
--- Tooltip di gioco, righe informative e basta.
+-- Sfondo del tooltip: il raid leader lo vuole MENO OPACO (prima era pieno).
+-- Il tooltip di gioco NON tiene il colore che gli diamo: GameTooltip_OnHide
+-- rimette i default del client (SetBackdropColor con r,g,b dello sfondo
+-- standard) a OGNI Hide. Quindi lo stile va riapplicato a ogni Show.
+local RF_TIP_BG_ALPHA = 0.5
+-- Il tooltip deve stare SOTTO l'icona (che non va coperta): punto TOP del
+-- tooltip sul BOTTOM del bottone, con un piccolo distacco.
+local RF_TIP_DROP_Y = -4
+
+-- Colore di sfondo del tooltip di gioco (3.3.5 FrameXML: TOOLTIP_DEFAULT_
+-- BACKGROUND_COLOR = 0.09/0.09/0.19) con l'alpha abbassato: testo leggibile,
+-- ma si vede attraverso. Il resto della grafica del tooltip non si tocca.
+local function RF_StyleBuffCatTip()
+    if not (GameTooltip and GameTooltip.SetBackdropColor) then return end
+    local c = TOOLTIP_DEFAULT_BACKGROUND_COLOR or { r = 0.09, g = 0.09, b = 0.19 }
+    GameTooltip:SetBackdropColor(c.r or 0.09, c.g or 0.09, c.b or 0.19, RF_TIP_BG_ALPHA)
+end
+
+-- Tooltip di gioco, righe informative e basta, e posizione SOTTO l'icona.
 function RF:ShowBuffCatTip(col, anchorBtn)
     if not col then return end
     if not GameTooltip then return end
-    GameTooltip:SetOwner(anchorBtn or self.frame or UIParent, "ANCHOR_TOPLEFT", 0, 4)
+    local anchor = anchorBtn or self.frame or UIParent
+    -- ANCHOR_NONE + un punto scritto da noi: con gli anchor pronti del client
+    -- ("ANCHOR_TOPLEFT" ecc.) il tooltip finiva SOPRA l'icona e la copriva
+    -- proprio mentre la si stava guardando.
+    GameTooltip:SetOwner(anchor, "ANCHOR_NONE")
+    GameTooltip:ClearAllPoints()
+    GameTooltip:SetPoint("TOP", anchor, "BOTTOM", 0, RF_TIP_DROP_Y)
+    RF_StyleBuffCatTip()
     if GameTooltip.ClearLines then GameTooltip:ClearLines() end
     if GameTooltip.AddLine then
         GameTooltip:AddLine(col.label or col.key or "?", 1, 0.82, 0)

@@ -243,6 +243,9 @@ for i = 1, 8 do
     fs._isFontString = true
     _G["GameTooltipTextLeft" .. i] = fs
 end
+-- 3.3.5 FrameXML (GameTooltip.lua): colore di sfondo standard del tooltip di
+-- gioco. GameTooltip_OnHide lo rimette a ogni Hide, senza alpha (cioe' pieno).
+TOOLTIP_DEFAULT_BACKGROUND_COLOR = { r = 0.09, g = 0.09, b = 0.19 }
 TOOLTIP_REFRESH = function()
     for i = 1, 8 do
         local fs = _G["GameTooltipTextLeft" .. i]
@@ -8230,6 +8233,62 @@ check(bool(rt.eval("V90.warn_missing_names ~= '' and V90.warn_raid:find(V90.warn
 check(bool(rt.eval("V90.warn_raid ~= '' and V90.warn_raid:find('Buff Check', 1, true) ~= nil")), "v1.11.90: l'avviso in raid resta (una riga sola, il whisper non c'e' piu') -- %s" % rt.eval("tostring(V90.warn_raid)"))
 check(bool(rt.eval("V90.warn_lines_none == 1")), "v1.11.99: anche senza assegnazione una sola riga")
 check(bool(rt.eval("V90.warn_raid_none:find('Buff Check: Missing MP5', 1, true) ~= nil and V90.warn_raid_none:find('Provide for:', 1, true) ~= nil")), "v1.11.99: formato non assegnato: 'Buff Check: Missing <categoria> | Provide for: <nomi>' -- %s" % rt.eval("tostring(V90.warn_raid_none)"))
+
+
+print("\n== v1.11.100: tooltip della categoria SOTTO l'icona e sfondo meno opaco ==")
+rt.execute("""
+local RFM = RLSuite.raidFrame
+local cols = RFM:_MatrixCols()
+V100 = {}
+local mp5, idx
+for i, c in ipairs(cols) do if c.key == 'mp5' then mp5, idx = c, i end end
+local btn = RFM._buffHdrBtns[idx]
+V100.btn = btn
+btn.GetLeft = function() return 400 end
+btn.GetRight = function() return 424 end
+btn.GetBottom = function() return 300 end
+btn.GetTop = function() return 324 end
+-- Catturo le chiamate fatte al tooltip di gioco.
+local oSetOwner, oClear, oSetPoint, oColor = GameTooltip.SetOwner, GameTooltip.ClearAllPoints, GameTooltip.SetPoint, GameTooltip.SetBackdropColor
+V100.owner, V100.ownerType, V100.points, V100.color = nil, nil, {}, {}
+GameTooltip.SetOwner = function(s2, o, t, x, y) V100.owner, V100.ownerType = o, t return s2 end
+GameTooltip.ClearAllPoints = function(s2) V100.cleared = true; s2._points = {} return s2 end
+GameTooltip.SetPoint = function(s2, ...) V100.points[#V100.points + 1] = {...} return s2 end
+GameTooltip.SetBackdropColor = function(s2, r, g, b, a) V100.color = {r, g, b, a} return s2 end
+RFM:ShowBuffCatTip(mp5, btn)
+GameTooltip.SetOwner, GameTooltip.ClearAllPoints, GameTooltip.SetPoint, GameTooltip.SetBackdropColor = oSetOwner, oClear, oSetPoint, oColor
+local p = V100.points[1] or {}
+V100.anchor_none = (V100.ownerType == "ANCHOR_NONE")
+V100.anchor_owner = (V100.owner == btn)
+V100.point, V100.relPoint = tostring(p[1]), tostring(p[3])
+V100.point_y = tonumber(p[5]) or 0
+V100.n_points = #V100.points
+V100.below = (V100.point == "TOP" and V100.relPoint == "BOTTOM" and V100.point_y < 0)
+-- nessun punto che appoggi il tooltip sull'icona (che deve restare visibile)
+V100.over_icon = false
+for i = 1, #V100.points do
+    local q = V100.points[i]
+    if q[1] == "TOPLEFT" or q[1] == "BOTTOMLEFT" or q[1] == "BOTTOMRIGHT" then V100.over_icon = true end
+end
+V100.bg_alpha = tonumber(V100.color[4])
+V100.bg_dark = (tonumber(V100.color[1]) == 0.09 and tonumber(V100.color[2]) == 0.09 and tonumber(V100.color[3]) == 0.19)
+-- Il client rimette i default a ogni Hide: se lo stile non venisse riapplicato
+-- a ogni Show, il tooltip tornerebbe opaco.
+V100.color = {}
+GameTooltip.SetBackdropColor = function(s2, r, g, b, a) V100.color = {r, g, b, a} return s2 end
+if GameTooltip.Hide then GameTooltip:Hide() end
+V100.after_hide_alpha = tonumber(V100.color[4])   -- simulazione del reset del client
+V100.color = {}
+RFM:ShowBuffCatTip(mp5, btn)
+GameTooltip.SetBackdropColor = oColor
+V100.styled_again = (tonumber(V100.color[4]) == V100.bg_alpha)
+""")
+check(bool(rt.eval("V100.anchor_none and V100.anchor_owner and V100.n_points == 1")), "v1.11.100: il tooltip e' ancorato all'icona con ANCHOR_NONE + UN punto scritto da noi")
+check(bool(rt.eval("V100.below")), "v1.11.100: il tooltip sta SOTTO l'icona (TOP del tooltip sul BOTTOM dell'icona, y = %s) -- %s/%s" % (rt.eval("tostring(V100.point_y)"), rt.eval("V100.point"), rt.eval("V100.relPoint")))
+check(bool(rt.eval("V100.over_icon == false")), "v1.11.100: nessun punto che appoggi il tooltip SOPRA l'icona (l'icona resta visibile)")
+check(bool(rt.eval("V100.bg_alpha ~= nil and V100.bg_alpha < 1 and V100.bg_alpha > 0")), "v1.11.100: sfondo del tooltip MENO opaco (alpha = %s, prima era pieno) -- %s" % (rt.eval("tostring(V100.bg_alpha)"), rt.eval("tostring(V100.color[1]) .. '/' .. tostring(V100.color[2]) .. '/' .. tostring(V100.color[3])")))
+check(bool(rt.eval("V100.bg_dark == true")), "v1.11.100: resta il colore di sfondo del tooltip di gioco (testo leggibile, grafica non toccata)")
+check(bool(rt.eval("V100.styled_again == true")), "v1.11.100: lo stile viene riapplicato a OGNI Show (il client ripristina il fondo pieno a ogni Hide)")
 print("\n== v1.11.91: doppio roll ignorato (vale solo il primo) ==")
 rt.execute("""
 local lm = RLSuite.lootManager

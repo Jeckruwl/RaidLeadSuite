@@ -7,7 +7,7 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.99**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.100**.
 
 ## COME L'UTENTE PRENDE GLI AGGIORNAMENTI (DECISIONE, 25/09)
 
@@ -43,6 +43,37 @@ L'installazione nel client passa dallo **zip `RaidLeadSuite-<versione>-AddOns.zi
 scompattato in `Interface/AddOns`, quindi va generato a OGNI versione insieme a
 `RaidLeadSuite-<versione>.zip` (repo). Non riproporre hook, symlink, junction,
 rsync, branch alternativi ne' il flip della struttura: tutto rifiutato.
+
+## 1.11.100 — Tooltip della categoria: SOTTO l'icona e sfondo meno opaco
+
+Richiesta del raid leader: "rendi meno opaco lo sfondo dei tooltip e fai in modo
+che l'icona non sia coperta dal tooltip. voglio che il tooltip sia sotto."
+
+* **Posizione**: `RF:ShowBuffCatTip` non usa piu' gli anchor del client
+  (`ANCHOR_TOPLEFT`, ...): fa `SetOwner(icona, "ANCHOR_NONE")` +
+  `ClearAllPoints()` + `SetPoint("TOP", icona, "BOTTOM", 0, -4)`. Il punto TOP
+  del tooltip sta sul fondo dell'icona, quindi l'icona resta sempre visibile.
+  Vale per tutte le icone di categoria (il tooltip e' uno solo, il GameTooltip).
+* **Sfondo meno opaco**: `GameTooltip:SetBackdropColor(r, g, b, 0.5)` con
+  r/g/b = `TOOLTIP_DEFAULT_BACKGROUND_COLOR` (0.09/0.09/0.19, i valori del
+  FrameXML 3.3.5). Non si tocca nient'altro della grafica del tooltip
+  (bordo e testo restano quelli di gioco). Costante `RF_TIP_BG_ALPHA` in
+  `RaidFrame.lua`, subito sopra `ShowBuffCatTip`: si cambia da li'.
+* **Lo stile va riapplicato a ogni Show**: il client rimette i colori di
+  default a ogni Hide (`GameTooltip_OnHide` -> `SetBackdropColor(r, g, b)`
+  senza alpha, cioe' fondo pieno). Per questo la chiamata sta dentro
+  `ShowBuffCatTip` e non una volta sola al login.
+* Il tooltip resta `clampedToScreen` (proprieta' del template di gioco):
+  se l'icona e' in fondo allo schermo il client lo tiene dentro la schermata.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1236 PASS**. Check nuovi: ancoraggio
+`ANCHOR_NONE` al bottone con UN solo punto, punto `TOP` sul `BOTTOM`
+dell'icona con y negativa, nessun punto che appoggi il tooltip sull'icona,
+alpha di sfondo 0 < a < 1 (meno opaco) con i colori di gioco, e riapplicazione
+dello stile a ogni Show dopo un Hide. Nel mock del test e' stato aggiunto
+`TOOLTIP_DEFAULT_BACKGROUND_COLOR` come nel FrameXML 3.3.5.
 
 ## 1.11.99 — Avviso di categoria: UNA riga in raid (via il whisper)
 
