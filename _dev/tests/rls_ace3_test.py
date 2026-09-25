@@ -8289,6 +8289,41 @@ check(bool(rt.eval("V100.over_icon == false")), "v1.11.100: nessun punto che app
 check(bool(rt.eval("V100.bg_alpha ~= nil and V100.bg_alpha < 1 and V100.bg_alpha > 0")), "v1.11.100: sfondo del tooltip MENO opaco (alpha = %s, prima era pieno) -- %s" % (rt.eval("tostring(V100.bg_alpha)"), rt.eval("tostring(V100.color[1]) .. '/' .. tostring(V100.color[2]) .. '/' .. tostring(V100.color[3])")))
 check(bool(rt.eval("V100.bg_dark == true")), "v1.11.100: resta il colore di sfondo del tooltip di gioco (testo leggibile, grafica non toccata)")
 check(bool(rt.eval("V100.styled_again == true")), "v1.11.100: lo stile viene riapplicato a OGNI Show (il client ripristina il fondo pieno a ogni Hide)")
+
+
+print("\n== v1.11.101: tooltip categoria libera -> dice anche COME si assegna ==")
+rt.execute("""
+local RFM = RLSuite.raidFrame
+local cols = RFM:_MatrixCols()
+V101 = {}
+local mp5, idx
+for i, c in ipairs(cols) do if c.key == 'mp5' then mp5, idx = c, i end end
+local btn = RFM._buffHdrBtns[idx]
+local TT = {}
+local oAdd, oClear = GameTooltip.AddLine, GameTooltip.ClearLines
+GameTooltip.AddLine = function(s2, txt) TT[#TT + 1] = tostring(txt) return s2 end
+GameTooltip.ClearLines = function(s2) TT = {} return s2 end
+RFM:SetBuffAssign(mp5, nil)
+RFM:ShowBuffCatTip(mp5, btn)
+V101.unassigned = {}
+for i = 1, #TT do V101.unassigned[i] = TT[i] end
+RFM:SetBuffAssign(mp5, 'Holymoon')
+RFM:ShowBuffCatTip(mp5, btn)
+V101.assigned = {}
+for i = 1, #TT do V101.assigned[i] = TT[i] end
+RFM:SetBuffAssign(mp5, nil)
+GameTooltip.AddLine, GameTooltip.ClearLines = oAdd, oClear
+V101.unassigned_txt = table.concat(V101.unassigned, " | ")
+V101.assigned_txt = table.concat(V101.assigned, " | ")
+""")
+_ok = rt.eval("(function() for _, ln in ipairs(V101.unassigned) do if ln == 'Not assigned - Drop a player on the icon to assign the buff' then return true end end return false end)()")
+check(bool(_ok), "v1.11.101: categoria libera -> riga esatta '%s' -- %s" % ('Not assigned - Drop a player on the icon to assign the buff', rt.eval("V101.unassigned_txt")))
+_ok = rt.eval("(function() for _, ln in ipairs(V101.unassigned) do if ln == 'Not assigned' then return true end end return false end)()")
+check(not bool(_ok), "v1.11.101: la vecchia riga secca 'Not assigned' non c'e' piu'")
+_ok = rt.eval("V101.assigned_txt:find('Assigned to: Holymoon', 1, true) ~= nil")
+check(bool(_ok), "v1.11.101: con l'assegnazione resta 'Assigned to: <nome>' (nessuna riga in piu') -- %s" % rt.eval("V101.assigned_txt"))
+_ok = rt.eval("V101.assigned_txt:find('Drop a player on the icon', 1, true) == nil")
+check(bool(_ok), "v1.11.101: il suggerimento compare SOLO quando la categoria e' libera")
 print("\n== v1.11.91: doppio roll ignorato (vale solo il primo) ==")
 rt.execute("""
 local lm = RLSuite.lootManager

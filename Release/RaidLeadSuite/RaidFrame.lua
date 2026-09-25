@@ -2882,7 +2882,8 @@ function RF:ShowBuffCatTip(col, anchorBtn)
         if assigned then
             GameTooltip:AddLine(string.format(L["Assigned to: %s"], assigned), 0.2, 1, 0.4)
         else
-            GameTooltip:AddLine(L["Not assigned"], 0.7, 0.7, 0.7)
+            -- Categoria libera: non solo lo stato, ma anche COME si assegna.
+            GameTooltip:AddLine(L["Not assigned - Drop a player on the icon to assign the buff"], 0.7, 0.7, 0.7)
         end
     end
     local provs = self:BuffProviders(col)

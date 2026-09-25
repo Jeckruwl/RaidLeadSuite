@@ -381,6 +381,7 @@ L["Start the spammer first, then Whisp test sends the fake whispers."] = "Avvia 
     L["Providers (%d):"] = true
     L["... and %d more"] = true
     L["Left-click: buff check. Right-click: clear assignment."] = true
+    L["Not assigned - Drop a player on the icon to assign the buff"] = true
     L["%s assigned to %s."] = true
     L["Assignment removed for %s."] = true
     -- Avviso di categoria (click sull'icona): UNA riga in raid warning

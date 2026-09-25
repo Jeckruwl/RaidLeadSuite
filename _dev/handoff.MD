@@ -7,7 +7,7 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.100**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.101**.
 
 ## COME L'UTENTE PRENDE GLI AGGIORNAMENTI (DECISIONE, 25/09)
 
@@ -43,6 +43,22 @@ L'installazione nel client passa dallo **zip `RaidLeadSuite-<versione>-AddOns.zi
 scompattato in `Interface/AddOns`, quindi va generato a OGNI versione insieme a
 `RaidLeadSuite-<versione>.zip` (repo). Non riproporre hook, symlink, junction,
 rsync, branch alternativi ne' il flip della struttura: tutto rifiutato.
+
+## 1.11.101 — Tooltip, categoria libera: dice anche come si assegna
+
+Richiesta del raid leader: nella riga dello stato, quando la categoria non e'
+assegnata, non basta "Not assigned".
+
+* Riga esatta: `Not assigned - Drop a player on the icon to assign the buff`
+  (testo inglese, come tutto l'addon; chiave registrata in `Locale.lua`).
+* Con l'assegnazione resta la riga di prima: `Assigned to: <nome>`.
+* Il suggerimento e' nella riga di stato: nessuna riga in piu' nel tooltip.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1240 PASS**. Check nuovi: riga esatta quando
+la categoria e' libera, assenza della vecchia riga secca, `Assigned to: <nome>`
+quando c'e' l'assegnazione, suggerimento presente solo nel caso libero.
 
 ## 1.11.100 — Tooltip della categoria: SOTTO l'icona e sfondo meno opaco
 
