@@ -638,6 +638,10 @@ end
 
 function MB:UpdatePhase()
     local phase = RLSuite.context or "preraid"
+    -- Rilegge il boss in corso: in-fight le macro sono quelle di QUEL boss.
+    if RLSuite.CurrentBossInfo then
+        self.bossRaid, self.bossName = RLSuite:CurrentBossInfo()
+    end
     if self.phaseText then
         local pretty = (self.prettyPhaseLabels and self.prettyPhaseLabels[phase]) or string.upper(phase)
         self.phaseText:SetText("PH:" .. pretty)
@@ -647,6 +651,42 @@ function MB:UpdatePhase()
     if self.ApplyLayout then
         self:ApplyLayout()
     end
+end
+
+-- Il target e' cambiato durante l'in-fight: se il boss riconosciuto cambia,
+-- la barra ricarica i set (e si ridimensiona sul nuovo numero di macro).
+function MB:OnBossTargetChanged()
+    if (RLSuite.context or "preraid") ~= "infight" then return end
+    local raid, boss = RLSuite:CurrentBossInfo()
+    if raid == self.bossRaid and boss == self.bossName then return end
+    self.bossRaid, self.bossName = raid, boss
+    self:LoadMacrosForPhase("infight")
+    if self.ApplyLayout then self:ApplyLayout() end
+    if RLSuite.config and RLSuite.config.RefreshMacroPreview
+        and RLSuite.config.macroPhase == "infight" then
+        RLSuite.config:RefreshMacroPreview()
+    end
+end
+
+-- La progressione del raid e' cambiata (boss battuto o catena lineare
+-- dedotta): il boss del COUNTER puo' essere passato al successivo (es. da
+-- Lady Deathwhisper a Gunship), quindi la barra si riallinea.
+function MB:OnBossProgressChanged()
+    if self._bossProgressBusy then return end
+    self._bossProgressBusy = true
+    -- in pcall: un errore qui non deve risalire fino al combat log che ha
+    -- registrato la kill ne' lasciare la guardia alzata per sempre.
+    pcall(function()
+        if (RLSuite.context or "preraid") == "infight" then
+            local raid, boss = RLSuite:CurrentBossInfo()
+            if raid ~= self.bossRaid or boss ~= self.bossName then
+                self.bossRaid, self.bossName = raid, boss
+                self:LoadMacrosForPhase("infight")
+                if self.ApplyLayout then self:ApplyLayout() end
+            end
+        end
+    end)
+    self._bossProgressBusy = nil
 end
 
 function MB:MacroIsFilled(data)
@@ -666,12 +706,51 @@ function MB:FilledSlots(phase)
     return list
 end
 
-function MB:GetMacroData(index, phase)
-    phase = phase or RLSuite.context or "preraid"
+-- ============================================================
+-- MACRO IN-FIGHT PER BOSS
+-- La fase in-fight non usa un set fisso: usa il set del BOSS che stai
+-- affrontando (RLSuite:CurrentBossInfo: prima il target, poi boss1..4),
+-- salvato in db.bossMacros[raid][boss]. Senza boss (trash o target non
+-- boss) la barra non mostra NESSUNA macro: nessun fallback, richiesta
+-- esplicita dell'utente ("se sono in fight senza boss nessuna macro").
+-- Le altre fasi restano come prima (db.macros[phase]).
+-- ============================================================
+
+-- Set macro di un boss: db.bossMacros[raid][boss]. create=true lo crea.
+function MB:BossMacroTable(raid, boss, create)
+    local db = self:DB() or (RLSuite.db and RLSuite.db.profile.macrobar)
+    if not (db and raid and boss) then return nil end
+    self.db = db
+    db.bossMacros = db.bossMacros or {}
+    local r = db.bossMacros[raid]
+    if not r then
+        if not create then return nil end
+        r = {}
+        db.bossMacros[raid] = r
+    end
+    if not r[boss] and create then r[boss] = {} end
+    return r[boss]
+end
+
+-- Tabella macro attiva per una fase (lettura, o scrittura con create=true).
+function MB:MacroTableFor(phase, create)
     local db = self:DB() or (RLSuite.db and RLSuite.db.profile.macrobar)
     if not db then return nil end
+    phase = phase or RLSuite.context or "preraid"
+    if phase == "infight" then
+        local raid, boss = RLSuite:CurrentBossInfo()
+        self.bossRaid, self.bossName = raid, boss
+        if not (raid and boss) then return nil end
+        return self:BossMacroTable(raid, boss, create)
+    end
     db.macros = db.macros or {}
-    local macros = db.macros[phase] or {}
+    if create then db.macros[phase] = db.macros[phase] or {} end
+    return db.macros[phase]
+end
+
+function MB:GetMacroData(index, phase)
+    local macros = self:MacroTableFor(phase)
+    if not macros then return nil end
     return macros[index] or macros[tostring(index)]
 end
 
@@ -800,7 +879,14 @@ function MB:OpenMacroEdit(index)
     edit:SetTextInsets(5, 5, 5, 5)
     edit:SetAutoFocus(true)
 
-    local macros = self.db.macros[phase] or {}
+    -- Set giusto anche per l'editor rapido: in-fight scrive nel set del boss
+    -- riconosciuto (o niente, se non c'e' un boss: nessun fallback).
+    local macros = self:MacroTableFor(phase, true)
+    if not macros then
+        RLSuite.utils:Print(L["No boss detected: in-fight macros are per boss."])
+        f:Hide()
+        return
+    end
     local current = macros[index] or {text = "", icon = ""}
     edit:SetText(current.text or "")
 
@@ -810,8 +896,8 @@ function MB:OpenMacroEdit(index)
     saveBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 20, 15)
     saveBtn:SetText(L["Save"])
     saveBtn:SetScript("OnClick", function()
-        self.db.macros[phase] = self.db.macros[phase] or {}
-        self.db.macros[phase][index] = {
+        -- Stesso set dell'editor (in-fight: set del boss riconosciuto).
+        macros[index] = {
             text = edit:GetText(),
             icon = current.icon or "Interface\\Icons\\INV_Misc_QuestionMark",
         }

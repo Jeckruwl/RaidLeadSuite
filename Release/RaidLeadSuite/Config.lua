@@ -78,6 +78,9 @@ local CATEGORIES = {
     } },
     { value = "raidframe", text = "Raid Frame" },
     { value = "savedraids", text = "Saved Raids" },
+    -- Lista ignora degli item di loot (v1.11.94): la voce va anche QUI,
+    -- non solo nella tabella opzioni, altrimenti nel pannello non compare.
+    { value = "loot", text = "Loot" },
     { value = "debug", text = "Debug" },
 }
 
@@ -94,6 +97,7 @@ local NODES = {
     -- positions e alerts sono stati eliminati dal pannello).
     ["raidframe"]          = { "raidframe" },
     ["savedraids"]         = { "savedraids" },
+    ["loot"]               = { "loot" },
     ["debug"]              = { "debug" },
 }
 
@@ -523,6 +527,21 @@ function CFG:BuildOptionsTable()
         alpha = slider(L["Opacity"], L["Overall transparency of the Raid Frame HUD."], 10, 0.30, 1.00, 0.05,
             function() return rf.alpha or 1 end,
             function(_, v) rf.alpha = v; self:ApplyAll() end),
+        distanceFade = select(L["Distance fade"], L["Player bars fade out beyond this distance (0 = off)."], 17, {
+            ["0"] = L["Off"],
+            ["10"] = "10 yards",
+            ["15"] = "15 yards",
+            ["20"] = "20 yards",
+            ["25"] = "25 yards",
+            ["30"] = "30 yards",
+            ["35"] = "35 yards",
+            ["40"] = "40 yards",
+        },
+            function() return tostring(rf.appearance.distanceFade or 0) end,
+            function(_, v) rf.appearance.distanceFade = tonumber(v) or 0; self:ApplyAll() end),
+        distanceAlpha = slider(L["Fade transparency"], L["Transparency of the bars beyond the distance."], 18, 0.20, 1.00, 0.05,
+            function() return rf.appearance.distanceAlpha or 0.40 end,
+            function(_, v) rf.appearance.distanceAlpha = v; self:ApplyAll() end),
         iconSpacing = slider(L["Icon spacing"], L["Gap between the Raid Buffs matrix icons."], 12, 0, 16, 1,
             function() return rf.appearance.iconSpacing or 8 end,
             function(_, v) rf.appearance.iconSpacing = v; self:ApplyAll() end),
@@ -572,6 +591,61 @@ function CFG:BuildOptionsTable()
 
     local raidframe = raidLayout
 
+    -- --- Loot ----------------------------------------------------
+    -- La LISTA IGNORA (item singoli) sta qui, modificabile a mano: una riga
+    -- per item, "id" oppure "id: Nome" (o incollando direttamente il link).
+    -- Si riempie da sola col ctrl+click su una riga dello storico loot.
+    local function filterToggle(key, name, order)
+        return { type = "toggle", name = name, order = order,
+            desc = L["Never capture or show this category of loot."],
+            get = function()
+                local lm = RLSuite.lootManager
+                return (lm and lm.db and lm.db.filters and lm.db.filters[key]) and true or false
+            end,
+            set = function(_, v)
+                local lm = RLSuite.lootManager
+                if lm and lm.SetCategoryIgnored then lm:SetCategoryIgnored(key, v) end
+            end }
+    end
+
+    local loot = {
+        ignoreNote = { type = "description", order = 1,
+            name = L["Ctrl+click a loot row to ignore that item: it is never captured nor shown again. The list below is editable (one item per line: ID, or ID: name, or paste the item link)."] },
+        ignoreList = { type = "input", name = L["Ignored items"],
+            desc = L["One item per line: ID, or ID: name. Empty the list to stop ignoring items."],
+            multiline = 12, width = "full", order = 2,
+            get = function()
+                local lm = RLSuite.lootManager
+                if not (lm and lm.IgnoredListText) then return "" end
+                return lm:IgnoredListText()
+            end,
+            set = function(_, v)
+                local lm = RLSuite.lootManager
+                if lm and lm.SetIgnoredListText then
+                    local n = lm:SetIgnoredListText(v)
+                    RLSuite.utils:Print(string.format(L["Ignore list saved (%d items)."], n))
+                end
+            end },
+        ignoreClear = execute(L["Clear ignored items"],
+            L["Removes every item from the ignore list: loot that was ignored starts being captured again."],
+            3,
+            function()
+                local lm = RLSuite.lootManager
+                if lm and lm.ClearIgnoredItems then
+                    local n = lm:ClearIgnoredItems()
+                    lm:UpdateHistory()
+                    RLSuite.utils:Print(string.format(L["Ignore list cleared (%d items removed)."], n))
+                    if RLSuite.config then RLSuite.config:NotifyChange() end
+                end
+            end),
+        filtersHead = { type = "header", name = L["Ignore loot categories"], order = 4 },
+        fRecipes = filterToggle("recipes", L["recipes"], 5),
+        fBoe = filterToggle("boe", L["BOE"], 6),
+        fGems = filterToggle("gems", L["gems"], 7),
+        fShards = filterToggle("shards", L["shards"], 8),
+        fProjectiles = filterToggle("projectiles", L["projectiles"], 9),
+    }
+
     return {
         type = "group",
         name = "RLSuite",
@@ -582,7 +656,8 @@ function CFG:BuildOptionsTable()
             macros = { type = "group", name = L["Macros"], order = 4, args = macros },
             raidframe = { type = "group", name = L["Raid Frame"], order = 5, args = raidframe },
             savedraids = savedraids,
-            debug = { type = "group", name = L["Debug"], order = 7, args = debug },
+            loot = { type = "group", name = L["Loot"], order = 7, args = loot },
+            debug = { type = "group", name = L["Debug"], order = 8, args = debug },
         },
     }
 end
@@ -615,6 +690,7 @@ function CFG:ShowMacroEditor()
     -- the content area while the "Macro Editor" node is selected.
     if self.tree then self.tree:ReleaseChildren() end
     self.macroEditorPanel:Show()
+    self:UpdateMacroBossSelectors()
     self:RefreshMacroTab()
     self:OpenMacroEditor(self.macroEditIndex or 1)
 end
@@ -691,6 +767,47 @@ function CFG:CreateMacroEditor(parent)
         self.macroPreviewBtns[i] = btn
     end
 
+    -- ------------------------------------------------------------
+    -- Selettori RAID + BOSS delle MACRO IN-FIGHT.
+    -- Compaiono SOLO quando la fase selezionata e' In-fight, nello spazio a
+    -- destra delle 12 icone (sotto i tasti di fase). Con raid + boss scelti,
+    -- anteprima / elenco / campi lavorano sul set db.bossMacros[raid][boss]:
+    -- in fight la barra usa il set del boss che stai affrontando (target,
+    -- poi boss1..4) e senza boss non mostra nessuna macro.
+    -- 272 = subito a destra della sesta colonna di icone (8 + 6*44).
+    -- ------------------------------------------------------------
+    local bossSel = CreateFrame("Frame", "RLSuiteCfgMacroBossSel", preview)
+    bossSel:SetPoint("TOPLEFT", preview, "TOPLEFT", 272, -8)
+    bossSel:SetPoint("BOTTOMRIGHT", preview, "BOTTOMRIGHT", -6, 6)
+    bossSel:Hide()
+    self.macroBossSel = bossSel
+
+    local raidLbl = bossSel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    raidLbl:SetPoint("TOPLEFT", bossSel, "TOPLEFT", 0, -4)
+    raidLbl:SetText(L["Raid:"])
+
+    local raidDD = RLSuite.utils:CreateDropdown(bossSel, "RLSuiteCfgMacroRaidDD", 150, 20)
+    raidDD:SetPoint("LEFT", raidLbl, "RIGHT", 4, 0)
+    raidDD:SetPoint("RIGHT", bossSel, "RIGHT", 0, 0)
+    self.macroRaidDD = raidDD
+
+    local bossLbl = bossSel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    bossLbl:SetPoint("TOPLEFT", bossSel, "TOPLEFT", 0, -30)
+    bossLbl:SetText(L["Boss:"])
+
+    local bossDD = RLSuite.utils:CreateDropdown(bossSel, "RLSuiteCfgMacroBossDD", 150, 20)
+    bossDD:SetPoint("LEFT", bossLbl, "RIGHT", 4, 0)
+    bossDD:SetPoint("RIGHT", bossSel, "RIGHT", 0, 0)
+    self.macroBossDD = bossDD
+
+    local bossHint = bossSel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    bossHint:SetPoint("TOPLEFT", bossLbl, "BOTTOMLEFT", 0, -6)
+    bossHint:SetPoint("RIGHT", bossSel, "RIGHT", 0, 0)
+    bossHint:SetJustifyH("LEFT")
+    bossHint:SetTextColor(0.65, 0.65, 0.65)
+    bossHint:SetText(L["In fight the bar uses the boss you are facing"])
+    self.macroBossHint = bossHint
+
     -- area editor sotto l'anteprima
     local editor = CreateFrame("Frame", "RLSuiteCfgMacroEditorBox", ed)
     editor:SetPoint("TOPLEFT", preview, "BOTTOMLEFT", 0, -6)
@@ -710,6 +827,7 @@ function CFG:CreateMacroEditor(parent)
     local listTitle = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     listTitle:SetPoint("TOPLEFT", list, "TOPLEFT", 6, -5)
     listTitle:SetText(L["All macros"])
+    self.macroListTitle = listTitle
 
     self.macroListRows = {}
     for i = 1, 12 do
@@ -844,6 +962,7 @@ function CFG:CreateMacroEditor(parent)
 
     self:HookMacroInsertLink()
     self:CreateMacroIconPicker(editor)
+    self:UpdateMacroBossSelectors()
 end
 
 function CFG:HookMacroInsertLink()
@@ -1053,6 +1172,7 @@ end
 
 function CFG:SelectMacroPhase(phase)
     self.macroPhase = phase or "preraid"
+    self:UpdateMacroBossSelectors()
     for key, btn in pairs(self.macroPhaseBtns or {}) do
         if key == self.macroPhase then
             btn:LockHighlight()
@@ -1066,12 +1186,108 @@ function CFG:SelectMacroPhase(phase)
     end
 end
 
+-- ------------------------------------------------------------
+-- MACRO IN-FIGHT: raid + boss nell'editor
+-- ------------------------------------------------------------
+-- Boss di default: quello che stai affrontando adesso (target, poi boss1..4);
+-- se non c'e', il raid scelto in Group Making col suo primo boss.
+function CFG:DefaultMacroBoss()
+    local raid, boss = RLSuite:CurrentBossInfo()
+    if raid and boss and (RLSuite.raidDB or {})[raid] then return raid, boss end
+    local gm = RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.groupmaking
+    local r = gm and gm.raid
+    if not (r and (RLSuite.raidDB or {})[r]) then
+        local names = {}
+        for k in pairs(RLSuite.raidDB or {}) do names[#names + 1] = k end
+        table.sort(names)
+        r = names[1]
+    end
+    local info = r and RLSuite.raidDB[r]
+    local list = (info and info.bosses) or {}
+    return r, list[1]
+end
+
+function CFG:PopulateMacroRaidDropdown()
+    if not self.macroRaidDD then return end
+    local raids = {}
+    for name in pairs(RLSuite.raidDB or {}) do raids[#raids + 1] = name end
+    table.sort(raids)
+    -- Mai svuotare un menu gia' popolato: una tendina senza opzioni diventa
+    -- "muta" (il toggle non apre niente) e sembra rotta.
+    if #raids == 0 then return end
+    if not (self.macroRaid and RLSuite.raidDB[self.macroRaid]) then
+        self.macroRaid, self.macroBoss = self:DefaultMacroBoss()
+    end
+    RLSuite.utils:SetupDropdown(self.macroRaidDD, raids, self.macroRaid, function(value)
+        self.macroRaid = value
+        self.macroBoss = nil
+        self:PopulateMacroBossDropdown()
+        self:RefreshMacroTab()
+        if self.macroEditIndex then self:OpenMacroEditor(self.macroEditIndex) end
+    end)
+end
+
+function CFG:PopulateMacroBossDropdown()
+    if not self.macroBossDD then return end
+    local info = RLSuite.raidDB[self.macroRaid or ""]
+    local bosses = (info and info.bosses) or {}
+    -- Vedi sopra: con una lista vuota si esce SENZA toccare le opzioni gia'
+    -- presenti, cosi' il menu continua a funzionare.
+    if #bosses == 0 then return end
+    local valid = false
+    for i = 1, #bosses do
+        if bosses[i] == self.macroBoss then valid = true end
+    end
+    if not valid then self.macroBoss = bosses[1] end
+    RLSuite.utils:SetupDropdown(self.macroBossDD, bosses, self.macroBoss, function(value)
+        self.macroBoss = value
+        self:RefreshMacroTab()
+        if self.macroEditIndex then self:OpenMacroEditor(self.macroEditIndex) end
+    end)
+end
+
+-- I due menu vivono solo sulla fase in-fight (basta selezionarla): le altre
+-- fasi continuano a usare il set unico di fase.
+function CFG:UpdateMacroBossSelectors()
+    local sel = self.macroBossSel
+    if not sel then return end
+    if (self.macroPhase or "preraid") == "infight" then
+        if not (self.macroRaid and self.macroBoss) then
+            self.macroRaid, self.macroBoss = self:DefaultMacroBoss()
+        end
+        self:PopulateMacroRaidDropdown()
+        self:PopulateMacroBossDropdown()
+        sel:Show()
+        if self.macroListTitle then
+            self.macroListTitle:SetText(string.format(L["Boss macros: %s"],
+                tostring(self.macroBoss or "?")))
+        end
+    else
+        sel:Hide()
+        if self.macroListTitle then self.macroListTitle:SetText(L["All macros"]) end
+    end
+end
+
+-- Set macro che l'editor sta modificando. In-fight e' il set del raid+boss
+-- scelti nei due menu (NESSUN fallback: se per quel boss non hai scritto
+-- niente, gli slot sono vuoti anche in fight).
 function CFG:GetMacroDB(phase)
     phase = phase or self.macroPhase or "preraid"
-    if not RLSuite.db or not RLSuite.db.profile.macrobar then return {} end
-    RLSuite.db.profile.macrobar.macros = RLSuite.db.profile.macrobar.macros or {}
-    RLSuite.db.profile.macrobar.macros[phase] = RLSuite.db.profile.macrobar.macros[phase] or {}
-    return RLSuite.db.profile.macrobar.macros[phase]
+    local bar = RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.macrobar
+    if not bar then return {} end
+    if phase == "infight" then
+        if not (self.macroRaid and self.macroBoss) then
+            self.macroRaid, self.macroBoss = self:DefaultMacroBoss()
+        end
+        if not (self.macroRaid and self.macroBoss) then return {} end
+        local mb = RLSuite.macrobar
+        if mb and mb.BossMacroTable then
+            return mb:BossMacroTable(self.macroRaid, self.macroBoss, true) or {}
+        end
+    end
+    bar.macros = bar.macros or {}
+    bar.macros[phase] = bar.macros[phase] or {}
+    return bar.macros[phase]
 end
 
 function CFG:SaveMacroSlot()

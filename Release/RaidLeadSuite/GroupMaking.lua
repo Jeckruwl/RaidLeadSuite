@@ -14,6 +14,15 @@ local GROUP_LABEL_H = 17
 -- Raid Group panel (InviteEngine rib): the REAL raid, one vertical column
 -- per raid group, each holding up to 5 class-colored name bars.
 local WL_GROUPS = 6
+
+-- Diagnostica del drag del pannello (solo in debug mode): ogni gesto lascia
+-- una riga in chat, cosi' un punto morto e' visibile in game.
+local function wlDbg(fmt, ...)
+    if RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.debug then
+        local ok, txt = pcall(string.format, fmt, ...)
+        RLSuite.utils:Print("RG " .. (ok and txt or tostring(fmt)))
+    end
+end
 local WL_BAR_H = 16
 local WL_BAR_GAP = 2
 local WL_COL_GAP = 4
@@ -1082,17 +1091,19 @@ end
 -- spammer is running. Each one goes through GM:OnWhisper, so they land
 -- in "Received whispers" exactly like real players.
 -- ============================================================
+-- Spec canoniche (quelle di RLSuite.classData): il messaggio di prova viene
+-- costruito dalle regole della tabella, cosi' esercita davvero il parser.
 local DEBUG_WHISPER_POOL = {
-    { name = "Drakbot",   class = "WARRIOR",     role = "tank",   spec = "prot",  gs = 5900 },
-    { name = "Holymoon",  class = "PALADIN",     role = "healer", spec = "holy",  gs = 6100 },
-    { name = "Zapdora",   class = "MAGE",        role = "dps",    spec = "arcane", gs = 5700 },
-    { name = "Stabbitha", class = "ROGUE",       role = "dps",    spec = "combat", gs = 5800 },
-    { name = "Moowrath",  class = "DRUID",       role = "tank",   spec = "feral", gs = 6000 },
-    { name = "Holylite",  class = "PRIEST",      role = "healer", spec = "holy",  gs = 5950 },
-    { name = "Totemly",   class = "SHAMAN",      role = "healer", spec = "resto", gs = 5850 },
-    { name = "Frostbite", class = "DEATHKNIGHT", role = "dps",    spec = "frost", gs = 6050 },
-    { name = "Warlocky",  class = "WARLOCK",     role = "dps",    spec = "destro", gs = 5750 },
-    { name = "Arrowz",    class = "HUNTER",      role = "dps",    spec = "marks", gs = 5900 },
+    { name = "Drakbot",   class = "WARRIOR",     role = "tank",   spec = "Protection",    gs = 5900 },
+    { name = "Holymoon",  class = "PALADIN",     role = "healer", spec = "Holy",          gs = 6100 },
+    { name = "Zapdora",   class = "MAGE",        role = "dps",    spec = "Arcane",        gs = 5700 },
+    { name = "Stabbitha", class = "ROGUE",       role = "dps",    spec = "Combat",        gs = 5800 },
+    { name = "Moowrath",  class = "DRUID",       role = "tank",   spec = "Feral Bear",    gs = 6000 },
+    { name = "Holylite",  class = "PRIEST",      role = "healer", spec = "Holy",          gs = 5950 },
+    { name = "Totemly",   class = "SHAMAN",      role = "healer", spec = "Restoration",   gs = 5850 },
+    { name = "Frostbite", class = "DEATHKNIGHT", role = "dps",    spec = "Frost",         gs = 6050 },
+    { name = "Warlocky",  class = "WARLOCK",     role = "dps",    spec = "Destruction",   gs = 5750 },
+    { name = "Arrowz",    class = "HUNTER",      role = "dps",    spec = "Marksmanship",  gs = 5900 },
 }
 
 -- Invia IMMEDIATAMENTE tutti i 10 whisper fittizi del pool, passando dal
@@ -1109,8 +1120,13 @@ function GM:DebugWhisperBurst()
     -- senza cambiare il comportamento reale dello spammer.
     local savedSpamActive = self.spamActive
     self.spamActive = true
+    -- I whisper di prova usano la forma della tabella: [PREFIX] BODY (+ GS),
+    -- es. "tank protection war 5900 gs" o "healer holy pala 6100 gs".
     for _, fake in ipairs(DEBUG_WHISPER_POOL) do
-        local msg = string.lower(fake.class) .. " " .. fake.role .. " spec " .. fake.spec .. " " .. fake.gs .. " gs"
+        local specWord = RLSuite.utils:SpecWordFor(fake.class, fake.spec)
+        local bodyWord = RLSuite.utils:BodyWordFor(fake.class)
+        local msg = fake.role .. " " .. tostring(specWord) .. " " .. tostring(bodyWord) ..
+            " " .. tostring(fake.gs) .. " gs"
         self:OnWhisper(fake.name, msg)
     end
     self.spamActive = savedSpamActive
@@ -1150,25 +1166,26 @@ function GM:OnWhisper(sender, msg)
         end
     end
 
+    -- UNA passata del parser per l'intero messaggio
+    local parsed = self:ParseWhisperMessage(msg)
+
     if not entry then
         entry = {
             name = sender,
-            class = self:ExtractClassFromWhisper(msg),
-            role = self:ExtractRoleFromWhisper(msg),
-            spec = self:ExtractSpecFromWhisper(msg),
-            gs = self:ExtractGSFromWhisper(msg),
+            class = parsed.class,
+            role = parsed.role,
+            spec = parsed.spec,
+            gs = parsed.gs,
             invited = false,
             messages = {},
         }
     else
-        -- integra solo le info ancora mancanti
-        local class = self:ExtractClassFromWhisper(msg)
-        if class and not entry.class then entry.class = class end
-        if not entry.role then entry.role = self:ExtractRoleFromWhisper(msg) end
-        local spec = self:ExtractSpecFromWhisper(msg)
-        if spec and not entry.spec then entry.spec = spec end
-        local gs = self:ExtractGSFromWhisper(msg)
-        if gs then entry.gs = gs end
+        -- integra solo le info ancora mancanti (il messaggio successivo puo'
+        -- completare quello che il primo non diceva)
+        if parsed.class and not entry.class then entry.class = parsed.class end
+        if not entry.role then entry.role = parsed.role end
+        if parsed.spec and not entry.spec then entry.spec = parsed.spec end
+        if parsed.gs then entry.gs = parsed.gs end
         entry.messages = entry.messages or {}
         -- migra un eventuale dato vecchio (rawMsg singolo)
         if #entry.messages == 0 and entry.rawMsg then
@@ -1204,80 +1221,32 @@ function GM:GetEntryMessages(entry)
     return {}
 end
 
--- Cached class keywords: English plus the localized male/female class names
--- of the current client, so whispers like "guerriero" or "Krieger" are
--- recognized as well as "warrior".
-function GM:ClassKeywords()
-    if self._classKeywords then return self._classKeywords end
-    local map = {
-        WARRIOR     = { "warrior" },
-        PALADIN     = { "paladin" },
-        HUNTER      = { "hunter" },
-        ROGUE       = { "rogue" },
-        PRIEST      = { "priest" },
-        DEATHKNIGHT = { "dk", "deathknight", "death knight" },
-        SHAMAN      = { "shaman" },
-        MAGE        = { "mage" },
-        WARLOCK     = { "warlock" },
-        DRUID       = { "druid" },
-    }
-    local function addLocalized(tblName)
-        local tbl = _G[tblName]
-        if type(tbl) ~= "table" then return end
-        for class, words in pairs(map) do
-            local name = tbl[class]
-            if type(name) == "string" and name ~= "" then
-                local lower = string.lower(name)
-                local dup = false
-                for _, w in ipairs(words) do
-                    if w == lower then dup = true break end
-                end
-                if not dup then table.insert(words, lower) end
-            end
-        end
-    end
-    addLocalized("LOCALIZED_CLASS_NAMES_MALE")
-    addLocalized("LOCALIZED_CLASS_NAMES_FEMALE")
-    self._classKeywords = map
-    return map
+-- Un whisper = UNA passata del parser condiviso (Utils:ParseWhisper), che
+-- segue la tabella in _dev/Class_Spec_and_GS_parser.md: [PREFIX] BODY [SUFFIX].
+-- Prima ogni campo aveva la sua scansione separata (e la classe usciva
+-- dall'ordine di pairs(), quindi con due nomi nel messaggio vinceva a caso).
+-- Queste quattro funzioni restano per compatibilita' e delegano tutte allo
+-- stesso motore: classe, spec, ruolo e GS non possono piu' contraddirsi.
+function GM:ParseWhisperMessage(msg)
+    return RLSuite.utils:ParseWhisper(msg)
 end
 
 function GM:ExtractClassFromWhisper(msg)
-    local lower = string.lower(msg or "")
-    for class, words in pairs(self:ClassKeywords()) do
-        for _, word in ipairs(words) do
-            if string.find(lower, word, 1, true) then return class end
-        end
-    end
-    return nil
+    return self:ParseWhisperMessage(msg).class
 end
 
 function GM:ExtractRoleFromWhisper(msg)
-    local lower = string.lower(msg or "")
-    if string.find(lower, "tank") then return "tank" end
-    if string.find(lower, "heal") then return "healer" end
-    return "dps"
+    return self:ParseWhisperMessage(msg).role or "dps"
 end
 
 function GM:ExtractSpecFromWhisper(msg)
-    -- "spec fury", "spec: fury", "fury spec" ("spec" is universal WoW slang).
-    local spec = string.match(msg or "", "[Ss]pec[:%-]?%s*(%a+)")
-    if not spec then
-        spec = string.match(msg or "", "(%a+)%s+[Ss]pec")
-    end
-    return spec
+    return self:ParseWhisperMessage(msg).spec
 end
 
 function GM:ExtractGSFromWhisper(msg)
-    if not msg then return nil end
-    -- "GS" is locale-neutral (GearScore). Accept both "5500 gs" and "gs 5500",
-    -- with optional colon/dash separators.
-    local gs = string.match(msg, "(%d%d%d%d%d?%d?)%s*[Gg][Ss]")
-    if not gs then
-        gs = string.match(msg, "[Gg][Ss]%s*[:%-]?%s*(%d%d%d%d%d?%d?)")
-    end
-    return gs and tonumber(gs) or nil
+    return self:ParseWhisperMessage(msg).gs
 end
+
 
 -- ============================================================
 -- INVITEENGINE PANEL (rib anchored to the Groupmaking window)
@@ -3260,13 +3229,19 @@ function GM:BuildWLGroupColumns()
             -- Trascina un giocatore su un altro slot per riorganizzare i
             -- gruppi: trascina dallo slot di partenza e rilascia su quello
             -- di arrivo. Slot vuoto = spostamento, slot pieno = scambio.
-            -- Uso il drag&drop classico (RegisterForDrag + OnDragStart/
-            -- OnDragStop): durante un drag il mouse-up NON viene consegnato
-            -- al frame sotto il cursore (resta al frame di partenza), quindi
-            -- OnDragStop calcola il bersaglio dalle coordinate del cursore.
-            -- OnReceiveDrag resta come percorso parallelo: qualunque dei due
-            -- scatti per primo consuma GM._wlDragSource, quindi non c'e'
-            -- mai un doppio spostamento/scambio.
+            -- Il gesto NON usa piu' il drag&drop del client (RegisterForDrag
+            -- + OnDragStart/OnDragStop): in 3.3.5 quella macchina digerisce
+            -- pressioni e rilasci (e' la stessa che ci ha mangiato i click
+            -- per 4 release) e dopo il primo trascinamento la pressione
+            -- successiva poteva non arrivare a nessuno -> "si sposta un
+            -- giocatore una volta sola". Ora comanda il poller
+            -- (GM:_InitWlDragPoller): stato del tasto + posizione del
+            -- cursore, bersaglio risolto geometricamente (WlSlotAtCursor).
+            -- Il poller GM:_InitWlDragPoller e' la via PRIMARIA (leggi lo
+            -- stato del tasto e il cursore): il client puo' mangiarsi
+            -- pressione o rilascio, l'addon no. Qui sotto la vecchia via
+            -- resta come RETE: qualunque delle due arrivi prima azzera
+            -- _wlDragSource, quindi non c'e' mai un doppio spostamento.
             -- Mentre il drag e' attivo, lo slot sotto il cursore viene
             -- evidenziato con un BORDINO DORATO (StartWLDragTracking).
             bar:RegisterForDrag("LeftButton")
@@ -3316,6 +3291,7 @@ function GM:BuildWLGroupColumns()
         end
     end
     self:UpdateWLGroups()
+    self:_InitWlDragPoller()
 end
 
 -- Popola il pannello Raid Group dal raid REALE (non dalla comp di
@@ -3553,6 +3529,66 @@ end
 
 -- Un singolo passo di highlight: colora d'oro lo slot sotto il cursore e
 -- ripristina gli altri. Chiamata dal tracker (o direttamente dai test).
+-- ============================================================
+-- DRAG del pannello Raid Group: stesso meccanismo dell'HUD.
+-- Prima qui c'era il drag&drop del CLIENT (RegisterForDrag + OnDragStart/
+-- OnDragStop): in 3.3.5 quella macchina e' la stessa che ci ha mangiato i
+-- click per 4 release (si "sente" il tasto ma non parte nulla, e dopo il
+-- primo trascinamento la pressione successiva puo' restare digerita ->
+-- "posso spostare un giocatore una volta sola"). Ora il gesto e' letto
+-- DALL'ADDON: stato del tasto + posizione del cursore, bersaglio risolto
+-- geometricamente. Gli handler del client restano solo come rete, senza
+-- registrazione.
+function GM:_InitWlDragPoller()
+    if self._wlDragPoller or not self.wlGroupBox then return end
+    local p = CreateFrame("Frame", nil, self.wlGroupBox)
+    p:SetSize(1, 1)
+    p:SetPoint("TOPLEFT", self.wlGroupBox, "TOPLEFT", 0, 0)
+    p:EnableMouse(false)     -- non deve rubare niente
+    p:Show()
+    self._wlBtnDown = false
+    self._wlPressBar = nil
+    local acc = 0
+    p:SetScript("OnUpdate", function(_, elapsed)
+        acc = acc + (elapsed or 0)
+        if acc < 0.03 then return end
+        acc = 0
+        local down = (IsMouseButtonDown and IsMouseButtonDown("LeftButton")) and true or false
+        if down and not GM._wlBtnDown then
+            GM._wlBtnDown = true
+            local bar = GM:WlSlotAtCursor()
+            GM._wlPressBar = bar
+            if bar then
+                if bar.playerName then
+                    wlDbg("drag: barra %s (%s)", tostring(bar.index), tostring(bar.playerName))
+                    if not GM._wlDragSource then
+                        GM._wlDragSource = bar
+                        GM:StartWLDragTracking()
+                    end
+                else
+                    wlDbg("drag: barra %s VUOTA", tostring(bar.index))
+                end
+            end
+        elseif (not down) and GM._wlBtnDown then
+            GM._wlBtnDown = false
+            GM._wlPressBar = nil
+            local src = GM._wlDragSource
+            if src then
+                local target = GM:WlSlotAtCursor()
+                GM._wlDragSource = nil
+                if target and target ~= src then
+                    wlDbg("drag: rilascio -> barra %s", tostring(target.index))
+                    GM:MoveWLSlot(src, target)
+                else
+                    wlDbg("drag: rilascio senza bersaglio (annullo)")
+                end
+            end
+            GM:StopWLDragTracking()
+        end
+    end)
+    self._wlDragPoller = p
+end
+
 function GM:WlDragTick()
     if not self._wlDragSource then
         self:StopWLDragTracking()
@@ -3723,6 +3759,84 @@ function GM:UpdateWhisplist()
         if w and w > 40 then self.wlContent:SetWidth(w) end
     end
 
+    -- ============================================================
+    -- LIVELLI DETERMINISTICI DELLA CATENA DELLA LISTA.
+    -- BUG "non riesco a cliccare le cose nella lista" (fstack:
+    -- RLSuiteWLScroll <700> SOPRA la finestra <200>): in 3.3.5 i figli NON
+    -- si riallineano ai livelli della finestra quando questa viene raisata
+    -- (RaiseWindow/ShiftSubtree normalizza a 20+40*idx), quindi la catena
+    -- della whisplist puo' restare con il vecchio drift. Se lo SCROLL frame
+    -- (mouse-enabled per la rotellina) finisce sopra le righe, il click
+    -- viene mangiato dallo scroll invece di arrivare al Bottone-riga.
+    -- Qui, a OGNI refresh, il container delle tab e la pagina vengono
+    -- riallineati ai loro genitori (shift del sotto-albero, nessun rinumero)
+    -- e la catena della lista viene ri-ancorata al livello LIVE della pagina:
+    --     finestra < host-tab < border < wlPage < wlListBox < wlScroll <
+    --     wlContent < righe
+    -- Si auto-ripara cosi' da qualunque drift passato. Le righe sono ancorate
+    -- SOPRA content e scroll come gia' in produzione su Loot Manager (righe a
+    -- histContent+2) e MS Manager; qui non era mai stato applicato.
+    -- ============================================================
+    local winLvl = (self.whisplistFrame and self.whisplistFrame.GetFrameLevel
+        and self.whisplistFrame:GetFrameLevel()) or 1
+    local function pinLvl(f, lvl)
+        if f and f.SetFrameLevel then f:SetFrameLevel(lvl) end
+    end
+
+    -- 1) CONTAINER DELLE TAB e PAGINA della whisplist: devono stare appena
+    -- sopra i loro genitori (la finestra e tg.border, che ha il backdrop).
+    -- Se un raise li ha lasciati centinaia di livelli piu' in alto, li
+    -- riallineiamo SHIFTANDO tutto il sotto-albero (Utils:RealignSubtreeLevel):
+    -- l'ordine interno — quello che in gioco funziona — resta identico,
+    -- sparisce solo il drift. Mai ancorati alla finestra in modo assoluto:
+    -- non si deve mai scendere SOTTO il genitore, o il backdrop del border
+    -- coprirebbe la lista.
+    if RLSuite.utils and RLSuite.utils.RealignSubtreeLevel then
+        local hostF = self.ieTabGroup and self.ieTabGroup.frame
+        if hostF then
+            RLSuite.utils:RealignSubtreeLevel(hostF, winLvl + 1)
+        end
+        if self.wlPage and self.wlPage.GetParent then
+            local par = self.wlPage:GetParent()
+            local parLvl = par and par.GetFrameLevel and par:GetFrameLevel()
+            if parLvl then
+                RLSuite.utils:RealignSubtreeLevel(self.wlPage, parLvl + 1)
+            end
+        end
+    end
+
+    -- 2) Catena VISIBILE della lista, ancorata al livello LIVE della pagina:
+    --    pagina < wlListBox < wlScroll < wlContent < righe.
+    local baseLvl = (self.wlPage and self.wlPage.GetFrameLevel
+        and self.wlPage:GetFrameLevel()) or winLvl
+    pinLvl(self.wlListBox, baseLvl + 2)
+    pinLvl(self.wlScroll, baseLvl + 4)
+    pinLvl(self.wlContent, baseLvl + 6)
+    local rowLvl = baseLvl + 8
+
+    -- 3) La "chrome" dello scroll (barra di scorrimento creata dal template di
+    --    Blizzard, piu' eventuali bottoni freccia) deve restare SOPRA le righe:
+    --    altrimenti le righe — ora che stanno sopra lo ScrollFrame — coprono i
+    --    16px della barra e trascinarla diventa difficile. Si pinnano TUTTI i
+    --    figli dello scroll tranne wlContent (nessuna dipendenza dal nome), piu'
+    --    la barra per nome globale (`$parentScrollBar` del template: stessa
+    --    cosa in gioco, ma la teniamo per sicurezza se un giorno cambiasse la
+    --    gerarchia).
+    local barLvl = rowLvl + 2
+    if self.wlScroll and self.wlScroll.GetChildren then
+        local ok, kids = pcall(function() return { self.wlScroll:GetChildren() } end)
+        if ok and type(kids) == "table" then
+            for i = 1, #kids do
+                local k = kids[i]
+                if k ~= self.wlContent then pinLvl(k, barLvl) end
+            end
+        end
+    end
+    local scrName = self.wlScroll and self.wlScroll.GetName and self.wlScroll:GetName()
+    if scrName and scrName ~= "" and _G[scrName .. "ScrollBar"] then
+        pinLvl(_G[scrName .. "ScrollBar"], barLvl)
+    end
+
     local entries = self.whisperDB.entries or {}
 
     -- Selezione per riferimento: sopravvive a riordini e aggregazioni.
@@ -3745,6 +3859,13 @@ function GM:UpdateWhisplist()
         row:SetPoint("TOPLEFT", self.wlContent, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", self.wlContent, "TOPRIGHT", 0, -y)
         RLSuite.utils:ClipScrollRow(self.wlContent, row, y, 24)
+        -- Livello esplicito SOPRA content e scroll per OGNI riga (anche per
+        -- quelle riusate dal pool, che altrimenti si trascinano il livello di
+        -- quando sono nate). Livello UNIFORME per tutte le righe: le righe non
+        -- si sovrappongono tra loro, quindi non serve scalarle, e cosi' la
+        -- "banda" della lista resta bassa e sottile — un eventuale menu a
+        -- tendina aperto SOPRA la lista continua a ricevere i click.
+        pinLvl(row, rowLvl)
         row.entry = entry
 
         local info = entry.name or "Unknown"

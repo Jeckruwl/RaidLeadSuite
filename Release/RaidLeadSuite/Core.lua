@@ -3,7 +3,67 @@
 -- ============================================================
 
 RLSuite = RLSuite or {}
-RLSuite.version = "1.11.48"
+-- Versione: letta dal .toc (UNICA fonte di verita'). Prima era una costante
+-- nel codice, rimasta indietro (1.11.48 mentre il .toc era 1.11.68): i tester
+-- avrebbero riportato la versione sbagliata e ogni segnalazione sarebbe stata
+-- inutile. La costante qui sotto e' solo il fallback se la metadata non c'e'.
+-- Nomi con cui l'addon puo' trovarsi installato: il canonico e lo storico.
+-- Serve perche' GetAddOnMetadata cerca una CARTELLA: se il nome e' fisso e nel
+-- client c'e' una copia vecchia con l'altro nome, la versione stampata e'
+-- quella della copia sbagliata (e' successo: "l'addon dice 1.11.52" mentre
+-- girava l'ultima).
+RLSuite.addonNames = { "RaidLeadSuite", "RLSuite" }
+
+local function TocVersion(name)
+    if not GetAddOnMetadata or not name then return nil end
+    local ok, v = pcall(GetAddOnMetadata, name, "Version")
+    if ok and type(v) == "string" and v ~= "" then return v end
+    return nil
+end
+
+-- Versione letta dal .toc della cartella DAVVERO caricata (baseName arriva
+-- dall'ADDON_LOADED). Chiamata di nuovo a ogni OnInitialize.
+function RLSuite:RefreshVersionFromFolder()
+    local folder = self.baseName or self.addonFolder
+    local v = TocVersion(folder)
+    if v then self.version = v end
+    return self.version
+end
+
+-- Copie dell'addon presenti in Interface/AddOns: per ogni nome candidato dice
+-- se la cartella esiste (metadata) e se e' caricata. Due copie insieme sono
+-- il primo sospetto quando "una cosa non funziona ma il codice e' giusto":
+-- l'altra copia registra gli stessi eventi e crea frame con gli stessi nomi.
+function RLSuite:AddonCopiesInfo()
+    local out = {}
+    for _, name in ipairs(self.addonNames or { "RaidLeadSuite" }) do
+        local ver = TocVersion(name)
+        local loaded = false
+        if IsAddOnLoaded then
+            local ok, l = pcall(IsAddOnLoaded, name)
+            if ok then loaded = l and true or false end
+        end
+        if ver or loaded then
+            out[#out + 1] = { name = name, version = ver, loaded = loaded }
+        end
+    end
+    return out
+end
+
+-- Righe di avviso se in AddOns c'e' piu' di una copia dell'addon.
+function RLSuite:AddonCopiesWarning()
+    local info = self:AddonCopiesInfo()
+    if #info <= 1 then return nil end
+    local lines = { "Piu' di una copia dell'addon in Interface\\AddOns:" }
+    for _, c in ipairs(info) do
+        lines[#lines + 1] = string.format("  %s  v%s  %s",
+            c.name, tostring(c.version or "?"), c.loaded and "CARICATA" or "presente ma non caricata")
+    end
+    lines[#lines + 1] = "Tienine UNA sola (quella aggiornata) e cancella l'altra: due copie insieme danno gesti imprevedibili."
+    return lines
+end
+
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.102"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -21,6 +81,10 @@ local defaults = {
         debug = false,
         anchorMode = false,
         savedRaids = {},
+        -- Progressione per raid (counter dei boss battuti): registro delle
+        -- uccisioni per lockout, usato dalle macro in-fight dei boss che non
+        -- si riconoscono dal target (Gunship, Faction Champions).
+        bossProgress = {},
         macrobar = {
             enabled = true,
             locked = true,
@@ -116,7 +180,9 @@ local defaults = {
             rerollDuration = 5,
             rarityFilter = "all",
             tradeWindow = 7200,
-            filters = { recipes = false, boe = false, gems = false, shards = false },
+            filters = { recipes = false, boe = false, gems = false, shards = false,
+                        projectiles = false },
+            ignoredItems = {},
         },
         combatlog = {
             enabled = true,
@@ -195,11 +261,17 @@ function RLSuite:OnInitialize()
     -- Folder name is the addon name. Canonical: RaidLeadSuite (RLSuite kept
     -- for backward compatibility). AceAddon stores it on baseName.
     self.addonFolder = self.baseName or "RaidLeadSuite"
+    self:RefreshVersionFromFolder()
 
     self:RegisterChatCommand("rls", "ChatCommand")
     self:RegisterChatCommand("rlsuite", "ChatCommand")
 
-    self.utils:Print(string.format(L["v%s loaded. Type /rls to open."], RLSuite.version))
+    self.utils:Print(string.format(L["v%s loaded (%s). Type /rls to open."],
+        RLSuite.version, tostring(self.addonFolder)))
+    local warn = self:AddonCopiesWarning()
+    if warn then
+        for _, line in ipairs(warn) do self.utils:Print(line) end
+    end
 end
 
 function RLSuite:OnEnable()
@@ -212,6 +284,9 @@ function RLSuite:OnEnable()
     self:RegisterEvent("CHAT_MSG_RAID_LEADER", "OnRaidMessage")
     self:RegisterEvent("CHAT_MSG_LOOT", "OnLootMessage")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
+    -- Cambio di target = cambio boss per le macro in-fight: la barra passa
+    -- al set del boss che stai affrontando (target, poi boss1..4).
+    self:RegisterEvent("PLAYER_TARGET_CHANGED", "OnTargetChanged")
     self:InitModules()
     self:EnsureMinimapIcon()
 end
@@ -242,6 +317,14 @@ end
 function RLSuite:OnPlayerRegenDisabled()
     self.context = "infight"
     self:UpdatePhaseUI()
+end
+
+-- Il target e' cambiato: se siamo in fight, la MacroBar deve passare al
+-- set del boss che stiamo affrontando (o svuotarsi se non e' un boss).
+function RLSuite:OnTargetChanged()
+    if self.macrobar and self.macrobar.OnBossTargetChanged then
+        self.macrobar:OnBossTargetChanged()
+    end
 end
 
 function RLSuite:OnWhisper(event, msg, sender)
@@ -300,6 +383,301 @@ RLSuite.raidDB = {
         sizes = {10, 25},
     },
 }
+
+-- ============================================================
+-- BOSS → (raid, boss canonico): riconoscimento del boss IN CORSO, serve
+-- alle MACRO IN-FIGHT (la barra mostra le macro del boss che stai
+-- affrontando). Su 3.3.5a il client NON manda ENCOUNTER_START/END (vedi
+-- l'intestazione di CombatLog.lua), quindi il boss si riconosce dalle
+-- UNITA': prima il TARGET, poi boss1..boss4.
+-- Il match per NPC ID (estratto dal GUID: a prova di lingua) e' la via
+-- principale; i NOMI coprono i boss per cui il server non ha un id
+-- affidabile (Gunship, Faction Champions, Assembly of Iron, Quattro
+-- Cavalieri) e fanno da rete di sicurezza sul client inglese.
+-- Ogni nome di boss qui dentro DEVE esistere in RLSuite.raidDB con la
+-- stessa dicitura (le macro sono salvate per raid + boss).
+-- ============================================================
+RLSuite.bossUnits = {
+    ["Icecrown Citadel"] = {
+        ["Lord Marrowgar"] = { npcs = { 36612 }, linear = true },
+        ["Lady Deathwhisper"] = { npcs = { 36855 }, linear = true },
+        -- Gunship: nessun NPC affidabile come "boss" -> si riconosce col
+        -- COUNTER (3o boss della catena lineare di ICC).
+        ["Gunship Battle"] = { names = { "Gunship Battle" }, linear = true, progressOnly = true },
+        ["Deathbringer Saurfang"] = { npcs = { 37813 }, linear = true },
+        ["Rotface"] = { npcs = { 36627 } },
+        ["Festergut"] = { npcs = { 36626 } },
+        ["Professor Putricide"] = { npcs = { 36678 } },
+        ["Blood Prince Council"] = { npcs = { 37970, 37972, 37973 } },
+        ["Blood-Queen Lana'thel"] = { npcs = { 37955 } },
+        ["Valithria Dreamwalker"] = { npcs = { 36789 } },
+        ["Sindragosa"] = { npcs = { 36853 } },
+        ["The Lich King"] = { npcs = { 36597 } },
+    },
+    ["Trial of the Crusader"] = {
+        ["Northrend Beasts"] = { npcs = { 34796, 35144, 34799, 34797 }, linear = true },
+        ["Lord Jaraxxus"] = { npcs = { 34780 }, linear = true },
+        -- Faction Champions: nessun NPC affidabile -> COUNTER (3o di ToC).
+        ["Faction Champions"] = { names = { "Faction Champions" }, linear = true, progressOnly = true },
+        ["Twin Val'kyr"] = { npcs = { 34497, 34496 }, linear = true,
+                             names = { "Fjola Lightbane", "Eydis Darkbane" } },
+        ["Anub'arak"] = { npcs = { 34564 }, linear = true },
+    },
+    ["Ulduar"] = {
+        ["Flame Leviathan"] = { npcs = { 33113 } },
+        ["Ignis the Furnace Master"] = { npcs = { 33118 } },
+        ["Razorscale"] = { npcs = { 33186 } },
+        ["XT-002 Deconstructor"] = { npcs = { 33293 } },
+        ["Assembly of Iron"] = { names = { "Steelbreaker", "Runemaster Molgeim",
+                                           "Stormcaller Brundir" } },
+        ["Kologarn"] = { npcs = { 32930 } },
+        ["Auriaya"] = { npcs = { 33515 } },
+        ["Hodir"] = { npcs = { 32845 } },
+        ["Thorim"] = { npcs = { 32865 } },
+        ["Freya"] = { npcs = { 32906 } },
+        ["Mimiron"] = { npcs = { 33350 } },
+        ["General Vezax"] = { npcs = { 33271 } },
+        ["Yogg-Saron"] = { npcs = { 33288 } },
+        ["Algalon the Observer"] = { npcs = { 32871 } },
+    },
+    ["Naxxramas"] = {
+        ["Anub'Rekhan"] = { npcs = { 15956 } },
+        ["Grand Widow Faerlina"] = { npcs = { 15953 } },
+        ["Maexxna"] = { npcs = { 15952 } },
+        ["Noth the Plaguebringer"] = { npcs = { 15954 } },
+        ["Heigan the Unclean"] = { npcs = { 15936 } },
+        ["Loatheb"] = { npcs = { 16011 } },
+        ["Instructor Razuvious"] = { npcs = { 16061 } },
+        ["Gothik the Harvester"] = { npcs = { 16060 } },
+        ["The Four Horsemen"] = { names = { "Highlord Mograine", "Thane Korth'azz",
+                                            "Lady Blaumeux", "Sir Zeliek" } },
+        ["Patchwerk"] = { npcs = { 16028 } },
+        ["Grobbulus"] = { npcs = { 15931 } },
+        ["Gluth"] = { npcs = { 15932 } },
+        ["Thaddius"] = { npcs = { 15928 } },
+        ["Sapphiron"] = { npcs = { 15989 } },
+        ["Kel'Thuzad"] = { npcs = { 15990 } },
+    },
+    ["The Obsidian Sanctum"] = { ["Sartharion"] = { npcs = { 28860 } } },
+    ["The Eye of Eternity"] = { ["Malygos"] = { npcs = { 28859 } } },
+    ["Onyxia's Lair"] = { ["Onyxia"] = { npcs = { 10184 } } },
+    ["Ruby Sanctum"] = { ["Halion"] = { npcs = { 39863 } } },
+    ["Vault of Archavon"] = {
+        ["Archavon"] = { npcs = { 31125 }, names = { "Archavon the Stone Watcher" } },
+        ["Emalon"] = { npcs = { 33993 }, names = { "Emalon the Storm Watcher" } },
+        ["Koralon"] = { npcs = { 35013 }, names = { "Koralon the Flame Watcher" } },
+        ["Toravon"] = { npcs = { 38433 }, names = { "Toravon the Ice Watcher" } },
+    },
+}
+
+-- Indice inverso (NPC id -> raid/boss e nome -> raid/boss). Costruito una
+-- volta sola alla prima richiesta: zero lavoro a ogni lookup in fight.
+function RLSuite:BuildBossIndex()
+    if self._bossByNpc and self._bossByName then return end
+    local byNpc, byName = {}, {}
+    for raid, bosses in pairs(self.bossUnits or {}) do
+        for boss, info in pairs(bosses) do
+            local names = { boss }
+            for _, n in ipairs(info.names or {}) do names[#names + 1] = n end
+            for _, n in ipairs(names) do
+                local key = string.lower(n)
+                if not byName[key] then byName[key] = { raid = raid, boss = boss } end
+            end
+            for _, id in ipairs(info.npcs or {}) do
+                if not byNpc[id] then byNpc[id] = { raid = raid, boss = boss } end
+            end
+        end
+    end
+    self._bossByNpc = byNpc
+    self._bossByName = byName
+end
+
+function RLSuite:BossFromNpcId(id)
+    if not id then return nil end
+    self:BuildBossIndex()
+    return self._bossByNpc[id]
+end
+
+function RLSuite:BossFromName(name)
+    if not name or name == "" then return nil end
+    self:BuildBossIndex()
+    return self._bossByName[string.lower(name)]
+end
+
+-- ============================================================
+-- PROGRESSIONE DEL RAID (counter dei boss battuti)
+-- Serve ai boss che NON si possono riconoscere dal target: sono punti fissi
+-- della catena lineare (Gunship Battle in ICC, Faction Champions in ToC),
+-- quindi il boss corrente si deduce dal counter: primo boss non ancora
+-- battuto in questo lockout. Il registro e' per raid e persiste nel profilo;
+-- il reset settimanale si deduce da se': se un boss GIA' segnato muore di
+-- nuovo quello e' un lockout nuovo e il registro riparte.
+-- ============================================================
+
+function RLSuite:ProgressFor(raid, create)
+    local prof = self.db and self.db.profile
+    if not (prof and raid) then return nil end
+    prof.bossProgress = prof.bossProgress or {}
+    local p = prof.bossProgress[raid]
+    if not p then
+        if not create then return nil end
+        p = { killed = {} }
+        prof.bossProgress[raid] = p
+    end
+    p.killed = p.killed or {}
+    return p
+end
+
+function RLSuite:IsBossKilled(raid, boss)
+    local p = self:ProgressFor(raid)
+    return (p and p.killed and p.killed[boss]) and true or false
+end
+
+-- Boss successivo in ordine di raidDB: il primo NON ancora battuto.
+function RLSuite:NextBossByProgress(raid)
+    local info = raid and self.raidDB[raid]
+    local list = info and info.bosses
+    if not list then return nil end
+    local p = self:ProgressFor(raid)
+    for i = 1, #list do
+        if not (p and p.killed[list[i]]) then return list[i] end
+    end
+    return nil
+end
+
+function RLSuite:KilledBossCount(raid)
+    local p = self:ProgressFor(raid)
+    if not p then return 0 end
+    local n = 0
+    for _ in pairs(p.killed) do n = n + 1 end
+    return n
+end
+
+-- Un boss e' un "buco di riconoscimento" (per lui si usa il counter)?
+function RLSuite:IsProgressOnlyBoss(raid, boss)
+    local units = self.bossUnits[raid or ""]
+    local info = units and units[boss or ""]
+    return (info and info.progressOnly) and true or false
+end
+
+-- Segna battuto un boss (NPC id visto nel combat log). Se era GIA' segnato
+-- siamo in un nuovo lockout: il registro riparte da zero.
+function RLSuite:RecordBossKill(npcId)
+    local info = self:BossFromNpcId(npcId)
+    if not info then return false end
+    local p = self:ProgressFor(info.raid, true)
+    if not p then return false end
+    if p.killed[info.boss] then
+        p.killed = {}
+        p.lockouts = (p.lockouts or 0) + 1
+    end
+    p.killed[info.boss] = true
+    p.lastKill = info.boss
+    p.lastKillAt = (time and time()) or nil
+    self._lastProgressRaid = info.raid
+    if self.macrobar and self.macrobar.OnBossProgressChanged then
+        self.macrobar:OnBossProgressChanged()
+    end
+    return true
+end
+
+function RLSuite:ResetBossProgress(raid)
+    local prof = self.db and self.db.profile
+    if not prof then return end
+    prof.bossProgress = prof.bossProgress or {}
+    if raid then
+        prof.bossProgress[raid] = nil
+    else
+        prof.bossProgress = {}
+    end
+end
+
+-- INFERENZA SULLA CATENA LINEARE: se in fight riconosci il boss N, tutti i
+-- boss LINEARI precedenti (punti fissi non skippabili) sono per forza gia'
+-- morti in questo lockout. Cosi' il counter resta corretto anche per i boss
+-- che il combat log non registra (Gunship, Faction Champions).
+function RLSuite:InferLinearKills(raid, boss)
+    local info = raid and self.raidDB[raid]
+    local list = info and info.bosses
+    local units = self.bossUnits[raid or ""]
+    if not (list and units) then return false end
+    local idx
+    for i = 1, #list do
+        if list[i] == boss then idx = i break end
+    end
+    if not idx then return false end
+    local p = self:ProgressFor(raid, true)
+    if not p then return false end
+    local changed = false
+    for i = 1, idx - 1 do
+        local b = list[i]
+        local u = units[b]
+        if u and u.linear and not p.killed[b] then
+            p.killed[b] = true
+            changed = true
+        end
+    end
+    if changed then
+        self._lastProgressRaid = raid
+        if self.macrobar and self.macrobar.OnBossProgressChanged then
+            self.macrobar:OnBossProgressChanged()
+        end
+    end
+    return changed
+end
+
+-- Raid corrente quando il boss non e' riconoscibile: nome della zona/istanza
+-- (client inglese: coincide con raidDB), poi l'ultimo raid riconosciuto in
+-- questa sessione, poi l'ultimo con progressione registrata.
+function RLSuite:CurrentRaidGuess()
+    local zone = GetRealZoneText and GetRealZoneText() or nil
+    if type(zone) == "string" and zone ~= "" and self.raidDB[zone] then return zone end
+    if self._lastBossRaid and self.raidDB[self._lastBossRaid] then return self._lastBossRaid end
+    if self._lastProgressRaid and self.raidDB[self._lastProgressRaid] then
+        return self._lastProgressRaid
+    end
+    return nil
+end
+
+-- Boss che stiamo affrontando ADESSO:
+--   1) TARGET, poi boss1..boss4 (NPC id dal GUID, poi nome) — richiesta:
+--      "se sono in fight con il boss X voglio le macro del boss X";
+--   2) COUNTER del raid, ma SOLO per i boss che non si possono riconoscere
+--      dal target (Gunship Battle, Faction Champions): primo boss non
+--      ancora battuto in questo lockout.
+-- Ritorna raid, boss oppure nil, nil (trash: nessuna macro in-fight).
+function RLSuite:CurrentBossInfo()
+    local units = { "target", "boss1", "boss2", "boss3", "boss4" }
+    for i = 1, #units do
+        local u = units[i]
+        if UnitExists and UnitExists(u) then
+            local info
+            local guid = UnitGUID and UnitGUID(u)
+            if guid and self.utils and self.utils.NpcIdFromGUID then
+                info = self:BossFromNpcId(self.utils:NpcIdFromGUID(guid))
+            end
+            if not info and UnitName then
+                info = self:BossFromName(UnitName(u))
+            end
+            if info then
+                self._lastBossRaid = info.raid
+                if (self.context or "") == "infight" then
+                    self:InferLinearKills(info.raid, info.boss)
+                end
+                return info.raid, info.boss
+            end
+        end
+    end
+    -- 2) counter del raid: vale solo per i "buchi" (Gunship / Champions).
+    local raid = self:CurrentRaidGuess()
+    if raid then
+        local nextBoss = self:NextBossByProgress(raid)
+        if nextBoss and self:IsProgressOnlyBoss(raid, nextBoss) then
+            return raid, nextBoss
+        end
+    end
+    return nil, nil
+end
 
 -- WotLK item IDs used only by debug-mode fake loot.
 RLSuite.debugLoot = {
@@ -542,59 +920,101 @@ RLSuite.buffData = {
 
 -- ============================================================
 -- RAID BUFF MATRIX COLUMNS (pannello "Raid Buffs" a scomparsa del Raid Frame)
--- 21 categorie di buff: colonne della tabella; le righe sono i giocatori.
+-- 25 categorie di buff: colonne della tabella; le righe sono i giocatori.
 -- Per ogni cella si scansionano le aure del player (UnitBuff per indice) e
 -- si mostra l'icona della spell che copre la categoria. Campi:
 --   label          nome sintetico (header colonna)
 --   icon           icona di fallback (anche icona fissa per byNameSpell)
 --   spells         lista spellId che coprono la categoria (match per id)
---   classes        classi che possono fornirla (solo informativa)
+--   classes        classi che possono FORNIRLA (provider). E' il dato che
+--                  rende il check consapevole della composizione: se nessuna
+--                  di queste classi e' nel raid, la categoria NON e'
+--                  disponibile e l'icona di intestazione si ingrigisce.
+--   beneficiaries  classi che ne BENEFICIANO: il check ignora le altre (es.
+--                  Int su un warrior non viene mai segnalata). Assente/vuoto
+--                  = la categoria interessa TUTTI (Kings, Fortitude, ...).
+--   scope          "raid"   = una sorgente copre tutto il raid (default)
+--                  "single" = una sorgente per fornitore: Focus Magic, il
+--                             numero di FM attesi = numero di maghi
+--                  "capped" = copre al massimo `cap` player (Replen. = 10)
+--   cap            solo con scope "capped": quanti player copre al massimo
+--   partyProviders classi la cui versione copre SOLO il party. NESSUNA
+--                  categoria attuale lo usa: dal patch 3.0.2 TUTTI i totem
+--                  shaman di buff (SoE, Windfury, Wrath of Air, Mana Spring,
+--                  Totem of Wrath, Flametongue) sono RAID-WIDE, con limite di
+--                  RAGGIO 30-40yd: il raggio lo vede gia' il check per-player
+--                  (chi e' fuori raggio non ha l'aura), quindi marcarli
+--                  party-only farebbe FALSI NEGATIVI. Il campo resta per
+--                  sorgenti davvero party-only (i totem "a impulso": Healing
+--                  Stream, Mana Tide, Cleansing, Tremor): se l'unico
+--                  fornitore presente e' un partyProvider il check guarda
+--                  solo il party invece di accusare tutto il raid.
 --   byNameSpell    se presente: match per NOME aura (nome risolto via
 --                  GetSpellInfo(byNameSpell) => locale-safe, copre tutte le
 --                  varianti della stessa aura, es. "Well Fed" di ogni cibo)
 -- ============================================================
+
+-- Liste di classi riusate dalle categorie (beneficiari del buff):
+--   MANA   = chi ha una barra mana  -> Int, MP5, Replenishment
+--   CASTER = chi fa danno/cure magiche -> Spirit, FM, spell power/haste/crit
+--   PHYS   = chi vive di attack power  -> ATK, S+Agi, crit/haste melee, AP%
+local BUFF_CLASSES_MANA = { "PALADIN", "HUNTER", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
+local BUFF_CLASSES_CASTER = { "MAGE", "WARLOCK", "PRIEST", "DRUID", "SHAMAN", "PALADIN" }
+local BUFF_CLASSES_PHYS = { "WARRIOR", "ROGUE", "HUNTER", "DEATHKNIGHT", "PALADIN", "SHAMAN", "DRUID" }
+
 RLSuite.raidBuffColumns = {
-        { key = "stats",       label = "%stat",   icon = "Interface\\Icons\\Spell_Magic_GreaterBlessingofKings",
+    { key = "stats",       label = "%stat",   icon = "Interface\\Icons\\Spell_Magic_GreaterBlessingofKings",
       classes = { "PALADIN" }, spells = { 20217, 25898, 20911 } },
     { key = "mp5",         label = "MP5",     icon = "Interface\\Icons\\Spell_Holy_GreaterBlessingofWisdom",
-      classes = { "PALADIN", "SHAMAN" }, spells = { 48936, 48938, 58774 } },
-        { key = "atkpower",    label = "ATK",     icon = "Interface\\Icons\\Ability_Warrior_BattleShout",
-      classes = { "PALADIN", "WARRIOR", "HUNTER" }, spells = { 48932, 48934, 47436 } },
+      classes = { "PALADIN", "SHAMAN" },
+      beneficiaries = BUFF_CLASSES_MANA, spells = { 48936, 48938, 58774 } },
+    { key = "atkpower",    label = "ATK",     icon = "Interface\\Icons\\Ability_Warrior_BattleShout",
+      classes = { "PALADIN", "WARRIOR", "HUNTER" }, beneficiaries = BUFF_CLASSES_PHYS,
+      spells = { 48932, 48934, 47436 } },
     { key = "hp",          label = "HP",      icon = "Interface\\Icons\\Ability_Warrior_RallyingCry",
       classes = { "WARRIOR", "WARLOCK" }, spells = { 47440, 27267, 47982 } },
-        { key = "spirit",      label = "Spirit",  icon = "Interface\\Icons\\Spell_Holy_DivineSpirit",
-      classes = { "PRIEST", "WARLOCK" }, spells = { 48073, 48075, 57567 } },
+    { key = "spirit",      label = "Spirit",  icon = "Interface\\Icons\\Spell_Holy_DivineSpirit",
+      classes = { "PRIEST", "WARLOCK" }, beneficiaries = BUFF_CLASSES_CASTER,
+      spells = { 48073, 48075, 57567 } },
     { key = "stamina",     label = "Stamina", icon = "Interface\\Icons\\Spell_Holy_WordFortitude",
       classes = { "PRIEST" }, spells = { 48161, 48162 } },
-        { key = "intellect",   label = "Int",     icon = "Interface\\Icons\\Spell_Holy_MagicalSentry",
-      classes = { "MAGE", "WARLOCK" }, spells = { 42995, 43002, 61316, 57567 } },
+    { key = "intellect",   label = "Int",     icon = "Interface\\Icons\\Spell_Holy_MagicalSentry",
+      classes = { "MAGE", "WARLOCK" }, beneficiaries = BUFF_CLASSES_MANA,
+      spells = { 42995, 43002, 61316, 57567 } },
     { key = "armor",       label = "Armor",   icon = "Interface\\Icons\\Spell_Holy_DevotionAura",
       classes = { "PALADIN", "DRUID" }, spells = { 48942, 48941, 48470 } },
     { key = "wild",        label = "Gift",    icon = "Interface\\Icons\\Spell_Nature_Regeneration",
       classes = { "DRUID" }, spells = { 21849, 21850, 48470 } },
     { key = "strAgi",      label = "S+Agi",   icon = "Interface\\Icons\\Spell_Nature_Strength",
-      classes = { "DEATHKNIGHT", "SHAMAN" }, spells = { 57330, 58643 } },
+      classes = { "DEATHKNIGHT", "SHAMAN" },
+      beneficiaries = BUFF_CLASSES_PHYS, spells = { 57330, 58643 } },
     { key = "focusMagic",  label = "FM",      icon = "Interface\\Icons\\Spell_Arcane_FocusedPower",
-      classes = { "MAGE" }, spells = { 54646 } },
-        { key = "haste",       label = "Haste",   icon = "Interface\\Icons\\Ability_Druid_ImprovedMoonkinForm",
+      classes = { "MAGE" }, beneficiaries = BUFF_CLASSES_CASTER, scope = "single",
+      spells = { 54646 } },
+    { key = "haste",       label = "Haste",   icon = "Interface\\Icons\\Ability_Druid_ImprovedMoonkinForm",
       classes = { "DRUID", "PALADIN" }, spells = { 24907, 53648 } },
     { key = "spellCrit",   label = "SpC",     icon = "Interface\\Icons\\Spell_Nature_MoonGlow",
-      classes = { "DRUID", "SHAMAN" }, spells = { 24907, 51470 } },
+      classes = { "DRUID", "SHAMAN" }, beneficiaries = BUFF_CLASSES_CASTER,
+      spells = { 24907, 51470 } },
     { key = "shadow",      label = "ShProt",  icon = "Interface\\Icons\\Spell_Shadow_AntiShadow",
       classes = { "PRIEST" }, spells = { 48169, 48170 } },
     { key = "retAura",     label = "Ret",     icon = "Interface\\Icons\\Spell_Holy_AuraMastery",
       classes = { "PALADIN" }, spells = { 54043, 54044 } },
-        { key = "meleeCrit",   label = "MCrit",   icon = "Interface\\Icons\\Ability_CriticalStrike",
-      classes = { "DRUID", "WARRIOR" }, spells = { 17007, 24932, 29801 } },
-        { key = "meleeHaste",  label = "MHaste",  icon = "Interface\\Icons\\Spell_Nature_Windfury",
-      classes = { "SHAMAN", "DEATHKNIGHT" }, spells = { 55610, 8512, 8515, 8516 } },
-        { key = "spellPower",  label = "SPow",    icon = "Interface\\Icons\\Spell_Fire_FlameBolt",
-      classes = { "WARLOCK", "SHAMAN" }, spells = { 47240, 30706, 58656 } },
-        { key = "damage",      label = "Dmg%",    icon = "Interface\\Icons\\Ability_Hunter_FerociousInspiration",
+    { key = "meleeCrit",   label = "MCrit",   icon = "Interface\\Icons\\Ability_CriticalStrike",
+      classes = { "DRUID", "WARRIOR" }, beneficiaries = BUFF_CLASSES_PHYS,
+      spells = { 17007, 24932, 29801 } },
+    { key = "meleeHaste",  label = "MHaste",  icon = "Interface\\Icons\\Spell_Nature_Windfury",
+      classes = { "SHAMAN", "DEATHKNIGHT" },
+      beneficiaries = BUFF_CLASSES_PHYS, spells = { 55610, 8512, 8515, 8516 } },
+    { key = "spellPower",  label = "SPow",    icon = "Interface\\Icons\\Spell_Fire_FlameBolt",
+      classes = { "WARLOCK", "SHAMAN" },
+      beneficiaries = BUFF_CLASSES_CASTER, spells = { 47240, 30706, 58656 } },
+    { key = "damage",      label = "Dmg%",    icon = "Interface\\Icons\\Ability_Hunter_FerociousInspiration",
       classes = { "HUNTER", "PALADIN", "MAGE" }, spells = { 31583, 34460, 31869 } },
     -- Nuove categorie allineate a Icy Veins WotLK Raid Buffs guide:
     { key = "apIncrease",  label = "AP%",     icon = "Interface\\Icons\\Ability_TrueShot",
-      classes = { "HUNTER", "SHAMAN", "DEATHKNIGHT" }, spells = { 19506, 30809, 53138 } },
+      classes = { "HUNTER", "SHAMAN", "DEATHKNIGHT" }, beneficiaries = BUFF_CLASSES_PHYS,
+      spells = { 19506, 30809, 53138 } },
     { key = "dmgReduction", label = "DR%",    icon = "Interface\\Icons\\Spell_Nature_LightningShield",
       classes = { "PALADIN", "PRIEST" }, spells = { 20911, 57472, 57479 } },
     { key = "healReceived", label = "Heal+",  icon = "Interface\\Icons\\Ability_Druid_TreeofLife",
@@ -602,13 +1022,22 @@ RLSuite.raidBuffColumns = {
     { key = "physReduction", label = "Armor+", icon = "Interface\\Icons\\Spell_Nature_UndyingStrength",
       classes = { "SHAMAN", "PRIEST" }, spells = { 16240, 16239, 16236, 16235, 16176, 15363, 15359, 15358, 15277 } },
     { key = "replen",      label = "Repl",    icon = "Interface\\Icons\\Ability_Warlock_ImprovedSoulLeech",
-      classes = { "MAGE", "HUNTER", "WARLOCK", "PALADIN", "PRIEST" }, spells = { 44561, 53292, 54118, 31878, 34914 } },
+      classes = { "MAGE", "HUNTER", "WARLOCK", "PALADIN", "PRIEST" },
+      beneficiaries = BUFF_CLASSES_MANA, scope = "capped", cap = 10,
+      spells = { 44561, 53292, 54118, 31878, 34914 } },
     { key = "spellHaste",  label = "SpH",     icon = "Interface\\Icons\\Spell_Nature_SlowingTotem",
-      classes = { "SHAMAN" }, spells = { 3738 } },
+      classes = { "SHAMAN" },
+      beneficiaries = BUFF_CLASSES_CASTER, spells = { 3738 } },
     { key = "flask",       label = "Flask",   icon = "Interface\\Icons\\INV_Alchemy_EndlessFlask_05",
       classes = {}, spells = { 53755, 53760, 54212, 53758, 67016, 67017, 67018 } },
     { key = "wellfed",     label = "Food",    icon = "Interface\\Icons\\Spell_Misc_Food",
       classes = {}, byNameSpell = 57399 },
+    -- DURABILITY: colonna di SERVIZIO del Raid Frame, non un buff. Sta nella
+    -- stessa matrice (ultima a destra) e usa l'icona dell'equipaggiamento del
+    -- client (lo slot "petto" della scheda personaggio). `kind` la distingue
+    -- dalle categorie di buff in tutto il resto del codice.
+    { key = "durability",  label = "Dur",     icon = "Interface\\PaperDoll\\UI-PaperDoll-Slot-Chest",
+      kind = "durability", classes = {} },
 }
 
 RLSuite.raidBuffChecks = {
@@ -701,22 +1130,22 @@ RLSuite.raidDebuffChecks = {
 -- (Events, slash commands, database setup and module init are now handled
 --  by AceAddon-3.0 / AceEvent-3.0 / AceConsole-3.0 / AceDB-3.0 above.)
 
+-- LISTA PUBBLICA dei comandi: solo quelli per l'uso normale. I comandi di
+-- servizio (diagnostica: diag, rfdump, lootdiag, icondbg, minimap, debugbuff,
+-- version) e gli alias restano FUNZIONANTI ma non si elencano: l'elenco
+-- completo sta in _dev/commands.txt, non in game ne' nella README.
 function RLSuite:PrintHelp()
     local p = function(t) self.utils:Print(t) end
     p(L["Available commands:"])
-    p(L["  /rls              Tab bar"])
-    p(L["  /rls help         This list"])
-    p(L["  /rls group        Groupmaking tab"])
-    p(L["  /rls inviteengine InviteEngine panel (whisper + auto-invite)"])
-    p(L["  /rls whisplist    InviteEngine panel (alias)"])
-    p(L["  /rls macro        Config -> Macros (editor)"])
-    p(L["  /rls macrobar     HUD MacroBar"])
-    p(L["  /rls raidframe    Raid Frame HUD"])
-    p(L["  /rls rfhud        Raid Frame HUD (alias)"])
-    p(L["  /rls ms           MS Manager tab"])
-    p(L["  /rls debugbuff    Diagnose Raid Buffs header icons"])
-    p(L["  /rls loot         Loot Manager tab"])
-    p(L["  /rls config       Config window"])
+    p(L["  /rls            Main bar (buttons + phase)"])
+    p(L["  /rls help       This list"])
+    p(L["  /rls config     Config window"])
+    p(L["  /rls group      Groupmaking panel"])
+    p(L["  /rls inv        InviteEngine (whisper + auto-invite)"])
+    p(L["  /rls macrobar   MacroBar HUD"])
+    p(L["  /rls ms         MS Manager panel"])
+    p(L["  /rls loot       Loot Manager panel"])
+    p(L["  /rls raidframe  Raid Frame HUD"])
 end
 
 function RLSuite:ChatCommand(input)
@@ -738,18 +1167,13 @@ function RLSuite:ChatCommand(input)
         end
     elseif msg == "macrobar" then
         if self.macrobar then self.macrobar:Toggle() end
-    elseif msg == "rfhud" then
-        if self.raidFrame then self.raidFrame:Toggle() end
     elseif msg == "group" then
         if self.mainWindow then self.mainWindow:ShowTab("group") end
-    elseif msg == "whisplist" or msg == "wl" or msg == "inviteengine" or msg == "ie" then
+    elseif msg == "inv" or msg == "inviteengine" or msg == "whisplist"
+        or msg == "wl" or msg == "ie" then
         if self.mainWindow then self.mainWindow:ShowTab("group") end
         if self.groupmaking and self.groupmaking.OpenWhisplist then
             self.groupmaking:OpenWhisplist()
-        end
-    elseif msg == "macro" then
-        if self.config and self.config.OpenMacroEditorPanel then
-            self.config:OpenMacroEditorPanel()
         end
     elseif msg == "raidframe" or msg == "rf" then
         if self.raidFrame then self.raidFrame:Toggle() end
@@ -767,6 +1191,22 @@ function RLSuite:ChatCommand(input)
         else
             self.utils:Print(L["Raid frame not initialized yet."])
         end
+    elseif msg == "diag" or msg == "version" then
+        self:PrintAddonDiag()
+    elseif msg == "rfdump" then
+        -- Geometria dell'HUD: cosa l'addon puo' prendere col mouse e cosa si
+        -- vede a schermo. E' il comando da usare quando un trascinamento
+        -- "non fa niente": dice se la barra che vedi e' anche cliccabile.
+        local rf = self.raidFrame
+        if rf and rf.DiagSlotLines then
+            local p2 = function(t) self.utils:Print(t) end
+            p2("RLSuite - stato dell'HUD (barre con un player)")
+            -- NB: due punti, non punto: DiagSlotLines usa self (senza, /rls
+            -- rfdump andava in errore Lua invece di stampare la geometria).
+            for _, line in ipairs(rf:DiagSlotLines()) do p2(line) end
+        else
+            self:Print(L["Raid frame not initialized yet."])
+        end
     elseif msg == "config" then
         if self.config then self.config:Toggle() end
     elseif msg == "" then
@@ -774,6 +1214,32 @@ function RLSuite:ChatCommand(input)
     else
         self.utils:Print(L["Unknown command. Type /rls help for the list."])
         self:PrintHelp()
+    end
+end
+
+-- /rls diag — diagnostica INSTALLAZIONE: quale cartella e' caricata, che
+-- versione dice il suo .toc, e quali altre copie dell'addon esistono in
+-- Interface/AddOns. E' il primo comando da chiedere quando "una cosa non
+-- funziona ma il codice e' giusto".
+function RLSuite:PrintAddonDiag()
+    local p = function(t) self.utils:Print(t) end
+    p("RLSuite - diagnostica installazione")
+    p(string.format("  cartella caricata: %s", tostring(self.addonFolder or self.baseName or "?")))
+    p(string.format("  versione in uso:   %s", tostring(self.version or "?")))
+    local info = self:AddonCopiesInfo()
+    if #info == 0 then
+        p("  copie trovate:     nessuna metadata leggibile (GetAddOnMetadata assente)")
+    else
+        p("  copie trovate in Interface\\AddOns:")
+        for _, c in ipairs(info) do
+            p(string.format("    %s  v%s  %s", c.name, tostring(c.version or "?"),
+                c.loaded and "CARICATA" or "presente ma NON caricata"))
+        end
+    end
+    local warn = self:AddonCopiesWarning()
+    if warn then
+        for i = 2, #warn - 1 do p("  " .. warn[i]:gsub("^%s+", "")) end
+        p("  ATTENZIONE: " .. warn[#warn])
     end
 end
 
@@ -909,29 +1375,54 @@ function RLSuite:DebugRebalanceGroups(ngroups)
     self:DebugSyncSubgroups()
 end
 
--- Nomi/classi fittizi per "Fill Group": copertura di tutte le classi con
--- spec diverse, cosi' Raid Group e Raid Frame mostrano una comp varia.
+-- Nomi/classi fittizi per "Fill Raid": **24** finti = raid 25 (tu + 24).
+-- La lista e' una COMPOSIZIONE pensata, non nomi a caso: 2 tank, 5 healer e
+-- 17 dps, con tutte e 10 le classi presenti. Serve a due cose:
+--   * il Raid Frame mostra una comp vera (e i buff si generano dalle classi
+--     presenti: vedi RF:_DebugRosterBuffSets in RaidFrame.lua);
+--   * i tasti MT/OT, gli MS e i consumabili si provano su ruoli reali.
+-- L'ordine e' FISSO (niente shuffle): stessa comp = stesse righe, cosi' una
+-- segnalazione si puo' confrontare con la schermata di un altro. I finti sono
+-- elencati come vanno a finire nei gruppi: un healer per gruppo (1-5), i tank
+-- nei primi due, gli altri dps a riempire.
+local DEBUG_FILL_TARGET = 24   -- finti da generare (= 25 con il giocatore)
 local DEBUG_FILL_POOL = {
-    {name="Drakbot", class="WARRIOR", spec="prot"},
-    {name="Ironclad", class="WARRIOR", spec="fury"},
-    {name="Holymoon", class="PALADIN", spec="holy"},
-    {name="Retalia", class="PALADIN", spec="retri"},
-    {name="Zapdora", class="MAGE", spec="arcane"},
-    {name="Frostnova", class="MAGE", spec="fire"},
-    {name="Stabbitha", class="ROGUE", spec="combat"},
-    {name="Shivv", class="ROGUE", spec="assassin"},
-    {name="Moowrath", class="DRUID", spec="feral"},
-    {name="Leafsong", class="DRUID", spec="resto"},
-    {name="Holylite", class="PRIEST", spec="holy"},
-    {name="Shadowmel", class="PRIEST", spec="shadow"},
-    {name="Totemly", class="SHAMAN", spec="resto"},
-    {name="Stormcall", class="SHAMAN", spec="ele"},
-    {name="Frostbite", class="DEATHKNIGHT", spec="frost"},
-    {name="Bloodlord", class="DEATHKNIGHT", spec="blood"},
-    {name="Warlocky", class="WARLOCK", spec="destro"},
-    {name="Demoness", class="WARLOCK", spec="demo"},
-    {name="Arrowz", class="HUNTER", spec="marks"},
-    {name="Beastlord", class="HUNTER", spec="bm"},
+    -- Gruppo 1 (lo slot 1 e' TUO: qui ci stanno 4 finti)
+    {name="Drakbot",    class="WARRIOR",     spec="prot"},       -- tank
+    {name="Holymoon",   class="PALADIN",     spec="holy"},       -- healer
+    {name="Ironclad",   class="WARRIOR",     spec="fury"},       -- dps
+    {name="Zapdora",    class="MAGE",        spec="arcane"},     -- dps
+    -- Gruppo 2
+    {name="Lightwall",  class="PALADIN",     spec="prot"},       -- tank
+    {name="Disciple",   class="PRIEST",      spec="disc"},       -- healer
+    {name="Retalia",    class="PALADIN",     spec="retri"},      -- dps
+    {name="Frostnova",  class="MAGE",        spec="fire"},       -- dps
+    {name="Stabbitha",  class="ROGUE",       spec="combat"},     -- dps
+    -- Gruppo 3
+    {name="Holylite",   class="PRIEST",      spec="holy"},       -- healer
+    {name="Moowrath",   class="DRUID",       spec="feral"},      -- dps
+    {name="Bladestorm", class="WARRIOR",     spec="arms"},       -- dps
+    {name="Warlocky",   class="WARLOCK",     spec="destro"},     -- dps
+    {name="Arrowz",     class="HUNTER",      spec="marks"},      -- dps
+    -- Gruppo 4
+    {name="Leafsong",   class="DRUID",       spec="resto"},      -- healer
+    {name="Moonfire",   class="DRUID",       spec="balance"},    -- dps
+    {name="Shivv",      class="ROGUE",       spec="assassin"},   -- dps
+    {name="Demoness",   class="WARLOCK",     spec="demo"},       -- dps
+    {name="Stormbow",   class="HUNTER",      spec="survival"},   -- dps
+    -- Gruppo 5
+    {name="Totemly",    class="SHAMAN",      spec="resto"},      -- healer
+    {name="Shadowmel",  class="PRIEST",      spec="shadow"},     -- dps
+    {name="Hellfire",   class="WARLOCK",     spec="affliction"}, -- dps
+    {name="Beastlord",  class="HUNTER",      spec="bm"},         -- dps
+    {name="Frostbite",  class="DEATHKNIGHT", spec="frost"},      -- dps
+}
+-- Se un giorno il pool viene tagliato sotto il target, il Fill Raid COMPLETA
+-- comunque fino a 24 con questi riempitivi (classi in ciclo, deterministiche):
+-- il "non genera 24 player" non deve tornare per un pool accorciato.
+local DEBUG_FILL_EXTRA_CLASSES = {
+    "WARRIOR", "PALADIN", "PRIEST", "DRUID", "SHAMAN",
+    "MAGE", "WARLOCK", "HUNTER", "ROGUE", "DEATHKNIGHT",
 }
 
 local function debugShuffle(list)
@@ -949,17 +1440,37 @@ function RLSuite:DebugFillGroup()
         self.utils:Print(L["Debug mode is OFF."])
         return
     end
-    local pool = {}
-    for _, f in ipairs(DEBUG_FILL_POOL) do pool[#pool + 1] = f end
-    debugShuffle(pool)
     local added = 0
-    for _, f in ipairs(pool) do
-        local m = self:DebugInviteAccept(f.name, f.class)
-        if m then
-            m.spec = f.spec
-            added = added + 1
+    local function countFakes()
+        local n = 0
+        for _, m in ipairs(self:DebugRoster()) do
+            if not m.isPlayer then n = n + 1 end
         end
+        return n
     end
+    local function addFake(name, class, spec)
+        if countFakes() >= DEBUG_FILL_TARGET then return false end
+        local before = countFakes()
+        local m = self:DebugInviteAccept(name, class)
+        if not m then return false end
+        m.spec = spec
+        -- Conta solo chi e' ENTRATO ORA: se il nome era gia' nel roster
+        -- (secondo click su Fill Raid) il conteggio non deve mentire.
+        if countFakes() > before then added = added + 1 end
+        return true
+    end
+    -- 1) la composizione pensata, nell'ordine della lista
+    for _, f in ipairs(DEBUG_FILL_POOL) do
+        if not addFake(f.name, f.class, f.spec) then break end
+    end
+    -- 2) rete di sicurezza: se il pool fosse piu' corto del target, completa
+    for i = 1, DEBUG_FILL_TARGET do
+        if countFakes() >= DEBUG_FILL_TARGET then break end
+        local class = DEBUG_FILL_EXTRA_CLASSES[((i - 1) % #DEBUG_FILL_EXTRA_CLASSES) + 1]
+        addFake("Rlsbot" .. i, class, "dps")
+    end
+    -- Il roster e' cambiato: i buff simulati si ricalcolano dalla comp nuova.
+    self.debugBuffs = nil
     self.utils:Print(string.format(L["Debug: raid filled with %d fake players."], added))
 end
 
@@ -1087,12 +1598,90 @@ end
 
 -- Pannello DEBUG stile main bar: appare solo in debug mode, accanto alla
 -- barra principale. Raccoglie i comandi di simulazione.
+-- Pannello RLS DEBUG: matrice di tasti su DUE RIGHE, N colonne calcolate
+-- (1 cella per il titolo + 1 per tasto). Il titolo "RLS DEBUG" sta nel PRIMO
+-- slot della matrice, esattamente come il tassello di fase nel keypad della
+-- MacroBar: stessa cella dei tasti, senza sfondo ne' bordo, non cliccabile.
+local DBG_BTN_W, DBG_BTN_H = 90, 22
+local DBG_GAP_X, DBG_GAP_Y = 8, 4
+local DBG_PAD = 4
+local DBG_ROWS = 2
+
+function RLSuite:DebugPanelDefs()
+    return {
+        { text = L["Fill Raid"], i = 0, fn = function() RLSuite:DebugFillGroup() end },
+        { text = L["Test Loot"],  i = 1, fn = function() RLSuite:DebugFillLoot() end },
+        -- gapAfter: dopo questo tasto la matrice lascia una CELLA VUOTA
+        -- (richiesto: "uno spazio vuoto dopo Empty Loot").
+        { text = L["Empty Loot"], i = 2, gapAfter = true,
+          fn = function() RLSuite:DebugClearLoot() end },
+        { text = L["Test Whisplist"], i = 3, fn = function()
+            -- SOLO questo tasto manda i whisper finti: arrivano subito,
+            -- anche senza spammer attivo (GM:DebugWhisperBurst).
+            if RLSuite.groupmaking and RLSuite.groupmaking.DebugWhisperBurst then
+                RLSuite.groupmaking:DebugWhisperBurst()
+            end
+        end },
+        { text = L["Test MS"], i = 4, fn = function() RLSuite:DebugTestMS() end },
+        { text = L["Log Test"], i = 5, fn = function() RLSuite:DebugLogTest() end },
+    }
+end
+
+-- Celle del pannello debug in ordine: titolo, poi i tasti; un tasto con
+-- gapAfter aggiunge una cella VUOTA subito dopo di se'.
+function RLSuite:DebugPanelCells()
+    local cells = { { title = true } }
+    for i, d in ipairs(self:DebugPanelDefs()) do
+        cells[#cells + 1] = { def = d, index = i }
+        if d.gapAfter then cells[#cells + 1] = { gap = true } end
+    end
+    return cells
+end
+
+-- Dispone il pannello debug: matrice a DBG_ROWS righe, colonne = quante ne
+-- servono per titolo + tasti (+ celle vuote). Cella 1 = titolo, poi i tasti
+-- in ordine; le celle vuote restano libere (niente frame).
+function RLSuite:LayoutDebugPanel()
+    local f = self.debugPanel
+    if not f then return end
+    local cells = self:DebugPanelCells()
+    local nCells = #cells
+    local cols = math.ceil(nCells / DBG_ROWS)
+    if cols < 1 then cols = 1 end
+    f:SetSize(2 * DBG_PAD + cols * DBG_BTN_W + (cols - 1) * DBG_GAP_X,
+        2 * DBG_PAD + DBG_ROWS * DBG_BTN_H + (DBG_ROWS - 1) * DBG_GAP_Y)
+    local function cellPos(idx)
+        local col = (idx - 1) % cols
+        local row = math.floor((idx - 1) / cols)
+        return DBG_PAD + col * (DBG_BTN_W + DBG_GAP_X), -DBG_PAD - row * (DBG_BTN_H + DBG_GAP_Y)
+    end
+    if f.titleSlot then
+        local x, y = cellPos(1)
+        f.titleSlot:ClearAllPoints()
+        f.titleSlot:SetSize(DBG_BTN_W, DBG_BTN_H)
+        f.titleSlot:SetPoint("TOPLEFT", f, "TOPLEFT", x, y)
+    end
+    for idx, c in ipairs(cells) do
+        if c.def and f.debugButtons[c.index] then
+            local x, y = cellPos(idx)
+            local b = f.debugButtons[c.index]
+            b:ClearAllPoints()
+            b:SetSize(DBG_BTN_W, DBG_BTN_H)
+            b:SetPoint("TOPLEFT", f, "TOPLEFT", x, y)
+        end
+    end
+    f.cells = cells
+    f.cols = cols
+    f.rows = DBG_ROWS
+    return cols, DBG_ROWS
+end
+
 function RLSuite:EnsureDebugPanel()
     if self.debugPanel then return end
-    -- Colonna singola, NON spostabile e ancorata alla main bar: dove va la
-    -- barra va anche il pannello (punto relativo alla barra, mai salvato).
+    -- Matrice NON spostabile e ancorata alla main bar: dove va la barra va
+    -- anche il pannello (punto relativo alla barra, mai salvato).
     local f = CreateFrame("Frame", "RLSuiteDebugPanel", UIParent)
-    f:SetSize(126, 26 + 6 * 24 + 10)
+    f:SetSize(126, 60)
     f:SetFrameStrata("HIGH")
     f:SetMovable(false)
     f:EnableMouse(true)
@@ -1105,36 +1694,50 @@ function RLSuite:EnsureDebugPanel()
     -- Borderless come la main bar (_noOuterBorder = fill tenuto, bordo via).
     f._noOuterBorder = true
     self.utils:SkinFrame(f)
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
+
+    -- SLOT DEL TITOLO (cella 1): come il tassello di fase della MacroBar -
+    -- nessuno sfondo, nessun bordo, mouse spento, solo la scritta.
+    local titleSlot = CreateFrame("Button", nil, f)
+    titleSlot:SetBackdrop(nil)
+    titleSlot:EnableMouse(false)
+    titleSlot:SetSize(DBG_BTN_W, DBG_BTN_H)
+    local title = titleSlot:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    title:SetPoint("CENTER", titleSlot, "CENTER", 0, 0)
     title:SetText("|cffff9900RLS DEBUG|r")
-    local defs = {
-        { text = L["Fill Raid"], i = 0, fn = function() RLSuite:DebugFillGroup() end },
-        { text = L["Test Loot"],  i = 1, fn = function() RLSuite:DebugFillLoot() end },
-        { text = L["Empty Loot"], i = 2, fn = function() RLSuite:DebugClearLoot() end },
-        { text = L["Test Whisplist"], i = 3, fn = function()
-            -- SOLO questo tasto manda i whisper finti: arrivano subito,
-            -- anche senza spammer attivo (GM:DebugWhisperBurst).
-            if RLSuite.groupmaking and RLSuite.groupmaking.DebugWhisperBurst then
-                RLSuite.groupmaking:DebugWhisperBurst()
-            end
-        end },
-        { text = L["Test MS"], i = 4, fn = function() RLSuite:DebugTestMS() end },
-        { text = L["Log Test"], i = 5, fn = function() RLSuite:DebugLogTest() end },
-    }
+    f.titleSlot = titleSlot
+    f.title = title
+
     f.debugButtons = {}
-    for _, d in ipairs(defs) do
+    for _, d in ipairs(self:DebugPanelDefs()) do
         local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        b:SetSize(106, 20)
-        -- colonna unica: tutti i tasti uno sotto l'altro
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -26 - d.i * 24)
+        b:SetSize(DBG_BTN_W, DBG_BTN_H)
         self.utils:SkinButton(b)
         b:SetText(d.text)
         b:SetScript("OnClick", d.fn)
         f.debugButtons[#f.debugButtons + 1] = b
     end
+    self.debugPanel = f      -- PRIMA del layout: LayoutDebugPanel legge self.debugPanel
+    self:LayoutDebugPanel()
     f:Hide()
-    self.debugPanel = f
+end
+
+-- Il pannello RLS DEBUG e' legato al pannello dei tasti della main bar: si
+-- vede solo se il debug e' ATTIVO **e** il pannello e' aperto. Cosi' il tasto
+-- "Raid Control" lo apre/chiude insieme al pannello e la X non lo lascia
+-- orfano a schermo; a ogni apertura (con debug attivo) ricompare da solo.
+function RLSuite:SyncDebugPanel()
+    if not self:DebugMode() then
+        if self.debugPanel then self.debugPanel:Hide() end
+        return
+    end
+    self:EnsureDebugPanel()
+    if not self.debugPanel then return end
+    local bar = self.mainWindow and self.mainWindow.frame
+    if bar and bar:IsShown() then
+        self.debugPanel:Show()
+    else
+        self.debugPanel:Hide()
+    end
 end
 
 -- Called whenever the simulated roster changes (invite accepted, debug
@@ -1619,13 +2222,10 @@ function RLSuite:ApplyDebugMode()
     -- restava vuoto finche' non arrivava il primo invito.
     self:DebugRosterChanged()
     self:UpdatePhaseUI()
-    -- Pannello debug: compare vicino alla main bar solo in debug mode.
-    if self:DebugMode() then
-        self:EnsureDebugPanel()
-        if self.debugPanel then self.debugPanel:Show() end
-    elseif self.debugPanel then
-        self.debugPanel:Hide()
-    end
+    -- Pannello debug: compare vicino alla main bar solo con il debug ATTIVO e
+    -- il pannello dei tasti aperto (stesso ciclo di vita del tasto Raid
+    -- Control: si chiude insieme a lui, ricompare a ogni apertura).
+    self:SyncDebugPanel()
 end
 
 function RLSuite:UpdateRaidContext()

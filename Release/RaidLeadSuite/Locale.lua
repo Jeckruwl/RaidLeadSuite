@@ -32,18 +32,18 @@ do
     -- Core
     L["v%s loaded. Type /rls to open."] = true
     L["Available commands:"] = true
-    L["  /rls              Tab bar"] = true
-    L["  /rls help         This list"] = true
-    L["  /rls group        Groupmaking tab"] = true
-    L["  /rls inviteengine InviteEngine panel (whisper + auto-invite)"] = true
-    L["  /rls whisplist    InviteEngine panel (alias)"] = true
-    L["  /rls macro        Config -> Macros (editor)"] = true
-    L["  /rls macrobar     HUD MacroBar"] = true
-    L["  /rls raidframe    Raid Frame tab (settings)"] = true
-    L["  /rls rfhud        HUD Raid Frame"] = true
-    L["  /rls ms           MS Manager tab"] = true
-    L["  /rls loot         Loot Manager tab"] = true
-    L["  /rls config       Config tab"] = true
+    -- Lista PUBBLICA (solo comandi d'uso normale): la diagnostica e gli alias
+    -- restano attivi ma fuori da questo elenco (elenco completo in
+    -- _dev/commands.txt).
+    L["  /rls            Main bar (buttons + phase)"] = true
+    L["  /rls help       This list"] = true
+    L["  /rls config     Config window"] = true
+    L["  /rls group      Groupmaking panel"] = true
+    L["  /rls inv        InviteEngine (whisper + auto-invite)"] = true
+    L["  /rls macrobar   MacroBar HUD"] = true
+    L["  /rls ms         MS Manager panel"] = true
+    L["  /rls loot       Loot Manager panel"] = true
+    L["  /rls raidframe  Raid Frame HUD"] = true
     L["Unknown command. Type /rls help for the list."] = true
     L["DEBUG MODE ON"] = true
     L["Simulated raid, messages are whispered to you."] = true
@@ -177,7 +177,21 @@ L["Debug: %d fake MS whispers sent."] = "Debug: %d whisper MS fittizi inviati."
 L["Ask MS changes first (MS Manager), then click Test MS."] = "Chiedi prima gli MS change (MS Manager), poi clicca Test MS."
 L["Start the spammer first, then Whisp test sends the fake whispers."] = "Avvia prima lo spammer, poi Whisper di test invia i whisper fittizi."
 
-L["Combat log"] = true
+    L["Combat log"] = true
+    -- Riga di stato del pannello Log (v1.11.70)
+    L["Recording"] = true
+    L["Idle"] = true
+    L["events lost"] = true
+    L["recovered by watchdog"] = true
+    L["watchdog recoveries"] = true
+    L["you died at"] = true
+    L["Window error"] = true
+    L["pulls"] = true
+    L["Pull marked as %s."] = true
+    L["Close the pull first."] = true
+    L["Right-click: mark this pull as boss/trash"] = true
+    L["boss"] = true
+    L["trash"] = true
     L["Select fight"] = true
     L["Send report"] = true
     L["Shift+click to wipe the saved fights."] = true
@@ -205,7 +219,7 @@ L["Combat log"] = true
     L["Health"] = true
     L["Total DPS"] = true
     L["Step, sec."] = true
-    L["drag: zoom, click: reset"] = true
+    L["drag: zoom, click: reset, hover: values"] = true
 
     -- MacroBar
     L["Macrobar is disabled in Config."] = true
@@ -242,7 +256,14 @@ L["Combat log"] = true
     L["Backdrop color and transparency of the Raid Buffs matrix rows."] = true
     L["Buff check: %s - OK on everyone"] = true
     L["Buff check: %s - missing: %s"] = true
-    L["  /rls debugbuff    Diagnose Raid Buffs header icons"] = true
+    L["Buff check: %s - not available in this composition"] = true
+    L["Buff check: %s - %d/%d"] = true
+    L[" - mages missing: %s"] = true
+    L["Not available in this composition"] = true
+    L["OK on everyone"] = true
+    L["Missing: %d"] = true
+    L["Covered: %d/%d"] = true
+    -- (/rls debugbuff resta ATTIVO, solo non elencato)
     L["Buff headers: media/BUFFCATICONS/BCI_<0..24>.tga"] = true
     L["Raid frame not initialized yet."] = true
     L["Color of the player name on the bars."] = true
@@ -252,7 +273,12 @@ L["Combat log"] = true
     L["Cannot assign Main Tank / Main Assist while in combat."] = true
     L["Main assist"] = true
     L["Hey $name, you're missing food buff!"] = true
+    -- Avvisi in stile raid leading: dritti al punto, nessun "Hey". Il vecchio
+    -- testo resta registrato perche' un profilo salvato che lo contiene viene
+    -- riconosciuto e sostituito dal nuovo.
     L["Hey $name, you're missing some raid buffs!"] = true
+    L["Missing buffs on $name:"] = true
+    L["Assignment: provide %s for the raid."] = true
     L["Left click: whisper"] = true
     L["Right click: raid warning"] = true
     L["Right click: raid warning (everyone missing)"] = true
@@ -304,11 +330,11 @@ L["Combat log"] = true
     L["Enable debug mode"] = true
     L["Fill fake loot"] = true
     L["Bar and tab windows"] = true
-    L["The bar automatically adapts to the matrix and the top icon row (Config, SaveRaid, phase). Here you set the default height of the tab windows and the bar scale."] = true
+    L["The bar automatically adapts to the button matrix (the phase icon with its name sits in the title bar). Here you set the default height of the tab windows and the bar scale."] = true
     L["Default window height"] = true
     L["Bar scale"] = true
     L["Button matrix (bar only)"] = true
-    L["How many columns and buttons per column to use for the bar buttons. Above the matrix sit the icons (Config, SaveRaid, phase); the phase icon shows the current phase and cycles to the next on click."] = true
+    L["How many columns and buttons per column to use for the bar buttons. SaveRaid is a normal button of the matrix; the phase icon (with the phase name) sits in the title bar and cycles to the next phase on click."] = true
     L["Columns"] = true
     L["Buttons per column"] = true
     L["HUD anchors (ElvUI style)"] = true
@@ -322,14 +348,52 @@ L["Combat log"] = true
     L["Raid Frame - position"] = true
     L["Lock position"] = true
     L["Reset position"] = true
-    L["Saves created with the SaveRaid button in the top bar. Click Load to restore Comp, MacroBar and Config (except General)."] = true
+    L["Shows or hides the button panel under this bar."] = true
+    L["Saves the current setup (Comp, MacroBar, Config)."] = true
+    L["Saves created with the SaveRaid button of the main bar. Click Load to restore Comp, MacroBar and Config (except General)."] = true
     L["No saves yet."] = true
     L["Save #%d"] = true
     L["All macros"] = true
+    L["Boss macros: %s"] = true
+    L["Raid:"] = true
+    L["Boss:"] = true
+    L["In fight the bar uses the boss you are facing"] = true
+    L["No boss detected: in-fight macros are per boss."] = true
     L["Macro"] = true
     L["Name:"] = true
     L["Macro icon"] = true
     L["Position"] = true
+
+    -- Loot Manager: categorie ignorabili + lista ignora (item singoli)
+    L["Loot"] = true
+    L["recipes"] = true
+    L["BOE"] = true
+    L["gems"] = true
+    L["shards"] = true
+    L["projectiles"] = true
+    L["Ignore loot categories"] = true
+    L["Never capture or show this category of loot."] = true
+    L["Ignored items"] = true
+    L["One item per line: ID, or ID: name. Empty the list to stop ignoring items."] = true
+    L["Ctrl+click a loot row to ignore that item: it is never captured nor shown again. The list below is editable (one item per line: ID, or ID: name, or paste the item link)."] = true
+    L["Ctrl+click: add to the ignore list"] = true
+    -- Tooltip categoria (informativo) + assegnazione col drag delle barre
+    L["Providers (%d):"] = true
+    L["... and %d more"] = true
+    L["Left-click: buff check. Right-click: clear assignment."] = true
+    L["Not assigned - Drop a player on the icon to assign the buff"] = true
+    L["%s assigned to %s."] = true
+    L["Assignment removed for %s."] = true
+    -- Avviso di categoria (click sull'icona): UNA riga in raid warning
+    L["Buff Check: Missing %s | Provide for: %s"] = true
+    L["Buff Check: Missing %s | %s Provide for: %s"] = true
+    L["Clear ignored items"] = true
+    L["Removes every item from the ignore list: loot that was ignored starts being captured again."] = true
+    L["Ignore list saved (%d items)."] = true
+    L["Ignore list cleared (%d items removed)."] = true
+    L["Ignore list is full (%d items): remove something first."] = true
+    L["Now ignoring %s (%d) - it will never be shown again."] = true
+    L["That item was already in the ignore list."] = true
 
     -- Utils
     L['DBM/BigWigs not available: timer "%s" not started.'] = true

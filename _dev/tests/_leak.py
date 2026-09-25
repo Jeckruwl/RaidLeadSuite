@@ -391,6 +391,9 @@ UnitManaMax = function() return 100 end
 GetScreenWidth = function() return 1024 end
 GetScreenHeight = function() return 768 end
 UnitPosition = function() return 0, 0, 0 end
+MOCK_ZONE = ""
+GetRealZoneText = function() return MOCK_ZONE end
+GetZoneText = function() return MOCK_ZONE end
 UnitClassification = function() return "normal" end
 UnitCreatureType = function() return "Humanoid" end
 UnitGroupRolesAssigned = function() return "NONE" end
@@ -736,6 +739,38 @@ try:
 except Exception as e:
     check(False, "UNIT_HEALTH dispatch errored: %s" % str(e)[:200])
 
+
+print()
+print("== LEAK PROBE ==")
+rt.execute("""
+    local U = RLSuite.utils
+    local CFG = RLSuite.config
+    CFG:OpenMacroEditorPanel()
+    CFG:ShowMacroEditor()
+    CFG:SelectMacroPhase('infight')
+    local RD, BD = CFG.macroRaidDD, CFG.macroBossDD
+    local n0 = #ALLFRAMES
+    LEAK_ROWS = {}
+    for i = 1, 8 do
+        local dd = ((i % 2) == 1) and RD or BD
+        local before = #ALLFRAMES
+        U:ToggleDropdownMenu(dd)
+        local m = U.activeMenu
+        if m and m.optionButtons and m.optionButtons[1] then
+            m.optionButtons[1]:GetScript("OnClick")()
+        end
+        LEAK_ROWS[i] = 'giro' .. i .. ' +' .. (#ALLFRAMES - before) ..
+            ' frames (tot ' .. #ALLFRAMES .. ') menuBtn=' ..
+            tostring(dd._rlsDropMenu and #(dd._rlsDropMenu.optionButtons or {})) ..
+            ' opts=' .. tostring(#(dd.options or {})) ..
+            ' aperto=' .. tostring(U.activeMenu ~= nil)
+    end
+    LEAK_TOT = #ALLFRAMES - n0
+""")
+for i in range(1, 9):
+    print("   ", rt.eval("LEAK_ROWS[%d]" % i))
+print("   frame creati negli 8 giri:", rt.eval("LEAK_TOT"))
+
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during scenario A init (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 check(rt2.eval("LAST_ERROR") is None or rt2.eval("LAST_ERROR") == None, "no errors during scenario B init (LAST_ERROR=%r)" % rt2.eval("LAST_ERROR"))
 
@@ -837,6 +872,625 @@ rt.execute("RLSuite.config:NotifyChange()")
 check(bool(rt.eval("RLSuite.config.currentNode == 'savedraids'")), "NotifyChange re-renders the current node without error")
 rt.execute("RLSuite.config:Toggle()")
 check(bool(rt.eval("RLSuite.config:IsOpen() == false")), "Toggle closes the Ace3 window")
+
+print()
+print("== v1.11.51: macro in-fight PER BOSS (editor raid+boss, boss in target) ==")
+
+# --- Guardie statiche sul modello dati boss (raidDB <-> bossUnits) --------
+rt.execute("""
+    MB_BOSS_STATIC = true
+    MB_BOSS_DUP = false
+    MB_BOSS_N = 0
+    local seenNpc, seenName = {}, {}
+    for raid, bosses in pairs(RLSuite.bossUnits or {}) do
+        if not RLSuite.raidDB[raid] then MB_BOSS_STATIC = false end
+        local list = (RLSuite.raidDB[raid] or {}).bosses or {}
+        for boss, info in pairs(bosses) do
+            MB_BOSS_N = MB_BOSS_N + 1
+            local found = false
+            for i = 1, #list do if list[i] == boss then found = true end end
+            if not found then MB_BOSS_STATIC = false end
+            local ids = info.npcs or {}
+            local names = info.names or {}
+            if #ids == 0 and #names == 0 then MB_BOSS_STATIC = false end
+            for i = 1, #ids do
+                if type(ids[i]) ~= 'number' then MB_BOSS_STATIC = false end
+                local mine = raid .. '|' .. boss
+                if seenNpc[ids[i]] and seenNpc[ids[i]] ~= mine then MB_BOSS_DUP = true end
+                seenNpc[ids[i]] = mine
+            end
+            local mine = raid .. '|' .. boss
+            local kb = string.lower(boss)
+            if seenName[kb] and seenName[kb] ~= mine then MB_BOSS_DUP = true end
+            seenName[kb] = mine
+            for i = 1, #names do
+                local k = string.lower(names[i])
+                if seenName[k] and seenName[k] ~= mine then MB_BOSS_DUP = true end
+                seenName[k] = mine
+            end
+        end
+    end
+    MB_BOSS_ALL_RAIDS = true
+    for raid in pairs(RLSuite.raidDB) do
+        if not (RLSuite.bossUnits or {})[raid] then MB_BOSS_ALL_RAIDS = false end
+    end
+""")
+check(bool(rt.eval("MB_BOSS_STATIC == true")),
+      "bossUnits: ogni boss corrisponde a un boss di raidDB (stesso nome) e ha npcs o names")
+check(bool(rt.eval("MB_BOSS_DUP == false")),
+      "bossUnits: nessun NPC id e nessun nome condiviso fra due boss (match non ambiguo)")
+check(bool(rt.eval("MB_BOSS_ALL_RAIDS == true")),
+      "bossUnits: tutti i raid di raidDB sono coperti")
+check(bool(rt.eval("MB_BOSS_N == 54")), "bossUnits: 54 boss mappati")
+
+# --- Indice: NPC id dal GUID (a prova di lingua) e nomi/alias -------------
+rt.execute("MB_N1 = RLSuite:BossFromNpcId(36612)")
+rt.execute("MB_N2 = RLSuite:BossFromNpcId(33288)")
+rt.execute("MB_N3 = RLSuite:BossFromName('sir zeliek')")  # alias, tutto minuscolo
+rt.execute("MB_N4 = RLSuite:BossFromName('Archavon the Stone Watcher')")
+rt.execute("MB_N5 = RLSuite:BossFromNpcId(1)")
+check(bool(rt.eval("MB_N1 and MB_N1.raid == 'Icecrown Citadel' and MB_N1.boss == 'Lord Marrowgar'")),
+      "NPC 36612 -> Icecrown Citadel / Lord Marrowgar")
+check(bool(rt.eval("MB_N2 and MB_N2.boss == 'Yogg-Saron'")), "NPC 33288 -> Yogg-Saron (Ulduar)")
+check(bool(rt.eval("MB_N3 and MB_N3.raid == 'Naxxramas' and MB_N3.boss == 'The Four Horsemen'")),
+      "alias per nome: 'Sir Zeliek' -> The Four Horsemen (boss senza id affidabile)")
+check(bool(rt.eval("MB_N4 and MB_N4.raid == 'Vault of Archavon' and MB_N4.boss == 'Archavon'")),
+      "alias per nome: nome lungo del boss -> voce corta di raidDB")
+check(bool(rt.eval("MB_N5 == nil")), "NPC id sconosciuto -> nessun boss")
+
+# --- Boss in corso: TARGET prima, poi boss1..boss4 ------------------------
+rt.execute("""
+    MB_S_UE, MB_S_UN, MB_S_UG = UnitExists, UnitName, UnitGUID
+    MOCK_UNITS_BOSS = {}
+    UnitExists = function(u) return MOCK_UNITS_BOSS[u] ~= nil end
+    UnitName = function(u) local t = MOCK_UNITS_BOSS[u]; return t and t.name end
+    UnitGUID = function(u) local t = MOCK_UNITS_BOSS[u]; return t and t.guid end
+    MB_S_CTX = RLSuite.context
+""")
+rt.execute("MOCK_UNITS_BOSS.target = { guid = '0xF130008F040000AA', name = 'Lord Marrowgar' }")
+rt.execute("MB_R1, MB_B1 = RLSuite:CurrentBossInfo()")
+check(bool(rt.eval("MB_R1 == 'Icecrown Citadel' and MB_B1 == 'Lord Marrowgar'")),
+      "boss in target riconosciuto dall'NPC id nel GUID (0x8F04 = 36612)")
+rt.execute("MOCK_UNITS_BOSS.target = { name = 'Sindragosa' }")
+rt.execute("MB_R2, MB_B2 = RLSuite:CurrentBossInfo()")
+check(bool(rt.eval("MB_R2 == 'Icecrown Citadel' and MB_B2 == 'Sindragosa'")),
+      "senza GUID il boss si riconosce dal nome (client inglese)")
+rt.execute("""
+    MOCK_UNITS_BOSS.target = { guid = '0xF1300001000000AA', name = 'Raging Ghoul' }
+    MOCK_UNITS_BOSS.boss1 = { guid = '0xF130009BC30000AA', name = 'Halion' }
+""")
+rt.execute("MB_R3, MB_B3 = RLSuite:CurrentBossInfo()")
+check(bool(rt.eval("MB_R3 == 'Ruby Sanctum' and MB_B3 == 'Halion'")),
+      "target su trash -> usa il boss del pull (unita' boss1)")
+rt.execute("MOCK_UNITS_BOSS = {}")
+rt.execute("MB_R4, MB_B4 = RLSuite:CurrentBossInfo()")
+check(bool(rt.eval("MB_R4 == nil and MB_B4 == nil")), "nessun boss (trash) -> nessun raid/boss")
+
+# --- La barra usa il set del boss: nessun fallback ------------------------
+rt.execute("""
+    RLSuite.db.profile.macrobar.macros = RLSuite.db.profile.macrobar.macros or {}
+    RLSuite.db.profile.macrobar.macros.infight = { [1] = { text = 'MACRO_GENERICA' } }
+    RLSuite.db.profile.macrobar.bossMacros = {}
+    RLSuite.context = 'infight'
+    MOCK_UNITS_BOSS.target = { guid = '0xF130008F040000AA', name = 'Lord Marrowgar' }
+    RLSuite.macrobar:UpdatePhase()
+    MB_GEN = RLSuite.macrobar:GetMacroData(1)
+""")
+check(bool(rt.eval("MB_GEN == nil")),
+      "in-fight con boss senza macro dedicate: la vecchia macro generica NON viene usata (nessun fallback)")
+rt.execute("""
+    RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel'] =
+        { ['Lord Marrowgar'] = { [1] = { text = 'MARROWGAR_1', icon = 'IconM' },
+                                 [2] = { text = 'MARROWGAR_2', icon = 'IconM2' } } }
+    RLSuite.macrobar:LoadMacrosForPhase('infight')
+    MB_FILLED = RLSuite.macrobar:FilledSlots('infight')
+    MB_BTN1 = RLSuite.macrobar.buttons[1].macroText
+    MB_ICON1 = RLSuite.macrobar.buttons[1].icon:GetTexture()
+    MB_ICON3 = RLSuite.macrobar.buttons[3].icon:GetTexture()
+""")
+check(bool(rt.eval("#MB_FILLED == 2 and MB_FILLED[1] == 1 and MB_FILLED[2] == 2")),
+      "barra in-fight: solo gli slot del boss in corso risultano pieni")
+check(bool(rt.eval("MB_BTN1 == 'MARROWGAR_1'")), "barra in-fight: il testo dello slot viene dal set del boss")
+check(bool(rt.eval("MB_ICON1 == 'IconM'")), "barra in-fight: l'icona dello slot viene dal set del boss")
+check(bool(rt.eval("MB_ICON3 == 'Interface\\\\Icons\\\\INV_Misc_QuestionMark'")),
+      "barra in-fight: gli slot senza macro del boss restano vuoti")
+
+# --- Cambio di target durante il fight ------------------------------------
+rt.execute("""
+    MOCK_UNITS_BOSS.target = { guid = '0xF130008F9D0000AA', name = 'Sindragosa' }
+    RLSuite.macrobar:OnBossTargetChanged()
+    MB_SIND = RLSuite.macrobar:GetMacroData(1)
+    MB_SIND_NAME = RLSuite.macrobar.bossName
+    MB_SIND_FILLED = RLSuite.macrobar:FilledSlots('infight')
+""")
+check(bool(rt.eval("MB_SIND_NAME == 'Sindragosa' and MB_SIND == nil and #MB_SIND_FILLED == 0")),
+      "cambio target: si passa al set del nuovo boss (vuoto se non hai scritto sue macro)")
+rt.execute("""
+    MOCK_UNITS_BOSS = {}
+    RLSuite.macrobar:OnBossTargetChanged()
+    MB_NOBOSS = RLSuite.macrobar:GetMacroData(1)
+    MB_NOBOSS_FILLED = RLSuite.macrobar:FilledSlots('infight')
+""")
+check(bool(rt.eval("MB_NOBOSS == nil and #MB_NOBOSS_FILLED == 0")),
+      "fight senza boss: nessuna macro in barra")
+
+# --- Le altre fasi restano invariate -------------------------------------
+rt.execute("""
+    RLSuite.db.profile.macrobar.macros.preraid = { [1] = { text = 'PRERAID_1' } }
+    RLSuite.context = 'preraid'
+    MB_PRE = RLSuite.macrobar:GetMacroData(1)
+    MB_MACRO_FOR_PRE = RLSuite.macrobar:MacroTableFor('preraid')
+""")
+check(bool(rt.eval("MB_PRE and MB_PRE.text == 'PRERAID_1'")),
+      "fase pre-raid: si usa ancora db.macros.preraid (nessun boss)")
+check(bool(rt.eval("MB_MACRO_FOR_PRE == RLSuite.db.profile.macrobar.macros.preraid")),
+      "MacroTableFor(pre-raid) restituisce la tabella di fase")
+
+# --- Editor: i due menu compaiono solo su In-fight ------------------------
+rt.execute("""
+    RLSuite.context = 'infight'
+    RLSuite.config:OpenMacroEditorPanel()
+    RLSuite.config.macroRaid, RLSuite.config.macroBoss = nil, nil
+    MOCK_UNITS_BOSS.target = { guid = '0xF130008F040000AA', name = 'Lord Marrowgar' }
+    RLSuite.config:SelectMacroPhase('infight')
+""")
+check(bool(rt.eval("RLSuite.config.macroBossSel ~= nil and RLSuite.config.macroBossSel:IsShown() == true")),
+      "fase in-fight: i due menu raid/boss compaiono nell'editor")
+check(bool(rt.eval("RLSuite.config.macroBossSel:GetParent() == RLSuite.config.macroPreview")),
+      "i due menu stanno nella riga dell'anteprima (a destra delle 12 icone)")
+check(bool(rt.eval("RLSuite.config.macroRaid == 'Icecrown Citadel' and RLSuite.config.macroBoss == 'Lord Marrowgar'")),
+      "default dei menu: il boss che stai affrontando ora")
+rt.execute("""
+    MB_RD_OPTS = #(RLSuite.config.macroRaidDD.options or {})
+    MB_RD_HAS_ICC = false
+    for _, o in ipairs(RLSuite.config.macroRaidDD.options or {}) do
+        if o.value == 'Icecrown Citadel' then MB_RD_HAS_ICC = true end
+    end
+    MB_BD_OPTS = #(RLSuite.config.macroBossDD.options or {})
+    MB_BD_FIRST = RLSuite.config.macroBossDD.options[1] and RLSuite.config.macroBossDD.options[1].value
+""")
+check(bool(rt.eval("MB_RD_OPTS == 9 and MB_RD_HAS_ICC")),
+      "menu raid: tutte le 9 raid di raidDB")
+check(bool(rt.eval("MB_BD_OPTS == 12 and MB_BD_FIRST == 'Lord Marrowgar'")),
+      "menu boss: i 12 boss della raid selezionata (Icecrown Citadel)")
+
+# --- L'editor scrive nel set del boss selezionato -------------------------
+rt.execute("""
+    local t = RLSuite.config:GetMacroDB()
+    t[1] = { text = 'EDIT_ICC_MARROWGAR' }
+    MB_EDIT_LANDS = RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']
+        and RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']['Lord Marrowgar']
+        and RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']['Lord Marrowgar'][1]
+        and RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']['Lord Marrowgar'][1].text
+    MB_TITLE = RLSuite.config.macroListTitle:GetText()
+""")
+check(bool(rt.eval("MB_EDIT_LANDS == 'EDIT_ICC_MARROWGAR'")),
+      "le modifiche dell'editor finiscono in db.bossMacros[raid][boss]")
+check(bool(rt.eval("MB_TITLE == 'Boss macros: Lord Marrowgar'")),
+      "il titolo della lista dice per quale boss stai scrivendo")
+
+rt.execute("RLSuite.config.macroBossDD.onSelect('Sindragosa')")
+rt.execute("""
+    MB_SEL_BOSS = RLSuite.config.macroBoss
+    local t2 = RLSuite.config:GetMacroDB()
+    t2[1] = { text = 'EDIT_ICC_SINDRA' }
+    MB_SEL_LANDS = RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']['Sindragosa'][1].text
+""")
+check(bool(rt.eval("MB_SEL_BOSS == 'Sindragosa' and MB_SEL_LANDS == 'EDIT_ICC_SINDRA'")),
+      "selezionando un altro boss l'editor scrive nel SUO set")
+
+rt.execute("RLSuite.config.macroRaidDD.onSelect('Naxxramas')")
+rt.execute("""
+    MB_SEL_RAID = RLSuite.config.macroRaid
+    MB_SEL_RAID_BOSS = RLSuite.config.macroBoss
+    MB_BD_N = #(RLSuite.config.macroBossDD.options or {})
+""")
+check(bool(rt.eval("MB_SEL_RAID == 'Naxxramas' and MB_SEL_RAID_BOSS == \"Anub'Rekhan\" and MB_BD_N == 15")),
+      "cambiando raid il menu boss si ripopola (Naxxramas -> 15 boss)")
+
+rt.execute("RLSuite.config:SelectMacroPhase('preraid')")
+check(bool(rt.eval("RLSuite.config.macroBossSel:IsShown() == false")),
+      "fase pre-raid: i menu raid/boss NON sono visibili")
+rt.execute("MB_PRE_DB_SAME = (RLSuite.config:GetMacroDB() == RLSuite.db.profile.macrobar.macros.preraid)")
+check(bool(rt.eval("MB_PRE_DB_SAME == true")),
+      "fase pre-raid: l'editor torna a scrivere nel set di fase")
+
+# --- v1.11.54: aprire/chiudere i menu ALL'INFINITO, in qualunque stato -----
+# Ogni toggle riparte dallo stato REALE (menu visibile o no) e chiude sempre
+# tutto prima di aprire: nessuno stato interno che si "consumi" dopo N giri.
+rt.execute("""
+    local U = RLSuite.utils
+    local CFG = RLSuite.config
+    CFG:SelectMacroPhase('infight')
+    local RD, BD = CFG.macroRaidDD, CFG.macroBossDD
+    CYCLES, CYC_OK, CYC_SELOK, CYC_MAXBTN = 0, 0, 0, 0
+    for i = 1, 12 do
+        local dd = ((i % 2) == 1) and RD or BD
+        U:ToggleDropdownMenu(dd)
+        CYCLES = CYCLES + 1
+        if U.activeMenu ~= nil and U.activeMenu.owner == dd
+            and dd._rlsDropMenu:IsShown() == true and U.dropCatcher:IsShown() == true then
+            CYC_OK = CYC_OK + 1
+        end
+        local m = U.activeMenu
+        if m and m.optionButtons and m.optionButtons[1] then
+            m.optionButtons[1]:GetScript("OnClick")()
+        end
+        if U.activeMenu == nil and U.dropCatcher:IsShown() == false then
+            CYC_SELOK = CYC_SELOK + 1
+        end
+        local nb = #(dd._rlsDropMenu.optionButtons or {})
+        if nb > CYC_MAXBTN then CYC_MAXBTN = nb end
+    end
+    CYC_RD_SHOWN = RD._rlsDropMenu:IsShown()
+    CYC_BD_SHOWN = BD._rlsDropMenu:IsShown()
+""")
+check(bool(rt.eval("CYCLES == 12 and CYC_OK == 12")),
+      "12 giri alternati raid/boss: il menu si apre TUTTE le volte")
+check(bool(rt.eval("CYC_SELOK == 12")),
+      "12 giri: dopo ogni scelta menu e catcher sono chiusi (nessun blocco residuo)")
+check(bool(rt.eval("CYC_RD_SHOWN == false and CYC_BD_SHOWN == false")),
+      "a fine stress nessun menu resta aperto")
+rt.execute("CYC_MSG = ('i bottoni-opzione vengono riusati dopo 6 aperture: max %d bottoni'):format(CYC_MAXBTN)")
+check(bool(rt.eval("CYC_MAXBTN <= 15")), str(rt.eval("CYC_MSG")))
+
+# --- Stato sporco: catcher zombie, menu nascosto a mano, errore in apertura -
+rt.execute("""
+    local U = RLSuite.utils
+    local RD = RLSuite.config.macroRaidDD
+    -- (1) catcher visibile senza menu (il classico cadavere che mangia i click)
+    U.dropCatcher:Show()
+    U.activeMenu = nil
+    U:ToggleDropdownMenu(RD)
+    ZOMB_OK = (U.activeMenu ~= nil and RD._rlsDropMenu:IsShown() == true)
+    U:CloseDropdownMenu()
+    -- (2) menu nascosto a mano ma ancora "attivo": il toggle deve riaprire
+    U:ToggleDropdownMenu(RD)
+    RD._rlsDropMenu:Hide()
+    U:ToggleDropdownMenu(RD)
+    HIDDEN_OK = (U.activeMenu ~= nil and RD._rlsDropMenu:IsShown() == true)
+    U:CloseDropdownMenu()
+    -- (3) errore durante l'apertura: mai un catcher senza menu
+    local saved = U.OpenDropdownMenu
+    U.OpenDropdownMenu = function() error("boom") end
+    U:ToggleDropdownMenu(RD)
+    ERR_CAT = U.dropCatcher:IsShown()
+    ERR_MENU = U.activeMenu
+    U.OpenDropdownMenu = saved
+    U:ToggleDropdownMenu(RD)
+    ERR_NEXT = (U.activeMenu ~= nil and RD._rlsDropMenu:IsShown() == true)
+    U:CloseDropdownMenu()
+""")
+check(bool(rt.eval("ZOMB_OK == true")),
+      "catcher zombie presente: il click successivo APRE comunque il menu")
+check(bool(rt.eval("HIDDEN_OK == true")),
+      "menu nascosto da terzi: il click successivo lo riapre (stato letto dal vero)")
+check(bool(rt.eval("ERR_CAT == false and ERR_MENU == nil")),
+      "errore in apertura: nessun catcher lasciato a schermo (niente click rubati)")
+check(bool(rt.eval("ERR_NEXT == true")), "dopo l'errore il menu si riapre normalmente")
+
+# --- Watchdog del catcher: si spegne da solo se il menu non c'e' piu' ------
+rt.execute("""
+    local U = RLSuite.utils
+    U.dropCatcher:Show()
+    U.activeMenu = nil
+    local upd = U.dropCatcher:GetScript("OnUpdate")
+    if upd then upd() end
+    WD_CAT = U.dropCatcher:IsShown()
+""")
+check(bool(rt.eval("WD_CAT == false")),
+      "watchdog: il catcher rimasto senza menu si spegne da solo al frame dopo")
+
+# --- Un menu non resta mai senza opzioni (tendina 'muta') -----------------
+rt.execute("""
+    local CFG = RLSuite.config
+    CFG:SelectMacroPhase('infight')
+    local RD, BD = CFG.macroRaidDD, CFG.macroBossDD
+    local nBefore = #(BD.options or {})
+    CFG.macroRaid = 'Raid Che Non Esiste'
+    CFG:PopulateMacroBossDropdown()
+    MUTE_AFTER = #(BD.options or {})
+    MUTE_BEFORE = nBefore
+    CFG.macroRaid = 'Icecrown Citadel'
+    CFG:PopulateMacroBossDropdown()
+    CFG:SelectMacroPhase('preraid')
+""")
+check(bool(rt.eval("MUTE_BEFORE > 0 and MUTE_AFTER == MUTE_BEFORE")),
+      "raid non valido: il menu boss NON viene svuotato (resta utilizzabile)")
+
+# --- v1.11.52 fix: i menu raid/boss si RIAPRONO (non "una volta sola") ---
+# Il menu era riusato tra le aperture ma non veniva mai ri-mostrato: dopo la
+# prima chiusura restava NASCOSTO e il catcher a schermo intero si mangiava i
+# click. Qui il ciclo COMPLETO: apro -> scelgo -> riapro.
+rt.execute("""
+    local U = RLSuite.utils
+    local CFG = RLSuite.config
+    DBG_OLD_RAID, DBG_OLD_BOSS = CFG.macroRaid, CFG.macroBoss
+    CFG:SelectMacroPhase('infight')
+    local RD = CFG.macroRaidDD
+    local BD = CFG.macroBossDD
+    U:ToggleDropdownMenu(RD)
+    RD_OPEN1 = (U.activeMenu ~= nil and RD._rlsDropMenu ~= nil and RD._rlsDropMenu:IsShown() == true)
+    RD_CAT1 = (U.dropCatcher ~= nil and U.dropCatcher:IsShown() == true)
+    local m = U.activeMenu
+    if m and m.optionButtons and m.optionButtons[1] then
+        m.optionButtons[1]:GetScript("OnClick")()
+    end
+    RD_AFTER = (U.activeMenu == nil and U.dropCatcher:IsShown() == false)
+    U:ToggleDropdownMenu(RD)
+    RD_OPEN2 = (U.activeMenu ~= nil and RD._rlsDropMenu:IsShown() == true)
+    U:CloseDropdownMenu()
+    U:ToggleDropdownMenu(BD)
+    BD_OPEN1 = (U.activeMenu ~= nil and BD._rlsDropMenu:IsShown() == true)
+    local m2 = U.activeMenu
+    if m2 and m2.optionButtons and m2.optionButtons[1] then
+        m2.optionButtons[1]:GetScript("OnClick")()
+    end
+    U:ToggleDropdownMenu(BD)
+    BD_OPEN2 = (U.activeMenu ~= nil and BD._rlsDropMenu:IsShown() == true)
+    BD_OPTS = #(BD.options or {})
+    U:CloseDropdownMenu()
+    CFG:SelectMacroPhase('preraid')
+    CFG.macroRaid, CFG.macroBoss = DBG_OLD_RAID, DBG_OLD_BOSS
+""")
+check(bool(rt.eval("RD_OPEN1 == true and RD_CAT1 == true")),
+      "menu raid: si apre (menu visibile + catcher)")
+check(bool(rt.eval("RD_AFTER == true")), "menu raid: dopo la scelta si chiude (menu + catcher)")
+check(bool(rt.eval("RD_OPEN2 == true")),
+      "menu raid: SI RIAPRE dopo una scelta (fix 'si aprono una volta sola')")
+check(bool(rt.eval("BD_OPEN1 == true")), "menu boss: si apre")
+check(bool(rt.eval("BD_OPEN2 == true")),
+      "menu boss: SI RIAPRE dopo una scelta (menu non piu' nascosto)")
+check(bool(rt.eval("BD_OPTS > 0")), "menu boss: le opzioni restano popolate tra le aperture")
+
+# --- Editor rapido (right-click sulla barra): stesso set dell'editor ------
+rt.execute("""
+    RLSuite.context = 'infight'
+    MOCK_UNITS_BOSS.target = { guid = '0xF130008F040000AA', name = 'Lord Marrowgar' }
+    RLSuite.macrobar:OpenMacroEdit(3)
+    local f = RLSuite.macrobar.editFrame
+    MB_EDIT_OPEN = (f ~= nil and f:IsShown() == true)
+    MB_EDIT_TEXT = _G.RLSuiteMacroEditBox and _G.RLSuiteMacroEditBox:GetText()
+    local save = nil
+    if f then
+        local kids = { f:GetChildren() }
+        for i = 1, #kids do
+            if kids[i]._text == 'Save' then save = kids[i] end
+        end
+    end
+    MB_EDIT_HAVE_SAVE = (save ~= nil)
+    if save then
+        _G.RLSuiteMacroEditBox:SetText('QUICK_EDIT_OK')
+        if save._scripts and save._scripts.OnClick then save._scripts.OnClick(save) end
+    end
+""")
+check(bool(rt.eval("MB_EDIT_OPEN == true and MB_EDIT_HAVE_SAVE == true")),
+      "editor rapido dello slot: si apre e ha il bottone Save")
+check(bool(rt.eval("MB_EDIT_TEXT == nil or MB_EDIT_TEXT == ''")),
+      "editor rapido: legge il set del boss (slot 3 ancora vuoto)")
+check(bool(rt.eval("RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']['Lord Marrowgar'][3].text == 'QUICK_EDIT_OK'")),
+      "editor rapido: salva nel set del boss in corso (non in db.macros.infight)")
+rt.execute("""
+    MOCK_UNITS_BOSS = {}
+    RLSuite.macrobar.editFrame = nil
+    RLSuite.macrobar:OpenMacroEdit(1)
+    MB_EDIT_NOBOSS = (RLSuite.macrobar.editFrame == nil)
+""")
+check(bool(rt.eval("MB_EDIT_NOBOSS == true")),
+      "editor rapido senza boss: non apre nulla (nessun set dove scrivere)")
+
+print()
+print("== v1.11.52: buchi di riconoscimento risolti dal COUNTER di progressione ==")
+
+rt.execute("""
+    RLSuite:ResetBossProgress()
+    RLSuite._lastBossRaid = nil
+    RLSuite._lastProgressRaid = nil
+    MOCK_UNITS_BOSS = {}
+    MOCK_ZONE = 'Icecrown Citadel'
+    RLSuite.context = 'infight'
+    RLSuite.db.profile.macrobar.bossMacros = {}
+    MB_G0_NEXT = RLSuite:NextBossByProgress('Icecrown Citadel')
+    MB_G0_ONLY = RLSuite:IsProgressOnlyBoss('Icecrown Citadel', MB_G0_NEXT)
+""")
+check(bool(rt.eval("MB_G0_NEXT == 'Lord Marrowgar' and MB_G0_ONLY == false")),
+      "counter: a inizio lockout il prossimo boss di ICC e' Marrowgar (non un buco)")
+rt.execute("MB_G0_R, MB_G0_B = RLSuite:CurrentBossInfo()")
+check(bool(rt.eval("MB_G0_R == nil and MB_G0_B == nil")),
+      "counter: il prossimo boss NON e' un buco -> il counter non viene usato (target decide)")
+
+rt.execute("""
+    MB_G1 = RLSuite:RecordBossKill(36612)   -- Lord Marrowgar (kill registrata)
+    MB_G2 = RLSuite:RecordBossKill(36855)   -- Lady Deathwhisper
+    MB_GNEXT = RLSuite:NextBossByProgress('Icecrown Citadel')
+    MB_GNEXT_ONLY = RLSuite:IsProgressOnlyBoss('Icecrown Citadel', MB_GNEXT)
+    MB_GCOUNT = RLSuite:KilledBossCount('Icecrown Citadel')
+""")
+check(bool(rt.eval("MB_G1 == true and MB_G2 == true and MB_GCOUNT == 2")),
+      "counter: le kill registrate dal combat log (id NPC) contano 2 boss")
+check(bool(rt.eval("MB_GNEXT == 'Gunship Battle' and MB_GNEXT_ONLY == true")),
+      "counter: dopo 2 boss il prossimo e' Gunship Battle (buco di riconoscimento)")
+
+rt.execute("MB_GUN_R, MB_GUN_B = RLSuite:CurrentBossInfo()")
+check(bool(rt.eval("MB_GUN_R == 'Icecrown Citadel' and MB_GUN_B == 'Gunship Battle'")),
+      "GUNSHIP: senza match su target/boss1 si usa il COUNTER (3o boss di ICC)")
+rt.execute("""
+    RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel'] =
+        RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel'] or {}
+    RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']['Gunship Battle'] =
+        { [1] = { text = 'GUNSHIP_1' } }
+    RLSuite.macrobar:UpdatePhase()
+    MB_GUN_MACRO = RLSuite.macrobar:GetMacroData(1)
+""")
+check(bool(rt.eval("MB_GUN_MACRO and MB_GUN_MACRO.text == 'GUNSHIP_1'")),
+      "GUNSHIP: la barra mostra le sue macro (riconosciuto dal counter)")
+rt.execute("""
+    RLSuite.db.profile.macrobar.bossMacros['Icecrown Citadel']['Deathbringer Saurfang'] =
+        { [1] = { text = 'SAURFANG_1' } }
+    MOCK_UNITS_BOSS.target = { name = 'Deathbringer Saurfang' }
+    RLSuite.macrobar:UpdatePhase()
+    MB_SAU_MACRO = RLSuite.macrobar:FilledSlots('infight')
+    MB_SAU_NAME = RLSuite.macrobar.bossName
+""")
+check(bool(rt.eval("MB_SAU_NAME == 'Deathbringer Saurfang' and #MB_SAU_MACRO == 1 and MB_SAU_MACRO[1] == 1")),
+      "il target ha la precedenza: su Saurfang si usano le macro di Saurfang, non quelle del Gunship")
+
+# --- Nuovo lockout: un boss gia' segnato che muore di nuovo azzera il counter
+rt.execute("""
+    MOCK_UNITS_BOSS = {}     -- nessun target: niente inferenza, si vede il solo reset
+    MB_LOCK_BEFORE = RLSuite:KilledBossCount('Icecrown Citadel')
+    RLSuite:RecordBossKill(36612)
+    MB_LOCK_AFTER = RLSuite:KilledBossCount('Icecrown Citadel')
+    MB_LOCK_NEXT = RLSuite:NextBossByProgress('Icecrown Citadel')
+""")
+check(bool(rt.eval("MB_LOCK_BEFORE == 3 and MB_LOCK_AFTER == 1 and MB_LOCK_NEXT == 'Lady Deathwhisper'")),
+      "reset settimanale: riuccidere un boss gia' segnato azzera il counter del lockout")
+rt.execute("""
+    MOCK_UNITS_BOSS.target = { name = 'Deathbringer Saurfang' }
+    RLSuite:CurrentBossInfo()
+    MB_LOCK_HEAL = RLSuite:KilledBossCount('Icecrown Citadel')
+""")
+check(bool(rt.eval("MB_LOCK_HEAL == 3")),
+      "dopo il reset l'inferenza si riallinea da sola (sei su Saurfang = Gunship gia' battuto)")
+
+# --- ToC: Faction Champions (3o, buco) riconosciuto dal counter -----------
+rt.execute("""
+    RLSuite:ResetBossProgress('Trial of the Crusader')
+    RLSuite._lastBossRaid = nil
+    MOCK_UNITS_BOSS = {}
+    MOCK_ZONE = "Trial of the Crusader"
+    RLSuite:RecordBossKill(34796)   -- Northrend Beasts
+    RLSuite:RecordBossKill(34780)   -- Lord Jaraxxus
+    MB_TOC_R, MB_TOC_B = RLSuite:CurrentBossInfo()
+""")
+check(bool(rt.eval("MB_TOC_R == 'Trial of the Crusader' and MB_TOC_B == 'Faction Champions'")),
+      "FACTION CHAMPIONS: riconosciuto dal COUNTER (3o di ToC)")
+
+# --- Inferenza catena lineare: identificare un boss lineare segna i precedenti
+rt.execute("""
+    RLSuite:ResetBossProgress('Trial of the Crusader')
+    TWIN = "Twin Val" .. string.char(39) .. "kyr"
+    MOCK_UNITS_BOSS.target = { name = TWIN }   -- 4o boss di ToC, identificato per nome
+    MB_INF_R, MB_INF_B = RLSuite:CurrentBossInfo()
+    MB_INF = {}
+    for _, b in ipairs({ 'Northrend Beasts', 'Lord Jaraxxus', 'Faction Champions', TWIN }) do
+        MB_INF[b] = RLSuite:IsBossKilled('Trial of the Crusader', b)
+    end
+    MB_INF_SELF = MB_INF[TWIN]
+    MB_INF_TWIN = (MB_INF_B == TWIN and MB_INF_R == 'Trial of the Crusader')
+    MB_INF_NEXT = RLSuite:NextBossByProgress('Trial of the Crusader')
+    MB_INF_NEXT_TWIN = (MB_INF_NEXT == TWIN)
+""")
+check(bool(rt.eval("MB_INF_TWIN == true")),
+      "inferenza: il 4o boss di ToC viene identificato per nome")
+check(bool(rt.eval("MB_INF['Northrend Beasts'] == true and MB_INF['Lord Jaraxxus'] == true and MB_INF['Faction Champions'] == true")),
+      "inferenza catena lineare: i 3 boss precedenti (inclusi i Champions, kill non registrabile) risultano battuti")
+check(bool(rt.eval("MB_INF_SELF == false")),
+      "inferenza: il boss che stai affrontando NON viene segnato come battuto")
+check(bool(rt.eval("MB_INF_NEXT_TWIN == true")),
+      "inferenza: il counter ora punta a Twin Val'kyr")
+
+# --- Inferenza su ICC: identificare Saurfang deduce Gunship ---------------
+rt.execute("""
+    RLSuite:ResetBossProgress('Icecrown Citadel')
+    MOCK_ZONE = 'Icecrown Citadel'
+    MOCK_UNITS_BOSS.target = { guid = '0xF1300093B50000AA', name = 'Deathbringer Saurfang' }
+    RLSuite:CurrentBossInfo()
+    MB_ICC_INF = {}
+    for _, b in ipairs({ 'Lord Marrowgar', 'Lady Deathwhisper', 'Gunship Battle' }) do
+        MB_ICC_INF[b] = RLSuite:IsBossKilled('Icecrown Citadel', b)
+    end
+    MB_ICC_NEXT = RLSuite:NextBossByProgress('Icecrown Citadel')
+""")
+check(bool(rt.eval("MB_ICC_INF['Lord Marrowgar'] == true and MB_ICC_INF['Lady Deathwhisper'] == true and MB_ICC_INF['Gunship Battle'] == true")),
+      "inferenza ICC: trovarsi su Saurfang implica Marrowgar + Deathwhisper + Gunship battuti")
+check(bool(rt.eval("MB_ICC_NEXT == 'Deathbringer Saurfang'")), "inferenza ICC: il counter punta a Saurfang")
+
+# --- Combat log: la kill entra nel counter, ma NON in debug ---------------
+rt.execute("""
+    RLSuite:ResetBossProgress('Icecrown Citadel')
+    MOCK_UNITS_BOSS = {}
+    MB_DBG = RLSuite:DebugMode()
+    CL_MOCK = RLSuite.combatLog
+    CL_MOCK.current = { events = {}, count = 0, dropped = 0, startTime = 0, samples = { health = {}, power = {} } }
+    CL_MOCK:OnCLEU('COMBAT_LOG_EVENT_UNFILTERED', 0, 'UNIT_DIED', '', '', 0, '0xF130008F040000AA', 'Lord Marrowgar', 0)
+    MB_CLEU_DEBUG_N = RLSuite:KilledBossCount('Icecrown Citadel')
+    CL_MOCK.current = nil
+""")
+check(bool(rt.eval("MB_DBG == true")), "harness: questa suite gira in debug mode")
+check(bool(rt.eval("MB_CLEU_DEBUG_N == 0")),
+      "combat log in debug: i pull finti NON sporcano la progressione vera")
+rt.execute("""
+    RLSuite.db.profile.debug = false
+    MB_CLEU_OK = RLSuite.combatLog:NoteBossKill('0xF130008F040000AA')
+    MB_CLEU_N = RLSuite:KilledBossCount('Icecrown Citadel')
+    MB_CLEU_UNKNOWN = RLSuite.combatLog:NoteBossKill('0xF1300001000000AA')
+    RLSuite.db.profile.debug = true
+""")
+check(bool(rt.eval("MB_CLEU_OK == true and MB_CLEU_N == 1")),
+      "combat log: la morte di un boss noto (GUID) entra nel counter")
+check(bool(rt.eval("MB_CLEU_UNKNOWN == false")),
+      "combat log: un NPC sconosciuto non entra nel counter")
+# --- La barra si riallinea da sola quando il counter avanza --------------
+rt.execute("""
+    RLSuite:ResetBossProgress('Icecrown Citadel')
+    MOCK_ZONE = 'Icecrown Citadel'
+    RLSuite.context = 'infight'
+    RLSuite.db.profile.macrobar.bossMacros = { ['Icecrown Citadel'] = {
+        ['Gunship Battle'] = { [1] = { text = 'GUNSHIP_1' } },
+        ['Lady Deathwhisper'] = { [1] = { text = 'LDW_1' } },
+    } }
+    RLSuite.macrobar.bossRaid, RLSuite.macrobar.bossName = nil, nil
+    MOCK_UNITS_BOSS = {}
+    RLSuite.macrobar:UpdatePhase()
+    MB_EMPTY = (RLSuite.macrobar:GetMacroData(1) == nil)
+    MOCK_UNITS_BOSS.target = { name = 'Lady Deathwhisper' }
+    RLSuite.macrobar:UpdatePhase()
+    MB_TARGET = tostring(RLSuite.macrobar:GetMacroData(1).text)
+    MOCK_UNITS_BOSS = {}            -- trash del Gunship: nessun boss nel target
+    RLSuite:RecordBossKill(36855)   -- Lady Deathwhisper: ora il prossimo e' Gunship
+    MB_AFTER = tostring(RLSuite.macrobar:GetMacroData(1).text)
+    MB_BUSY = tostring(RLSuite.macrobar._bossProgressBusy)
+""")
+check(bool(rt.eval("MB_EMPTY == true")),
+      "barra: senza target e con un prossimo boss normale resta VUOTA (niente fallback)")
+check(bool(rt.eval("MB_TARGET == 'LDW_1'")), "barra: boss nel target -> macro di quel boss")
+check(bool(rt.eval("MB_AFTER == 'GUNSHIP_1'")),
+      "barra: appena il counter avanza su Gunship la barra si riallinea DA SOLA")
+check(bool(rt.eval("MB_BUSY == 'nil'")), "barra: la guardia di rientranza viene sempre rilasciata")
+
+# --- Un errore in CurrentBossInfo non deve rompere il combat log ---------
+rt.execute("""
+    local saved = RLSuite.CurrentBossInfo
+    RLSuite.CurrentBossInfo = function() error("boom") end
+    local ok = pcall(function() RLSuite.macrobar:OnBossProgressChanged() end)
+    MB_ERR_OK = ok
+    MB_ERR_BUSY = RLSuite.macrobar._bossProgressBusy
+    RLSuite.CurrentBossInfo = saved
+""")
+check(bool(rt.eval("MB_ERR_OK == true and MB_ERR_BUSY == nil")),
+      "robustezza: un errore nel riconoscimento non risale al combat log e non blocca la barra")
+rt.execute("""
+    RLSuite.db.profile.macrobar.bossMacros = {}
+    RLSuite:ResetBossProgress()
+    RLSuite.macrobar.bossRaid, RLSuite.macrobar.bossName = nil, nil
+""")
+
+rt.execute("RLSuite:ResetBossProgress()")
+
+# --- Ripristino harness (nessun leak nelle sezioni successive) ------------
+rt.execute("""
+    UnitExists, UnitName, UnitGUID = MB_S_UE, MB_S_UN, MB_S_UG
+    MOCK_UNITS_BOSS = nil
+    RLSuite.context = MB_S_CTX or 'preboss'
+    RLSuite.db.profile.macrobar.macros.infight = nil
+    RLSuite.db.profile.macrobar.bossMacros = {}
+    RLSuite.config:CloseWindow()
+    MB_RESTORED = (UnitExists == MB_S_UE)
+    MB_RESTORED2 = (RLSuite.db.profile.macrobar.bossMacros ~= nil)
+""")
+check(bool(rt.eval("MB_RESTORED == true and MB_RESTORED2 == true")),
+      "v1.11.51 harness ripristina unita'/contesto (nessun leak)")
 
 print()
 print("== Scenario D: new features (Lim/Aim spam, phase, debug roster/whispers, Autoinviter) ==")
@@ -968,6 +1622,103 @@ check(bool(rt.eval("RLSuite.groupmaking.wlRows[1] == ROW_1B")), "row frames stay
 rt.execute("TARGET = RLSuite.groupmaking.whisperDB.entries[1]")
 rt.execute("local r = RLSuite.groupmaking.wlRows[1]; if r and r._scripts.OnClick then r._scripts.OnClick(r, 'LeftButton') end")
 check(bool(rt.eval("RLSuite.groupmaking.selectedEntry == TARGET")), "clicking a reused row selects its current entry")
+
+# --- BUG CLICK NELLA LISTA (fstack: RLSuiteWLScroll <700> SOPRA la finestra
+#     <200>): la catena della whisplist non era mai stata normalizzata, quindi
+#     lo ScrollFrame (mouse-enabled, serve per la rotellina) poteva finire
+#     sopra le righe e mangiarsi i click. Ogni UpdateWhisplist deve ri-ancorare
+#     la catena: pagina < wlListBox < wlScroll < wlContent < righe. ---
+GM = "RLSuite.groupmaking"
+rt.execute(GM + ":UpdateWhisplist()")
+rt.execute("""
+    local GM = RLSuite.groupmaking
+    WL_CHAIN_OK = ((GM.wlListBox:GetFrameLevel() or 0) > (GM.wlPage:GetFrameLevel() or 0))
+        and ((GM.wlScroll:GetFrameLevel() or 0) > (GM.wlListBox:GetFrameLevel() or 0))
+        and ((GM.wlContent:GetFrameLevel() or 0) > (GM.wlScroll:GetFrameLevel() or 0))
+        and ((GM.wlContent:GetFrameLevel() or 0) > (GM.whisplistFrame:GetFrameLevel() or 0))
+    WL_ROWS_ABOVE = true
+    WL_ROWS_FLAT = true
+    local lvl0 = nil
+    for _, r in ipairs(GM.wlRows) do
+        local rl = r:GetFrameLevel() or 0
+        if rl <= (GM.wlScroll:GetFrameLevel() or 0) then WL_ROWS_ABOVE = false end
+        if rl <= (GM.wlContent:GetFrameLevel() or 0) then WL_ROWS_ABOVE = false end
+        if lvl0 == nil then lvl0 = rl elseif rl ~= lvl0 then WL_ROWS_FLAT = false end
+    end
+    WL_ROWS_MOUSE = (GM.wlRows[1] and GM.wlRows[1]._enabledMouse == true)
+    WL_SCROLL_LIVE = (GM.wlRows[1] ~= nil and #GM.wlRows > 0)
+    local bar = _G["RLSuiteWLScrollScrollBar"]
+    WL_BAR_ABOVE = (bar ~= nil and GM.wlRows[1] ~= nil
+        and (bar:GetFrameLevel() or 0) > (GM.wlRows[1]:GetFrameLevel() or 0))
+""")
+check(bool(rt.eval("WL_SCROLL_LIVE == true")), "whisplist has clickable rows to test")
+check(bool(rt.eval("WL_CHAIN_OK == true")), "whisplist levels are chained: page < listbox < scroll < content (above the window)")
+check(bool(rt.eval("WL_ROWS_ABOVE == true")), "every whisper row sits ABOVE the scroll/content frames (click reaches the row)")
+check(bool(rt.eval("WL_ROWS_FLAT == true")), "all whisper rows share one level (flat band: pull-outs above the list stay clickable)")
+check(bool(rt.eval("WL_ROWS_MOUSE == true")), "whisper rows are mouse-enabled")
+check(bool(rt.eval("WL_BAR_ABOVE == true")), "the scroll bar stays ABOVE the rows (still draggable)")
+# Chrome generica dello scroll (es. bottoni freccia figli dello ScrollFrame):
+# deve finire sopra le righe come la barra, senza dipendere dal nome.
+rt.execute("""
+    local GM = RLSuite.groupmaking
+    if not SYNTH_BAR then SYNTH_BAR = CreateFrame("Button", "RLSuiteWLSynthChrome", GM.wlScroll) end
+    SYNTH_BAR:SetFrameLevel(1)
+""")
+rt.execute(GM + ":UpdateWhisplist()")
+check(bool(rt.eval("(SYNTH_BAR:GetFrameLevel() or 0) > (RLSuite.groupmaking.wlRows[1]:GetFrameLevel() or 0)")),
+      "any scroll-frame chrome child is pinned above the rows (not just the templated bar)")
+rt.execute("""
+    -- Drift identico allo screenshot: scroll/content centinaia di livelli
+    -- sopra la finestra E una riga rimasta sotto. Il refresh deve riparare.
+    local GM = RLSuite.groupmaking
+    GM.wlPage:SetFrameLevel((GM.wlPage:GetParent():GetFrameLevel() or 1) + 500)
+    GM.wlScroll:SetFrameLevel((GM.wlScroll:GetFrameLevel() or 1) + 500)
+    GM.wlContent:SetFrameLevel((GM.wlContent:GetFrameLevel() or 1) + 500)
+    GM.wlRows[1]:SetFrameLevel(1)
+""")
+rt.execute(GM + ":UpdateWhisplist()")
+rt.execute("""
+    local GM = RLSuite.groupmaking
+    WL_HEAL_PAGE = (((GM.wlPage:GetFrameLevel() or 0) - ((GM.wlPage:GetParent():GetFrameLevel() or 0) + 1)) <= 20)
+    WL_HEAL_ROWS = true
+    for _, r in ipairs(GM.wlRows) do
+        if (r:GetFrameLevel() or 0) <= (GM.wlScroll:GetFrameLevel() or 0) then WL_HEAL_ROWS = false end
+    end
+    WL_HEAL_SCROLL = ((GM.wlScroll:GetFrameLevel() or 0) < (GM.wlPage:GetFrameLevel() or 0) + 40)
+""")
+check(bool(rt.eval("WL_HEAL_PAGE == true")), "a drifted whisplist page is re-anchored to its container (no 500-level gap)")
+check(bool(rt.eval("WL_HEAL_SCROLL == true")), "the drifted scroll frame is pulled back next to the page")
+check(bool(rt.eval("WL_HEAL_ROWS == true")), "rows stay above the scroll frame after the drift is repaired")
+
+# --- Drift del CONTENITORE delle tab (host) rispetto alla finestra: il
+#     sotto-albero viene shiftato in blocco, l'ordine interno resta intatto. ---
+rt.execute("""
+    local GM = RLSuite.groupmaking
+    GM.ieTabGroup.frame:SetFrameLevel((GM.whisplistFrame:GetFrameLevel() or 1) + 500)
+""")
+rt.execute(GM + ":UpdateWhisplist()")
+rt.execute("""
+    local GM = RLSuite.groupmaking
+    WL_HOST_GAP = (GM.ieTabGroup.frame:GetFrameLevel() or 0) - (GM.whisplistFrame:GetFrameLevel() or 0)
+    WL_HOST_ROWS = true
+    for _, r in ipairs(GM.wlRows) do
+        if (r:GetFrameLevel() or 0) <= (GM.wlScroll:GetFrameLevel() or 0) then WL_HOST_ROWS = false end
+    end
+    WL_HOST_ORDER = ((GM.wlScroll:GetFrameLevel() or 0) > (GM.wlContent and GM.wlContent:GetFrameLevel() or 0) - 100)
+""")
+check(bool(rt.eval("WL_HOST_GAP <= 20")), "a drifted tab container is shifted back next to the window (gap <= 20)")
+check(bool(rt.eval("WL_HOST_ROWS == true")), "rows are still above the scroll after the tab container is shifted")
+rt.execute("check_alias = RLSuite.utils.RealignSubtreeLevel ~= nil")
+check(bool(rt.eval("check_alias == true")), "Utils:RealignSubtreeLevel is available to every list")
+rt.execute("""
+    local GM = RLSuite.groupmaking
+    BEFORE_SCR = GM.wlScroll:GetFrameLevel() or 0
+    BEFORE_CON = GM.wlContent:GetFrameLevel() or 0
+    RLSuite.utils:RealignSubtreeLevel(GM.wlPage, (GM.wlPage:GetFrameLevel() or 0) + 500, 20)
+    SHIFTED_SCR = GM.wlScroll:GetFrameLevel() or 0
+    SHIFTED_CON = GM.wlContent:GetFrameLevel() or 0
+""")
+check(bool(rt.eval("(SHIFTED_SCR - BEFORE_SCR) == (SHIFTED_CON - BEFORE_CON)")), "subtree realign shifts every descendant by the same delta (internal order preserved)")
 
 # --- Autoinviter manual list: typeable + Enter adds + Auto invite now + label ---
 check(bool(rt.eval("RLSuite.groupmaking.ieAutoArmBtn:GetText() == 'Start Autoinviter'")), "arm button reads 'Start Autoinviter'")
@@ -1679,13 +2430,31 @@ check(bool(rt.eval("BP_W")), "window width does NOT include the matrix columns a
 check(bool(rt.eval("BP_SPILL")), "header/column icons are drawn BEYOND the window's right edge (rendered outside = click-through)")
 check(bool(rt.eval("BP_CELL_ON_ROW") and bool(rt.eval("BP_CELL_SIDE"))), "category icons live ALONG the player's row, past the row right edge")
 # --- hover: il titolo di categoria si "illumina"; click: raid warning categoria ---
+# v1.11.49: l'accensione vale per le categorie DISPONIBILI con la composizione
+# (quelle non disponibili restano spente anche in hover). La verifica sceglie
+# quindi una colonna disponibile invece di dare per scontato che lo sia la 1.
 rt.execute("""
+local av, na
+for c, b in ipairs(RLSuite.raidFrame._buffHdrBtns) do
+    if b:IsShown() and b._status then
+        if b._nodata == false and not av then av = b end
+        if b._nodata == true and not na then na = b end
+    end
+end
+BP_HOVER_ON, BP_HOVER_OFF, BP_HOVER_TIP, BP_NODATA_HOVER = false, false, false, false
+if av then
+    av._scripts.OnEnter(av)
+    BP_HOVER_ON = (av._icon._vertex ~= nil and av._icon._vertex[1] == 1 and av._icon._vertex[2] == 1 and av._icon._vertex[3] == 1)
+    BP_HOVER_TIP = (GameTooltip._text == av._col.label)
+    av._scripts.OnLeave(av)
+    BP_HOVER_OFF = (av._icon._vertex[1] == 0.8 and av._icon._vertex[2] == 0.8)
+end
+if na then
+    na._scripts.OnEnter(na)
+    BP_NODATA_HOVER = (na._icon._vertex[1] == 0.35 and na._red:IsShown() == false)
+    na._scripts.OnLeave(na)
+end
 local hb = RLSuite.raidFrame._buffHdrBtns[1]
-hb._scripts.OnEnter(hb)
-BP_HOVER_ON = (hb._icon._vertex ~= nil and hb._icon._vertex[1] == 1 and hb._icon._vertex[2] == 1 and hb._icon._vertex[3] == 1)
-BP_HOVER_TIP = (GameTooltip._text == RLSuite.raidFrame._buffHdrBtns[1]._col.label)
-hb._scripts.OnLeave(hb)
-BP_HOVER_OFF = (hb._icon._vertex[1] == 0.8 and hb._icon._vertex[2] == 0.8)
 local n0 = #CHAT_LOG
 hb._scripts.OnClick(hb)
 BP_WARN = false
@@ -1693,9 +2462,11 @@ for i = n0 + 1, #CHAT_LOG do
     if CHAT_LOG[i]:find('RAID_WARNING', 1, true) and CHAT_LOG[i]:find('%stat', 1, true) then BP_WARN = true end
 end
 """)
-check(bool(rt.eval("BP_HOVER_ON")), "hovering a category icon lights it up (full brightness)")
+check(bool(rt.eval("BP_HOVER_ON")), "hovering an AVAILABLE category icon lights it up (full brightness)")
 check(bool(rt.eval("BP_HOVER_OFF")), "hover-exit dims the icon again")
 check(bool(rt.eval("BP_HOVER_TIP")), "hovering a category icon shows its name in the tooltip")
+# (il caso "categoria non disponibile" e' verificato in modo deterministico
+#  nella sezione v1.11.49, con un roster costruito ad hoc)
 check(bool(rt.eval("BP_WARN")), "clicking a category title sends a RAID WARNING for that category")
 rt.execute("""
 local n0 = #CHAT_LOG
@@ -3468,6 +4239,295 @@ RLSuite.utils:CloseDropdownMenu()
 """)
 check(bool(rt.eval("M_A ~= nil and M_A == M_B")), "dropdown menu is reused per dropdown (no leaked rebuilds)")
 
+
+# =====================================================================
+# v1.11.49: check buff consapevole di CLASSE e COMPOSIZIONE
+#   - applicabilita' per classe (Int non si segnala a un warrior)
+#   - scope completo: raid-wide / party-only (totem) / single (FM) / capped
+#   - intestazione GRIGIA se la categoria non e' disponibile con la comp
+#   - overlay ROSSO se la categoria e' disponibile ma il check non e' ok
+#   - Focus Magic: tante aure quanti maghi, nomi dei maghi mancanti
+# =====================================================================
+print("\n== v1.11.49: class/composition-aware buff check (grey header, red overlay, FM per mage) ==")
+
+# --- guardie statiche sul modello dati ------------------------------------
+rt.execute("""
+COMPB_PARTY_SUBSET, COMPB_CAP_OK, COMPB_BEN_VALID = true, true, true
+local VALID = { WARRIOR=true, PALADIN=true, HUNTER=true, ROGUE=true, PRIEST=true,
+                DEATHKNIGHT=true, SHAMAN=true, MAGE=true, WARLOCK=true, DRUID=true }
+for _, c in ipairs(RLSuite.raidBuffColumns) do
+    for _, pc in ipairs(c.partyProviders or {}) do
+        local found = false
+        for _, cc in ipairs(c.classes or {}) do if cc == pc then found = true end end
+        if not found then COMPB_PARTY_SUBSET = false end
+    end
+    if c.scope == "capped" and not (c.cap and c.cap > 0) then COMPB_CAP_OK = false end
+    for _, bc in ipairs(c.beneficiaries or {}) do
+        if not VALID[bc] then COMPB_BEN_VALID = false end
+    end
+end
+COMPB_SCOPE_VALUES = true
+for _, c in ipairs(RLSuite.raidBuffColumns) do
+    if c.scope ~= nil and c.scope ~= 'raid' and c.scope ~= 'single' and c.scope ~= 'capped' then
+        COMPB_SCOPE_VALUES = false
+    end
+end
+""")
+check(bool(rt.eval("COMPB_PARTY_SUBSET")), "static: every partyProviders class is also listed in classes (provider subset invariant)")
+check(bool(rt.eval("COMPB_CAP_OK")), "static: every 'capped' category declares a positive cap")
+check(bool(rt.eval("COMPB_BEN_VALID")), "static: every beneficiaries entry is a real WoW class")
+check(bool(rt.eval("COMPB_SCOPE_VALUES")), "static: scope is only raid/single/capped")
+
+# --- roster deterministico + aure STUBBATE --------------------------------
+# G1: Pala(PALADIN) Mago1(MAGE) Sham(SHAMAN) Warro(WARRIOR) Pret(PRIEST)
+# G2: Mago2(MAGE) Druid(DRUID) Ladro(ROGUE)
+# Le aure sono stub: il test misura la LOGICA (applicabilita'/copertura), non
+# lo scan di UnitBuff del client.
+rt.execute("""
+local RF = RLSuite.raidFrame
+COMPB_SAVED = RF._BuffCellIconFor
+RLSuite.db.profile.debug = true
+RLSuite.debugTanks = nil
+RLSuite.debugRaid = { slots = {
+    [1] = { name = 'Pala',  class = 'PALADIN', isPlayer = false, subgroup = 1 },
+    [2] = { name = 'Mago1', class = 'MAGE',    isPlayer = false, subgroup = 1 },
+    [3] = { name = 'Sham',  class = 'SHAMAN',  isPlayer = false, subgroup = 1 },
+    [4] = { name = 'Warro', class = 'WARRIOR', isPlayer = false, subgroup = 1 },
+    [5] = { name = 'Pret',  class = 'PRIEST',  isPlayer = false, subgroup = 1 },
+    [6] = { name = 'Mago2', class = 'MAGE',    isPlayer = false, subgroup = 2 },
+    [7] = { name = 'Druid', class = 'DRUID',   isPlayer = false, subgroup = 2 },
+    [8] = { name = 'Ladro', class = 'ROGUE',   isPlayer = false, subgroup = 2 },
+} }
+COMPB_AURA = {}
+RF._BuffCellIconFor = function(self2, member, col)
+    local byName = COMPB_AURA[member and member.name]
+    if byName and byName[col.key] then return 'Tex:' .. col.key, 1 end
+    return nil
+end
+COMPB = function(key)
+    for _, c in ipairs(RLSuite.raidBuffColumns) do
+        if c.key == key then return RLSuite.raidFrame:BuffCoverage(c) end
+    end
+    return nil
+end
+COMPB_HDR = function(key)
+    for c, b in ipairs(RLSuite.raidFrame._buffHdrBtns) do
+        if b._col and b._col.key == key then return b, c end
+    end
+    return nil, nil
+end
+RLSuite.raidFrame.buffMatrixOn = true
+RLSuite.raidFrame:Rebuild()
+""")
+
+# --- applicabilita' per classe --------------------------------------------
+rt.execute("""
+local st = COMPB('intellect')
+COMPB_INT_APPLICABLE = st.applicable
+COMPB_INT_MISSING = #st.missing
+COMPB_INT_AVAILABLE = st.available
+COMPB_INT_NO_PHYS = true
+for _, n in ipairs(st.missing) do
+    if n == 'Warro' or n == 'Ladro' then COMPB_INT_NO_PHYS = false end
+end
+-- e la stessa categoria su chi NON ha mana: 0 player applicabili
+local st2 = COMPB('intellect')
+COMPB_INT_MANA_ONLY = (st2.applicable == 6)
+""")
+check(bool(rt.eval("COMPB_INT_MANA_ONLY")), "class applicability: Int counts the 6 mana users only (warrior/rogue are NOT applicable)")
+check(bool(rt.eval("COMPB_INT_NO_PHYS")), "class applicability: the missing list never names non-benefiting classes (no Int for a warrior)")
+check(bool(rt.eval("COMPB_INT_AVAILABLE")), "a category whose provider class IS in the raid stays available")
+
+# --- totem RAID-WIDE (3.3.5) + meccanismo party-only ----------------------
+# Dal patch 3.0.2 i totem shaman di buff sono RAID-WIDE, con limite di RAGGIO
+# (non di party): marcarli party-only darebbe FALSI NEGATIVI. La meccanica
+# partyProviders resta disponibile e si verifica con una categoria SINTETICA,
+# cosi' il test non congela un dato di gioco sbagliato.
+rt.execute("""
+local st = COMPB('spellHaste')
+COMPB_SPH_COVERABLE = st.coverable
+COMPB_SPH_AVAILABLE = st.available
+COMPB_NO_PARTY_MARKED = true
+for _, c in ipairs(RLSuite.raidBuffColumns) do
+    if c.partyProviders and #c.partyProviders > 0 then COMPB_NO_PARTY_MARKED = false end
+end
+-- categoria sintetica party-only: esercita il meccanismo
+RLSuite.raidBuffColumns[#RLSuite.raidBuffColumns + 1] = {
+    key = 'compbSyntheticParty', label = 'SynthParty',
+    icon = 'SynthIcon',  -- irrilevante: l'aura e' stub, nessun rendering
+    classes = { 'SHAMAN' }, partyProviders = { 'SHAMAN' },
+    beneficiaries = { 'MAGE', 'WARLOCK', 'PRIEST', 'DRUID', 'SHAMAN', 'PALADIN' },
+    spells = { 3738 } }
+local stp = COMPB('compbSyntheticParty')
+COMPB_SP_COVERABLE = stp.coverable
+COMPB_SP_MISSING = #stp.missing
+COMPB_SP_NO_G2 = true
+for _, n in ipairs(stp.missing) do
+    if n == 'Mago2' or n == 'Druid' then COMPB_SP_NO_G2 = false end
+end
+COMPB_SP_G1 = false
+for _, n in ipairs(stp.missing) do
+    if n == 'Mago1' then COMPB_SP_G1 = true end
+end
+RLSuite.raidBuffColumns[#RLSuite.raidBuffColumns] = nil
+""")
+check(bool(rt.eval("COMPB_NO_PARTY_MARKED")), "3.3.5 reality: NO category is party-only (patch 3.0.2 made every shaman buff totem raid-wide, range-limited)")
+check(bool(rt.eval("COMPB_SPH_AVAILABLE and COMPB_SPH_COVERABLE == 6")), "raid-wide totem: Wrath of Air covers ALL 6 casters, not just the shaman's party")
+check(bool(rt.eval("COMPB_SP_COVERABLE == 4 and COMPB_SP_MISSING == 4")), "party-only MECHANISM (synthetic category): only the provider's party is expected to have it")
+check(bool(rt.eval("COMPB_SP_NO_G2")), "party-only MECHANISM: members OUTSIDE the provider's party are NOT reported (no false alarm)")
+check(bool(rt.eval("COMPB_SP_G1")), "party-only MECHANISM: members INSIDE the provider's party ARE reported when it is down")
+
+# --- scope capped (Replenishment copre 10) --------------------------------
+rt.execute("""
+local slots = {}
+for i = 1, 25 do
+    local mana = (i <= 15)
+    slots[i] = { name = mana and ('Mana' .. i) or ('Phys' .. i),
+                 class = mana and 'MAGE' or 'WARRIOR', isPlayer = false,
+                 subgroup = math.floor((i - 1) / 5) + 1 }
+end
+RLSuite.debugRaid = { slots = slots }
+RLSuite.debugTanks = nil
+COMPB_AURA = {}
+RLSuite.raidFrame:Rebuild()
+local st = COMPB('replen')
+COMPB_REPLEN_EXPECTED = st.expected
+COMPB_REPLEN_APPLICABLE = st.applicable
+COMPB_REPLEN_RED = (COMPB_HDR('replen')._red:IsShown() == true)
+-- 10 aure su 15 mana user: il check DEVE essere soddisfatto (cap 10)
+for i = 1, 10 do COMPB_AURA['Mana' .. i] = { replen = true } end
+RLSuite.raidFrame:RefreshBuffMatrix()
+local st2 = COMPB('replen')
+COMPB_REPLEN_SAT_10 = st2.satisfied
+COMPB_REPLEN_COUNT_10 = (st2.count == 10)
+COMPB_REPLEN_RED_10 = (COMPB_HDR('replen')._red:IsShown() == true)
+-- 9 aure: non soddisfatto -> overlay rosso
+COMPB_AURA['Mana10'] = nil
+RLSuite.raidFrame:RefreshBuffMatrix()
+local st3 = COMPB('replen')
+COMPB_REPLEN_SAT_9 = st3.satisfied
+COMPB_REPLEN_RED_9 = (COMPB_HDR('replen')._red:IsShown() == true)
+""")
+check(bool(rt.eval("COMPB_REPLEN_EXPECTED == 10 and COMPB_REPLEN_APPLICABLE == 15")), "capped: Replenishment expects 10 of the 15 mana users (cap respected, not 'everyone')")
+check(bool(rt.eval("COMPB_REPLEN_SAT_10 and COMPB_REPLEN_COUNT_10")), "capped: 10 covered auras SATISFY the check")
+check(bool(rt.eval("COMPB_REPLEN_RED_10 == false")), "capped: a satisfied category shows NO red overlay")
+check(bool(rt.eval("COMPB_REPLEN_RED == true")), "red overlay: an available category with nobody covered is flagged")
+check(bool(rt.eval("COMPB_REPLEN_SAT_9 == false and COMPB_REPLEN_RED_9 == true")), "red overlay: dropping to 9 auras (below the 10 cap) flags the column again")
+
+# --- Focus Magic: una FM per mago + nomi nell'alert -----------------------
+rt.execute("""
+RLSuite.debugTanks = nil
+RLSuite.debugRaid = { slots = {
+    [1] = { name = 'Pala',  class = 'PALADIN', isPlayer = false, subgroup = 1 },
+    [2] = { name = 'Mago1', class = 'MAGE',    isPlayer = false, subgroup = 1 },
+    [3] = { name = 'Sham',  class = 'SHAMAN',  isPlayer = false, subgroup = 1 },
+    [4] = { name = 'Warro', class = 'WARRIOR', isPlayer = false, subgroup = 1 },
+    [5] = { name = 'Pret',  class = 'PRIEST',  isPlayer = false, subgroup = 1 },
+    [6] = { name = 'Mago2', class = 'MAGE',    isPlayer = false, subgroup = 2 },
+    [7] = { name = 'Druid', class = 'DRUID',   isPlayer = false, subgroup = 2 },
+    [8] = { name = 'Ladro', class = 'ROGUE',   isPlayer = false, subgroup = 2 },
+} }
+COMPB_AURA = {}
+RLSuite.raidFrame.fmCasters = nil
+RLSuite.raidFrame:Rebuild()
+-- il combat log registra FONTE -> BERSAGLIO (l'aura sta sul bersaglio)
+RLSuite.raidFrame:OnCombatLog('COMBAT_LOG_EVENT_UNFILTERED', 0, 'SPELL_AURA_APPLIED',
+    'GUID-A', 'Mago1', 0, 'GUID-B', 'Mago2', 0, 54646)
+COMPB_FM_LOGGED = (RLSuite.raidFrame.fmCasters ~= nil
+    and RLSuite.raidFrame.fmCasters['Mago1'] == 'Mago2')
+-- 1 sola aura su 2 maghi -> manca Mago2
+COMPB_AURA['Mago2'] = { focusMagic = true }
+RLSuite.raidFrame:RefreshBuffMatrix()
+local st = COMPB('focusMagic')
+COMPB_FM_EXPECTED = st.expected
+COMPB_FM_COUNT = st.count
+COMPB_FM_SAT = st.satisfied
+COMPB_FM_NAMES = table.concat(st.missingProviders, ',')
+COMPB_FM_RED = (COMPB_HDR('focusMagic')._red:IsShown() == true)
+-- alert: conteggio + NOME del mago che non l'ha dato
+local n0 = #CHAT_LOG
+COMPB_HDR('focusMagic')._scripts.OnClick(COMPB_HDR('focusMagic'))
+COMPB_FM_ALERT = ''
+for i = n0 + 1, #CHAT_LOG do
+    if CHAT_LOG[i]:find('RAID_WARNING', 1, true) then COMPB_FM_ALERT = CHAT_LOG[i] end
+end
+-- secondo mago coperto -> soddisfatto, niente rosso
+COMPB_AURA['Druid'] = { focusMagic = true }
+RLSuite.raidFrame:OnCombatLog('COMBAT_LOG_EVENT_UNFILTERED', 0, 'SPELL_AURA_APPLIED',
+    'GUID-C', 'Mago2', 0, 'GUID-D', 'Druid', 0, 54646)
+RLSuite.raidFrame:RefreshBuffMatrix()
+local st2 = COMPB('focusMagic')
+COMPB_FM_SAT2 = st2.satisfied
+COMPB_FM_RED2 = (COMPB_HDR('focusMagic')._red:IsShown() == true)
+COMPB_FM_NAMES2 = #st2.missingProviders
+""")
+check(bool(rt.eval("COMPB_FM_LOGGED")), "FM: the combat log records caster->target for Focus Magic (SPELL_AURA_APPLIED)")
+check(bool(rt.eval("COMPB_FM_EXPECTED == 2")), "FM: expected auras = number of MAGES in the raid (2), not number of casters (6)")
+check(bool(rt.eval("COMPB_FM_COUNT == 1 and COMPB_FM_SAT == false")), "FM: one aura on two mages leaves the check unsatisfied")
+check(bool(rt.eval("COMPB_FM_NAMES == 'Mago2'")), "FM: the missing provider is named from the combat log (only Mago2, Mago1 already cast)")
+check(bool(rt.eval("COMPB_FM_RED == true")), "FM: an unsatisfied category paints the red overlay on its header")
+check(bool(rt.eval("COMPB_FM_ALERT:find('1/2', 1, true) ~= nil and COMPB_FM_ALERT:find('Mago2', 1, true) ~= nil")), "FM: the alert carries the count (1/2) AND the name of the mage who has not cast it")
+check(bool(rt.eval("COMPB_FM_SAT2 == true and COMPB_FM_RED2 == false and COMPB_FM_NAMES2 == 0")), "FM: with one FM per mage the column is satisfied and the red overlay disappears")
+
+# --- intestazione GRIGIA per categoria non disponibile --------------------
+# Roster: solo WARRIOR + ROGUE -> niente paladini/maghi/shaman.
+rt.execute("""
+RLSuite.debugTanks = nil
+RLSuite.debugRaid = { slots = {
+    [1] = { name = 'Warro', class = 'WARRIOR', isPlayer = false, subgroup = 1 },
+    [2] = { name = 'Ladro', class = 'ROGUE',   isPlayer = false, subgroup = 1 },
+} }
+COMPB_AURA = {}
+RLSuite.raidFrame:Rebuild()
+local hStats = COMPB_HDR('stats')
+local hHp = COMPB_HDR('hp')
+local stStats = COMPB('stats')
+local stHp = COMPB('hp')
+COMPB_NODATA_FLAG = (hStats._nodata == true)
+COMPB_NODATA_GREY = (hStats._icon._vertex[1] == 0.35)
+COMPB_NODATA_NORED = (hStats._red:IsShown() == false)
+COMPB_NODATA_HIDDEN = (stStats.available == false)
+COMPB_AVAIL_NOT_GREY = (hHp._nodata == false and hHp._icon._vertex[1] == 0.8)
+COMPB_AVAIL_RED = (hHp._red:IsShown() == true)
+-- tooltip: riga di stato dedicata
+local t1 = select(1, RLSuite.raidFrame:_BuffStatusText(stStats))
+local t2 = select(1, RLSuite.raidFrame:_BuffStatusText(stHp))
+COMPB_TOOLTIP_NODATA = (t1 == 'Not available in this composition')
+COMPB_TOOLTIP_MISS = (t2 == 'Missing: 2: Warro, Ladro')
+-- hover su una categoria non disponibile: resta spenta
+hStats._scripts.OnEnter(hStats)
+COMPB_NODATA_HOVER = (hStats._icon._vertex[1] == 0.35 and hStats._red:IsShown() == false)
+hStats._scripts.OnLeave(hStats)
+-- alert: dice che la categoria non e' disponibile, senza accusare nessuno
+local n0 = #CHAT_LOG
+hStats._scripts.OnClick(hStats)
+COMPB_NODATA_ALERT = ''
+for i = n0 + 1, #CHAT_LOG do
+    if CHAT_LOG[i]:find('RAID_WARNING', 1, true) then COMPB_NODATA_ALERT = CHAT_LOG[i] end
+end
+""")
+check(bool(rt.eval("COMPB_NODATA_FLAG and COMPB_NODATA_HIDDEN")), "unavailable: a category with no provider class in the raid is marked not-available")
+check(bool(rt.eval("COMPB_NODATA_GREY")), "unavailable: its header icon is greyed (0.35) instead of the normal 0.8")
+check(bool(rt.eval("COMPB_NODATA_NORED")), "unavailable: NO red overlay (grey and red are distinct states)")
+check(bool(rt.eval("COMPB_NODATA_HOVER")), "unavailable: hovering keeps it dim (it must not look available)")
+check(bool(rt.eval("COMPB_AVAIL_NOT_GREY and COMPB_AVAIL_RED")), "available but unsatisfied: normal brightness + red overlay (e.g. HP with nobody buffed)")
+check(bool(rt.eval("COMPB_TOOLTIP_NODATA")), "tooltip: 'Not available in this composition' on an unavailable column")
+check(bool(rt.eval("COMPB_TOOLTIP_MISS")), "tooltip: missing count + names on an unsatisfied column")
+check(bool(rt.eval("COMPB_NODATA_ALERT:find('not available in this composition', 1, true) ~= nil")), "alert: an unavailable category says so instead of listing the whole raid as missing")
+
+# --- ripristino: nessuna traccia lasciata ai test successivi --------------
+rt.execute("""
+local RF = RLSuite.raidFrame
+RF._BuffCellIconFor = COMPB_SAVED
+RF.fmCasters = nil
+COMPB_AURA = nil
+RLSuite:ResetDebugRaid()
+RLSuite.debugTanks = nil
+RLSuite.raidFrame.buffMatrixOn = false
+RLSuite.raidFrame:Rebuild()
+COMPB_RESTORED = (RF._BuffCellIconFor == COMPB_SAVED)
+""")
+check(bool(rt.eval("COMPB_RESTORED")), "v1.11.49 harness restores the aura source and the roster (no leak into other scenarios)")
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenarios G+H (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
 

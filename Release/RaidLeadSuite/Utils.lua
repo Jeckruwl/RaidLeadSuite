@@ -251,6 +251,471 @@ function Utils:NormalizeRole(role, class, spec)
     return role or "mdps"
 end
 
+-- ============================================================
+-- PARSER CLASSE / SPEC / GS  (v1.11.87)
+-- Regole: _dev/Class_Spec_and_GS_parser.md
+--
+-- Forma di un whisper:  [PREFIX] BODY [SUFFIX]
+--   BODY   = la CLASSE: dk / druid+dudu / hunter+hunt / mage /
+--            pal+pala+paladin / priest / rog+rogue / sham+shammy+shaman /
+--            lock+warlock / war+warr+warrior.
+--            Eccezioni della tabella: Boomkin e Boomie sono BODY del druido e
+--            valgono Balance; Disco e' BODY del priest e vale Discipline
+--            (in entrambi i casi prefisso e suffisso NON sono ammessi).
+--   PREFIX = la SPEC scritta PRIMA della classe  ("prot pala")
+--   SUFFIX = la SPEC scritta DOPO la classe      ("pala prot")
+--   REGOLA GENERALE: o c'e' il prefisso o c'e' il suffisso, mai entrambi.
+--   ECCEZIONE: il ferale del druido (Cat/Bear) ammette entrambi; il suffisso
+--   puo' essere di due parole ("feral cat", "feral bear") e "feral" da solo
+--   resta ambiguo fra Cat e Bear.
+--   Maiuscole/minuscole non contano: si confronta tutto in minuscolo.
+-- Parole estranee (ruolo, saluti, numeri) non danno fastidio: valgono solo le
+-- parole ADIACENTI alla classe ("healer holy pala 5900 gs" e' Holy Paladin).
+-- ============================================================
+
+-- Corpo (classe) -> parole accettate. La PRIMA di ogni lista e' quella usata
+-- per generare i whisper di prova, non per il match (il match le accetta tutte).
+Utils.classBodies = {
+    DEATHKNIGHT = { "dk", "deathknight" },
+    DRUID       = { "dudu", "druid", "boomkin", "boomie" },
+    HUNTER      = { "hunt", "hunter" },
+    MAGE        = { "mage" },
+    PALADIN     = { "pala", "pal", "paladin" },
+    PRIEST      = { "priest", "disco" },
+    ROGUE       = { "rog", "rogue" },
+    SHAMAN      = { "sham", "shammy", "shaman" },
+    WARLOCK     = { "lock", "warlock" },
+    WARRIOR     = { "war", "warr", "warrior" },
+}
+
+-- BODY che portano con se' la SPEC (e con essa il divieto di prefisso/suffisso)
+Utils.bodySpecWords = { boomkin = "Balance", boomie = "Balance", disco = "Discipline" }
+
+-- Spec: prefissi e suffissi della tabella. I nomi delle spec sono quelli
+-- canonici di RLSuite.classData (cioe' quelli che usa tutto il resto dell'addon).
+-- Con la tabella sono accettate anche le grafie corrette delle voci scritte
+-- con un refuso (Afliction -> affliction, Destriction -> destruction,
+-- Sublety -> subtlety): un giocatore le scrive come si scrivono davvero.
+Utils.specGrammar = {
+    DEATHKNIGHT = {
+        { spec = "Unholy", prefix = { "u", "uh", "unholy" }, suffix = { "u", "uh", "unholy" } },
+        { spec = "Blood",  prefix = { "b", "blood" },        suffix = { "b", "blood" } },
+        { spec = "Frost",  prefix = { "f", "frost" },        suffix = { "f", "frost" } },
+    },
+    DRUID = {
+        { spec = "Balance",     prefix = { "balance" },       suffix = { "balance" } },
+        -- Il ferale ammette prefisso E suffisso; "feral"/"f" da soli valgono
+        -- per ENTRAMBE le spec: Feral Cat e Feral Bear restano due voci
+        -- separate e, in quel caso, si lascia la parola comune "Feral".
+        { spec = "Feral Cat",   prefix = { "f", "cat", "feral" },
+                                suffix = { "feral", "cat", "feral cat", "feralcat" } },
+        { spec = "Feral Bear",  prefix = { "f", "bear", "feral" },
+                                suffix = { "feral", "bear", "feral bear", "feralbear" } },
+        { spec = "Restoration", prefix = { "r", "resto", "restoration" },
+                                suffix = { "resto", "restoration" } },
+    },
+    HUNTER = {
+        -- nomi estesi richiesti dal raid leader ("beast mastery", "marksmanship")
+        { spec = "Beast Mastery", prefix = { "bm", "beast mastery", "beastmastery" },
+                                  suffix = { "bm", "beast mastery", "beastmastery" } },
+        { spec = "Marksmanship",  prefix = { "mm", "marksmanship", "marksman" },
+                                  suffix = { "mm", "marksmanship", "marksman" } },
+        { spec = "Survival",      prefix = { "s", "surv", "survival" }, suffix = { "s", "surv", "survival" } },
+    },
+    MAGE = {
+        { spec = "Fire",   prefix = { "f", "fire" },  suffix = { "fire" } },
+        { spec = "Frost",  prefix = { "frost" },      suffix = { "frost" } },
+        { spec = "Arcane", prefix = { "arcane" },     suffix = { "arcane" } },
+    },
+    PALADIN = {
+        { spec = "Protection",  prefix = { "p", "prot", "protection" },   suffix = { "prot", "protection" } },
+        { spec = "Retribution", prefix = { "r", "ret", "retri", "retribution" }, suffix = { "ret", "retri", "retribution" } },
+        { spec = "Holy",        prefix = { "h", "holy" },                 suffix = { "holy" } },
+    },
+    PRIEST = {
+        { spec = "Shadow",     prefix = { "s", "sh", "shadow" },        suffix = { "shadow" } },
+        { spec = "Discipline", prefix = { "d", "disci", "discipline" }, suffix = { "disci", "disco" } },
+        { spec = "Holy",       prefix = { "h", "holy" },                suffix = { "holy" } },
+    },
+    ROGUE = {
+        { spec = "Combat",        prefix = { "c", "combat" },                  suffix = { "combat" } },
+        { spec = "Assassination", prefix = { "assa", "assassination" },        suffix = { "assa", "assassination" } },
+        { spec = "Subtlety",      prefix = { "s", "sub", "subtlety", "sublety" }, suffix = { "s", "sub", "subtlety", "sublety" } },
+    },
+    SHAMAN = {
+        { spec = "Enhancement", prefix = { "enha", "enhancement" }, suffix = { "enha", "enhancement" } },
+        { spec = "Elemental",   prefix = { "ele", "elemental" },    suffix = { "ele", "elemental" } },
+        { spec = "Restoration", prefix = { "r", "resto" },          suffix = { "resto" } },
+    },
+    WARLOCK = {
+        { spec = "Affliction",  prefix = { "aff", "affly", "affliction", "afliction" },  suffix = { "aff", "affly", "affliction", "afliction" } },
+        { spec = "Demonology",  prefix = { "demo", "demonology" },          suffix = { "demo", "demonology" } },
+        { spec = "Destruction", prefix = { "destro", "destruction", "destriction" }, suffix = { "destro", "destruction", "destriction" } },
+    },
+    WARRIOR = {
+        { spec = "Fury",       prefix = { "f", "fury" },                 suffix = { "fury" } },
+        { spec = "Arms",       prefix = { "arms" },                      suffix = { "arms" } },
+        { spec = "Protection", prefix = { "p", "prot", "protection" },   suffix = { "prot", "protection" } },
+    },
+}
+
+-- Parole che non sono ne' classe ne' spec e che si ignorano nel match:
+-- "spec" (abitudine diffusa: "spec fury") e i marcatori del GS.
+local PARSER_NOISE = { ["spec"] = true, ["gs"] = true, ["k"] = true, ["kgs"] = true, ["kg"] = true }
+
+local function wordSet(list)
+    local s = {}
+    for _, w in ipairs(list or {}) do s[w] = true end
+    return s
+end
+
+-- Indice costruito una volta sola: corpo -> classe, e per ogni classe le
+-- regole con i set di prefissi/suffissi. Include i nomi localizzati delle
+-- classi del client (client non-EN) e la forma "death knight" (due parole).
+function Utils:_Gram()
+    if self._gram then return self._gram end
+    local g = { classes = {}, body = {}, specWords = {} }
+    for class, words in pairs(self.classBodies) do
+        for _, w in ipairs(words) do g.body[w] = { class = class } end
+    end
+    g.body["deathknight"] = { class = "DEATHKNIGHT" }
+    g.prefixWords = {}
+    g.suffixWords = {}
+    for _, tab in ipairs({ "LOCALIZED_CLASS_NAMES_MALE", "LOCALIZED_CLASS_NAMES_FEMALE" }) do
+        local t = _G[tab]
+        if t then
+            for class in pairs(self.classBodies) do
+                local nm = t[class]
+                if type(nm) == "string" and nm ~= "" then
+                    g.body[string.lower(nm)] = { class = class }
+                end
+            end
+        end
+    end
+    for w, spec in pairs(self.bodySpecWords) do
+        if g.body[w] then g.body[w].spec = spec end
+    end
+    for class, rules in pairs(self.specGrammar) do
+        g.classes[class] = {}
+        for _, r in ipairs(rules) do
+            local rule = {
+                spec = r.spec, class = class,
+                prefix = r.prefix or {}, suffix = r.suffix or {},
+                prefixSet = wordSet(r.prefix), suffixSet = wordSet(r.suffix),
+            }
+            g.classes[class][#g.classes[class] + 1] = rule
+            -- unione dei prefissi/suffissi della classe: serve a validare le
+            -- forme ATTACCATE ("protpala", "fdudu", "dudubear")
+            g.prefixWords[class] = g.prefixWords[class] or {}
+            g.suffixWords[class] = g.suffixWords[class] or {}
+            for _, w in ipairs(rule.prefix) do g.prefixWords[class][w] = true end
+            for _, w in ipairs(rule.suffix) do g.suffixWords[class][w] = true end
+            for _, w in ipairs(rule.prefix) do
+                g.specWords[#g.specWords + 1] = { word = w, spec = r.spec, class = class, len = #w }
+            end
+            for _, w in ipairs(rule.suffix) do
+                g.specWords[#g.specWords + 1] = { word = w, spec = r.spec, class = class, len = #w }
+            end
+        end
+    end
+    -- alias piu' lungo prima: per la spec "nuda" conta la parola piu' specifica
+    table.sort(g.specWords, function(a, b) return a.len > b.len end)
+    -- elenco dei corpi (classi) per la scansione delle forme attaccate:
+    -- prima le piu' lunghe, cosi' "deathknight" vince su "war" ecc.
+    g.bodies = {}
+    for w, e in pairs(g.body) do
+        g.bodies[#g.bodies + 1] = { word = w, class = e.class, spec = e.spec }
+    end
+    table.sort(g.bodies, function(a, b)
+        if #a.word ~= #b.word then return #a.word > #b.word end
+        return a.word < b.word
+    end)
+    self._gram = g
+    return g
+end
+
+-- Parole del messaggio (solo lettere, minuscole, senza le parole-rumore).
+function Utils:_ParserWords(text)
+    local lowered = string.lower(text or "")
+    lowered = string.gsub(lowered, "death%s*knight", "deathknight")
+    local words = {}
+    for w in string.gmatch(lowered, "%a+") do
+        if not PARSER_NOISE[w] then words[#words + 1] = w end
+    end
+    return words
+end
+
+-- GS. Forme della tabella:
+--   gs 6542 | 6542 gs | 6542 | 6k | 6.5k | 6,5k | 6.5 (e "6k gs")
+-- Un numero sotto il migliaio e' la forma "corta" (6 / 6.5) e vale migliaia;
+-- un numero di 3 cifre non e' un GS (niente falsi positivi: "999" non passa).
+function Utils:GSFromText(msg)
+    if not msg or msg == "" then return nil end
+    local s = string.lower(msg)
+    -- virgola: 5,500 -> 5500 (migliaia) e 6,5 -> 6.5 (decimale)
+    s = string.gsub(s, "(%d),(%d%d%d)", "%1%2")
+    s = string.gsub(s, ",", ".")
+    local function value(numStr)
+        local v = tonumber(numStr)
+        if not v then return nil end
+        if v < 1000 then v = v * 1000 end        -- forma corta: 6 / 6.5 / 6k
+        v = math.floor(v + 0.5)
+        if v < 1000 or v > 20000 then return nil end
+        return v
+    end
+    local num = string.match(s, "(%d+%.?%d*)%s*k%s*g%s*s")
+    if not num then num = string.match(s, "(%d+%.?%d*)%s*k%f[%A]") end
+    if not num then num = string.match(s, "g%s*s%f[%A]%s*[:%-=]?%s*(%d+%.?%d*)") end
+    if not num then num = string.match(s, "(%d+%.?%d*)%s*g%s*s%f[%A]") end
+    if not num then num = string.match(s, "(%d+%.%d+)") end          -- 6.5
+    if not num then num = string.match(s, "%f[%d](%d%d%d%d%d?)%f[%D]") end  -- 6542
+    return num and value(num) or nil
+end
+
+-- Ruolo: le stesse parole di prima (tank / heal), altrimenti dps.
+function Utils:RoleFromText(msg)
+    local lower = string.lower(msg or "")
+    if string.find(lower, "tank") then return "tank" end
+    if string.find(lower, "heal") then return "healer" end
+    return "dps"
+end
+
+-- Cuore del parser: [PREFIX] BODY [SUFFIX] -> classe + spec.
+-- REGOLA GENERALE: le tre parti possono anche essere ATTACCATE, senza spazi
+-- ("fdudu", "udk", "mmhunt", "protpala", "dudubear", "6kgs"). Funzionano in
+-- tutte le combinazioni: prefisso+corpo, corpo+suffisso, prefisso+corpo+
+-- suffisso (quest'ultima solo dove la tabella la ammette, cioe' il ferale),
+-- e in mezzo alle forme normali con gli spazi.
+-- Ritorna SEMPRE una tabella:
+--   class   classe canonica ("PALADIN") o nil
+--   spec    spec canonica ("Protection") o nil
+--   specFrom "prefix" | "suffix" | "both" | "body" | "bare" | "generic"
+--           ("generic" = parola valida per due spec: resta la parola comune,
+--            decide il raid leader)
+function Utils:ParseClassSpec(text)
+    local out = {}
+    if not text or text == "" then return out end
+    local g = self:_Gram()
+    local words = self:_ParserWords(text)
+    if #words == 0 then return out end
+
+    -- Suffissi candidati di una posizione: la parola dopo, le due parole dopo
+    -- insieme ("feral cat") e la seconda da sola.
+    local function adjacent(i)
+        local s1, s2 = words[i + 1], words[i + 2]
+        local combined = (s1 and s2) and (s1 .. " " .. s2) or nil
+        return { s1, combined, s2 }
+    end
+
+    -- Regole di una classe messe alla prova con un prefisso e dei suffissi.
+    local function evaluate(class, pres, sufs)
+        local cands = {}
+        for _, rule in ipairs(g.classes[class] or {}) do
+            local pWord
+            for _, pre in ipairs(pres or {}) do
+                if pre and rule.prefixSet[pre] and (not pWord or #pre > #pWord) then
+                    pWord = pre
+                end
+            end
+            local sWord
+            for _, cand in ipairs(sufs or {}) do
+                if cand and rule.suffixSet[cand] and (not sWord or #cand > #sWord) then
+                    sWord = cand
+                end
+            end
+            if pWord or sWord then
+                cands[#cands + 1] = {
+                    spec = rule.spec,
+                    score = (pWord and sWord) and 3 or (pWord and 2 or 1),
+                    len = #(pWord or sWord or ""),
+                    p = pWord, s = sWord,
+                }
+            end
+        end
+        return cands
+    end
+
+    -- Sceglie la spec fra i candidati e la scrive in `out`.
+    local function choose(cands)
+        table.sort(cands, function(a, b)
+            if a.score ~= b.score then return a.score > b.score end
+            if a.len ~= b.len then return a.len > b.len end
+            return false
+        end)
+        local best = cands[1]
+        -- Regola generale: o prefisso o suffisso. Se il vincitore ha SOLO il
+        -- prefisso e un'altra spec combacia SOLO col suffisso, il messaggio e'
+        -- contraddittorio: si tiene la classe e basta ("p pala holy").
+        if best.p and not best.s then
+            for k = 2, #cands do
+                if cands[k].s and not cands[k].p and cands[k].spec ~= best.spec then
+                    return false
+                end
+            end
+        end
+        out.spec = best.spec
+        out.specFrom = (best.p and best.s and "both") or (best.p and "prefix") or "suffix"
+        -- Parita' non risolvibile ("feral"/"f" da soli valgono sia per il Cat
+        -- sia per il Bear): il parser NON indovina. Feral Cat e Feral Bear
+        -- restano due voci separate e la scelta e' del raid leader: resta la
+        -- parola comune alle due spec, cioe' "Feral".
+        local tied, same = {}, true
+        for k = 1, #cands do
+            local c = cands[k]
+            if c.score == best.score and c.len == best.len and c.spec ~= best.spec then
+                if #tied > 0 and tied[1] ~= c.spec then same = false end
+                tied[#tied + 1] = c.spec
+            end
+        end
+        if #tied > 0 and same then
+            local a, b = {}, {}
+            for w in string.gmatch(best.spec, "%a+") do a[#a + 1] = w end
+            for w in string.gmatch(tied[1], "%a+") do b[#b + 1] = w end
+            local common
+            for k = 1, math.min(#a, #b) do
+                if a[k] == b[k] then common = a[k] else break end
+            end
+            if common then
+                out.spec = common
+                out.specFrom = "generic"
+            end
+        end
+        return true
+    end
+
+    for i = 1, #words do
+        local w = words[i]
+
+        -- (a) la parola E' una classe: prefisso = parola prima, suffisso = dopo
+        local direct = g.body[w]
+        if direct then
+            out.class = direct.class
+            if direct.spec then
+                -- Boomkin / Boomie / Disco: la spec sta nel corpo e la tabella
+                -- dice che prefisso e suffisso non sono ammessi
+                out.spec = direct.spec
+                out.specFrom = "body"
+                return out
+            end
+            local prevs = { words[i - 1] }
+            if i > 2 then prevs[#prevs + 1] = words[i - 2] .. " " .. words[i - 1] end
+            local cands = evaluate(direct.class, prevs, adjacent(i))
+            if #cands > 0 and choose(cands) then return out end
+            return out
+        end
+
+        -- (b) forme ATTACCATE: "fdudu", "udk", "mmhunt", "protpala",
+        --     "dudubear", "warriors" (plurale). Le lettere restanti devono
+        --     essere un prefisso o un suffisso VERI della classe, altrimenti
+        --     non si tocca niente ("Warmane" non e' un warrior).
+        for _, b in ipairs(g.bodies) do
+            local s, e = string.find(w, b.word, 1, true)
+            if s then
+                local preTok = string.sub(w, 1, s - 1)
+                local sufTok = string.sub(w, e + 1)
+                local extra = (sufTok ~= "")
+                if sufTok == "s" or sufTok == "es" then sufTok = "" end   -- plurale
+                -- i corpi che portano gia' la spec (boomkin/boomie/disco) non
+                -- ammettono prefisso ne' suffisso: si salta
+                if (preTok ~= "" or extra) and not b.spec then
+                    local pOK = (preTok == "") or (g.prefixWords[b.class] or {})[preTok]
+                    local sOK = (sufTok == "") or (g.suffixWords[b.class] or {})[sufTok]
+                    if pOK and sOK then
+                        local sufs = {}
+                        if sufTok ~= "" then sufs[#sufs + 1] = sufTok end
+                        for _, x in ipairs(adjacent(i)) do sufs[#sufs + 1] = x end
+                        local pres
+                        if preTok ~= "" then
+                            pres = { preTok }
+                        else
+                            pres = { words[i - 1] }
+                            if i > 2 then pres[#pres + 1] = words[i - 2] .. " " .. words[i - 1] end
+                        end
+                        local cands = evaluate(b.class, pres, sufs)
+                        -- la classe si tiene anche senza spec ("warriors"):
+                        -- le lettere attaccate erano un alias VERO della classe
+                        out.class = b.class
+                        if #cands > 0 and choose(cands) then return out end
+                        return out
+                    end
+                end
+            end
+        end
+    end
+
+    -- (c) nessuna classe: la spec scritta da sola ("prot", "resto", "fury").
+    -- Vale solo se NON e' ambigua: due spec diverse (o la stessa spec di due
+    -- classi, es. "prot" warrior/paladin) non fanno indovinare la classe.
+    local seen, hitClasses = {}, {}
+    for _, e in ipairs(g.specWords) do
+        for _, w in ipairs(words) do
+            if w == e.word then
+                seen[e.spec] = true
+                hitClasses[e.spec] = hitClasses[e.spec] or {}
+                hitClasses[e.spec][e.class] = true
+            end
+        end
+    end
+    local n, only = 0, nil
+    for spec in pairs(seen) do n = n + 1; only = spec end
+    if n == 1 then
+        out.spec = only
+        out.specFrom = "bare"
+        local cls, multi = nil, false
+        for class in pairs(hitClasses[only] or {}) do
+            if cls and cls ~= class then multi = true end
+            cls = class
+        end
+        if cls and not multi then out.class = cls end
+    end
+    return out
+end
+
+-- Una passata: classe, spec, ruolo, GS. E' questa che usano Whisplist e MS.
+function Utils:ParseWhisper(msg)
+    local out = self:ParseClassSpec(msg)
+    out.text = msg or ""
+    out.gs = self:GSFromText(msg)
+    out.role = self:RoleFromText(msg)
+    return out
+end
+
+-- Parola di classe "bella" per i whisper di prova ("dk", "dudu", "pala"...).
+function Utils:BodyWordFor(class)
+    local words = self.classBodies[class]
+    return words and words[1] or nil
+end
+
+-- Parola di spec della tabella per generare i whisper di prova: si preferisce
+-- la piu' lunga (piu' leggibile) fra i prefissi della spec.
+function Utils:SpecWordFor(class, spec)
+    local rules = (self:_Gram().classes or {})[class] or {}
+    -- le parole condivise fra due spec (es. "f" e "feral" del druido) non
+    -- vanno usate per i test: meglio "cat" / "bear", che sono univoche.
+    local shared, seen = {}, {}
+    for _, rule in ipairs(rules) do
+        for _, w in ipairs(rule.prefix) do
+            if seen[w] and seen[w] ~= rule.spec then shared[w] = true end
+            seen[w] = rule.spec
+        end
+    end
+    for _, rule in ipairs(rules) do
+        if rule.spec == spec then
+            local best
+            for _, w in ipairs(rule.prefix) do
+                if not shared[w] and (not best or #w > #best) then best = w end
+            end
+            if not best then
+                for _, w in ipairs(rule.prefix) do
+                    if not best or #w > #best then best = w end
+                end
+            end
+            return best
+        end
+    end
+    return nil
+end
+
 function Utils:EnsureInsertLinkHook()
     if self._insertLinkHooked then return end
     self._insertLinkHooked = true
@@ -542,11 +1007,12 @@ function Utils:SkinAllWindows()
 end
 
 function Utils:CloseDropdownMenu()
+    -- Lo stato si azzera PRIMA di nascondere: cosi' anche se l'OnHide del menu
+    -- dovesse fallire non resta nessun riferimento sporco in giro.
+    local m = self.activeMenu
+    self.activeMenu = nil
     if self.dropCatcher then self.dropCatcher:Hide() end
-    if self.activeMenu then
-        self.activeMenu:Hide()
-        self.activeMenu = nil
-    end
+    if m then m:Hide() end
 end
 
 -- Richiesta esplicita: niente cadaveri invisibili sopra i moduli.
@@ -639,11 +1105,23 @@ function Utils:CreateDropdown(parent, name, width, height)
     dd.value = nil
     dd.onSelect = nil
 
-    local function toggle()
+    local function toggle(_, button)
+        -- Il tasto DESTRO e' un'azione opzionale del chiamante (es. nel Log
+        -- segna il pull come boss/trash): se non la usa, resta un click
+        -- normale. Il tasto SINISTRO apre/chiude sempre il menu.
+        if button == "RightButton" and type(dd.onRightClick) == "function" then
+            dd.onRightClick(dd)
+            return
+        end
         Utils:ToggleDropdownMenu(dd)
     end
     dd:SetScript("OnMouseUp", toggle)
-    dd.button:SetScript("OnClick", toggle)
+    -- La freccia NON e' un secondo punto di click: il click passa al frame del
+    -- dropdown (OnMouseUp) che e' l'UNICO che apre/chiude. Con due handler sullo
+    -- stesso click (OnMouseUp del frame + OnClick del bottone, che in 3.3.5
+    -- arrivano entrambi) il menu si apriva e si richiudeva nello stesso istante.
+    if dd.button.EnableMouse then dd.button:EnableMouse(false) end
+    if dd.button.SetScript then dd.button:SetScript("OnClick", nil) end
     -- Guardia "pannello invisibile" (fstack): il catcher a tutto schermo e
     -- il menu NON devono mai sopravvivere alla propria finestra. Quando la
     -- finestra (o il dropdown stesso) viene nascosta senza che il menu sia
@@ -692,23 +1170,32 @@ function Utils:SetupDropdown(dd, options, currentValue, onSelect)
     end
 end
 
-function Utils:ToggleDropdownMenu(dd)
-    if self.activeMenu and self.activeMenu.owner == dd then
-        self:CloseDropdownMenu()
-        return
-    end
-    self:CloseDropdownMenu()
-
-    local options = dd.options or {}
-    if #options == 0 then return end
-
+-- Apre il menu di un dropdown. Separata dal toggle perche' il chiamante la
+-- esegue dentro pcall: un errore qui non deve MAI lasciare in giro il catcher
+-- (che e' a schermo intero e mangerebbe ogni click successivo: era una delle
+-- vie per cui la dropdown "smetteva di aprirsi").
+function Utils:OpenDropdownMenu(dd, options)
     if not self.dropCatcher then
         local catcher = CreateFrame("Button", "RLSuiteDropCatcher", UIParent)
         catcher:SetAllPoints(UIParent)
-        catcher:SetFrameStrata("FULLSCREEN_DIALOG")
+        -- STRATA PIU' ALTA ESISTENTE ("TOOLTIP"): la finestra di configurazione
+        -- e' un AceGUI Window che vive in FULLSCREEN_DIALOG e si ri-alza da sola
+        -- a ogni click (SetToplevel). Menu e catcher DEVONO stare sopra di lei,
+        -- altrimenti il menu si apre DIETRO la finestra (invisibile) e il click
+        -- "fuori" non chiude niente. E' la stessa scelta che fa AceConfigDialog
+        -- per i propri popup (AceConfigDialog-3.0.lua: SetFrameStrata("TOOLTIP")).
+        catcher:SetFrameStrata("TOOLTIP")
         catcher:SetFrameLevel(1)
         catcher:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         catcher:SetScript("OnClick", function() Utils:CloseDropdownMenu() end)
+        -- WATCHDOG (auto-riparazione): finche' il catcher e' visibile, a ogni
+        -- frame si controlla che il menu esista DAVVERO. Se per qualunque
+        -- ragione (errore, Hide di un antenato, cambio pannello) il menu non
+        -- c'e' piu', il catcher si spegne da solo: il "cadavere invisibile a
+        -- schermo intero" che ruba i click non puo' piu' sopravvivere.
+        catcher:SetScript("OnUpdate", function()
+            Utils:AssertNoZombieCatcher()
+        end)
         self.dropCatcher = catcher
     end
     self.dropCatcher:Show()
@@ -717,10 +1204,15 @@ function Utils:ToggleDropdownMenu(dd)
     -- Riutilizza il menu del dropdown: CREARE un frame nuovo a ogni toggle
     -- (tra l'altro sempre con lo stesso nome globale) lasciava cadaveri in
     -- giro per la UI (memoria + incertezze sullo z-order/FX dell'fstack).
-    local menu = dd._rlsDropMenu or CreateFrame("Frame", "RLSuiteDropMenu", UIParent)
+    -- SENZA nome globale: ogni dropdown ha il SUO menu, e creare piu' frame
+    -- con lo stesso nome ("RLSuiteDropMenu") e' la classica fonte di guai in
+    -- 3.3.5 (il registro dei nomi tiene solo l'ultimo frame creato).
+    local menu = dd._rlsDropMenu or CreateFrame("Frame", nil, UIParent)
     dd._rlsDropMenu = menu
-    menu:SetFrameStrata("FULLSCREEN_DIALOG")
-    menu:SetFrameLevel(10)
+    -- Vedi il catcher: TOOLTIP + livello sopra il catcher, cosi' il menu e'
+    -- SEMPRE sopra la finestra di config, in qualunque punto dello stack sia.
+    menu:SetFrameStrata("TOOLTIP")
+    menu:SetFrameLevel(20)
     -- Se il menu svanisce per QUALUNQUE ragione (finestra padre nascosta,
     -- cambio tab, /rls, Hide diretto), IL CATCHER MUORE SEMPRE CON LUI:
     -- e' l'unica difesa affidabile contro lo zombie full-screen invisibile
@@ -733,10 +1225,6 @@ function Utils:ToggleDropdownMenu(dd)
             Utils.activeMenu = nil
         end
     end)
-    -- pulisce i vecchi pulsanti-opzione del rebuild precedente
-    if menu.optionButtons then
-        for _, ob in ipairs(menu.optionButtons) do ob:Hide() end
-    end
     menu:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -747,6 +1235,11 @@ function Utils:ToggleDropdownMenu(dd)
     menu.owner = dd
     local width = math.max(dd:GetWidth(), 80)
     menu:SetSize(width, #options * 20 + 8)
+    -- il menu e' RIUSATO tra le aperture (dd._rlsDropMenu): senza ClearAllPoints
+    -- gli ancoraggi si accumulano, senza Show() resta NASCOSTO dopo la prima
+    -- chiusura -> "le dropdown si aprono una volta sola" (il primo menu era
+    -- visibile solo perche' un frame appena creato nasce mostrato).
+    menu:ClearAllPoints()
     menu:SetPoint("TOPLEFT", dd, "BOTTOMLEFT", 0, -2)
 
     -- Se qualsiasi finestra/pannello che OSPITA il dropdown si nasconde,
@@ -764,33 +1257,71 @@ function Utils:ToggleDropdownMenu(dd)
         hops = hops + 1
     end
 
-    menu.optionButtons = {}
+    -- I pulsanti-opzione vengono RIUSATI (e ri-testualizzati) a ogni apertura:
+    -- creare bottoni nuovi a ogni click accumulava frames figli del menu per
+    -- sempre e, dopo tante aperture, rendeva il menu pesante e inaffidabile.
+    menu.optionButtons = menu.optionButtons or {}
     for i, opt in ipairs(options) do
-        local btn = CreateFrame("Button", nil, menu)
-        menu.optionButtons[i] = btn
-        btn:SetSize(width - 8, 18)
-        btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - (i - 1) * 20)
-        local txt = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        txt:SetAllPoints(btn)
-        txt:SetJustifyH("LEFT")
-        txt:SetText(opt.text)
-        if dd.value == opt.value then
-            txt:SetTextColor(1, 0.82, 0)
+        local btn = menu.optionButtons[i]
+        if not btn then
+            btn = CreateFrame("Button", nil, menu)
+            menu.optionButtons[i] = btn
+            btn:SetSize(width - 8, 18)
+            btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - (i - 1) * 20)
+            btn.txt = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            btn.txt:SetAllPoints(btn)
+            btn.txt:SetJustifyH("LEFT")
+            btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
         end
-        btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+        btn.optValue = opt.value
+        btn.optText = opt.text
+        btn.txt:SetText(opt.text)
+        if dd.value == opt.value then
+            btn.txt:SetTextColor(1, 0.82, 0)
+        else
+            btn.txt:SetTextColor(1, 1, 1)
+        end
+        -- il click legge SEMPRE l'opzione corrente del bottone (riusato)
         btn:SetScript("OnClick", function()
-            dd.value = opt.value
-            dd.text:SetText(opt.text)
+            dd.value = btn.optValue
+            dd.text:SetText(btn.optText)
             Utils:CloseDropdownMenu()
             if dd.onSelect then
-                dd.onSelect(opt.value, opt.text)
+                dd.onSelect(btn.optValue, btn.optText)
             end
         end)
+        btn:Show()
+    end
+    -- liste piu' corte della volta precedente: nasconde i bottoni in eccesso
+    for i = #options + 1, #menu.optionButtons do
+        menu.optionButtons[i]:Hide()
     end
 
+    menu:Show()
     self.activeMenu = menu
+    return true
 end
 
+-- Apri/chiudi di un dropdown: A OGNI click si riparte da zero, quindi non
+-- esiste uno stato interno che possa "consumarsi" dopo N aperture.
+function Utils:ToggleDropdownMenu(dd)
+    if type(dd) ~= "table" then return end
+    local menu = dd._rlsDropMenu
+    local wasOpen = (menu ~= nil and menu:IsShown() and self.activeMenu == menu)
+    -- chiude SEMPRE ed incondizionatamente (menu, catcher e stato sporco)
+    self:CloseDropdownMenu()
+    if wasOpen then return end
+
+    local options = dd.options or {}
+    if #options == 0 then return end
+
+    local ok = pcall(function() self:OpenDropdownMenu(dd, options) end)
+    if not ok then
+        -- niente zombie: se l'apertura e' fallita, si spegne tutto e si
+        -- riprovera' al prossimo click
+        self:CloseDropdownMenu()
+    end
+end
 -- ============================================================
 -- Window layout helpers (finestre staccabili / anchors)
 -- ============================================================
@@ -921,6 +1452,43 @@ local function ShiftSubtree(node, delta, seen)
             for i = 1, #kids do ShiftSubtree(kids[i], delta, seen) end
         end
     end
+end
+
+-- NPC id dal GUID. Formato 3.3.5 (esadecimale, high "F1xx": l'entry sta nei
+-- char 9-12, es. 0xF130008F040000AA -> 0x8F04 = 36612 Lord Marrowgar) oppure
+-- formato moderno "Creature-0-...-ID-spawnID" (6o campo). Implementazione
+-- UNICA: la usano il Combat Log (nomi dei pull, kill/wipe) e il
+-- riconoscimento del boss in corso per le macro in-fight.
+function Utils:NpcIdFromGUID(guid)
+    if type(guid) ~= "string" or guid == "" then return nil end
+    if guid:find("-", 1, true) then
+        local parts = { strsplit("-", guid) }
+        return tonumber(parts[6])
+    end
+    if guid:sub(3, 4) == "F1" then
+        return tonumber(guid:sub(9, 12), 16)
+    end
+    return nil
+end
+
+-- Riporta un sotto-albero a una posizione di livello PREVEDIBILE rispetto a
+-- un riferimento (es. il genitore o la finestra). Se il root si e' allontanato
+-- oltre la tolleranza, sposta TUTTO il sotto-albero dello stesso delta: nessun
+-- rinumero, quindi l'ordine interno (che in gioco funziona) resta identico.
+-- Causa: in 3.3.5 i livelli dei figli non seguono il padre, e dopo ripetuti
+-- raise/rebuild una catena puo' restare centinaia di livelli fuori posto
+-- (fstack: RLSuiteWLScroll <700> sopra la finestra <200>) e mangiarsi i click.
+-- Restituisce true se ha corretto il livello.
+function Utils:RealignSubtreeLevel(root, wantLvl, tol)
+    if not (root and root.GetFrameLevel and root.SetFrameLevel) then return false end
+    if wantLvl == nil then return false end
+    tol = tol or 20
+    local cur = root:GetFrameLevel() or wantLvl
+    local d = wantLvl - cur
+    if d < 0 then d = -d end
+    if d <= tol then return false end
+    ShiftSubtree(root, wantLvl - cur, {})
+    return true
 end
 
 function Utils:RaiseWindow(frame)

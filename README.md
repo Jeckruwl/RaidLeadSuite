@@ -1,75 +1,92 @@
 # RLSuite — Raid Leading Suite
 
-An addon for **raid leaders** on World of Warcraft **Wrath of the Lich King 3.3.5** (Interface `30300`), designed for **Warmane Lordaeron**.
+Addon per **raid leader** su World of Warcraft **Wrath of the Lich King 3.3.5** (Interface `30300`), pensato per **Warmane Lordaeron**.
 
-Version: **1.11.16**
+**Versione: 1.11.89**
 
-## Installation
+> Questa è una **build per i tester di gilda**: se qualcosa non funziona, segnalalo al raid leader con **cosa hai fatto**, **cosa ti aspettavi** e **cosa è successo**, più l'eventuale errore Lua.
 
-WoW loads the addon from the **folder name**, which must match the `.toc` file.
+<!-- NOTA (richieste esplicite del 24/09/2026): la README NON deve contenere
+     - una sezione di installazione,
+     - una sezione "Struttura del repository",
+     - una sezione "Se qualcosa non va".
+     Non reintrodurle, nemmeno in forma ridotta o come elenco puntato.
+     Questo documento descrive solo comandi, interfaccia, moduli e requisiti. -->
 
-1. Download or clone this repository.
-2. The folder must be named **`RaidLeadSuite`** (it already is the GitHub clone name — do not rename it).
-3. Copy it into:
+---
 
-```
-World of Warcraft/_classic_ or WotLK/Interface/AddOns/RaidLeadSuite
-```
+## Comandi
 
-On Warmane / 3.3.5 clients the typical path is:
+`/rls help` stampa la lista in chat.
 
-```
-<WoW 3.3.5>/Interface/AddOns/RaidLeadSuite
-```
-
-The folder must contain:
-
-- `RaidLeadSuite.toc`
-- the `.lua` files (`Core.lua`, `Utils.lua`, …)
-- the `Libs` folder (Ace3 libraries)
-
-4. Restart the client (or `/reload` if the addon was already present).
-5. In game: `/rls`
-
-`ADDON_LOADED` recognizes the `RaidLeadSuite` folder name; the Ace3 libraries are loaded by the `.toc` (LibStub first).
-
-## Commands
-
-`/rls help` prints the list in chat.
-
-| Command | Window |
+| Comando | Cosa fa |
 |---|---|
-| `/rls` or `/rlsuite` | Main bar (button matrix + phase) |
-| `/rls help` | Command list |
-| `/rls group` | Groupmaking tab |
-| `/rls inviteengine` | InviteEngine (whisper + auto-invite). Alias: `/rls whisplist` |
-| `/rls macro` | Config → Macros → Macro Editor |
-| `/rls macrobar` | MacroBar HUD (show/hide) |
-| `/rls raidframe` | Raid Frame settings tab |
-| `/rls rfhud` | Raid Frame HUD |
-| `/rls ms` | MS Manager tab |
-| `/rls loot` | Loot Manager tab |
-| `/rls config` | Config window (Ace3) |
+| `/rls` | Barra principale (matrice pulsanti + fase) |
+| `/rls help` | Lista dei comandi |
+| `/rls config` | Finestra Config (anche col **clic destro sull'icona della minimappa**) |
+| `/rls group` | Pannello Groupmaking |
+| `/rls inv` | Pannello InviteEngine (whisper ricevuti + auto-invito) |
+| `/rls macrobar` | HUD MacroBar (mostra/nascondi) |
+| `/rls ms` | Pannello MS Manager |
+| `/rls loot` | Pannello Loot Manager |
+| `/rls raidframe` | HUD Raid Frame (mostra/nascondi) |
 
-## Interface
+L'editor dei 12 tasti della MacroBar si apre da **Config → Macros → Macro Editor**.
 
-- **Top bar**: at the top sits the **icon row** (as wide as the matrix): on the left, in a row, the **Config gear**, the **save icon (SaveRaid)** and the **phase icon**; on the right, the red **close X**. If there is room, the **phase name** also appears next to the icon. The phase icon changes with the current phase (**animated LFG eye** = pre-raid, **hourglass** = pre-boss, **swords** = in-fight); **left-click** cycles to the next phase, **right-click** to the previous one. Below sits the **configurable button matrix** (default **2×4**) with Groupmaking, InviteEngine, Macrobar, Raid Manager, MS, Loot. The tabs are bistable; the windows open as **free, movable panels** (position remembered). **Exception**: the **Macrobar** button on the bar shows/hides the **MacroBar HUD** (it no longer opens a tab window).
-- **SaveRaid**: saves a setup with a title requested via a prompt → **Comp** (composition, raid, reserved items, message, whisplist), **MacroBar** (macros and layout) and **Config except for the General category**.
-- **Config → Saved Raids**: a top-level category in the Config tree with the list of saved setups (title + **Load**/**Delete** buttons).
-- **ElvUI-style Anchors** in *Config → General → Window → Toggle Anchors*: the **Raid Frame** and **MacroBar** HUDs are locked by default; with Toggle Anchors they appear as highlighted movable placeholders. The other windows stay as usual.
-- **Resizable** (grip in the bottom-right corner): Groupmaking, InviteEngine, MS Manager and Loot Manager; sizes are remembered.
-- **DBM/BigWigs integration**: if DBM (or BigWigs) is installed, pull timer, MS-changes request and roll/reroll also start a visible timer bar.
+---
 
-## Modules
+## Interfaccia
 
-- **Group Making** — 10/25 composition, LFG message (the **Aim** note goes between difficulty/HC and "Need"), channel spam, **InviteEngine** panel (received whispers with invites + **Autoinviter**: manual name list with **Auto invite now**, or a linked **Calendar** raid event). In **debug mode** the spammer also fires 10 fake whispers and fake invitees auto-accept into the Raid Group and Raid Frame.
-- **MacroBar** — 12 macros per phase (`preraid` / `preboss` / `infight`); a two-row keypad that depends on the phase: **ready check** in pre-raid; in pre-boss, first row **pull 15/20/30**, second row **ready + break 5m/3m/2m**. The 12-slot editor lives in **Config → Macros → Macro Editor**.
-- **Raid Frame** — HP/mana, flask/food/buff alerts, raid cooldowns via combat log
-- **MS Manager** — reads `ms <spec>` in raid chat and generates the loot pre-message
-- **Loot Manager** — drop history, roll, tie/reroll
-- **Config** — a single Ace3 window (AceGUI window + tree navigation): appearance, borders, font, sizes, anchors and Saved Raids. The **Macros** node contains **Bar Layout** (HUD settings) and the **Macro Editor** (12-slot per-phase editor, inside the same window).
+### Barretta in alto (Raid Control)
 
-## Requirements
+- A sinistra: **icona di fase** (occhio LFG animato = pre-raid, clessidra = pre-boss, spade = in-fight) + **nome della fase**. **Click sinistro** = fase successiva, **click destro** = fase precedente.
+- A destra: pulsante **Raid Control** (apre/chiude il pannello dei tasti) e la **X** di chiusura.
+- Il pannello dei tasti si apre **a destra** della barretta. Ordine dei tasti:
 
-- **3.3.5a** client (not Retail / not Classic Era / not Cata)
-- **Raid Leader** or assistant permissions for raid warnings, ready check and pull timer
+```
+Groupmaking | Raid Frame | MS | Log | Macrobar | MT & OT | Loot | SaveRaid
+```
+
+- **MT & OT**: due mezzi tasti nella stessa cella. Assegnano (o tolgono) il **Main Tank** / **Main Assist** sul target corrente. Richiedono i permessi di raid leader/assistente e **non funzionano in combat** (limite del client).
+- **SaveRaid**: salva la configurazione corrente (Comp, MacroBar e Config tranne *General*) chiedendo un titolo; si ricarica da *Config → Saved Raids*.
+
+### Raid Frame (HUD)
+
+Barre dei giocatori per gruppo, con:
+
+- barra HP colorata per classe + nome;
+- icone **flask** e **food** mancanti (click sinistro = whisper al giocatore, click destro = raid warning a tutti quelli a cui manca);
+- **cooldown di classe** per riga (letto dal combat log);
+- blocco **Tanks** in alto con **MT/OT** e barra del **target** del tank;
+- **matrice Raid Buffs** (tasto *Raid Buffs*): check per classe, rosso sulle intestazioni mancanti;
+- **spostare i giocatori di gruppo**: `Shift` + click sinistro su una barra **giocatore dei gruppi**, trascina, rilascia su un'altra barra (vuota = spostamento, piena = scambio). Funziona **anche in combat**; rilascio fuori dalle barre = annulla. *(Le barre MT/OT non si trascinano.)*
+
+### MacroBar
+
+- 12 macro per fase (`preraid` / `preboss` / `infight`), editor in *Config → Macros*.
+- Tastierino a due righe dipendente dalla fase: **ready check** in pre-raid; in pre-boss prima riga **pull 15/20/30**, seconda riga **ready + break 5m/3m/2m**.
+- Integrazione **DBM/BigWigs**: pull timer, richiesta cambi MS e roll/reroll mostrano la barra del timer.
+
+### Pannello Log
+
+- Ogni pull è agganciato all'**encounter** (non si perde se muori o ricarichi la UI).
+- Intestazione: durata, fight, **tag taglia/difficoltà** (es. `25H`), Kill/Wipe; dropdown dei fight in alto a destra (click destro su una riga = segna boss/trash).
+- **Grafico sempre visibile** (discretizzazione 1/2/3/5/10 s) e schede: **targets**, **consumables** (per spell ID, non per nome), **auras**, **deaths**, **powers**; le schede storiche (healing, spells, entities, interrupts) restano.
+
+---
+
+## Debug mode (per chi prova da solo)
+
+*Config → Debug → Enable debug mode*: simula un raid vero (roster finto, whisper e loot a te stesso), così si prova tutto **senza 24 persone**.
+
+Con il debug attivo, accanto alla barra compare il pannello **RLS DEBUG** (due righe di tasti): *Fill Raid*, *Test Loot*, *Empty Loot*, *Test Whisplist*, *Test MS*, *Log Test*. Si apre e si chiude insieme al pannello dei tasti (**Raid Control**).
+
+In debug mode la chat scrive righe di traccia utili (`RF …` per l'HUD, `RG …` per il pannello Raid Group): ogni gesto lascia il segno, quindi un problema è sempre leggibile.
+
+---
+
+## Requisiti
+
+- Client **3.3.5a** (non Retail, non Classic Era, non Cataclysm).
+- Permessi di **raid leader** o assistente per raid warning, ready check, pull timer e assegnazione MT/OT.
+- Nessuna dipendenza obbligatoria: **DBM** (o BigWigs) è opzionale e aggiunge solo la barra del timer.

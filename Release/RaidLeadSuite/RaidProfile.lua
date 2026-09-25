@@ -7,6 +7,13 @@ local MW = RLSuite.mainWindow
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
+-- MISURE DELLA BARRETTA IN ALTO (unico posto): alzandola e ingrandendo
+-- l'icona di fase, la larghezza della barretta cresce da sola (e' la somma
+-- dei suoi elementi) e il nome della fase si sposta di conseguenza.
+local TITLE_BAR_H = 26     -- altezza della barretta di Raid Control
+local PHASE_ICON = 22      -- icona di fase (era 16: "allarga la barra e ingrandisci l'icona")
+local PHASE_GAP = 6        -- distacco fra icona e nome della fase
+
 function MW:Init()
     self:CreateFrame()
     self:RegisterAllWindows()
@@ -141,24 +148,30 @@ end
 function MW:CreateFrame()
     local f = CreateFrame("Frame", "RLSuiteMainWindow", UIParent)
     f:SetSize(240, 150)
-    f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
-    -- Finestra UNIVERSALE come tutte le altre dell'addon: drag+clamp
-    -- (MakeDraggable), front layer, BORDO tematico. Layout key "main"
-    -- (mai ripristinato in base flow: la posizione viene dalla command).
-    RLSuite.utils:MakeUniversalWindow(f, "main")
+    -- NIENTE drag: la barra e' ANCORATA (bordo alto dello schermo, a una
+    -- distanza dal lato destro pari alla larghezza del Raid Frame). La
+    -- posizione la impone ApplyLayout a ogni ricalcolo; restano skin e
+    -- "click to front" come per le altre finestre.
+    RLSuite.utils:MakeClickToFront(f)
+    RLSuite.utils:ClampWindow(f)
     f:Hide()
     f._noOuterBorder = true
     self.frame = f
     RLSuite.utils:SkinFrame(f)
     RLSuite.utils:ClampWindow(f)
 
-    -- === Barretta titolo 20px SOPRA la main bar ======================
+    -- === Barretta titolo (26px) SOPRA la main bar =============
     -- Eredita la larghezza della main bar (anchor a tutti e due gli
-    -- angoli). A sinistra: "RLS"; a destra: arrowup.tga (mostra/nasconde
-    -- il pannello sotto alla barretta) e close.tga (chiude la main bar).
+    -- angoli). A sinistra: ICONA DI FASE + nome della fase (niente piu'
+    -- il testo "RLS": l'icona di fase dice gia' a che punto sei, e il
+    -- clic la fa avanzare). A destra: arrowup.tga (mostra/nasconde il
+    -- pannello sotto alla barretta) e close.tga (chiude la main bar).
     local tb = CreateFrame("Frame", "RLSuiteMainTitleBar", UIParent)
-    tb:SetHeight(30)
+    -- ALTEZZA ALZATA (era 20px): la barretta di Raid Control aveva i tasti
+    -- schiacciati sul bordo. Icona di fase e X restano centrate, il tasto
+    -- "Raid Control" cresce con lei.
+    tb:SetHeight(TITLE_BAR_H)
     -- gap 2px: barretta STACCATA dalla main bar (non incollata)
     tb:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 2)
     tb:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 2)
@@ -166,36 +179,19 @@ function MW:CreateFrame()
     tb:EnableMouse(true)
     tb:Hide()
     self.titleBar = tb
-    -- la barretta e' una finestra universale anche lei: drag+clamp e stesso
-    -- bordo tematico della main bar (e di ogni finestra dell'addon).
-    if RLSuite.utils.MakeUniversalWindow then
-        RLSuite.utils:MakeUniversalWindow(tb, "titlebar")
-    else
-        RLSuite.utils:SkinFrame(tb)
-    end
+    -- SOLO skin: la barretta NON si trascina piu' (niente drag, niente
+    -- posizione salvata). La barra e' ANCORATA al bordo alto dello schermo e
+    -- la sua posizione la calcola ApplyLayout: un drag la farebbe solo
+    -- "staccare" dal posto in cui deve stare.
+    RLSuite.utils:SkinFrame(tb)
 
-    -- La barretta TRASCINA tutta la main bar: clic sinistro + trascina.
-    -- La barretta trascina la main bar (proxy), MA con lo stesso guard di
-    -- clamp usato da MakeDraggable: durante il drag la finestra non esce
-    -- MAI dai bordi (workaround del bug SetClampedToScreen+scala).
-    tb:RegisterForDrag("LeftButton")
+    -- La barretta resta cliccabile (i suoi bottoni) ma NON trascinabile: la
+    -- posizione e' fissa (bordo alto, alla distanza dal lato destro pari alla
+    -- larghezza del Raid Frame).
     tb:EnableMouse(true)
-    tb:SetScript("OnDragStart", function()
-        f:StartMoving()
-        if f._rlsDragGuard then f._rlsDragGuard:Show() end
-    end)
-    tb:SetScript("OnDragStop", function()
-        f:StopMovingOrSizing()
-        if f._rlsDragGuard then f._rlsDragGuard:Hide() end
-        RLSuite.utils:ClampWindowToScreen(f)
-        RLSuite.utils:PersistFramePos(f, "main")
-    end)
 
-    local tbTitle = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    tbTitle:SetPoint("LEFT", tb, "LEFT", 8, 0)
-    tbTitle:SetText("RLS")
-    tbTitle:SetTextColor(1, 0.82, 0)
-    tb.title = tbTitle
+    -- Niente piu' la scritta "RLS": al suo posto (creati piu' sotto) l'icona
+    -- di fase e il nome della fase, cosi' la barretta dice qualcosa di utile.
 
     -- X bianca + freccia dai TGA dell'utente in media/, DIMEZZATE (11px).
     local crashBtn = CreateFrame("Button", nil, tb)
@@ -210,50 +206,71 @@ function MW:CreateFrame()
     end)
     tb.closeBtn = crashBtn
 
-    local arrBtn = CreateFrame("Button", nil, tb)
-    arrBtn:SetSize(11, 11)
-    arrBtn:SetPoint("RIGHT", crashBtn, "LEFT", -4, 0)
-    RLSuite.utils:ApplyIcon(arrBtn, "media\\arrowup.tga")
+    -- La VECCHIA FRECCIA e' diventata un PULSANTE "Raid Control": apre e
+    -- chiude il pannello dei tasti sotto la barretta (stesso comportamento di
+    -- prima: in ogni momento, anche in fight, mai altre finestre).
+    local rcBtn = CreateFrame("Button", "RLSuiteRaidControlBtn", tb, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(rcBtn)
+    rcBtn:SetHeight(20)   -- cresciuto con la barretta (era 16)
+    rcBtn:SetText("Raid Control")
+    -- larghezza = testo + margini (mai piu' stretta del testo)
+    local probe = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    probe:SetText("Raid Control")
+    local textW = (probe.GetStringWidth and probe:GetStringWidth()) or 84
+    probe:Hide()
+    rcBtn:SetWidth(math.max(78, (textW or 84) + 16))
+    rcBtn:SetPoint("RIGHT", crashBtn, "LEFT", -6, 0)
+    rcBtn:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("Raid Control")
+        GameTooltip:AddLine(L["Shows or hides the button panel under this bar."], 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    rcBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- Freccia: punta IN SU col pannello APERTO; SPECCHIATA (in giu') col
-    -- pannello CHIUSO. Flip verticale via TexCoord.
+    -- Evidenzia il pulsante quando il pannello e' aperto (prima lo faceva la
+    -- freccia girandosi). Nome storico mantenuto: _updateArrowDir.
     local function MW_UpdateArrowDir()
-        local up = f:IsShown()
-        if arrBtn.icon and arrBtn.icon.SetTexCoord then
-            arrBtn.icon:SetTexCoord(0, 1, up and 0 or 1, up and 1 or 0)
-        end
-        if arrBtn.hl and arrBtn.hl.SetTexCoord then
-            arrBtn.hl:SetTexCoord(0, 1, up and 0 or 1, up and 1 or 0)
-        end
+        if not (rcBtn and rcBtn.LockHighlight) then return end
+        if f:IsShown() then rcBtn:LockHighlight() else rcBtn:UnlockHighlight() end
+        -- Stesso legame anche quando il pannello si apre/chiude per altre vie
+        -- (X della barretta, /rls, ShowTab): il pannello debug segue sempre.
+        if RLSuite.SyncDebugPanel then RLSuite:SyncDebugPanel() end
     end
     MW._updateArrowDir = MW_UpdateArrowDir
     f:HookScript("OnShow", MW_UpdateArrowDir)
     f:HookScript("OnHide", MW_UpdateArrowDir)
 
-    arrBtn:SetScript("OnClick", function()
-        -- La freccia mostra/nasconde SOLO il pannello dei pulsanti sotto
-        -- la barretta. In ogni momento, anche in fight: mai altre finestre.
+    rcBtn:SetScript("OnClick", function()
         if f:IsShown() then
             f:Hide()
         else
             f:Show()
         end
         MW_UpdateArrowDir()
+        -- RLS DEBUG vive e muore con il pannello dei tasti: si chiude con lui
+        -- e ricompare a OGNI apertura (se il debug e' attivo).
+        if RLSuite.SyncDebugPanel then RLSuite:SyncDebugPanel() end
     end)
-    tb.arrowBtn = arrBtn
+    tb.raidControlBtn = rcBtn
+    tb.arrowBtn = rcBtn            -- alias storico (stesso bottone)
+    self.raidControlBtn = rcBtn    -- usato da ApplyLayout per la larghezza
     MW_UpdateArrowDir()
 
     -- Niente titolo dentro la finestra: i bottoni restano (matrice + fase +
     -- X di chiusura e icona SaveRaid). La Config si apre dalla minimappa
     -- (clic destro) o da /rls config.
 
+    -- ORDINE DEI TASTI DELLA MATRICE (richiesto): Groupmaking, Raid Frame,
+    -- MS, Log, Macrobar, MT & OT, Loot, SaveRaid. I tab si creano in
+    -- quest'ordine e la griglia li dispone riga per riga (vedi matrixOrder).
     self.tabDefs = {
         { key = "group",     label = "Groupmaking" },
-        { key = "macro",     label = "Macrobar" },
         { key = "raidframe", label = "Raid Frame" },
         { key = "ms",        label = "MS" },
-        { key = "loot",      label = "Loot" },
         { key = "log",       label = "Log" },
+        { key = "macro",     label = "Macrobar" },
+        { key = "loot",      label = "Loot" },
     }
     self.tabs = {}
     self.currentTab = nil
@@ -360,14 +377,16 @@ function MW:CreateFrame()
             file = "Interface\\CharacterFrame\\UI-StateIcon",
             static = { 0.5, 1.0, 0, 0.5 } },
     }
-    self.phaseBtn = CreateFrame("Button", "RLSuitePhaseBtn", f)
-    self.phaseBtn:SetSize(26, 26)
+    -- L'icona di fase vive NELLA BARRETTA del titolo (al posto di "RLS"):
+    -- PHASE_ICON px, ingrandita insieme alla barretta (era 16).
+    self.phaseBtn = CreateFrame("Button", "RLSuitePhaseBtn", tb)
+    self.phaseBtn:SetSize(PHASE_ICON, PHASE_ICON)
     self.phaseBtn:EnableMouse(true)
     self.phaseBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     RLSuite.utils:SkinBox(self.phaseBtn)
     local phaseIcon = self.phaseBtn:CreateTexture(nil, "ARTWORK")
-    phaseIcon:SetPoint("TOPLEFT", self.phaseBtn, "TOPLEFT", 3, -3)
-    phaseIcon:SetPoint("BOTTOMRIGHT", self.phaseBtn, "BOTTOMRIGHT", -3, 3)
+    phaseIcon:SetPoint("TOPLEFT", self.phaseBtn, "TOPLEFT", 2, -2)
+    phaseIcon:SetPoint("BOTTOMRIGHT", self.phaseBtn, "BOTTOMRIGHT", -2, 2)
     self.phaseBtn.icon = phaseIcon
     self.phaseBtn:SetScript("OnClick", function(s, button)
         if not RLSuite.CycleContextPhase then return end
@@ -388,34 +407,80 @@ function MW:CreateFrame()
 
     -- Testo con il nome della fase, mostrato accanto all'icona fase
     -- quando c'e' spazio sufficiente fino alla X di chiusura.
-    self.phaseText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.phaseText = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     self.phaseText:SetTextColor(1, 0.82, 0)
     self.phaseText:SetJustifyH("LEFT")
     self.phaseText:Hide()
+    tb.title = self.phaseText
+
+    -- Larghezza del nome di fase piu' lungo (una volta sola): e' il posto che
+    -- la barretta riserva al nome, cosi' la larghezza non cambia mai al
+    -- cambiare della fase.
+    local widest = 0
+    for _, pd in pairs(self.phaseDefs or {}) do
+        self.phaseText:SetText(pd.label or "")
+        local w = (self.phaseText.GetStringWidth and self.phaseText:GetStringWidth()) or 0
+        if w > widest then widest = w end
+    end
+    self._phaseLabelW = math.ceil(widest + 2)
+    self.phaseText:SetText("")
 
 
     -- Config: accessibile dal clic destro sull'icona della minimappa e da
     -- /rls config (niente piu' icona rotellina nella barra principale).
 
-    -- SaveRaid: icona salvataggio a sinistra dell'icona fase
-    self.saveRaidBtn = CreateFrame("Button", "RLSuiteSaveRaidBtn", f)
-    self.saveRaidBtn:SetSize(26, 26)
-    RLSuite.utils:SkinBox(self.saveRaidBtn)
-    local saveIcon = self.saveRaidBtn:CreateTexture(nil, "ARTWORK")
-    saveIcon:SetPoint("TOPLEFT", self.saveRaidBtn, "TOPLEFT", 3, -3)
-    saveIcon:SetPoint("BOTTOMRIGHT", self.saveRaidBtn, "BOTTOMRIGHT", -3, 3)
-    saveIcon:SetTexture(RLSuite:AddonTexture("media\\save.blp"))
-    self.saveRaidBtn:EnableMouse(true)
+    -- SaveRaid: TORNA A ESSERE UN PULSANTE (non un'icona): stesso stile e
+    -- stessa taglia dei tasti della matrice, entra nella griglia come settimo
+    -- tasto (la riga di icone in alto non esiste piu').
+    self.saveRaidBtn = CreateFrame("Button", "RLSuiteSaveRaidBtn", f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.saveRaidBtn)
+    self.saveRaidBtn:SetSize(90, 22)
+    self.saveRaidBtn:SetText("SaveRaid")
     self.saveRaidBtn:RegisterForClicks("LeftButtonUp")
     self.saveRaidBtn:SetScript("OnClick", function() self:OnSaveRaid() end)
     self.saveRaidBtn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
         GameTooltip:SetText("SaveRaid")
+        GameTooltip:AddLine(L["Saves the current setup (Comp, MacroBar, Config)."], 1, 1, 1)
         GameTooltip:Show()
     end)
     self.saveRaidBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- ORDINE DELLE CELLE DELLA MATRICE: la coppia MT & OT occupa UNA cella e
+    -- sta al 6o posto (prima era "appesa" sotto Raid Frame, con i tasti
+    -- seguenti che scalavano di uno: con un ordine esplicito non serve piu'
+    -- nessun caso particolare).
+    self.matrixOrder = {
+        { btn = self.tabs["group"] },
+        { btn = self.tabs["raidframe"] },
+        { btn = self.tabs["ms"] },
+        { btn = self.tabs["log"] },
+        { btn = self.tabs["macro"] },
+        { role = true },                    -- MT & OT nella stessa cella
+        { btn = self.tabs["loot"] },
+        { btn = self.saveRaidBtn },
+    }
+    -- Elenco piatto dei BOTTONI (senza la cella della coppia): comodo per i
+    -- controlli e per chi conta i tasti.
+    self.matrixButtons = {}
+    for _, c in ipairs(self.matrixOrder) do
+        if c.btn then self.matrixButtons[#self.matrixButtons + 1] = c.btn end
+    end
 
     self:ApplyLayout()
+end
+
+-- Larghezza del RAID FRAME (HUD) come la vede l'utente: icone food/flask +
+-- barra giocatore + barre CD. La matrice dei buff NON e' compresa: le colonne
+-- dei buff sono disegnate OLTRE il bordo destro del frame (RaidFrame.lua:
+-- matrix a x = rowWidth + 4), quindi m.W e' gia' "senza buff".
+-- Ritorna la larghezza EFFETTIVA a schermo (metrica x scala del frame).
+function MW:RaidFrameWidth()
+    local rf = RLSuite.raidFrame
+    if not (rf and rf.LayoutMetrics) then return 0 end
+    local ok, m = pcall(function() return rf:LayoutMetrics() end)
+    if not ok or type(m) ~= "table" then return 0 end
+    local scale = (rf.db and rf.db.scale) or 1
+    return (m.W or 0) * scale
 end
 
 function MW:ApplyLayout()
@@ -424,39 +489,70 @@ function MW:ApplyLayout()
     L = L or {}
     local cols = math.max(1, math.min(8, tonumber(L.matrixCols) or 2))
     local rows = math.max(1, math.min(8, tonumber(L.matrixRows) or 4))
-    -- la matrice deve sempre contenere tutti i bottoni (6 tab): la coppia
-    -- MT/OT occupa UNA cella extra; se le colonne sono poche, le righe
-    -- minime crescono per non sforare
-    local nButtons = #(self.matrixButtons or {})
-    local extraCells = (self.mtBtn and self.otBtn) and 1 or 0
-    if nButtons + extraCells > 0 then
-        rows = math.max(rows, math.ceil((nButtons + extraCells) / cols))
+    -- Celle della matrice: una per tasto, una per la coppia MT & OT.
+    local cells = self.matrixOrder
+    if not cells or #cells == 0 then
+        cells = {}
+        for _, b in ipairs(self.matrixButtons or {}) do cells[#cells + 1] = { btn = b } end
+    end
+    local nCells = #cells
+    if nCells > 0 then
+        rows = math.max(rows, math.ceil(nCells / cols))
     end
 
     -- Bottoni matrice: colonne x righe configurabili dalla Config.
+    -- La vecchia RIGA DI ICONE in alto non esiste piu': l'icona di fase sta
+    -- nella barretta del titolo e "SaveRaid" e' tornato un pulsante della
+    -- matrice. Quindi la barra e' PIU' BASSA di tutta quella riga.
     local bw, bh, gapX, gapY = 90, 22, 8, 4
-    local PAD = 12
-    local iconSize = 26                       -- icone (save/fase)
-    local iconGap = 4                         -- spazio tra le icone
-    local xSize = 32                          -- X di chiusura
-    local rowGap = 6                          -- spazio tra riga icone e matrice
+    -- PAD ridotto: i tasti stanno ADERENTI al bordo esterno della barra.
+    local PAD = 4
 
     local matrixW = cols * bw + (cols - 1) * gapX
     local matrixH = rows * bh + (rows - 1) * gapY
 
-    -- Riga icone in alto, larga quanto la matrice: le 2 icone a sinistra,
-    -- spazio vuoto, X rossa a destra. Se la matrice e' piu' stretta delle
-    -- icone, riga e barra si allargano al minimo per contenerle.
-    local iconRowH = math.max(iconSize, xSize)
-    local iconsW = 2 * iconSize + 1 * iconGap
-    local minRowW = iconsW + iconGap + xSize
-    local contentW = math.max(matrixW, minRowW)
+    -- LARGHEZZA FISSA DELLA BARRETTA = SOMMA DEI SUOI ELEMENTI:
+    --   [icona di fase][nome della fase] ... [Raid Control][X]
+    -- Niente piu' barretta "stirata" sulla larghezza della matrice: la
+    -- barretta e' larga ESATTAMENTE quanto i suoi pezzi (il nome della fase ha
+    -- il posto riservato del nome piu' lungo, quindi la larghezza non cambia
+    -- mai al cambio fase) e sta ancorata a sinistra sopra il pannello.
+    local tbPad, tbGap = 4, 4
+    local phaseIconW = PHASE_ICON
+    local phaseNameW = self._phaseLabelW or 58
+    local rcBtnRef = self.raidControlBtn or (self.titleBar and self.titleBar.raidControlBtn)
+    local rcW = (rcBtnRef and rcBtnRef:GetWidth()) or 96
+    local closeW = 11
+    local titleW = tbPad + phaseIconW + tbGap + phaseNameW + tbGap + rcW + tbGap + closeW + tbPad
+    self._titleRowW = titleW
 
-    local h = 2 * PAD + iconRowH + rowGap + matrixH
+    -- Pannello: larghezza = matrice dei tasti (somma delle colonne). Se la
+    -- barretta e' piu' larga della matrice (poche colonne) il pannello prende
+    -- la larghezza della barretta: cosi' niente sporge dal bordo.
+    local contentW = math.max(matrixW, titleW)
+
+    local h = 2 * PAD + matrixH
     local w = 2 * PAD + contentW
 
     self.frame:SetSize(w, h)
     self.frame:SetScale(L.scale or 1)
+
+    -- ANCORAGGIO FISSO: la BARRETTA (barra in alto) sta sul bordo ALTO dello
+    -- schermo a una distanza dal lato SINISTRO pari alla larghezza del Raid
+    -- Frame (food/flask + barra player + CD, senza i buff): parte subito a
+    -- destra del Raid Frame.
+    if self.titleBar then
+        self.titleBar:ClearAllPoints()
+        self.titleBar:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth(), 0)
+    end
+    -- LA MATRICE DEI PULSANTI SI APRE A DESTRA DELLA BARRETTA: il pannello e'
+    -- ancorato al suo bordo destro, sommita' allineate (dx 4 di distacco).
+    self.frame:ClearAllPoints()
+    if self.titleBar then
+        self.frame:SetPoint("TOPLEFT", self.titleBar, "TOPRIGHT", 4, 0)
+    else
+        self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth(), 0)
+    end
 
     -- Bottoni matrice: colonne x righe configurabili dalla Config.
     -- La coppia MT/OT sta SOTTO il tasto "Raid Frame" (cella
@@ -465,72 +561,62 @@ function MW:ApplyLayout()
     -- Altrimenti (colonne troppe larghe) la coppia finisce nella cella
     -- subito dopo l'ultimo tasto, come prima.
     local x0 = PAD
-    local topY = -PAD - iconRowH - rowGap
-    local totalCells = nButtons + extraCells
-    local rfIdx = nil
-    for i, btn in ipairs(self.matrixButtons or {}) do
-        if btn.tabKey == "raidframe" then rfIdx = i break end
-    end
-    local pinnedIdx = nil
-    if rfIdx and extraCells > 0 then
-        local p = rfIdx + cols
-        if p <= totalCells then pinnedIdx = p end
-    end
-    local pairCell = pinnedIdx or totalCells
-    local cell = 0
-    for i, btn in ipairs(self.matrixButtons or {}) do
-        cell = cell + 1
-        if pinnedIdx and cell == pinnedIdx then cell = cell + 1 end
-        local col = (cell - 1) % cols
-        local row = math.floor((cell - 1) / cols)
-        btn:ClearAllPoints()
-        btn:SetSize(bw, bh)
-        btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", x0 + col * (bw + gapX), topY - row * (bh + gapY))
-    end
-
-    -- Coppia MT / OT nella cella scelta sopra: due mezzi tasti affiancati
-    -- (insieme occupano lo spazio di un tasto solo).
-    if self.mtBtn and self.otBtn then
-        local idx = pairCell
+    local topY = -PAD
+    -- POSIZIONAMENTO IN ORDINE: riga per riga, da sinistra a destra
+    -- (Groupmaking, Raid Frame / MS, Log / Macrobar, MT & OT / Loot, SaveRaid
+    -- con 2 colonne). La cella della coppia MT & OT ospita i due mezzi tasti.
+    local halfGap = 4
+    local halfW = (bw - halfGap) / 2
+    for idx, c in ipairs(cells) do
         local col = (idx - 1) % cols
         local row = math.floor((idx - 1) / cols)
-        local halfGap = 4
-        local halfW = (bw - halfGap) / 2
         local cellX = x0 + col * (bw + gapX)
         local cellY = topY - row * (bh + gapY)
-        self.mtBtn:ClearAllPoints()
-        self.mtBtn:SetSize(halfW, bh)
-        self.mtBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX, cellY)
-        self.otBtn:ClearAllPoints()
-        self.otBtn:SetSize(bw - halfW - halfGap, bh)
-        self.otBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX + halfW + halfGap, cellY)
+        if c.role then
+            if self.mtBtn and self.otBtn then
+                self.mtBtn:ClearAllPoints()
+                self.mtBtn:SetSize(halfW, bh)
+                self.mtBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX, cellY)
+                self.otBtn:ClearAllPoints()
+                self.otBtn:SetSize(bw - halfW - halfGap, bh)
+                self.otBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX + halfW + halfGap, cellY)
+            end
+        elseif c.btn then
+            c.btn:ClearAllPoints()
+            c.btn:SetSize(bw, bh)
+            c.btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", cellX, cellY)
+        end
     end
 
-    -- riga icone in alto: save -> fase a sinistra, X a destra
-    local iconY = -(iconRowH - iconSize) / 2
-    if self.saveRaidBtn then
-        self.saveRaidBtn:ClearAllPoints()
-        self.saveRaidBtn:SetPoint("TOPLEFT", self.frame, "TOPLEFT", PAD, -PAD + iconY)
+    -- BARRETTA DEL TITOLO: larghezza = SOMMA DEI SUOI ELEMENTI e ancorata a
+    -- sinistra sopra il pannello (non piu' stirata sulla larghezza della
+    -- matrice: con la matrice larga restava un vuoto enorme in mezzo).
+    if self.titleBar then
+        self.titleBar:SetWidth(titleW)
     end
     if self.phaseBtn then
         self.phaseBtn:ClearAllPoints()
-        self.phaseBtn:SetPoint("TOPLEFT", self.saveRaidBtn or self.frame, "TOPRIGHT", iconGap, 0)
+        self.phaseBtn:SetPoint("LEFT", self.titleBar or self.frame, "LEFT", tbPad, 0)
+    end
+    if self.phaseText and self.phaseBtn then
+        self.phaseText:ClearAllPoints()
+        self.phaseText:SetPoint("LEFT", self.phaseBtn, "RIGHT", PHASE_GAP, 0)
+        -- Il nome della fase ha un posto RISERVATO nel calcolo della
+        -- larghezza (phaseNameW): qui si mostra sempre, senza salti.
+        self.phaseText:Show()
+    end
+    -- "Raid Control" e X incolonnati a destra della barretta.
+    if self.titleBar and self.titleBar.closeBtn then
+        self.titleBar.closeBtn:ClearAllPoints()
+        self.titleBar.closeBtn:SetPoint("RIGHT", self.titleBar, "RIGHT", -tbPad, 0)
+    end
+    if self.raidControlBtn and self.titleBar and self.titleBar.closeBtn then
+        self.raidControlBtn:ClearAllPoints()
+        self.raidControlBtn:SetPoint("RIGHT", self.titleBar.closeBtn, "LEFT", -tbGap, 0)
     end
     if self.closeBtn then
         self.closeBtn:ClearAllPoints()
         self.closeBtn:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", -PAD, -PAD)
-    end
-
-    -- nome della fase accanto all'icona, solo se c'e' spazio fino alla X
-    if self.phaseText and self.phaseBtn then
-        self.phaseText:ClearAllPoints()
-        self.phaseText:SetPoint("LEFT", self.phaseBtn, "RIGHT", iconGap + 2, 0)
-        local available = contentW - iconsW - xSize - iconGap
-        if available >= 58 then
-            self.phaseText:Show()
-        else
-            self.phaseText:Hide()
-        end
     end
 
     RLSuite.utils:SkinFrame(self.frame)
@@ -617,12 +703,11 @@ function MW:RegisterAllWindows()
         return 510, 340
     end
     RLSuite.windowMins.log = function()
-        -- min width = riga dei tab in alto (16 + 8 tab da 86px + gap da 2),
-        -- sotto i 724px i tasti sbordano fuori finestra.
-        -- min height = stack reale: 78 (dropdown+tab+header) + 398 (liste)
-        -- + ~30 (barra report/clear/live) + margini: sotto i 540 la barra
-        -- inferiore clippa le liste.
-        return 730, 540
+        -- Layout v1.11.63 (stile UwU Logs): la riga dei tab ha 10 tasti da
+        -- 78px + 5 di gap (14 + 10*83 + 14 = 853): sotto ~870 i tasti
+        -- sbordano. Altezza = riga titolo (28) + controlli grafico (28) +
+        -- grafico (150) + tab (24) + contenuto (360) + footer (42) + margini.
+        return 870, 660
     end
 
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
@@ -662,7 +747,7 @@ function MW:RegisterAllWindows()
         group = { "groupmaking", 420, 380, "groupmaking" },
         ms = { "ms", 320, 260, "ms" },
         loot = { "loot", 440, 300, "loot" },
-        log = { "combatlog", 730, 540, "combatlog" },
+        log = { "combatlog", 900, 646, "combatlog" },
     }
     for key, cfg in pairs(resizable) do
         local pane = self:PaneForTab(key)
