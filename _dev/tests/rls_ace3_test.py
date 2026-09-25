@@ -7557,6 +7557,261 @@ check(bool(rt.eval("CMD_INV_OPEN == true")), "v1.11.85: /rls inv apre il pannell
 check(bool(rt.eval("CMD_ALIAS_OK == true")), "v1.11.85: gli alias storici (inviteengine, ie, wl, whisplist) restano accettati ma NON elencati")
 check(bool(rt.eval("CMD_MACRO_GONE == true and CMD_RFHUD_GONE == true")), "v1.11.85: /rls macro e /rls rfhud sono stati RIMOSSI (ora comando sconosciuto)")
 check(bool(rt.eval("CMD_DIAG_WORKS == true and CMD_RFDUMP_WORKS == true")), "v1.11.85: i comandi di diagnostica restano FUNZIONANTI, solo nascosti dall'help")
+# =====================================================================
+# v1.11.87 — PARSER CLASSE/SPEC/GS (regole in _dev/Class_Spec_and_GS_parser.md)
+# Un solo motore: RLSuite.utils:ParseWhisper(msg) -> class/spec/role/gs.
+# I casi sono presi riga per riga dalla tabella (PREFIX / BODY / SUFFIX).
+# =====================================================================
+rt.execute("""
+local CASES = {
+    -- { testo, classe attesa, spec attesa, gs atteso (opzionale) }
+    -- ---- DEATH KNIGHT: U/UH/Unholy, B/Blood, F/Frost ----
+    { "u dk", "DEATHKNIGHT", "Unholy" },
+    { "uh dk", "DEATHKNIGHT", "Unholy" },
+    { "unholy dk", "DEATHKNIGHT", "Unholy" },
+    { "dk u", "DEATHKNIGHT", "Unholy" },
+    { "dk uh", "DEATHKNIGHT", "Unholy" },
+    { "dk unholy", "DEATHKNIGHT", "Unholy" },
+    { "b dk", "DEATHKNIGHT", "Blood" },
+    { "blood dk", "DEATHKNIGHT", "Blood" },
+    { "dk b", "DEATHKNIGHT", "Blood" },
+    { "dk blood", "DEATHKNIGHT", "Blood" },
+    { "f dk", "DEATHKNIGHT", "Frost" },
+    { "frost dk", "DEATHKNIGHT", "Frost" },
+    { "dk f", "DEATHKNIGHT", "Frost" },
+    { "dk frost", "DEATHKNIGHT", "Frost" },
+    { "UNHOLY DK", "DEATHKNIGHT", "Unholy" },
+    { "Unholy Dk 6k gs", "DEATHKNIGHT", "Unholy", 6000 },
+    -- ---- DRUID: Balance / Feral Cat / Feral Bear / Restoration ----
+    { "balance dudu", "DRUID", "Balance" },
+    { "dudu balance", "DRUID", "Balance" },
+    { "balance druid", "DRUID", "Balance" },
+    { "boomkin 6k gs", "DRUID", "Balance", 6000 },
+    { "boomie", "DRUID", "Balance" },
+    { "cat dudu", "DRUID", "Feral Cat" },
+    { "bear dudu", "DRUID", "Feral Bear" },
+    { "dudu cat", "DRUID", "Feral Cat" },
+    { "dudu bear", "DRUID", "Feral Bear" },
+    { "dudu feral cat", "DRUID", "Feral Cat" },
+    { "dudu feral bear", "DRUID", "Feral Bear" },
+    { "dudu feral", "DRUID", "Feral Cat" },
+    { "f dudu", "DRUID", "Feral Cat" },
+    { "f dudu bear", "DRUID", "Feral Bear" },
+    { "r dudu", "DRUID", "Restoration" },
+    { "dudu resto", "DRUID", "Restoration" },
+    { "resto druid", "DRUID", "Restoration" },
+    { "druid 6k", "DRUID", nil },
+    -- ---- HUNTER: BM / MM / S/Surv/Survival ----
+    { "bm hunt", "HUNTER", "Beast Mastery" },
+    { "hunt bm", "HUNTER", "Beast Mastery" },
+    { "bm hunter", "HUNTER", "Beast Mastery" },
+    { "hunter bm", "HUNTER", "Beast Mastery" },
+    { "mm hunt", "HUNTER", "Marksmanship" },
+    { "hunter mm", "HUNTER", "Marksmanship" },
+    { "hunt mm 6542 gs", "HUNTER", "Marksmanship", 6542 },
+    { "s hunt", "HUNTER", "Survival" },
+    { "surv hunter", "HUNTER", "Survival" },
+    { "hunt survival", "HUNTER", "Survival" },
+    { "hunter surv", "HUNTER", "Survival" },
+    -- ---- MAGE: F/Fire, Frost, Arcane ----
+    { "f mage", "MAGE", "Fire" },
+    { "fire mage", "MAGE", "Fire" },
+    { "mage fire", "MAGE", "Fire" },
+    { "frost mage", "MAGE", "Frost" },
+    { "mage frost", "MAGE", "Frost" },
+    { "arcane mage", "MAGE", "Arcane" },
+    { "mage arcane", "MAGE", "Arcane" },
+    -- ---- PALADIN: P/Prot/Protection, R/Ret/Retri/Retribution, H/Holy ----
+    { "p pala", "PALADIN", "Protection" },
+    { "prot pala", "PALADIN", "Protection" },
+    { "protection paladin", "PALADIN", "Protection" },
+    { "pala prot", "PALADIN", "Protection" },
+    { "pala protection", "PALADIN", "Protection" },
+    { "r pala", "PALADIN", "Retribution" },
+    { "ret pala", "PALADIN", "Retribution" },
+    { "retri pala", "PALADIN", "Retribution" },
+    { "retribution paladin", "PALADIN", "Retribution" },
+    { "pala ret", "PALADIN", "Retribution" },
+    { "pala retri", "PALADIN", "Retribution" },
+    { "h pala", "PALADIN", "Holy" },
+    { "holy pala", "PALADIN", "Holy" },
+    { "pala holy", "PALADIN", "Holy" },
+    { "p pala holy", "PALADIN", nil },           -- prefisso Prot + suffisso Holy: contraddittorio
+    -- ---- PRIEST: S/Sh/Shadow, D/Disci/Discipline (+ BODY Disco), H/Holy ----
+    { "s priest", "PRIEST", "Shadow" },
+    { "sh priest", "PRIEST", "Shadow" },
+    { "shadow priest", "PRIEST", "Shadow" },
+    { "priest shadow", "PRIEST", "Shadow" },
+    { "d priest", "PRIEST", "Discipline" },
+    { "disci priest", "PRIEST", "Discipline" },
+    { "discipline priest", "PRIEST", "Discipline" },
+    { "priest disco", "PRIEST", "Discipline" },
+    { "disco", "PRIEST", "Discipline" },
+    { "disco 6k gs", "PRIEST", "Discipline", 6000 },
+    { "h priest", "PRIEST", "Holy" },
+    { "priest holy", "PRIEST", "Holy" },
+    -- ---- ROGUE: C/Combat, Assa/Assassination, S/Sub/Subtlety ----
+    { "c rogue", "ROGUE", "Combat" },
+    { "combat rog", "ROGUE", "Combat" },
+    { "rogue combat", "ROGUE", "Combat" },
+    { "assa rogue", "ROGUE", "Assassination" },
+    { "assassination rogue", "ROGUE", "Assassination" },
+    { "rog assa", "ROGUE", "Assassination" },
+    { "rogue assassination", "ROGUE", "Assassination" },
+    { "s rogue", "ROGUE", "Subtlety" },
+    { "sub rogue", "ROGUE", "Subtlety" },
+    { "rogue sub", "ROGUE", "Subtlety" },
+    { "rogue subtlety", "ROGUE", "Subtlety" },
+    { "sublety rogue", "ROGUE", "Subtlety" },
+    -- ---- SHAMAN: Enha/Enhancement, Ele/Elemental, R/Resto ----
+    { "enha sham", "SHAMAN", "Enhancement" },
+    { "enhancement shaman", "SHAMAN", "Enhancement" },
+    { "shammy enha", "SHAMAN", "Enhancement" },
+    { "sham enhancement", "SHAMAN", "Enhancement" },
+    { "ele sham", "SHAMAN", "Elemental" },
+    { "elemental shaman", "SHAMAN", "Elemental" },
+    { "sham ele", "SHAMAN", "Elemental" },
+    { "r sham", "SHAMAN", "Restoration" },
+    { "shammy resto", "SHAMAN", "Restoration" },
+    { "sham resto", "SHAMAN", "Restoration" },
+    -- ---- WARLOCK: Aff/Affly/Affliction, Demo/Demonology, Destro/Destruction ----
+    { "aff lock", "WARLOCK", "Affliction" },
+    { "affly warlock", "WARLOCK", "Affliction" },
+    { "affliction lock", "WARLOCK", "Affliction" },
+    { "afliction lock", "WARLOCK", "Affliction" },
+    { "lock aff", "WARLOCK", "Affliction" },
+    { "lock affliction", "WARLOCK", "Affliction" },
+    { "demo lock", "WARLOCK", "Demonology" },
+    { "demonology lock", "WARLOCK", "Demonology" },
+    { "lock demo", "WARLOCK", "Demonology" },
+    { "lock demonology", "WARLOCK", "Demonology" },
+    { "destro lock", "WARLOCK", "Destruction" },
+    { "destriction lock", "WARLOCK", "Destruction" },
+    { "lock destruction", "WARLOCK", "Destruction" },
+    { "lock destro", "WARLOCK", "Destruction" },
+    -- ---- WARRIOR: F/Fury, Arms, P/Prot/Protection ----
+    { "f war", "WARRIOR", "Fury" },
+    { "fury warr", "WARRIOR", "Fury" },
+    { "war fury", "WARRIOR", "Fury" },
+    { "warrior fury", "WARRIOR", "Fury" },
+    { "arms war", "WARRIOR", "Arms" },
+    { "war arms", "WARRIOR", "Arms" },
+    { "warrior arms", "WARRIOR", "Arms" },
+    { "p war", "WARRIOR", "Protection" },
+    { "war prot", "WARRIOR", "Protection" },
+    { "warrior prot", "WARRIOR", "Protection" },
+    { "war protection", "WARRIOR", "Protection" },
+    -- ---- parole estranee in mezzo: contano le ADIACENTI alla classe ----
+    { "healer holy pala 6100 gs", "PALADIN", "Holy", 6100 },
+    { "tank protection war 5900 gs", "WARRIOR", "Protection", 5900 },
+    { "hi, resto sham here 5.8k gs", "SHAMAN", "Restoration", 5800 },
+    { "spec fury", "WARRIOR", "Fury" },          -- abitudine vecchia: "spec" si ignora
+    { "war tank spec prot 5900 gs", "WARRIOR", "Protection", 5900 },
+    -- ---- GS: tutte le forme della tabella ----
+    { "pala prot gs 5900", "PALADIN", "Protection", 5900 },
+    { "pala prot 5900 gs", "PALADIN", "Protection", 5900 },
+    { "pala prot 5900", "PALADIN", "Protection", 5900 },
+    { "pala prot 5,9k gs", "PALADIN", "Protection", 5900 },
+    { "pala prot 6k", "PALADIN", "Protection", 6000 },
+    { "pala prot 6.5k", "PALADIN", "Protection", 6500 },
+    { "pala prot 6,5k", "PALADIN", "Protection", 6500 },
+    { "pala prot 6.5", "PALADIN", "Protection", 6500 },
+    { "pala prot 5.500 gs", "PALADIN", "Protection", 5500 },
+    { "pala holy", "PALADIN", "Holy", nil },
+    { "pala holy 123", "PALADIN", "Holy", nil },      -- 3 cifre: NON e' un GS
+    { "war arms 6", "WARRIOR", "Arms", nil },         -- "6" nudo: non e' un GS
+    -- ---- spec senza classe: vale solo se non e' ambigua ----
+    { "prot 5900 gs", nil, "Protection", 5900 },      -- warrior O paladin
+    { "resto 5.9k", nil, "Restoration", 5900 },       -- shaman O druido
+    { "fury 5.5k", "WARRIOR", "Fury", 5500 },         -- solo warrior
+    { "frost 6k", nil, "Frost", 6000 },               -- dk O mage
+    { "combat 5.8k", "ROGUE", "Combat", 5800 },
+    { "gs 5500", nil, nil, 5500 },
+}
+
+V87 = { n = 0, fails = {} }
+for _, c in ipairs(CASES) do
+    local parsed = RLSuite.utils:ParseWhisper(c[1])
+    V87.n = V87.n + 1
+    if parsed.class ~= c[2] or parsed.spec ~= c[3] then
+        V87.fails[#V87.fails + 1] = string.format("%s -> %s/%s (attesi %s/%s)",
+            c[1], tostring(parsed.class), tostring(parsed.spec), tostring(c[2]), tostring(c[3]))
+    elseif c[4] ~= nil and parsed.gs ~= c[4] then
+        V87.fails[#V87.fails + 1] = string.format("%s -> gs %s (atteso %s)",
+            c[1], tostring(parsed.gs), tostring(c[4]))
+    elseif c[4] == nil and parsed.gs ~= nil and c[1]:find("gs") == nil and c[1]:find("k") == nil
+        and c[1]:find("5%.") == nil and c[1]:find("65") == nil and c[1]:find("5900") == nil
+        and c[1]:find("6100") == nil and c[1]:find("5500") == nil then
+        -- nessun GS atteso: il test non deve trovarne uno per sbaglio
+        V87.fails[#V87.fails + 1] = string.format("%s -> gs inatteso %s", c[1], tostring(parsed.gs))
+    end
+end
+V87.specAmbiguous = RLSuite.utils:ParseWhisper("dudu feral").specAmbiguous
+V87.ambiguous_f = RLSuite.utils:ParseWhisper("f dudu").specAmbiguous
+V87.role = RLSuite.utils:ParseWhisper("bear dudu tank 6k gs").role
+V87.role2 = RLSuite.utils:ParseWhisper("holy pala healer 6k gs").role
+""")
+
+check(rt.eval("V87.n >= 130") and rt.eval("#V87.fails == 0"), "v1.11.87: %d forme della tabella (PREFIX/BODY/SUFFIX + GS) tutte riconosciute -- %s" % (rt.eval("V87.n"), rt.eval("table.concat(V87.fails, ' | ')")))
+check(bool(rt.eval("V87.specAmbiguous == 'Feral Bear' and V87.ambiguous_f == 'Feral Bear'")), "v1.11.87: 'dudu feral' e 'f dudu' restano ambigui (Cat scelto, Bear segnalato in specAmbiguous)")
+check(bool(rt.eval("V87.role == 'tank' and V87.role2 == 'healer'")), "v1.11.87: il ruolo resta letto dalle parole (tank/healer)")
+
+# --- gli extractor della Whisplist delegano allo stesso motore ---
+rt.execute("""
+V87E = {}
+V87E.class = RLSuite.groupmaking:ExtractClassFromWhisper("healer holy pala 6100 gs")
+V87E.spec  = RLSuite.groupmaking:ExtractSpecFromWhisper("healer holy pala 6100 gs")
+V87E.gs    = RLSuite.groupmaking:ExtractGSFromWhisper("healer holy pala 6100 gs")
+V87E.role  = RLSuite.groupmaking:ExtractRoleFromWhisper("tank bear dudu 6k gs")
+""")
+check(bool(rt.eval("V87E.class == 'PALADIN' and V87E.spec == 'Holy' and V87E.gs == 6100 and V87E.role == 'tank'")), "v1.11.87: la Whisplist legge classe+spec+GS dallo stesso testo (extractor delegati)")
+
+# --- MS: il corpo del comando passa per lo stesso parser ---
+rt.execute("""
+local MSM = RLSuite.msManager
+MSM.listening = true
+V87M = {}
+local function ms(cmd)
+    MSM.db = {}
+    MSM:ParseMSMessage("Tester", cmd)
+    return MSM.db[1]
+end
+local a = ms("ms f dk")      V87M.fdk, V87M.fdk_class = a and a.spec, a and a.class
+local b = ms("ms dk frost")  V87M.dkf = b and b.spec
+local c = ms("ms unholy")    V87M.unholy = c and c.spec
+local d = ms("ms prot")      V87M.prot = d and d.spec
+local e = ms("ms resto")     V87M.resto = e and e.spec
+local f = ms("ms disco")     V87M.disco = f and f.spec
+local g = ms("ms fury")      V87M.fury = g and g.spec
+local h = ms("ms prot pala") V87M.protpala, V87M.protpala_class = h and h.spec, h and h.class
+local i = ms("ms changes")   V87M.changes = i and i.spec
+local j = ms("ms: resto sham") V87M.colon = j and j.spec
+MSM.db = {}
+MSM.listening = false
+""")
+check(bool(rt.eval("V87M.fdk == 'Frost' and V87M.fdk_class == 'DEATHKNIGHT'")), "v1.11.87: 'ms f dk' -> Frost (DEATHKNIGHT): il comando MS usa la tabella e registra anche la classe")
+check(bool(rt.eval("V87M.dkf == 'Frost' and V87M.unholy == 'Unholy'")), "v1.11.87: MS accetta 'ms dk frost' e 'ms unholy' (nome canonico)")
+check(bool(rt.eval("V87M.prot == 'Protection' and V87M.resto == 'Restoration' and V87M.disco == 'Discipline' and V87M.fury == 'Fury'")), "v1.11.87: 'ms prot' / 'ms resto' / 'ms disco' / 'ms fury' -> nomi canonici")
+check(bool(rt.eval("V87M.protpala == 'Protection' and V87M.protpala_class == 'PALADIN'")), "v1.11.87: 'ms prot pala' -> Protection (PALADIN)")
+check(bool(rt.eval("V87M.changes == nil and V87M.colon == 'Restoration'")), "v1.11.87: 'ms changes' resta ignorato, 'ms: resto sham' funziona")
+
+# --- whisper finti del pannello Debug: generati con la tabella ---
+rt.execute("""
+local saved = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = true
+RLSuite.groupmaking.whisperDB.entries = {}
+RLSuite.groupmaking:DebugWhisperBurst()
+V87W = { n = #RLSuite.groupmaking.whisperDB.entries, bad = {}, parsed = 0 }
+for _, e in ipairs(RLSuite.groupmaking.whisperDB.entries) do
+    if e.class and e.spec and e.gs then V87W.parsed = V87W.parsed + 1 end
+    if not (e.class and e.spec and e.gs and e.messages and #e.messages > 0) then
+        V87W.bad[#V87W.bad + 1] = tostring(e.name) .. "=" .. tostring(e.class) .. "/" .. tostring(e.spec) .. "/" .. tostring(e.gs)
+    end
+end
+RLSuite.groupmaking.whisperDB.entries = {}
+RLSuite.db.profile.debug = saved
+""")
+check(bool(rt.eval("V87W.n == 10 and V87W.parsed == 10")), "v1.11.87: i 10 whisper finti del test Whisplist vengono riletti dal parser (classe+spec+GS) -- %s" % rt.eval("table.concat(V87W.bad, ' | ')"))
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

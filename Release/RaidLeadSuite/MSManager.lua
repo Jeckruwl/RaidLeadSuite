@@ -144,29 +144,40 @@ function MSM:StopListening(announce)
     end
 end
 
+-- Il comando resta "ms <qualcosa>"; il <qualcosa> viene letto con lo stesso
+-- parser della Whisplist (tabella _dev/Class_Spec_and_GS_parser.md), quindi
+-- vanno bene tutte le forme: "ms f dk", "ms dk frost", "ms frost dk",
+-- "ms unholy", "ms prot pala", "ms resto"...
+-- La spec viene salvata col nome canonico ("prot" -> "Protection",
+-- "f dk" -> "Frost" + classe DEATHKNIGHT); se il parser non la riconosce si
+-- tiene il testo scritto, come prima.
 function MSM:ParseMSMessage(sender, msg)
     if not self.listening then return end
-    local lower = string.lower(msg or "")
-    if string.find(lower, "^ms%s+changes") then
-        return
-    end
-    local spec = string.match(lower, "^ms%s+(.+)")
-    if spec then
-        spec = string.gsub(string.gsub(spec, "^%s+", ""), "%s+$", "")
-        if spec == "" then return end
-        self:AddEntry(sender, spec)
-        RLSuite.utils:Print(string.format(L["MS change detected: %s -> %s"], sender, spec))
-    end
+    local text = string.gsub(string.gsub(msg or "", "^%s+", ""), "%s+$", "")
+    if text == "" then return end
+    local lower = string.lower(text)
+    -- "ms changes" e' la richiesta del leader, non un cambio di spec
+    if string.find(lower, "^ms%s*changes") then return end
+
+    local body = string.match(text, "^[Mm][Ss]%s*[:%-=]?%s*(.+)$")
+    local explicit = body ~= nil
+    if not body then return end
+    if body == "" then return end
+
+    local parsed = RLSuite.utils:ParseWhisper(body)
+    local spec = parsed.spec or body
+    self:AddEntry(sender, spec, parsed.class)
+    RLSuite.utils:Print(string.format(L["MS change detected: %s -> %s"], sender, spec))
 end
 
-function MSM:AddEntry(name, spec)
+function MSM:AddEntry(name, spec, class)
     for i, entry in ipairs(self.db) do
         if entry.name == name then
             table.remove(self.db, i)
             break
         end
     end
-    table.insert(self.db, {name = name, spec = spec, time = time()})
+    table.insert(self.db, {name = name, spec = spec, class = class, time = time()})
     self:UpdateList()
 end
 

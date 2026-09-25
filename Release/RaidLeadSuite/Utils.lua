@@ -251,6 +251,355 @@ function Utils:NormalizeRole(role, class, spec)
     return role or "mdps"
 end
 
+-- ============================================================
+-- PARSER CLASSE / SPEC / GS  (v1.11.87)
+-- Regole: _dev/Class_Spec_and_GS_parser.md
+--
+-- Forma di un whisper:  [PREFIX] BODY [SUFFIX]
+--   BODY   = la CLASSE: dk / druid+dudu / hunter+hunt / mage /
+--            pal+pala+paladin / priest / rog+rogue / sham+shammy+shaman /
+--            lock+warlock / war+warr+warrior.
+--            Eccezioni della tabella: Boomkin e Boomie sono BODY del druido e
+--            valgono Balance; Disco e' BODY del priest e vale Discipline
+--            (in entrambi i casi prefisso e suffisso NON sono ammessi).
+--   PREFIX = la SPEC scritta PRIMA della classe  ("prot pala")
+--   SUFFIX = la SPEC scritta DOPO la classe      ("pala prot")
+--   REGOLA GENERALE: o c'e' il prefisso o c'e' il suffisso, mai entrambi.
+--   ECCEZIONE: il ferale del druido (Cat/Bear) ammette entrambi; il suffisso
+--   puo' essere di due parole ("feral cat", "feral bear") e "feral" da solo
+--   resta ambiguo fra Cat e Bear.
+--   Maiuscole/minuscole non contano: si confronta tutto in minuscolo.
+-- Parole estranee (ruolo, saluti, numeri) non danno fastidio: valgono solo le
+-- parole ADIACENTI alla classe ("healer holy pala 5900 gs" e' Holy Paladin).
+-- ============================================================
+
+-- Corpo (classe) -> parole accettate. La PRIMA di ogni lista e' quella usata
+-- per generare i whisper di prova, non per il match (il match le accetta tutte).
+Utils.classBodies = {
+    DEATHKNIGHT = { "dk", "deathknight" },
+    DRUID       = { "dudu", "druid", "boomkin", "boomie" },
+    HUNTER      = { "hunt", "hunter" },
+    MAGE        = { "mage" },
+    PALADIN     = { "pala", "pal", "paladin" },
+    PRIEST      = { "priest", "disco" },
+    ROGUE       = { "rog", "rogue" },
+    SHAMAN      = { "sham", "shammy", "shaman" },
+    WARLOCK     = { "lock", "warlock" },
+    WARRIOR     = { "war", "warr", "warrior" },
+}
+
+-- BODY che portano con se' la SPEC (e con essa il divieto di prefisso/suffisso)
+Utils.bodySpecWords = { boomkin = "Balance", boomie = "Balance", disco = "Discipline" }
+
+-- Spec: prefissi e suffissi della tabella. I nomi delle spec sono quelli
+-- canonici di RLSuite.classData (cioe' quelli che usa tutto il resto dell'addon).
+-- Con la tabella sono accettate anche le grafie corrette delle voci scritte
+-- con un refuso (Afliction -> affliction, Destriction -> destruction,
+-- Sublety -> subtlety): un giocatore le scrive come si scrivono davvero.
+Utils.specGrammar = {
+    DEATHKNIGHT = {
+        { spec = "Unholy", prefix = { "u", "uh", "unholy" }, suffix = { "u", "uh", "unholy" } },
+        { spec = "Blood",  prefix = { "b", "blood" },        suffix = { "b", "blood" } },
+        { spec = "Frost",  prefix = { "f", "frost" },        suffix = { "f", "frost" } },
+    },
+    DRUID = {
+        { spec = "Balance",     prefix = { "balance" },       suffix = { "balance" } },
+        -- Il ferale ammette prefisso E suffisso; "feral"/"f" da soli valgono
+        -- per entrambe le spec (ambiguita' segnalata, vedi ParseClassSpec).
+        { spec = "Feral Cat",   prefix = { "f", "cat", "feral" },  suffix = { "feral", "cat", "feral cat" } },
+        { spec = "Feral Bear",  prefix = { "f", "bear", "feral" }, suffix = { "feral", "bear", "feral bear" } },
+        { spec = "Restoration", prefix = { "r", "resto" },    suffix = { "resto" } },
+    },
+    HUNTER = {
+        { spec = "Beast Mastery", prefix = { "bm" },             suffix = { "bm" } },
+        { spec = "Marksmanship",  prefix = { "mm" },             suffix = { "mm" } },
+        { spec = "Survival",      prefix = { "s", "surv", "survival" }, suffix = { "s", "surv", "survival" } },
+    },
+    MAGE = {
+        { spec = "Fire",   prefix = { "f", "fire" },  suffix = { "fire" } },
+        { spec = "Frost",  prefix = { "frost" },      suffix = { "frost" } },
+        { spec = "Arcane", prefix = { "arcane" },     suffix = { "arcane" } },
+    },
+    PALADIN = {
+        { spec = "Protection",  prefix = { "p", "prot", "protection" },   suffix = { "prot", "protection" } },
+        { spec = "Retribution", prefix = { "r", "ret", "retri", "retribution" }, suffix = { "ret", "retri", "retribution" } },
+        { spec = "Holy",        prefix = { "h", "holy" },                 suffix = { "holy" } },
+    },
+    PRIEST = {
+        { spec = "Shadow",     prefix = { "s", "sh", "shadow" },        suffix = { "shadow" } },
+        { spec = "Discipline", prefix = { "d", "disci", "discipline" }, suffix = { "disci", "disco" } },
+        { spec = "Holy",       prefix = { "h", "holy" },                suffix = { "holy" } },
+    },
+    ROGUE = {
+        { spec = "Combat",        prefix = { "c", "combat" },                  suffix = { "combat" } },
+        { spec = "Assassination", prefix = { "assa", "assassination" },        suffix = { "assa", "assassination" } },
+        { spec = "Subtlety",      prefix = { "s", "sub", "subtlety", "sublety" }, suffix = { "s", "sub", "subtlety", "sublety" } },
+    },
+    SHAMAN = {
+        { spec = "Enhancement", prefix = { "enha", "enhancement" }, suffix = { "enha", "enhancement" } },
+        { spec = "Elemental",   prefix = { "ele", "elemental" },    suffix = { "ele", "elemental" } },
+        { spec = "Restoration", prefix = { "r", "resto" },          suffix = { "resto" } },
+    },
+    WARLOCK = {
+        { spec = "Affliction",  prefix = { "aff", "affly", "affliction", "afliction" },  suffix = { "aff", "affly", "affliction", "afliction" } },
+        { spec = "Demonology",  prefix = { "demo", "demonology" },          suffix = { "demo", "demonology" } },
+        { spec = "Destruction", prefix = { "destro", "destruction", "destriction" }, suffix = { "destro", "destruction", "destriction" } },
+    },
+    WARRIOR = {
+        { spec = "Fury",       prefix = { "f", "fury" },                 suffix = { "fury" } },
+        { spec = "Arms",       prefix = { "arms" },                      suffix = { "arms" } },
+        { spec = "Protection", prefix = { "p", "prot", "protection" },   suffix = { "prot", "protection" } },
+    },
+}
+
+-- Parole che non sono ne' classe ne' spec e che si ignorano nel match:
+-- "spec" (abitudine diffusa: "spec fury") e i marcatori del GS.
+local PARSER_NOISE = { ["spec"] = true, ["gs"] = true, ["k"] = true }
+
+local function wordSet(list)
+    local s = {}
+    for _, w in ipairs(list or {}) do s[w] = true end
+    return s
+end
+
+-- Indice costruito una volta sola: corpo -> classe, e per ogni classe le
+-- regole con i set di prefissi/suffissi. Include i nomi localizzati delle
+-- classi del client (client non-EN) e la forma "death knight" (due parole).
+function Utils:_Gram()
+    if self._gram then return self._gram end
+    local g = { classes = {}, body = {}, specWords = {} }
+    for class, words in pairs(self.classBodies) do
+        for _, w in ipairs(words) do g.body[w] = { class = class } end
+    end
+    g.body["deathknight"] = { class = "DEATHKNIGHT" }
+    for _, tab in ipairs({ "LOCALIZED_CLASS_NAMES_MALE", "LOCALIZED_CLASS_NAMES_FEMALE" }) do
+        local t = _G[tab]
+        if t then
+            for class in pairs(self.classBodies) do
+                local nm = t[class]
+                if type(nm) == "string" and nm ~= "" then
+                    g.body[string.lower(nm)] = { class = class }
+                end
+            end
+        end
+    end
+    for w, spec in pairs(self.bodySpecWords) do
+        if g.body[w] then g.body[w].spec = spec end
+    end
+    for class, rules in pairs(self.specGrammar) do
+        g.classes[class] = {}
+        for _, r in ipairs(rules) do
+            local rule = {
+                spec = r.spec, class = class,
+                prefix = r.prefix or {}, suffix = r.suffix or {},
+                prefixSet = wordSet(r.prefix), suffixSet = wordSet(r.suffix),
+            }
+            g.classes[class][#g.classes[class] + 1] = rule
+            for _, w in ipairs(rule.prefix) do
+                g.specWords[#g.specWords + 1] = { word = w, spec = r.spec, class = class, len = #w }
+            end
+            for _, w in ipairs(rule.suffix) do
+                g.specWords[#g.specWords + 1] = { word = w, spec = r.spec, class = class, len = #w }
+            end
+        end
+    end
+    -- alias piu' lungo prima: per la spec "nuda" conta la parola piu' specifica
+    table.sort(g.specWords, function(a, b) return a.len > b.len end)
+    self._gram = g
+    return g
+end
+
+-- Parole del messaggio (solo lettere, minuscole, senza le parole-rumore).
+function Utils:_ParserWords(text)
+    local lowered = string.lower(text or "")
+    lowered = string.gsub(lowered, "death%s*knight", "deathknight")
+    local words = {}
+    for w in string.gmatch(lowered, "%a+") do
+        if not PARSER_NOISE[w] then words[#words + 1] = w end
+    end
+    return words
+end
+
+-- GS. Forme della tabella:
+--   gs 6542 | 6542 gs | 6542 | 6k | 6.5k | 6,5k | 6.5 (e "6k gs")
+-- Un numero sotto il migliaio e' la forma "corta" (6 / 6.5) e vale migliaia;
+-- un numero di 3 cifre non e' un GS (niente falsi positivi: "999" non passa).
+function Utils:GSFromText(msg)
+    if not msg or msg == "" then return nil end
+    local s = string.lower(msg)
+    -- virgola: 5,500 -> 5500 (migliaia) e 6,5 -> 6.5 (decimale)
+    s = string.gsub(s, "(%d),(%d%d%d)", "%1%2")
+    s = string.gsub(s, ",", ".")
+    local function value(numStr)
+        local v = tonumber(numStr)
+        if not v then return nil end
+        if v < 1000 then v = v * 1000 end        -- forma corta: 6 / 6.5 / 6k
+        v = math.floor(v + 0.5)
+        if v < 1000 or v > 20000 then return nil end
+        return v
+    end
+    local num = string.match(s, "(%d+%.?%d*)%s*k%s*g%s*s")
+    if not num then num = string.match(s, "(%d+%.?%d*)%s*k%f[%A]") end
+    if not num then num = string.match(s, "g%s*s%f[%A]%s*[:%-=]?%s*(%d+%.?%d*)") end
+    if not num then num = string.match(s, "(%d+%.?%d*)%s*g%s*s%f[%A]") end
+    if not num then num = string.match(s, "(%d+%.%d+)") end          -- 6.5
+    if not num then num = string.match(s, "%f[%d](%d%d%d%d%d?)%f[%D]") end  -- 6542
+    return num and value(num) or nil
+end
+
+-- Ruolo: le stesse parole di prima (tank / heal), altrimenti dps.
+function Utils:RoleFromText(msg)
+    local lower = string.lower(msg or "")
+    if string.find(lower, "tank") then return "tank" end
+    if string.find(lower, "heal") then return "healer" end
+    return "dps"
+end
+
+-- Cuore del parser: [PREFIX] BODY [SUFFIX] -> classe + spec.
+-- Ritorna SEMPRE una tabella:
+--   class          classe canonica ("PALADIN") o nil
+--   spec           spec canonica ("Protection") o nil
+--   specFrom       "prefix" | "suffix" | "both" | "body" | "bare"
+--   specAmbiguous  spec alternativa quando la parola vale per due spec
+--                  (es. "f" / "feral" del druido)
+function Utils:ParseClassSpec(text)
+    local out = {}
+    if not text or text == "" then return out end
+    local g = self:_Gram()
+    local words = self:_ParserWords(text)
+    if #words == 0 then return out end
+
+    -- 1) classe scritta
+    for i = 1, #words do
+        local body = g.body[words[i]]
+        if body then
+            out.class = body.class
+            if body.spec then
+                -- Boomkin / Boomie / Disco: la spec e' nel corpo, prefisso e
+                -- suffisso non ammessi (regola della tabella)
+                out.spec = body.spec
+                out.specFrom = "body"
+                return out
+            end
+            local pre  = (i > 1) and words[i - 1] or nil
+            local suf1 = words[i + 1]
+            local suf2 = words[i + 2]
+            local combined = (suf1 and suf2) and (suf1 .. " " .. suf2) or nil
+            local cands = {}
+            for _, rule in ipairs(g.classes[body.class] or {}) do
+                -- si tiene la PAROLA trovata (non un booleano): serve la
+                -- lunghezza per scegliere fra alias generici e specifici
+                local pWord
+                if pre and rule.prefixSet[pre] then pWord = pre end
+                -- il suffisso puo' essere: la parola dopo, le due parole dopo
+                -- insieme ("feral cat"), o la seconda da sola (compatibilita'
+                -- con "war tank prot")
+                -- fra i suffissi possibili si sceglie il PIU' SPECIFICO (il
+                -- piu' lungo): "dudu feral bear" e' Feral Bear, non "feral".
+                local sWord
+                for _, cand in ipairs({ suf1, combined, suf2 }) do
+                    if cand and rule.suffixSet[cand] and (not sWord or #cand > #sWord) then
+                        sWord = cand
+                    end
+                end
+                if pWord or sWord then
+                    cands[#cands + 1] = {
+                        spec = rule.spec,
+                        score = (pWord and sWord) and 3 or (pWord and 2 or 1),
+                        len = #(pWord or sWord or ""),
+                        p = pWord, s = sWord,
+                    }
+                end
+            end
+            if #cands > 0 then
+                table.sort(cands, function(a, b)
+                    if a.score ~= b.score then return a.score > b.score end
+                    if a.len ~= b.len then return a.len > b.len end
+                    return false
+                end)
+                local best = cands[1]
+                -- Regola generale: o prefisso o suffisso. Se il vincitore ha
+                -- SOLO il prefisso e un'altra spec combacia SOLO col suffisso,
+                -- il messaggio e' contraddittorio: si tiene la classe e basta.
+                local conflict = false
+                if best.p and not best.s then
+                    for k = 2, #cands do
+                        if cands[k].s and not cands[k].p and cands[k].spec ~= best.spec then
+                            conflict = true
+                        end
+                    end
+                end
+                if not conflict then
+                    out.spec = best.spec
+                    out.specFrom = (best.p and best.s and "both") or (best.p and "prefix") or "suffix"
+                    if cands[2] and cands[2].spec ~= best.spec
+                        and cands[2].score == best.score and cands[2].len == best.len then
+                        out.specAmbiguous = cands[2].spec
+                    end
+                end
+            end
+            return out
+        end
+    end
+
+    -- 2) nessuna classe: la spec scritta da sola ("prot", "resto", "fury").
+    -- Vale solo se NON e' ambigua: due spec diverse (o la stessa spec di due
+    -- classi, es. "prot" warrior/paladin) non fanno indovinare la classe.
+    local seen, hitClasses = {}, {}
+    for _, e in ipairs(g.specWords) do
+        for _, w in ipairs(words) do
+            if w == e.word then
+                seen[e.spec] = true
+                hitClasses[e.spec] = hitClasses[e.spec] or {}
+                hitClasses[e.spec][e.class] = true
+            end
+        end
+    end
+    local n, only = 0, nil
+    for spec in pairs(seen) do n = n + 1; only = spec end
+    if n == 1 then
+        out.spec = only
+        out.specFrom = "bare"
+        local cls, multi = nil, false
+        for class in pairs(hitClasses[only] or {}) do
+            if cls and cls ~= class then multi = true end
+            cls = class
+        end
+        if cls and not multi then out.class = cls end
+    end
+    return out
+end
+
+-- Una passata: classe, spec, ruolo, GS. E' questa che usano Whisplist e MS.
+function Utils:ParseWhisper(msg)
+    local out = self:ParseClassSpec(msg)
+    out.text = msg or ""
+    out.gs = self:GSFromText(msg)
+    out.role = self:RoleFromText(msg)
+    return out
+end
+
+-- Parola di classe "bella" per i whisper di prova ("dk", "dudu", "pala"...).
+function Utils:BodyWordFor(class)
+    local words = self.classBodies[class]
+    return words and words[1] or nil
+end
+
+-- Parola di spec della tabella per generare i whisper di prova: si preferisce
+-- la piu' lunga (piu' leggibile) fra i prefissi della spec.
+function Utils:SpecWordFor(class, spec)
+    for _, rule in ipairs((self:_Gram().classes or {})[class] or {}) do
+        if rule.spec == spec then
+            local best
+            for _, w in ipairs(rule.prefix) do
+                if not best or #w > #best then best = w end
+            end
+            return best
+        end
+    end
+    return nil
+end
+
 function Utils:EnsureInsertLinkHook()
     if self._insertLinkHooked then return end
     self._insertLinkHooked = true

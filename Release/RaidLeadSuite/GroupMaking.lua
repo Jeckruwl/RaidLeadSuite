@@ -1091,17 +1091,19 @@ end
 -- spammer is running. Each one goes through GM:OnWhisper, so they land
 -- in "Received whispers" exactly like real players.
 -- ============================================================
+-- Spec canoniche (quelle di RLSuite.classData): il messaggio di prova viene
+-- costruito dalle regole della tabella, cosi' esercita davvero il parser.
 local DEBUG_WHISPER_POOL = {
-    { name = "Drakbot",   class = "WARRIOR",     role = "tank",   spec = "prot",  gs = 5900 },
-    { name = "Holymoon",  class = "PALADIN",     role = "healer", spec = "holy",  gs = 6100 },
-    { name = "Zapdora",   class = "MAGE",        role = "dps",    spec = "arcane", gs = 5700 },
-    { name = "Stabbitha", class = "ROGUE",       role = "dps",    spec = "combat", gs = 5800 },
-    { name = "Moowrath",  class = "DRUID",       role = "tank",   spec = "feral", gs = 6000 },
-    { name = "Holylite",  class = "PRIEST",      role = "healer", spec = "holy",  gs = 5950 },
-    { name = "Totemly",   class = "SHAMAN",      role = "healer", spec = "resto", gs = 5850 },
-    { name = "Frostbite", class = "DEATHKNIGHT", role = "dps",    spec = "frost", gs = 6050 },
-    { name = "Warlocky",  class = "WARLOCK",     role = "dps",    spec = "destro", gs = 5750 },
-    { name = "Arrowz",    class = "HUNTER",      role = "dps",    spec = "marks", gs = 5900 },
+    { name = "Drakbot",   class = "WARRIOR",     role = "tank",   spec = "Protection",    gs = 5900 },
+    { name = "Holymoon",  class = "PALADIN",     role = "healer", spec = "Holy",          gs = 6100 },
+    { name = "Zapdora",   class = "MAGE",        role = "dps",    spec = "Arcane",        gs = 5700 },
+    { name = "Stabbitha", class = "ROGUE",       role = "dps",    spec = "Combat",        gs = 5800 },
+    { name = "Moowrath",  class = "DRUID",       role = "tank",   spec = "Feral Bear",    gs = 6000 },
+    { name = "Holylite",  class = "PRIEST",      role = "healer", spec = "Holy",          gs = 5950 },
+    { name = "Totemly",   class = "SHAMAN",      role = "healer", spec = "Restoration",   gs = 5850 },
+    { name = "Frostbite", class = "DEATHKNIGHT", role = "dps",    spec = "Frost",         gs = 6050 },
+    { name = "Warlocky",  class = "WARLOCK",     role = "dps",    spec = "Destruction",   gs = 5750 },
+    { name = "Arrowz",    class = "HUNTER",      role = "dps",    spec = "Marksmanship",  gs = 5900 },
 }
 
 -- Invia IMMEDIATAMENTE tutti i 10 whisper fittizi del pool, passando dal
@@ -1118,8 +1120,13 @@ function GM:DebugWhisperBurst()
     -- senza cambiare il comportamento reale dello spammer.
     local savedSpamActive = self.spamActive
     self.spamActive = true
+    -- I whisper di prova usano la forma della tabella: [PREFIX] BODY (+ GS),
+    -- es. "tank protection war 5900 gs" o "healer holy pala 6100 gs".
     for _, fake in ipairs(DEBUG_WHISPER_POOL) do
-        local msg = string.lower(fake.class) .. " " .. fake.role .. " spec " .. fake.spec .. " " .. fake.gs .. " gs"
+        local specWord = RLSuite.utils:SpecWordFor(fake.class, fake.spec)
+        local bodyWord = RLSuite.utils:BodyWordFor(fake.class)
+        local msg = fake.role .. " " .. tostring(specWord) .. " " .. tostring(bodyWord) ..
+            " " .. tostring(fake.gs) .. " gs"
         self:OnWhisper(fake.name, msg)
     end
     self.spamActive = savedSpamActive
@@ -1159,25 +1166,30 @@ function GM:OnWhisper(sender, msg)
         end
     end
 
+    -- UNA passata del parser per l'intero messaggio
+    local parsed = self:ParseWhisperMessage(msg)
+
     if not entry then
         entry = {
             name = sender,
-            class = self:ExtractClassFromWhisper(msg),
-            role = self:ExtractRoleFromWhisper(msg),
-            spec = self:ExtractSpecFromWhisper(msg),
-            gs = self:ExtractGSFromWhisper(msg),
+            class = parsed.class,
+            role = parsed.role,
+            spec = parsed.spec,
+            specAmbiguous = parsed.specAmbiguous,
+            gs = parsed.gs,
             invited = false,
             messages = {},
         }
     else
-        -- integra solo le info ancora mancanti
-        local class = self:ExtractClassFromWhisper(msg)
-        if class and not entry.class then entry.class = class end
-        if not entry.role then entry.role = self:ExtractRoleFromWhisper(msg) end
-        local spec = self:ExtractSpecFromWhisper(msg)
-        if spec and not entry.spec then entry.spec = spec end
-        local gs = self:ExtractGSFromWhisper(msg)
-        if gs then entry.gs = gs end
+        -- integra solo le info ancora mancanti (il messaggio successivo puo'
+        -- completare quello che il primo non diceva)
+        if parsed.class and not entry.class then entry.class = parsed.class end
+        if not entry.role then entry.role = parsed.role end
+        if parsed.spec and not entry.spec then
+            entry.spec = parsed.spec
+            entry.specAmbiguous = parsed.specAmbiguous
+        end
+        if parsed.gs then entry.gs = parsed.gs end
         entry.messages = entry.messages or {}
         -- migra un eventuale dato vecchio (rawMsg singolo)
         if #entry.messages == 0 and entry.rawMsg then
@@ -1213,80 +1225,32 @@ function GM:GetEntryMessages(entry)
     return {}
 end
 
--- Cached class keywords: English plus the localized male/female class names
--- of the current client, so whispers like "guerriero" or "Krieger" are
--- recognized as well as "warrior".
-function GM:ClassKeywords()
-    if self._classKeywords then return self._classKeywords end
-    local map = {
-        WARRIOR     = { "warrior" },
-        PALADIN     = { "paladin" },
-        HUNTER      = { "hunter" },
-        ROGUE       = { "rogue" },
-        PRIEST      = { "priest" },
-        DEATHKNIGHT = { "dk", "deathknight", "death knight" },
-        SHAMAN      = { "shaman" },
-        MAGE        = { "mage" },
-        WARLOCK     = { "warlock" },
-        DRUID       = { "druid" },
-    }
-    local function addLocalized(tblName)
-        local tbl = _G[tblName]
-        if type(tbl) ~= "table" then return end
-        for class, words in pairs(map) do
-            local name = tbl[class]
-            if type(name) == "string" and name ~= "" then
-                local lower = string.lower(name)
-                local dup = false
-                for _, w in ipairs(words) do
-                    if w == lower then dup = true break end
-                end
-                if not dup then table.insert(words, lower) end
-            end
-        end
-    end
-    addLocalized("LOCALIZED_CLASS_NAMES_MALE")
-    addLocalized("LOCALIZED_CLASS_NAMES_FEMALE")
-    self._classKeywords = map
-    return map
+-- Un whisper = UNA passata del parser condiviso (Utils:ParseWhisper), che
+-- segue la tabella in _dev/Class_Spec_and_GS_parser.md: [PREFIX] BODY [SUFFIX].
+-- Prima ogni campo aveva la sua scansione separata (e la classe usciva
+-- dall'ordine di pairs(), quindi con due nomi nel messaggio vinceva a caso).
+-- Queste quattro funzioni restano per compatibilita' e delegano tutte allo
+-- stesso motore: classe, spec, ruolo e GS non possono piu' contraddirsi.
+function GM:ParseWhisperMessage(msg)
+    return RLSuite.utils:ParseWhisper(msg)
 end
 
 function GM:ExtractClassFromWhisper(msg)
-    local lower = string.lower(msg or "")
-    for class, words in pairs(self:ClassKeywords()) do
-        for _, word in ipairs(words) do
-            if string.find(lower, word, 1, true) then return class end
-        end
-    end
-    return nil
+    return self:ParseWhisperMessage(msg).class
 end
 
 function GM:ExtractRoleFromWhisper(msg)
-    local lower = string.lower(msg or "")
-    if string.find(lower, "tank") then return "tank" end
-    if string.find(lower, "heal") then return "healer" end
-    return "dps"
+    return self:ParseWhisperMessage(msg).role or "dps"
 end
 
 function GM:ExtractSpecFromWhisper(msg)
-    -- "spec fury", "spec: fury", "fury spec" ("spec" is universal WoW slang).
-    local spec = string.match(msg or "", "[Ss]pec[:%-]?%s*(%a+)")
-    if not spec then
-        spec = string.match(msg or "", "(%a+)%s+[Ss]pec")
-    end
-    return spec
+    return self:ParseWhisperMessage(msg).spec
 end
 
 function GM:ExtractGSFromWhisper(msg)
-    if not msg then return nil end
-    -- "GS" is locale-neutral (GearScore). Accept both "5500 gs" and "gs 5500",
-    -- with optional colon/dash separators.
-    local gs = string.match(msg, "(%d%d%d%d%d?%d?)%s*[Gg][Ss]")
-    if not gs then
-        gs = string.match(msg, "[Gg][Ss]%s*[:%-]?%s*(%d%d%d%d%d?%d?)")
-    end
-    return gs and tonumber(gs) or nil
+    return self:ParseWhisperMessage(msg).gs
 end
+
 
 -- ============================================================
 -- INVITEENGINE PANEL (rib anchored to the Groupmaking window)
@@ -4065,7 +4029,14 @@ function GM:SelectWhisperEntry(index)
     local info = ""
     if entry.class then info = info .. "Class: " .. entry.class .. "\n" end
     if entry.role then info = info .. "Role: " .. entry.role .. "\n" end
-    if entry.spec then info = info .. "Spec: " .. entry.spec .. "\n" end
+    if entry.spec then
+        -- il feral si scrive anche solo "feral": in quel caso la spec scelta e'
+        -- il Cat (il piu' comune) ma la tabella ammette anche il Bear, quindi
+        -- lo si dice invece di far credere che sia deciso.
+        local specTxt = entry.spec
+        if entry.specAmbiguous then specTxt = entry.spec .. "/" .. entry.specAmbiguous end
+        info = info .. "Spec: " .. specTxt .. "\n"
+    end
     if entry.gs then info = info .. "GS: " .. entry.gs .. "\n" end
     if self.wlDetailInfo then self.wlDetailInfo:SetText(info) end
 

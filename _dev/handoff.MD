@@ -7,7 +7,75 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.86**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.87**.
+
+## 1.11.87 — Parser classe/spec/GS secondo la tabella dell'utente
+
+Il file delle regole e' `_dev/Class_Spec_and_GS_parser.md` (lo ha caricato
+l'utente). Prima ogni campo aveva la sua scansione separata e la CLASSE usciva
+dall'ordine di `pairs()`: bastava un secondo nome nel messaggio per far vincere
+la classe sbagliata. Ora c'e' UN motore: `RLSuite.utils:ParseWhisper(msg)`.
+
+Grammatica implementata (una passata per whisper):
+
+    [PREFIX] BODY [SUFFIX]
+
+* BODY = la classe: dk/deathknight, dudu/druid(+boomkin/boomie), hunt/hunter,
+  mage, pala/pal/paladin, priest(+disco), rog/rogue, sham/shammy/shaman,
+  lock/warlock, war/warr/warrior.
+* PREFIX = spec PRIMA della classe ("prot pala"); SUFFIX = spec DOPO
+  ("pala prot"). REGOLA GENERALE: o l'uno o l'altro, mai entrambi.
+* Eccezioni della tabella: `Boomkin`/`Boomie` = Balance e `Disco` = Discipline
+  (corpo che porta la spec: prefisso e suffisso NON ammessi); il ferale del
+  druido ammette PREFISSO E SUFFISSO insieme e il suffisso puo' essere di due
+  parole ("feral cat"/"feral bear").
+* Il suffisso piu' SPECIFICO vince sul generico: "dudu feral bear" = Feral
+  Bear (non "feral" -> Cat). Bug trovato dai test.
+* Se il prefisso combacia con una spec e il suffisso con un'altra, il messaggio
+  e' contraddittorio: si tiene la CLASSE e si ignora la spec ("p pala holy").
+* Maiuscole/minuscole indifferenti; le parole non adiacenti alla classe non
+  disturbano ("healer holy pala 6100 gs" = Holy Paladin).
+* Parole ignorate nel match: "spec" (abitudine "spec fury"), "gs", "k".
+
+GS (tabella GS FORMS): `gs 6542`, `6542 gs`, `6542`, `6k`, `6.5k`, `6,5k`,
+`6.5`, `5.500`; virgola gestita sia come decimale (6,5k) sia come migliaia
+(5,500). Un numero di 3 cifre NON e' un GS, e nemmeno una forma corta nuda
+("war arms 6" non produce 6000): sono i falsi positivi da evitare.
+
+Spec "nuda" (senza classe), utile all'MS: vale SOLO se non e' ambigua;
+se lo e' si tiene la spec e si lascia la classe vuota ("prot" -> Protection
+senza classe, "fury" -> Fury + WARRIOR, "frost" -> Frost senza classe).
+
+Whisplist (`GM:OnWhisper`): UNA passata del parser; i quattro extractor
+(`ExtractClassFromWhisper`, `ExtractRoleFromWhisper`, `ExtractSpecFromWhisper`,
+`ExtractGSFromWhisper`) restano e delegano tutti allo stesso motore, cosi' i
+campi non possono piu' contraddirsi. `GM:ClassKeywords()` e' stata rimossa
+(serviva solo al vecchio extractor). Il dettaglio dell'entry mostra
+"Spec: Feral Cat/Feral Bear" quando il whisper diceva solo "feral".
+Il feral ambiguo viene risolto su **Feral Cat** (caso piu' comune) con
+`entry.specAmbiguous` = Feral Bear.
+
+MS (`MSM:ParseMSMessage`): il comando resta "ms <qualcosa>" (piu' "ms:" /
+"ms -" / "ms="), ma il <qualcosa> passa per lo stesso parser: "ms f dk" ->
+Frost (classe DEATHKNIGHT), "ms unholy" -> Unholy, "ms prot" -> Protection,
+"ms resto" -> Restoration, "ms disco" -> Discipline. La spec si salva col nome
+CANONICO; se il parser non la riconosce si tiene il testo scritto. "ms changes"
+resta ignorato (e' la richiesta del leader).
+
+Whisper di prova del pannello Debug: generati dalla tabella
+(`Utils:SpecWordFor` + `Utils:BodyWordFor`), es. "tank protection war 5900 gs".
+Il pool e' passato alle spec canoniche (Feral Bear, Marksmanship, ...).
+
+Scelte fuori tabella (da confermare con l'utente):
+1. feral ambiguo -> Feral Cat (default), Bear segnalato;
+2. "feral dudu" accettato come prefisso (nella tabella "feral" e' solo suffisso);
+3. accettate anche le grafie corrette affliction/destruction/subtlety accanto a
+   quelle del file (Afliction, Destriction, Sublety);
+4. nomi di classe localizzati del client + "death knight" (due parole);
+5. "6" nudo non e' un GS; "6k gs" si' (la tabella mette "gs" solo sul numero
+   intero).
+
+Test: 1126 PASS (10 nuovi, di cui 149 forme della tabella in un colpo solo).
 
 ## 1.11.86 — Fill Raid: 24 finti e buff generati dalla COMPOSIZIONE
 
