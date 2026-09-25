@@ -7,12 +7,13 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.87**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.88**.
 
-## 1.11.87 — Parser classe/spec/GS secondo la tabella dell'utente
+## 1.11.88 — Parser classe/spec/GS secondo la tabella dell'utente
 
 Il file delle regole e' `_dev/Class_Spec_and_GS_parser.md` (lo ha caricato
-l'utente). Prima ogni campo aveva la sua scansione separata e la CLASSE usciva
+l'utente). 1.11.87 = prima stesura; 1.11.88 = le tre correzioni chieste dal
+raid leader (feral, nomi estesi, forme del GS). Prima ogni campo aveva la sua scansione separata e la CLASSE usciva
 dall'ordine di `pairs()`: bastava un secondo nome nel messaggio per far vincere
 la classe sbagliata. Ora c'e' UN motore: `RLSuite.utils:ParseWhisper(msg)`.
 
@@ -33,14 +34,26 @@ Grammatica implementata (una passata per whisper):
   Bear (non "feral" -> Cat). Bug trovato dai test.
 * Se il prefisso combacia con una spec e il suffisso con un'altra, il messaggio
   e' contraddittorio: si tiene la CLASSE e si ignora la spec ("p pala holy").
+* AMBIGUITA': il parser non indovina mai. "feral" e "f" da soli valgono sia per
+  il Cat sia per il Bear: in quel caso la spec resta la parola comune
+  ("Feral") e la scelta e' del raid leader. Feral Cat e Feral Bear restano DUE
+  voci separate con regole proprie e si risolvono appena il testo lo dice
+  ("dudu bear", "f dudu cat"). Un campo `specAmbiguous` non esiste piu'.
+* Nomi estesi richiesti dal raid leader: "beast mastery" / "beastmastery" (BM),
+  "marksmanship" / "marksman" (MM), "restoration" (resto del druido), sia come
+  prefisso sia come suffisso. Il prefisso puo' essere di DUE parole
+  ("beast mastery hunt").
 * Maiuscole/minuscole indifferenti; le parole non adiacenti alla classe non
   disturbano ("healer holy pala 6100 gs" = Holy Paladin).
 * Parole ignorate nel match: "spec" (abitudine "spec fury"), "gs", "k".
 
 GS (tabella GS FORMS): `gs 6542`, `6542 gs`, `6542`, `6k`, `6.5k`, `6,5k`,
 `6.5`, `5.500`; virgola gestita sia come decimale (6,5k) sia come migliaia
-(5,500). Un numero di 3 cifre NON e' un GS, e nemmeno una forma corta nuda
-("war arms 6" non produce 6000): sono i falsi positivi da evitare.
+(5,500). Come precisato dal raid leader, `none / gs / GS` vale per TUTTE E TRE
+le forme: `gs 6542`, `gs 6k`, `gs 6.5`, `gs 6,5k` (la forma corta = migliaia,
+quindi `gs 6` = 6000). Un numero di 3 cifre NON e' un GS, e una forma corta
+NUDA non lo e' ("war arms 6" non produce 6000): sono i falsi positivi da
+evitare. I test ora verificano il GS in ogni caso, anche quando deve mancare.
 
 Spec "nuda" (senza classe), utile all'MS: vale SOLO se non e' ambigua;
 se lo e' si tiene la spec e si lascia la classe vuota ("prot" -> Protection
@@ -66,16 +79,15 @@ Whisper di prova del pannello Debug: generati dalla tabella
 (`Utils:SpecWordFor` + `Utils:BodyWordFor`), es. "tank protection war 5900 gs".
 Il pool e' passato alle spec canoniche (Feral Bear, Marksmanship, ...).
 
-Scelte fuori tabella (da confermare con l'utente):
-1. feral ambiguo -> Feral Cat (default), Bear segnalato;
-2. "feral dudu" accettato come prefisso (nella tabella "feral" e' solo suffisso);
-3. accettate anche le grafie corrette affliction/destruction/subtlety accanto a
+Scelte fuori tabella:
+1. "feral dudu" accettato come prefisso (nella tabella "feral" e' solo suffisso);
+2. accettate anche le grafie corrette affliction/destruction/subtlety accanto a
    quelle del file (Afliction, Destriction, Sublety);
-4. nomi di classe localizzati del client + "death knight" (due parole);
-5. "6" nudo non e' un GS; "6k gs" si' (la tabella mette "gs" solo sul numero
-   intero).
+3. nomi di classe localizzati del client + "death knight" (due parole);
+4. una forma corta NUDA non e' un GS ("6"), ma "gs 6" si' (forma corta col
+   prefisso, come da chiarimento del raid leader).
 
-Test: 1126 PASS (10 nuovi, di cui 149 forme della tabella in un colpo solo).
+Test: 1127 PASS (11 nuovi; ~165 forme della tabella in un blocco solo, GS incluso).
 
 ## 1.11.86 — Fill Raid: 24 finti e buff generati dalla COMPOSIZIONE
 

@@ -1175,7 +1175,6 @@ function GM:OnWhisper(sender, msg)
             class = parsed.class,
             role = parsed.role,
             spec = parsed.spec,
-            specAmbiguous = parsed.specAmbiguous,
             gs = parsed.gs,
             invited = false,
             messages = {},
@@ -1185,10 +1184,7 @@ function GM:OnWhisper(sender, msg)
         -- completare quello che il primo non diceva)
         if parsed.class and not entry.class then entry.class = parsed.class end
         if not entry.role then entry.role = parsed.role end
-        if parsed.spec and not entry.spec then
-            entry.spec = parsed.spec
-            entry.specAmbiguous = parsed.specAmbiguous
-        end
+        if parsed.spec and not entry.spec then entry.spec = parsed.spec end
         if parsed.gs then entry.gs = parsed.gs end
         entry.messages = entry.messages or {}
         -- migra un eventuale dato vecchio (rawMsg singolo)
@@ -4029,14 +4025,7 @@ function GM:SelectWhisperEntry(index)
     local info = ""
     if entry.class then info = info .. "Class: " .. entry.class .. "\n" end
     if entry.role then info = info .. "Role: " .. entry.role .. "\n" end
-    if entry.spec then
-        -- il feral si scrive anche solo "feral": in quel caso la spec scelta e'
-        -- il Cat (il piu' comune) ma la tabella ammette anche il Bear, quindi
-        -- lo si dice invece di far credere che sia deciso.
-        local specTxt = entry.spec
-        if entry.specAmbiguous then specTxt = entry.spec .. "/" .. entry.specAmbiguous end
-        info = info .. "Spec: " .. specTxt .. "\n"
-    end
+    if entry.spec then info = info .. "Spec: " .. entry.spec .. "\n" end
     if entry.gs then info = info .. "GS: " .. entry.gs .. "\n" end
     if self.wlDetailInfo then self.wlDetailInfo:SetText(info) end
 

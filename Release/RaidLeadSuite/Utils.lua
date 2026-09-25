@@ -308,11 +308,15 @@ Utils.specGrammar = {
         -- per entrambe le spec (ambiguita' segnalata, vedi ParseClassSpec).
         { spec = "Feral Cat",   prefix = { "f", "cat", "feral" },  suffix = { "feral", "cat", "feral cat" } },
         { spec = "Feral Bear",  prefix = { "f", "bear", "feral" }, suffix = { "feral", "bear", "feral bear" } },
-        { spec = "Restoration", prefix = { "r", "resto" },    suffix = { "resto" } },
+        { spec = "Restoration", prefix = { "r", "resto", "restoration" },
+                                suffix = { "resto", "restoration" } },
     },
     HUNTER = {
-        { spec = "Beast Mastery", prefix = { "bm" },             suffix = { "bm" } },
-        { spec = "Marksmanship",  prefix = { "mm" },             suffix = { "mm" } },
+        -- nomi estesi richiesti dal raid leader ("beast mastery", "marksmanship")
+        { spec = "Beast Mastery", prefix = { "bm", "beast mastery", "beastmastery" },
+                                  suffix = { "bm", "beast mastery", "beastmastery" } },
+        { spec = "Marksmanship",  prefix = { "mm", "marksmanship", "marksman" },
+                                  suffix = { "mm", "marksmanship", "marksman" } },
         { spec = "Survival",      prefix = { "s", "surv", "survival" }, suffix = { "s", "surv", "survival" } },
     },
     MAGE = {
@@ -482,15 +486,21 @@ function Utils:ParseClassSpec(text)
                 return out
             end
             local pre  = (i > 1) and words[i - 1] or nil
+            local preC = (i > 2) and (words[i - 2] .. " " .. words[i - 1]) or nil
             local suf1 = words[i + 1]
             local suf2 = words[i + 2]
             local combined = (suf1 and suf2) and (suf1 .. " " .. suf2) or nil
             local cands = {}
             for _, rule in ipairs(g.classes[body.class] or {}) do
                 -- si tiene la PAROLA trovata (non un booleano): serve la
-                -- lunghezza per scegliere fra alias generici e specifici
+                -- lunghezza per scegliere fra alias generici e specifici.
+                -- Il prefisso puo' essere di due parole ("beast mastery hunt").
                 local pWord
-                if pre and rule.prefixSet[pre] then pWord = pre end
+                for _, cand in ipairs({ pre, preC }) do
+                    if cand and rule.prefixSet[cand] and (not pWord or #cand > #pWord) then
+                        pWord = cand
+                    end
+                end
                 -- il suffisso puo' essere: la parola dopo, le due parole dopo
                 -- insieme ("feral cat"), o la seconda da sola (compatibilita'
                 -- con "war tank prot")
@@ -532,9 +542,31 @@ function Utils:ParseClassSpec(text)
                 if not conflict then
                     out.spec = best.spec
                     out.specFrom = (best.p and best.s and "both") or (best.p and "prefix") or "suffix"
-                    if cands[2] and cands[2].spec ~= best.spec
-                        and cands[2].score == best.score and cands[2].len == best.len then
-                        out.specAmbiguous = cands[2].spec
+                    -- Parita' non risolvibile ("feral" / "f" da soli valgono sia
+                    -- per il Cat sia per il Bear): il parser NON indovina.
+                    -- Feral Cat e Feral Bear restano due cose separate e la
+                    -- scelta e' del raid leader: qui resta la parola comune
+                    -- alle due spec, cioe' "Feral".
+                    local tied, same = {}, true
+                    for k = 1, #cands do
+                        local c = cands[k]
+                        if c.score == best.score and c.len == best.len and c.spec ~= best.spec then
+                            if #tied > 0 and tied[1] ~= c.spec then same = false end
+                            tied[#tied + 1] = c.spec
+                        end
+                    end
+                    if #tied > 0 and same then
+                        local a, b = {}, {}
+                        for w in string.gmatch(best.spec, "%a+") do a[#a + 1] = w end
+                        for w in string.gmatch(tied[1], "%a+") do b[#b + 1] = w end
+                        local common
+                        for k = 1, math.min(#a, #b) do
+                            if a[k] == b[k] then common = a[k] else break end
+                        end
+                        if common then
+                            out.spec = common
+                            out.specFrom = "generic"   -- deciso dal raid leader
+                        end
                     end
                 end
             end
@@ -588,11 +620,26 @@ end
 -- Parola di spec della tabella per generare i whisper di prova: si preferisce
 -- la piu' lunga (piu' leggibile) fra i prefissi della spec.
 function Utils:SpecWordFor(class, spec)
-    for _, rule in ipairs((self:_Gram().classes or {})[class] or {}) do
+    local rules = (self:_Gram().classes or {})[class] or {}
+    -- le parole condivise fra due spec (es. "f" e "feral" del druido) non
+    -- vanno usate per i test: meglio "cat" / "bear", che sono univoche.
+    local shared, seen = {}, {}
+    for _, rule in ipairs(rules) do
+        for _, w in ipairs(rule.prefix) do
+            if seen[w] and seen[w] ~= rule.spec then shared[w] = true end
+            seen[w] = rule.spec
+        end
+    end
+    for _, rule in ipairs(rules) do
         if rule.spec == spec then
             local best
             for _, w in ipairs(rule.prefix) do
-                if not best or #w > #best then best = w end
+                if not shared[w] and (not best or #w > #best) then best = w end
+            end
+            if not best then
+                for _, w in ipairs(rule.prefix) do
+                    if not best or #w > #best then best = w end
+                end
             end
             return best
         end

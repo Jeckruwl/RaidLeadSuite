@@ -7594,8 +7594,8 @@ local CASES = {
     { "dudu bear", "DRUID", "Feral Bear" },
     { "dudu feral cat", "DRUID", "Feral Cat" },
     { "dudu feral bear", "DRUID", "Feral Bear" },
-    { "dudu feral", "DRUID", "Feral Cat" },
-    { "f dudu", "DRUID", "Feral Cat" },
+    { "dudu feral", "DRUID", "Feral" },          -- ambiguo: resta "Feral", decide il RL
+    { "f dudu", "DRUID", "Feral" },
     { "f dudu bear", "DRUID", "Feral Bear" },
     { "r dudu", "DRUID", "Restoration" },
     { "dudu resto", "DRUID", "Restoration" },
@@ -7717,9 +7717,29 @@ local CASES = {
     { "pala prot 6,5k", "PALADIN", "Protection", 6500 },
     { "pala prot 6.5", "PALADIN", "Protection", 6500 },
     { "pala prot 5.500 gs", "PALADIN", "Protection", 5500 },
-    { "pala holy", "PALADIN", "Holy", nil },
-    { "pala holy 123", "PALADIN", "Holy", nil },      -- 3 cifre: NON e' un GS
-    { "war arms 6", "WARRIOR", "Arms", nil },         -- "6" nudo: non e' un GS
+    { "pala holy", "PALADIN", "Holy", false },
+    { "pala holy 123", "PALADIN", "Holy", false },    -- 3 cifre: NON e' un GS
+    { "war arms 6", "WARRIOR", "Arms", false },       -- "6" nudo: non e' un GS
+    -- ---- nomi estesi richiesti dal raid leader ----
+    { "beast mastery hunt", "HUNTER", "Beast Mastery" },
+    { "hunt beast mastery", "HUNTER", "Beast Mastery" },
+    { "beastmastery hunter", "HUNTER", "Beast Mastery" },
+    { "marksmanship hunter", "HUNTER", "Marksmanship" },
+    { "hunt marksmanship", "HUNTER", "Marksmanship" },
+    { "marksman hunt", "HUNTER", "Marksmanship" },
+    { "restoration dudu", "DRUID", "Restoration" },
+    { "dudu restoration", "DRUID", "Restoration" },
+    { "restoration druid 6k gs", "DRUID", "Restoration", 6000 },
+    -- ---- "none / gs / GS" vale per TUTTE E TRE le forme ----
+    { "pala prot gs 6542", "PALADIN", "Protection", 6542 },     -- intero, prefisso gs
+    { "pala prot 6542 gs", "PALADIN", "Protection", 6542 },     -- intero, suffisso gs
+    { "pala prot gs 6", "PALADIN", "Protection", 6000 },        -- forma corta (6 = 6k)
+    { "pala prot gs 6k", "PALADIN", "Protection", 6000 },       -- corto + k, prefisso gs
+    { "pala prot 6k gs", "PALADIN", "Protection", 6000 },       -- corto + k, suffisso gs
+    { "pala prot gs 6.5", "PALADIN", "Protection", 6500 },      -- corto decimale, prefisso gs
+    { "pala prot 6.5 gs", "PALADIN", "Protection", 6500 },      -- corto decimale, suffisso gs
+    { "pala prot gs 6,5k", "PALADIN", "Protection", 6500 },     -- corto decimale + k, prefisso gs
+    { "pala prot 6,5 k gs", "PALADIN", "Protection", 6500 },
     -- ---- spec senza classe: vale solo se non e' ambigua ----
     { "prot 5900 gs", nil, "Protection", 5900 },      -- warrior O paladin
     { "resto 5.9k", nil, "Restoration", 5900 },       -- shaman O druido
@@ -7736,25 +7756,28 @@ for _, c in ipairs(CASES) do
     if parsed.class ~= c[2] or parsed.spec ~= c[3] then
         V87.fails[#V87.fails + 1] = string.format("%s -> %s/%s (attesi %s/%s)",
             c[1], tostring(parsed.class), tostring(parsed.spec), tostring(c[2]), tostring(c[3]))
-    elseif c[4] ~= nil and parsed.gs ~= c[4] then
+    elseif c[4] == false and parsed.gs ~= nil then
+        -- "false" = il messaggio NON deve produrre un GS
+        V87.fails[#V87.fails + 1] = string.format("%s -> gs inatteso %s", c[1], tostring(parsed.gs))
+    elseif type(c[4]) == "number" and parsed.gs ~= c[4] then
         V87.fails[#V87.fails + 1] = string.format("%s -> gs %s (atteso %s)",
             c[1], tostring(parsed.gs), tostring(c[4]))
-    elseif c[4] == nil and parsed.gs ~= nil and c[1]:find("gs") == nil and c[1]:find("k") == nil
-        and c[1]:find("5%.") == nil and c[1]:find("65") == nil and c[1]:find("5900") == nil
-        and c[1]:find("6100") == nil and c[1]:find("5500") == nil then
-        -- nessun GS atteso: il test non deve trovarne uno per sbaglio
-        V87.fails[#V87.fails + 1] = string.format("%s -> gs inatteso %s", c[1], tostring(parsed.gs))
     end
 end
-V87.specAmbiguous = RLSuite.utils:ParseWhisper("dudu feral").specAmbiguous
-V87.ambiguous_f = RLSuite.utils:ParseWhisper("f dudu").specAmbiguous
+V87.feral_plain = RLSuite.utils:ParseWhisper("dudu feral").spec
+V87.feral_plain2 = RLSuite.utils:ParseWhisper("f dudu").spec
+V87.feral_bear = RLSuite.utils:ParseWhisper("dudu bear").spec
+V87.feral_cat = RLSuite.utils:ParseWhisper("dudu cat").spec
+V87.feral_bear2 = RLSuite.utils:ParseWhisper("f dudu bear").spec
+V87.feral_cat2 = RLSuite.utils:ParseWhisper("f dudu cat").spec
 V87.role = RLSuite.utils:ParseWhisper("bear dudu tank 6k gs").role
 V87.role2 = RLSuite.utils:ParseWhisper("holy pala healer 6k gs").role
 """)
 
-check(rt.eval("V87.n >= 130") and rt.eval("#V87.fails == 0"), "v1.11.87: %d forme della tabella (PREFIX/BODY/SUFFIX + GS) tutte riconosciute -- %s" % (rt.eval("V87.n"), rt.eval("table.concat(V87.fails, ' | ')")))
-check(bool(rt.eval("V87.specAmbiguous == 'Feral Bear' and V87.ambiguous_f == 'Feral Bear'")), "v1.11.87: 'dudu feral' e 'f dudu' restano ambigui (Cat scelto, Bear segnalato in specAmbiguous)")
-check(bool(rt.eval("V87.role == 'tank' and V87.role2 == 'healer'")), "v1.11.87: il ruolo resta letto dalle parole (tank/healer)")
+check(rt.eval("V87.n >= 165") and rt.eval("#V87.fails == 0"), "v1.11.88: %d forme della tabella (PREFIX/BODY/SUFFIX + GS) tutte riconosciute -- %s" % (rt.eval("V87.n"), rt.eval("table.concat(V87.fails, ' | ')")))
+check(bool(rt.eval("V87.feral_plain == 'Feral' and V87.feral_plain2 == 'Feral'")), "v1.11.88: feral ambiguo -> resta 'Feral' (nessuna spec inventata: decide il raid leader)")
+check(bool(rt.eval("V87.feral_bear == 'Feral Bear' and V87.feral_cat == 'Feral Cat' and V87.feral_bear2 == 'Feral Bear' and V87.feral_cat2 == 'Feral Cat'")), "v1.11.88: Feral Cat e Feral Bear restano DUE cose separate e si risolvono appena il testo lo dice (bear/cat, anche col prefisso f)")
+check(bool(rt.eval("V87.role == 'tank' and V87.role2 == 'healer'")), "v1.11.88: il ruolo resta letto dalle parole (tank/healer)")
 
 # --- gli extractor della Whisplist delegano allo stesso motore ---
 rt.execute("""
@@ -7764,7 +7787,7 @@ V87E.spec  = RLSuite.groupmaking:ExtractSpecFromWhisper("healer holy pala 6100 g
 V87E.gs    = RLSuite.groupmaking:ExtractGSFromWhisper("healer holy pala 6100 gs")
 V87E.role  = RLSuite.groupmaking:ExtractRoleFromWhisper("tank bear dudu 6k gs")
 """)
-check(bool(rt.eval("V87E.class == 'PALADIN' and V87E.spec == 'Holy' and V87E.gs == 6100 and V87E.role == 'tank'")), "v1.11.87: la Whisplist legge classe+spec+GS dallo stesso testo (extractor delegati)")
+check(bool(rt.eval("V87E.class == 'PALADIN' and V87E.spec == 'Holy' and V87E.gs == 6100 and V87E.role == 'tank'")), "v1.11.88: la Whisplist legge classe+spec+GS dallo stesso testo (extractor delegati)")
 
 # --- MS: il corpo del comando passa per lo stesso parser ---
 rt.execute("""
@@ -7789,11 +7812,11 @@ local j = ms("ms: resto sham") V87M.colon = j and j.spec
 MSM.db = {}
 MSM.listening = false
 """)
-check(bool(rt.eval("V87M.fdk == 'Frost' and V87M.fdk_class == 'DEATHKNIGHT'")), "v1.11.87: 'ms f dk' -> Frost (DEATHKNIGHT): il comando MS usa la tabella e registra anche la classe")
-check(bool(rt.eval("V87M.dkf == 'Frost' and V87M.unholy == 'Unholy'")), "v1.11.87: MS accetta 'ms dk frost' e 'ms unholy' (nome canonico)")
-check(bool(rt.eval("V87M.prot == 'Protection' and V87M.resto == 'Restoration' and V87M.disco == 'Discipline' and V87M.fury == 'Fury'")), "v1.11.87: 'ms prot' / 'ms resto' / 'ms disco' / 'ms fury' -> nomi canonici")
-check(bool(rt.eval("V87M.protpala == 'Protection' and V87M.protpala_class == 'PALADIN'")), "v1.11.87: 'ms prot pala' -> Protection (PALADIN)")
-check(bool(rt.eval("V87M.changes == nil and V87M.colon == 'Restoration'")), "v1.11.87: 'ms changes' resta ignorato, 'ms: resto sham' funziona")
+check(bool(rt.eval("V87M.fdk == 'Frost' and V87M.fdk_class == 'DEATHKNIGHT'")), "v1.11.88: 'ms f dk' -> Frost (DEATHKNIGHT): il comando MS usa la tabella e registra anche la classe")
+check(bool(rt.eval("V87M.dkf == 'Frost' and V87M.unholy == 'Unholy'")), "v1.11.88: MS accetta 'ms dk frost' e 'ms unholy' (nome canonico)")
+check(bool(rt.eval("V87M.prot == 'Protection' and V87M.resto == 'Restoration' and V87M.disco == 'Discipline' and V87M.fury == 'Fury'")), "v1.11.88: 'ms prot' / 'ms resto' / 'ms disco' / 'ms fury' -> nomi canonici")
+check(bool(rt.eval("V87M.protpala == 'Protection' and V87M.protpala_class == 'PALADIN'")), "v1.11.88: 'ms prot pala' -> Protection (PALADIN)")
+check(bool(rt.eval("V87M.changes == nil and V87M.colon == 'Restoration'")), "v1.11.88: 'ms changes' resta ignorato, 'ms: resto sham' funziona")
 
 # --- whisper finti del pannello Debug: generati con la tabella ---
 rt.execute("""
@@ -7811,7 +7834,7 @@ end
 RLSuite.groupmaking.whisperDB.entries = {}
 RLSuite.db.profile.debug = saved
 """)
-check(bool(rt.eval("V87W.n == 10 and V87W.parsed == 10")), "v1.11.87: i 10 whisper finti del test Whisplist vengono riletti dal parser (classe+spec+GS) -- %s" % rt.eval("table.concat(V87W.bad, ' | ')"))
+check(bool(rt.eval("V87W.n == 10 and V87W.parsed == 10")), "v1.11.88: i 10 whisper finti del test Whisplist vengono riletti dal parser (classe+spec+GS) -- %s" % rt.eval("table.concat(V87W.bad, ' | ')"))
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
