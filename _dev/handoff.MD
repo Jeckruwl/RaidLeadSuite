@@ -7,7 +7,85 @@ Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 04301
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.93**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.94**.
+
+## 1.11.94 — Loot: category "projectiles" + LISTA IGNORA (ctrl+click, config)
+
+Due richieste del raid leader.
+
+### 1) "projectiles" fra i loot ignorabili
+
+Item class del client `Projectile` (frecce/munizioni), trattata come le altre
+categorie ignorabili:
+
+* `LM_PROJECTILE_CLASSES = { Projectile = true, Proiettile = true }` (stesso
+  schema di `Gem/Gemma` e `Recipe/Ricetta`);
+* `LM:LootCategory` -> `"PROJECTILE"`;
+* `LM:IsCategoryIgnored("PROJECTILE")` -> `db.filters.projectiles`;
+* quinta checkbox nella riga "ignore loots:" della finestra Loot. La riga e'
+  stata **stretta** (passo 14 invece di 18, partenza a 90) perche' le cinque
+  voci stiano dentro i 500 di larghezza: `recipes BOE gems shards projectiles`
+  finiscono a ~477px.
+
+### 2) Lista ignora di item singoli
+
+`db.loot.ignoredItems = { { id = <numero>, name = "<nome>" }, ... }` (nei
+SavedVariables, quindi persiste). Un item in lista **non viene piu' catturato**
+(`AddToHistory`) e **non viene piu' mostrato** (`MatchesFilter`): sparisce anche
+dalle righe gia' in storico.
+
+* **CTRL+click su una riga dello storico** = aggiunge l'item alla lista. La
+  riga sparisce subito, l'item viene deselezionato (niente roll su roba appena
+  ignorata) e il leader vede `"Now ignoring <nome> (<id>) - it will never be
+  shown again."`. Il tooltip della riga ha la riga gialla
+  `"Ctrl+click: add to the ignore list"`.
+* Il click normale (senza CTRL) resta identico: seleziona l'item.
+* Performance: il controllo gira su ogni riga e su ogni loot, quindi c'e' un
+  **set in cache** (`IgnoredSet()` -> `{ [id] = true }`) con
+  `InvalidateIgnored()` chiamata a ogni modifica della lista.
+* Tetto di `LM_IGNORE_MAX` = 500 item: oltre, avviso invece di crescere senza
+  controllo (la lista vive nei SavedVariables).
+* API: `IgnoredListText()` / `SetIgnoredListText(text)` / `AddIgnoredItem()` /
+  `RemoveIgnoredItem()` / `ClearIgnoredItems()` / `IgnoredCount()`.
+
+### 3) La lista si modifica in Configurazione -> Loot
+
+Nuovo gruppo **Loot** (order 7; Debug spostato a 8). Contiene:
+
+* `Ignored items`: campo **multiriga** (12 righe) — una riga per item, formato
+  `id` oppure `id: Nome`. Il parser accetta **anche il link incollato**
+  (`|Hitem:99011:...|h[Saronite Arrow]|h|r`), il formato `id - Nome`, righe
+  vuote e spazi in testa. Salvataggio con Invio (AceConfig MultiLineEditBox ->
+  `set`), conferma a video `"Ignore list saved (N items)."`. Svuotare il campo =
+  smettere di ignorare tutto.
+* `Clear ignored items` (bottone) — svuota la lista e ridisegna lo storico.
+* `Ignore loot categories`: le **5 categorie ignorabili** (recipes/BOE/gems/
+  shards/projectiles) comandabili anche da qui.
+* Nota sull'ordine: la voce `Loot` era stata rimossa dal Config nella 1.11.17;
+  torna **apposta**, perche' il raid leader ha chiesto di poter modificare la
+  lista da Configurazione.
+
+Le due viste delle categorie (checkbox della finestra Loot e toggle del Config)
+scrivono con **un'unica funzione** `LM:SetCategoryIgnored(key, value)`: aggiorna
+`db.filters`, allinea la checkbox della finestra e ridisegna lo storico. Il
+Config non lancia `NotifyChange` (evita di rileggere il campo multiriga mentre
+si scrive): la finestra Loot invece resta sempre sincrona.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1206 PASS**. Controlli nuovi: `LootCategory` =
+PROJECTILE, categorie ignorate in cattura e a video, sincronia checkbox,
+ctrl+click che aggiunge alla lista (id+nome giusti, riga sparita e non
+ritornante, item deselezionato, print di conferma), filtro in cattura dopo
+l'ignora, click normale intatto, campo multiriga in config che rilegge link/
+`id - nome`/righe vuote, niente doppioni, toggle delle categorie dal config,
+`Clear ignored items` che svuota davvero. Aggiornati i check di struttura del
+Config (Loot order 7, Debug order 8) e quello delle checkbox (5 invece di 4).
+
+**Trappola trovata e chiusa nei test:** `x = (A == true)` seguito da un check
+`x == false` e' una doppia negazione che si legge male ed e' costata una mezza
+fila di diagnosi: nei test si salva lo STATO (`cb_on = GetChecked()`) e si
+confronta quello.
 
 ## 1.11.93 — Nell'avviso, se la categoria e' assegnata si scrive il NOME DEL BUFF
 

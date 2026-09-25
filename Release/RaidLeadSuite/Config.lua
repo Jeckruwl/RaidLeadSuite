@@ -587,6 +587,61 @@ function CFG:BuildOptionsTable()
 
     local raidframe = raidLayout
 
+    -- --- Loot ----------------------------------------------------
+    -- La LISTA IGNORA (item singoli) sta qui, modificabile a mano: una riga
+    -- per item, "id" oppure "id: Nome" (o incollando direttamente il link).
+    -- Si riempie da sola col ctrl+click su una riga dello storico loot.
+    local function filterToggle(key, name, order)
+        return { type = "toggle", name = name, order = order,
+            desc = L["Never capture or show this category of loot."],
+            get = function()
+                local lm = RLSuite.lootManager
+                return (lm and lm.db and lm.db.filters and lm.db.filters[key]) and true or false
+            end,
+            set = function(_, v)
+                local lm = RLSuite.lootManager
+                if lm and lm.SetCategoryIgnored then lm:SetCategoryIgnored(key, v) end
+            end }
+    end
+
+    local loot = {
+        ignoreNote = { type = "description", order = 1,
+            name = L["Ctrl+click a loot row to ignore that item: it is never captured nor shown again. The list below is editable (one item per line: ID, or ID: name, or paste the item link)."] },
+        ignoreList = { type = "input", name = L["Ignored items"],
+            desc = L["One item per line: ID, or ID: name. Empty the list to stop ignoring items."],
+            multiline = 12, width = "full", order = 2,
+            get = function()
+                local lm = RLSuite.lootManager
+                if not (lm and lm.IgnoredListText) then return "" end
+                return lm:IgnoredListText()
+            end,
+            set = function(_, v)
+                local lm = RLSuite.lootManager
+                if lm and lm.SetIgnoredListText then
+                    local n = lm:SetIgnoredListText(v)
+                    RLSuite.utils:Print(string.format(L["Ignore list saved (%d items)."], n))
+                end
+            end },
+        ignoreClear = execute(L["Clear ignored items"],
+            L["Removes every item from the ignore list: loot that was ignored starts being captured again."],
+            3,
+            function()
+                local lm = RLSuite.lootManager
+                if lm and lm.ClearIgnoredItems then
+                    local n = lm:ClearIgnoredItems()
+                    lm:UpdateHistory()
+                    RLSuite.utils:Print(string.format(L["Ignore list cleared (%d items removed)."], n))
+                    if RLSuite.config then RLSuite.config:NotifyChange() end
+                end
+            end),
+        filtersHead = { type = "header", name = L["Ignore loot categories"], order = 4 },
+        fRecipes = filterToggle("recipes", L["recipes"], 5),
+        fBoe = filterToggle("boe", L["BOE"], 6),
+        fGems = filterToggle("gems", L["gems"], 7),
+        fShards = filterToggle("shards", L["shards"], 8),
+        fProjectiles = filterToggle("projectiles", L["projectiles"], 9),
+    }
+
     return {
         type = "group",
         name = "RLSuite",
@@ -597,7 +652,8 @@ function CFG:BuildOptionsTable()
             macros = { type = "group", name = L["Macros"], order = 4, args = macros },
             raidframe = { type = "group", name = L["Raid Frame"], order = 5, args = raidframe },
             savedraids = savedraids,
-            debug = { type = "group", name = L["Debug"], order = 7, args = debug },
+            loot = { type = "group", name = L["Loot"], order = 7, args = loot },
+            debug = { type = "group", name = L["Debug"], order = 8, args = debug },
         },
     }
 end

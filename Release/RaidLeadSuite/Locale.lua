@@ -364,6 +364,27 @@ L["Start the spammer first, then Whisp test sends the fake whispers."] = "Avvia 
     L["Macro icon"] = true
     L["Position"] = true
 
+    -- Loot Manager: categorie ignorabili + lista ignora (item singoli)
+    L["Loot"] = true
+    L["recipes"] = true
+    L["BOE"] = true
+    L["gems"] = true
+    L["shards"] = true
+    L["projectiles"] = true
+    L["Ignore loot categories"] = true
+    L["Never capture or show this category of loot."] = true
+    L["Ignored items"] = true
+    L["One item per line: ID, or ID: name. Empty the list to stop ignoring items."] = true
+    L["Ctrl+click a loot row to ignore that item: it is never captured nor shown again. The list below is editable (one item per line: ID, or ID: name, or paste the item link)."] = true
+    L["Ctrl+click: add to the ignore list"] = true
+    L["Clear ignored items"] = true
+    L["Removes every item from the ignore list: loot that was ignored starts being captured again."] = true
+    L["Ignore list saved (%d items)."] = true
+    L["Ignore list cleared (%d items removed)."] = true
+    L["Ignore list is full (%d items): remove something first."] = true
+    L["Now ignoring %s (%d) - it will never be shown again."] = true
+    L["That item was already in the ignore list."] = true
+
     -- Utils
     L['DBM/BigWigs not available: timer "%s" not started.'] = true
 end

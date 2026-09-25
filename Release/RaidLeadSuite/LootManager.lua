@@ -27,6 +27,10 @@ function LM:Init()
     self.history = self.db.history or {}
     self.db.history = self.history
     self.db.filters = self.db.filters or {}
+    -- LISTA IGNORA (item singoli): { { id = 12345, name = "Nome" }, ... }.
+    -- Un item in lista non viene piu' ne' catturato ne' mostrato.
+    self.db.ignoredItems = self.db.ignoredItems or {}
+    self._ignoredSet = nil
     self.currentRoll = nil
     self.preMessage = ""
     self:CreateFrame()
@@ -136,28 +140,32 @@ function LM:CreateFrame()
     ignoreLabel:SetText("ignore loots:")
     self.ignoreChecks = {}
     local ignoreDefs = {
-        { key = "recipes", label = "recipes" },
-        { key = "boe",     label = "BOE" },
-        { key = "gems",    label = "gems" },
-        { key = "shards",  label = "shards" },
+        { key = "recipes",     label = "recipes" },
+        { key = "boe",         label = "BOE" },
+        { key = "gems",        label = "gems" },
+        { key = "shards",      label = "shards" },
+        -- Frecce/proiettili (item class "Projectile"): categoria a se', come
+        -- le altre: si ignorano in cattura e a video.
+        { key = "projectiles", label = "projectiles" },
     }
-    local ix = 96
+    -- Passo piu' stretto (14 invece di 18) per far stare anche projectiles
+    -- nella stessa riga dentro i 500 di larghezza della finestra.
+    local ix = 90
     for _, def in ipairs(ignoreDefs) do
         local cb = CreateFrame("CheckButton", "RLSuiteLootIgnore_" .. def.key, f, "UICheckButtonTemplate")
         cb:SetSize(20, 20)
         cb:SetPoint("TOPLEFT", f, "TOPLEFT", ix, -72)
         cb:SetChecked(self.db and self.db.filters and self.db.filters[def.key] and true or false)
         cb:SetScript("OnClick", function(btn)
-            if LM.db and LM.db.filters then
-                LM.db.filters[def.key] = btn:GetChecked() and true or false
-            end
-            LM:UpdateHistory()
+            -- Un solo punto di scrittura: cosi' le stesse voci restano
+            -- allineate se sono aperte anche in Configurazione -> Loot.
+            LM:SetCategoryIgnored(def.key, btn:GetChecked() and true or false)
         end)
         local lbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         lbl:SetPoint("LEFT", cb, "RIGHT", 2, 0)
         lbl:SetText(def.label)
         self.ignoreChecks[def.key] = cb
-        ix = ix + 20 + (#def.label * 7) + 18
+        ix = ix + 20 + (#def.label * 7) + 14
     end
 
     -- Header spostato sotto la riga delle checkbox (-74 -> -100).
@@ -479,6 +487,11 @@ local LM_SHARD_IDS = {
 }
 local LM_GEM_CLASSES = { Gem = true, Gemma = true }
 local LM_RECIPE_CLASSES = { Recipe = true, Ricetta = true }
+-- Frecce/munizioni ("Projectile"): item class del client, con la traduzione
+-- itIT per sicurezza (stesso schema di Gem/Gemma e Recipe/Ricetta).
+local LM_PROJECTILE_CLASSES = { Projectile = true, Proiettile = true }
+-- La lista ignora vive nei SavedVariables: un tetto la tiene sotto controllo.
+local LM_IGNORE_MAX = 500
 
 -- BOE detection: la riga di vincolo nel tooltip usa la globale localizzata
 -- ITEM_BIND_ON_EQUIP (e ITEM_BIND_ON_PICKUP per i BoP, che chiude il giro).
@@ -515,6 +528,7 @@ function LM:LootCategory(itemLink, itemName)
     if itemClass then
         if LM_GEM_CLASSES[itemClass] then return "GEM" end
         if LM_RECIPE_CLASSES[itemClass] then return "RECIPE" end
+        if LM_PROJECTILE_CLASSES[itemClass] then return "PROJECTILE" end
     end
     if self:DetectItemType(itemLink, itemName) == "PATTERN" then
         return "RECIPE"
@@ -543,12 +557,170 @@ function LM:IsCategoryIgnored(cat)
     if cat == "BOE" then return f.boe == true end
     if cat == "GEM" then return f.gems == true end
     if cat == "SHARD" then return f.shards == true end
+    if cat == "PROJECTILE" then return f.projectiles == true end
     return false
+end
+
+-- Unico punto di scrittura delle categorie ignorate: aggiorna la checkbox
+-- della finestra Loot (se esiste) e ridisegna lo storico. Usata sia dalle
+-- checkbox sia dalla Configurazione -> Loot, cosi' le due viste non divergono.
+function LM:SetCategoryIgnored(key, value)
+    if not (key and self.db) then return end
+    self.db.filters = self.db.filters or {}
+    self.db.filters[key] = value and true or false
+    local cb = self.ignoreChecks and self.ignoreChecks[key]
+    if cb and cb.SetChecked and cb:GetChecked() ~= self.db.filters[key] then
+        cb:SetChecked(self.db.filters[key])
+    end
+    self:UpdateHistory()
+end
+
+-- ============================================================
+-- LISTA IGNORA (item singoli)
+-- "Ogni item, se faccio ctrl+click, viene aggiunto alla lista ignora e MAI
+-- piu' mostrato": il filtro e' in cattura (AddToHistory) e a video
+-- (MatchesFilter), quindi l'item sparisce anche dalle righe gia' in storico.
+-- ============================================================
+function LM:IgnoreList()
+    if not self.db then self.db = RLSuite.db.profile.loot end
+    self.db.ignoredItems = self.db.ignoredItems or {}
+    return self.db.ignoredItems
+end
+
+local function ItemIdFrom(text)
+    if not text then return nil end
+    local id = tonumber(string.match(text, "Hitem:(%d+)"))
+    if id then return id end
+    return tonumber(string.match(text, "(%d+)"))
+end
+
+-- Insieme { [id] = true } in cache: il controllo gira su OGNI riga dello
+-- storico e su ogni loot catturato, quindi niente scansione lineare.
+function LM:IgnoredSet()
+    if self._ignoredSet then return self._ignoredSet end
+    local set = {}
+    for _, e in ipairs(self:IgnoreList()) do
+        local id = tonumber(e.id)
+        if id then set[id] = true end
+    end
+    self._ignoredSet = set
+    return set
+end
+
+function LM:InvalidateIgnored()
+    self._ignoredSet = nil
+end
+
+function LM:IsItemIgnored(itemLink)
+    local id = ItemIdFrom(itemLink)
+    if not id then return false end
+    return self:IgnoredSet()[id] == true
+end
+
+-- Aggiunge un item alla lista ignora. Ritorna true se e' stato aggiunto,
+-- false se c'era gia' (o se l'id non e' valido).
+function LM:AddIgnoredItem(id, name)
+    id = tonumber(id)
+    if not id then return false end
+    local list = self:IgnoreList()
+    for i = 1, #list do
+        if tonumber(list[i].id) == id then
+            -- gia' in lista: se ora conosciamo il nome e prima no, lo salvo
+            if (not list[i].name or list[i].name == "") and name and name ~= "" then
+                list[i].name = name
+            end
+            return false
+        end
+    end
+    if #list >= LM_IGNORE_MAX then
+        RLSuite.utils:Print(string.format(L["Ignore list is full (%d items): remove something first."],
+            LM_IGNORE_MAX))
+        return false
+    end
+    list[#list + 1] = { id = id, name = name or "" }
+    self:InvalidateIgnored()
+    return true
+end
+
+function LM:RemoveIgnoredItem(id)
+    id = tonumber(id)
+    if not id then return false end
+    local list = self:IgnoreList()
+    for i = 1, #list do
+        if tonumber(list[i].id) == id then
+            table.remove(list, i)
+            self:InvalidateIgnored()
+            return true
+        end
+    end
+    return false
+end
+
+function LM:ClearIgnoredItems()
+    local list = self:IgnoreList()
+    local n = #list
+    for i = #list, 1, -1 do list[i] = nil end
+    self:InvalidateIgnored()
+    return n
+end
+
+function LM:IgnoredCount()
+    return #self:IgnoreList()
+end
+
+-- Testo per la Configurazione: una riga per item, "id: Nome".
+function LM:IgnoredListText()
+    local lines = {}
+    for _, e in ipairs(self:IgnoreList()) do
+        local name = e.name
+        if not name or name == "" then
+            name = select(1, GetItemInfo(tonumber(e.id) or 0)) or ""
+        end
+        lines[#lines + 1] = tostring(e.id) .. ": " .. tostring(name or "")
+    end
+    return table.concat(lines, "\n")
+end
+
+-- Rilegge il testo della Configurazione: ogni riga e' "id" oppure "id: Nome"
+-- (o "id - Nome": si prende il primo numero della riga come id).
+function LM:SetIgnoredListText(text)
+    local list = self:IgnoreList()
+    for i = #list, 1, -1 do list[i] = nil end
+    local n = 0
+    for line in string.gmatch(tostring(text or ""), "[^\r\n]+") do
+        local id = ItemIdFrom(line)
+        if id and n < LM_IGNORE_MAX then
+            local name = string.match(line, "^%s*%d+%s*[:%-–]?%s*(.*)$") or ""
+            list[#list + 1] = { id = id, name = name }
+            n = n + 1
+        end
+    end
+    self:InvalidateIgnored()
+    self:UpdateHistory()
+    return n
+end
+
+-- Ctrl+click su una riga dello storico: l'item entra nella lista ignora.
+function LM:IgnoreRowItem(entry)
+    if not entry then return false end
+    local id = ItemIdFrom(entry.itemLink)
+    if not id then return false end
+    local added = self:AddIgnoredItem(id, entry.itemName)
+    RLSuite.utils:Print(string.format(L["Now ignoring %s (%d) - it will never be shown again."],
+        tostring(entry.itemName or "?"), id))
+    if not added then
+        RLSuite.utils:Print(L["That item was already in the ignore list."])
+    end
+    if self.selectedItem == entry then self:ClearSelection() end
+    self:UpdateHistory()
+    return true
 end
 
 function LM:AddToHistory(itemLink, itemName, itemTexture, quality)
     -- Filtro in cattura: categorie ignorate MAI registrate.
     if self:IsCategoryIgnored(self:LootCategory(itemLink, itemName)) then return end
+    -- Item nella LISTA IGNORA (ctrl+click su una riga): mai piu' registrato.
+    if self:IsItemIgnored(itemLink) then return end
     if quality == nil and itemLink then
         local _, _, q = GetItemInfo(itemLink)
         quality = q
@@ -622,6 +794,8 @@ function LM:MatchesFilter(entry)
         f = self.db.rarityFilter
     end
     if self:IsCategoryIgnored(self:EntryCategory(entry)) then return false end
+    -- Lista ignora: l'item non compare nemmeno se era gia' in storico.
+    if self:IsItemIgnored(entry.itemLink) then return false end
     if f == nil or f == "all" then return true end
     local q = self:EntryQuality(entry)
     return q >= tonumber(f)
@@ -762,7 +936,13 @@ function LM:UpdateHistory()
             row.remain = remain
             row.assigned = assigned
 
-            row:SetScript("OnClick", function()
+            row:SetScript("OnClick", function(s, button)
+                -- CTRL+click: l'item va nella lista ignora e sparisce subito
+                -- (mai piu' mostrato ne' registrato).
+                if IsControlKeyDown and IsControlKeyDown() then
+                    self:IgnoreRowItem(entry)
+                    return
+                end
                 self:SelectItem(entry)
                 self:RefreshHistoryHighlight()
             end)
@@ -770,6 +950,9 @@ function LM:UpdateHistory()
                 if entry.itemLink then
                     GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
                     pcall(function() GameTooltip:SetHyperlink(entry.itemLink) end)
+                    if GameTooltip.AddLine then
+                        GameTooltip:AddLine(L["Ctrl+click: add to the ignore list"], 1, 0.82, 0)
+                    end
                     GameTooltip:Show()
                 end
             end)

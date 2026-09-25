@@ -824,12 +824,14 @@ check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.type == '
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.groupmaking.type == 'group'")), "Groupmaking category present")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.macros.args.layout.type == 'group'")), "Macros -> Bar Layout present")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.debug.type == 'group'")), "Debug category present (top-level)")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.ms == nil and RLSuite.config:BuildOptionsTable().args.loot == nil")), "MS Manager and Loot Manager top-level entries removed")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.ms == nil")), "MS Manager top-level entry removed")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.loot ~= nil and RLSuite.config:BuildOptionsTable().args.loot.args.ignoreList ~= nil")), "v1.11.94: Loot is back on purpose, with the editable ignore list")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.args.save1load ~= nil")), "saved raids rendered as Load/Delete executes (dynamic)")
 
-# Ordering: Saved Raids penultimo, Debug ultimo.
-check(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.order") == 6, "Saved Raids is second-to-last (order 6)")
-check(rt.eval("RLSuite.config:BuildOptionsTable().args.debug.order") == 7, "Debug is the last entry (order 7)")
+# Ordering: Saved Raids, Loot, Debug in fondo.
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.order") == 6, "Saved Raids is order 6")
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.loot.order") == 7, "v1.11.94: Loot (lista ignora) is order 7")
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.debug.order") == 8, "Debug is the last entry (order 8)")
 
 # --- 1.11.17 user-requested removals ---
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.args.scale ~= nil and RLSuite.config:BuildOptionsTable().args.general.args.font ~= nil")), "General = font + global Scale slider only")
@@ -3531,13 +3533,14 @@ lm.history = {}; if lm.db then lm.db.history = lm.history end
 lm.selectedItem = nil
 lm:UpdateHistory()
 H_CK = (lm.ignoreChecks ~= nil and lm.ignoreChecks.recipes ~= nil and lm.ignoreChecks.boe ~= nil
-    and lm.ignoreChecks.gems ~= nil and lm.ignoreChecks.shards ~= nil)
+    and lm.ignoreChecks.gems ~= nil and lm.ignoreChecks.shards ~= nil
+    and lm.ignoreChecks.projectiles ~= nil)
 ITEMINFO_DB['|cff0070dd|Hitem:99901:0:0:0:0:0:0:0:80|h[Pattern: Test Boots]|h|r']
     = {'Pattern: Test Boots', '|cff0070dd|Hitem:99901:0:0:0:0:0:0:0:80|h[Pattern: Test Boots]|h|r', 3, 80, 80, 'Recipe', 'Leatherworking', 1, '', 'tex'}
 ITEMINFO_DB['|cff0070dd|Hitem:99902:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r']
     = {'Bold Cardinal Ruby', '|cff0070dd|Hitem:99902:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r', 3, 80, 80, 'Gem', 'Red', 1, '', 'tex'}
 """)
-check(bool(rt.eval("H_CK == true")), "the 4 'ignore loots' checkboxes exist (recipes/BOE/gems/shards)")
+check(bool(rt.eval("H_CK == true")), "the 5 'ignore loots' checkboxes exist (recipes/BOE/gems/shards/projectiles)")
 rt.execute("""
 local lm = RLSuite.lootManager
 local function clickCB(key, state)
@@ -8259,6 +8262,116 @@ check(bool(rt.eval("V93.kings == 'Kings'")), "v1.11.93: %stat + paladino = 'King
 check(bool(rt.eval("V93.wisdom == 'Wisdom' and V93.spring == 'Mana Spring'")), "v1.11.93: MP5 cambia nome secondo la classe che lo fa (pala = Wisdom, shaman = Mana Spring)")
 check(bool(rt.eval("V93.rider == 'nil'")), "v1.11.93: classe non fornitrice di quella categoria -> nessun nome (si usa la sigla)")
 check(bool(rt.eval("V93.repl == 'nil' and V93.dur == 'nil' and V93.none == 'nil'")), "v1.11.93: categoria/classe non in tabella (e colonna di servizio) -> nessun nome inventato")
+print("\n== v1.11.94: projectiles ignorabili + lista ignora (ctrl+click, config) ==")
+rt.execute("""
+local lm = RLSuite.lootManager
+local ID_MINE = '|cff1eff00|Hitem:99011:0:0:0:0:0:0:0:80|h[Saronite Arrow]|h|r'
+local ID_GEM  = '|cff0070dd|Hitem:99012:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r'
+ITEMINFO_DB[ID_MINE] = {'Saronite Arrow', ID_MINE, 2, 75, 70, 'Projectile', 'Arrow', 1000, '', 'tex'}
+ITEMINFO_DB[ID_GEM]  = {'Bold Cardinal Ruby', ID_GEM, 3, 80, 80, 'Gem', 'Red', 1, '', 'tex'}
+lm:ClearIgnoredItems()
+lm:SetCategoryIgnored('projectiles', false)
+lm:SetCategoryIgnored('gems', false)
+lm:ClearHistory()
+lm.selectedItem = nil
+V94 = {}
+
+-- --- 1) projectiles e' una categoria ignorabile a se' ---
+V94.cat = tostring(lm:LootCategory(ID_MINE, 'Saronite Arrow'))
+lm:SetCategoryIgnored('projectiles', true)
+lm:OnLootMessage('You receive loot: ' .. ID_MINE .. '.')
+V94.cap_on = #lm.history
+lm:SetCategoryIgnored('projectiles', false)
+lm:OnLootMessage('You receive loot: ' .. ID_MINE .. '.')
+V94.cap_off = #lm.history
+lm:SetCategoryIgnored('projectiles', true)
+lm:UpdateHistory()
+V94.rows_on = #lm.histRows
+-- la checkbox della finestra Loot resta allineata con la scrittura unica
+V94.cb_on = lm.ignoreChecks.projectiles:GetChecked()
+lm:SetCategoryIgnored('projectiles', false)
+V94.cb_off = lm.ignoreChecks.projectiles:GetChecked()
+
+-- --- 2) ctrl+click su una riga: l'item entra nella lista ignora ---
+lm:ClearHistory()
+lm:OnLootMessage('You receive loot: ' .. ID_GEM .. '.')
+lm:OnLootMessage('You receive loot: ' .. ID_MINE .. '.')
+lm:UpdateHistory()
+V94.rows_before = #lm.histRows
+local target
+for _, r in ipairs(lm.histRows) do
+    if r.entry and r.entry.itemName == 'Saronite Arrow' then target = r end
+end
+V94.row_found = (target ~= nil)
+IsControlKeyDown = function() return true end
+CHAT_LOG = {}
+target._scripts.OnClick(target, 'LeftButton')
+IsControlKeyDown = function() return false end
+V94.list_n = lm:IgnoredCount()
+V94.list_id = tostring(lm:IgnoreList()[1] and lm:IgnoreList()[1].id)
+V94.list_name = tostring(lm:IgnoreList()[1] and lm:IgnoreList()[1].name)
+V94.rows_after = #lm.histRows
+V94.selected = (lm.selectedItem == nil)
+V94.print = CHAT_LOG[#CHAT_LOG]
+-- la riga sparita non torna nemmeno ridisegnando
+lm:UpdateHistory()
+V94.rows_after2 = #lm.histRows
+-- e l'item NON viene piu' catturato
+local n0 = #lm.history
+lm:OnLootMessage('You receive loot: ' .. ID_MINE .. '.')
+V94.cap_after = #lm.history - n0
+
+-- --- 3) click NORMALE: continua a selezionare l'item ---
+lm:ClearIgnoredItems()
+lm:UpdateHistory()
+local gemRow
+for _, r in ipairs(lm.histRows) do if r.entry and r.entry.itemName == 'Bold Cardinal Ruby' then gemRow = r end end
+gemRow._scripts.OnClick(gemRow, 'LeftButton')
+V94.plain_select = (lm.selectedItem ~= nil and lm.selectedItem.itemName == 'Bold Cardinal Ruby')
+V94.plain_ignored = lm:IgnoredCount()
+
+-- --- 4) la lista si modifica dalla Configurazione ---
+local opt = RLSuite.config:BuildOptionsTable().args.loot.args
+V94.opt_list = (opt.ignoreList ~= nil and opt.ignoreList.type == 'input' and opt.ignoreList.multiline ~= nil)
+V94.opt_clear = (opt.ignoreClear ~= nil and opt.ignoreClear.type == 'execute')
+opt.ignoreList.set(nil, '12345: Test Item')
+V94.txt1 = lm:IgnoredListText()
+-- piu' righe, con link incollato e riga in formato "id - nome"
+opt.ignoreList.set(nil, '|cff1eff00|Hitem:99011:0:0:0:0:0:0:0:80|h[Saronite Arrow]|h|r\\n67890 - Freccia\\n\\n  333  ')
+V94.txt2 = lm:IgnoredListText()
+V94.ids = ''
+for _, e in ipairs(lm:IgnoreList()) do V94.ids = V94.ids .. tostring(e.id) .. ',' end
+V94.dedup = lm:AddIgnoredItem(99011, 'Doppione')
+V94.count_after_dedup = lm:IgnoredCount()
+-- le categorie si comandano anche dalla configurazione
+V94.toggle = (opt.fProjectiles ~= nil)
+opt.fProjectiles.set(nil, true)
+V94.cat_from_cfg = (lm.db.filters.projectiles == true)
+V94.cb_from_cfg = (lm.ignoreChecks.projectiles:GetChecked() == true)
+opt.fProjectiles.set(nil, false)
+opt.ignoreClear.func()
+V94.cleared_n = lm:IgnoredCount()
+V94.txt3 = lm:IgnoredListText()
+lm:ClearHistory()
+lm:UpdateHistory()
+""")
+check(bool(rt.eval("V94.cat == 'PROJECTILE'")), "v1.11.94: le frecce/munizioni sono una categoria a se' (item class Projectile)")
+check(bool(rt.eval("V94.cap_on == 0 and V94.cap_off == 1")), "v1.11.94: con 'projectiles' fra i loot ignorabili le frecce non vengono nemmeno registrate; spento, tornano")
+check(bool(rt.eval("V94.rows_on == 0")), "v1.11.94: a video la categoria ignorata non compare (stessa regola delle altre)")
+check(bool(rt.eval("V94.cb_on == true and V94.cb_off == false")), "v1.11.94: la checkbox della finestra Loot resta allineata (scrittura unica SetCategoryIgnored)")
+check(bool(rt.eval("V94.row_found == true and V94.rows_before == 2")), "v1.11.94: (setup) due item in storico, uno e' la freccia")
+check(bool(rt.eval("V94.list_n == 1 and V94.list_id == '99011' and V94.list_name == 'Saronite Arrow'")), "v1.11.94: CTRL+click sulla riga aggiunge l'item alla lista ignora -- %s (%s)" % (rt.eval("V94.list_name"), rt.eval("V94.list_id")))
+check(bool(rt.eval("V94.rows_after == 1 and V94.rows_after2 == 1")), "v1.11.94: la riga sparisce subito dalla lista e NON torna ridisegnando")
+check(bool(rt.eval("V94.selected == true")), "v1.11.94: ignorare un item deseleziona (niente roll su roba appena ignorata)")
+check(bool(rt.eval("V94.print ~= nil and V94.print:find('never be shown again', 1, true) ~= nil")), "v1.11.94: conferma a video -- %s" % rt.eval("tostring(V94.print)"))
+check(bool(rt.eval("V94.cap_after == 0")), "v1.11.94: l'item ignorato non viene piu' registrato MAI piu' (filtro in cattura)")
+check(bool(rt.eval("V94.plain_select == true and V94.plain_ignored == 0")), "v1.11.94: senza CTRL il click continua a selezionare l'item (nessuna regressione)")
+check(bool(rt.eval("V94.opt_list == true and V94.opt_clear == true")), "v1.11.94: la lista ignora e' modificabile in Configurazione -> Loot (campo multiriga + 'Clear ignored items')")
+check(bool(rt.eval("V94.txt1 == '12345: Test Item'")), "v1.11.94: scrittura in config -> lista salvata -- %s" % rt.eval("tostring(V94.txt1)"))
+check(bool(rt.eval("V94.ids == '99011,67890,333,'")), "v1.11.94: il testo accetta piu' righe, il LINK incollato, 'id - nome', righe vuote e spazi (gli id sono quelli giusti) -- %s" % rt.eval("tostring(V94.ids)"))
+check(bool(rt.eval("V94.dedup == false and V94.count_after_dedup == 3")), "v1.11.94: niente doppioni nella lista (aggiungere un id gia' presente non fa nulla)")
+check(bool(rt.eval("V94.toggle == true and V94.cat_from_cfg == true and V94.cb_from_cfg == true")), "v1.11.94: le 5 categorie ignorabili si comandano anche dalla configurazione (stessa scrittura della finestra)")
+check(bool(rt.eval("V94.cleared_n == 0 and V94.txt3 == ''")), "v1.11.94: 'Clear ignored items' svuota la lista e il campo torna vuoto")
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
