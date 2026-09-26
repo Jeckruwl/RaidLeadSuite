@@ -18,6 +18,7 @@ this addon separates managing a RAid group in three phases:
 - Manage all your whispers in a unique place
 - Autoinvite from a manual list
 - Autoinvite from an in-game calendar event
+- drag&drop reaorganization of raid group without looking at raid frame
 
 ### MACROBAR:
 
