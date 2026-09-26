@@ -97,7 +97,7 @@ In-game UwULogs style log window
 ![Macro Editor](_dev/RLS%20screens/1.2_MacroED.png)
 
 **Raid Frame**
-![RaidFrame](_dev/RLS%20screens/2_RaidFrame.png)
+![RaidFrame](_dev/RLS%20screens/2_raidframe.png)
 
 **MS Change Manager**
 ![MSCM](_dev/RLS%20screens/3_MSCM.png)
