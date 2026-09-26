@@ -75,8 +75,8 @@ Chronological loot list with loot timers. Features:
 
 ### RAID PROFILES:
 
-stores the choices made in groupmaking, macrobar options and configs in a reusable profile so you don't have to set up each time for the same raid
+Stores the choices made in groupmaking, macrobar options and configs in a reusable profile so you don't have to set up each time for the same raid
 
 ### LOGGING:
 
-in-game UwuLogs style log window
+In-game UwULogs style log window
