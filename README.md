@@ -88,11 +88,11 @@ Have a look at it:
 <details>
 <summary>Clicca per vedere gli screenshot</summary>
 
-![GroupInv](_Dev/RLS%20screens/0_GroupInv.png)
-![MacroB](_Dev/RLS%20screens/1_MacroB.png)
-![RaidFrame](_Dev/RLS%20screens/2_RaidFrame.png)
-![MSCM](_Dev/RLS%20screens/3_MSCM.png)
-![LootM](_Dev/RLS%20screens/4_LootM.png)
-![LogW](_Dev/RLS%20screens/5_LogW.png)
+![GroupInv](_dev/RLS%20screens/0_GroupInv.png)
+![MacroB](_dev/RLS%20screens/1_MacroB.png)
+![RaidFrame](_dev/RLS%20screens/2_RaidFrame.png)
+![MSCM](_dev/RLS%20screens/3_MSCM.png)
+![LootM](_edv/RLS%20screens/4_LootM.png)
+![LogW](_dev/RLS%20screens/5_LogW.png)
 
 </details>
