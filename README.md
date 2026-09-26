@@ -87,23 +87,24 @@ In-game UwULogs style log window
 <details>
 <summary>Clicca per vedere gli screenshot</summary>
 
-**0. GroupMaking**
+**GroupMaking**
 ![GroupInv](_dev/RLS%20screens/0_GroupInv.png)
 
-**1. Macro Bar**
+**Macro Bar**
+
 ![Macro Bar](_dev/RLS%20screens/1_MacroB.png)
 ![Macro Editor](_dev/RLS%20screens/1.1_MacroED.png)
 
-**2. Raid Frame**
+**Raid Frame**
 ![RaidFrame](_dev/RLS%20screens/2_RaidFrame.png)
 
-**3. MS Change Manager**
+**MS Change Manager**
 ![MSCM](_dev/RLS%20screens/3_MSCM.png)
 
 **4. Loot Manager**
 ![LootM](_dev/RLS%20screens/4_LootM.png)
 
-**5. Log Window**
+**Log Window**
 ![LogW](_dev/RLS%20screens/5_LogW.png)
 
 </details>
