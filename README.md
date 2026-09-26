@@ -35,12 +35,12 @@ In the config panel you can create all the macros using the custom macro editor.
 
 A convenient vertical raid frame to monitor anything you need. It features:
 
-- food&flask alert icons for each player. Left click: whisper alert Right click: Raid alert
-- Class’s main CD icons
+- food&flask alert icons for each player. Left click: whisper alert, Right click: Raid alert
+- Class main CD monitoring icons
 - Distance-based fade out
 - drag&drop reorganization
 
-Also provides a Raid Buff & Durability check with alerts for all categories. Each category can be assigned a provider by dragging and dropping a name on the icon. Each icon shows a tooltip showing:
+Also provides a toggleable Raid Buff & Durability check with alerts for all categories. Each category can be assigned a provider by dragging and dropping a name on the icon. Each icon shows a tooltip showing:
 
 - Actual comp providers in the raid
 - Assigments: Who is asigned to what
