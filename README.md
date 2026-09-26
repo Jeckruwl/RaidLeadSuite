@@ -89,7 +89,7 @@ In-game UwULogs style log window
 <summary>Clicca per vedere gli screenshot</summary>
 
 **GroupMaking**
-![GroupInv](_dev/RLS%20screens/0_GroupInv.png)
+![GroupInv](_dev/RLS%20screens/0_GroupInvE.png)
 
 **Macro Bar**
 
