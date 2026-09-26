@@ -80,3 +80,19 @@ Stores the choices made in groupmaking, macrobar options and configs in a reusab
 ### LOGGING:
 
 In-game UwULogs style log window
+
+
+
+
+Have a look at it:
+<details>
+<summary>Clicca per vedere gli screenshot</summary>
+
+![GroupInv](_Dev/RLS%20screens/0_GroupInv.png)
+![MacroB](_Dev/RLS%20screens/1_MacroB.png)
+![RaidFrame](_Dev/RLS%20screens/2_RaidFrame.png)
+![MSCM](_Dev/RLS%20screens/3_MSCM.png)
+![LootM](_Dev/RLS%20screens/4_LootM.png)
+![LogW](_Dev/RLS%20screens/5_LogW.png)
+
+</details>
