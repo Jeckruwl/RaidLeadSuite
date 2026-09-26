@@ -1,93 +1,80 @@
-# RLS — Raid Leading Suite
+# RLS – Raid Lead Suite
 
-This Addon aims to be the only tool you need to host your Raids.
+##   FEATURES:
 
-FEATURES:
-Groupmaking:
-- 
-> Questa è una **build per i tester di gilda**: se qualcosa non funziona, segnalalo al raid leader con **cosa hai fatto**, **cosa ti aspettavi** e **cosa è successo**, più l'eventuale errore Lua.
+### PHASE BASED MANAGEMENT:
 
-<!-- NOTA (richieste esplicite del 24/09/2026): la README NON deve contenere
-     - una sezione di installazione,
-     - una sezione "Struttura del repository",
-     - una sezione "Se qualcosa non va".
-     Non reintrodurle, nemmeno in forma ridotta o come elenco puntato.
-     Questo documento descrive solo comandi, interfaccia, moduli e requisiti. -->
+this addon separates managing a RAid group in three phases:
 
----
+- Pre-Raid: making the group, and managing the comp
+- Pre-Boss: every moment between bosses with full raid group
+- In-Fight: you are fighting a boss
 
-## Comandi
+### GROUPMAKING & INVITE ENGINE:
 
-`/rls help` stampa la lista in chat.
+- Easily create and manage your LFM message
+- Manage all your whispers in a unique place
+- Autoinvite from a manual list
+- Autoinvite from an in-game calendar event
 
-| Comando | Cosa fa |
-|---|---|
-| `/rls` | Barra principale (matrice pulsanti + fase) |
-| `/rls help` | Lista dei comandi |
-| `/rls config` | Finestra Config (anche col **clic destro sull'icona della minimappa**) |
-| `/rls group` | Pannello Groupmaking |
-| `/rls inv` | Pannello InviteEngine (whisper ricevuti + auto-invito) |
-| `/rls macrobar` | HUD MacroBar (mostra/nascondi) |
-| `/rls ms` | Pannello MS Manager |
-| `/rls loot` | Pannello Loot Manager |
-| `/rls raidframe` | HUD Raid Frame (mostra/nascondi) |
+### MACROBAR:
 
-L'editor dei 12 tasti della MacroBar si apre da **Config → Macros → Macro Editor**.
+A practical tool to manage alerts in all possible situations. Each phase has it’s own 12 slot customizable macro actionbar and a panel with the common tools in that phase
 
----
+**Pre-Raid:** ready check
 
-## Interfaccia
+**Pre-Boss:** ready check, Pull timers(10,15,30s), Break timers(2,3,5m)
 
-### Barretta in alto (Raid Control)
+**In-Fight:** no buttons but you can create a macro set for each boss. The addon knows which boss you are facing and provides the correct macro set, so you can see only the macros you need.
 
-- A sinistra: **icona di fase** (occhio LFG animato = pre-raid, clessidra = pre-boss, spade = in-fight) + **nome della fase**. **Click sinistro** = fase successiva, **click destro** = fase precedente.
-- A destra: pulsante **Raid Control** (apre/chiude il pannello dei tasti) e la **X** di chiusura.
-- Il pannello dei tasti si apre **a destra** della barretta. Ordine dei tasti:
+In the config panel you can create all the macros using the custom macro editor.
 
-```
-Groupmaking | Raid Frame | MS | Log | Macrobar | MT & OT | Loot | SaveRaid
-```
+### RAID FRAME:
 
-- **MT & OT**: due mezzi tasti nella stessa cella. Assegnano (o tolgono) il **Main Tank** / **Main Assist** sul target corrente. Richiedono i permessi di raid leader/assistente e **non funzionano in combat** (limite del client).
-- **SaveRaid**: salva la configurazione corrente (Comp, MacroBar e Config tranne *General*) chiedendo un titolo; si ricarica da *Config → Saved Raids*.
+A convenient vertical raid frame to monitor anything you need. It features:
 
-### Raid Frame (HUD)
+- food&flask alert icons for each player. Left click: whisper alert Right click: Raid alert
+- Class’s main CD icons
+- Distance-based fade out
+- drag&drop reorganization
 
-Barre dei giocatori per gruppo, con:
+Also provides a Raid Buff & Durability check with alerts for all categories. Each category can be assigned a provider by dragging and dropping a name on the icon. Each icon shows a tooltip showing:
 
-- barra HP colorata per classe + nome;
-- icone **flask** e **food** mancanti (click sinistro = whisper al giocatore, click destro = raid warning a tutti quelli a cui manca);
-- **cooldown di classe** per riga (letto dal combat log);
-- blocco **Tanks** in alto con **MT/OT** e barra del **target** del tank;
-- **matrice Raid Buffs** (tasto *Raid Buffs*): check per classe, rosso sulle intestazioni mancanti;
-- **spostare i giocatori di gruppo**: `Shift` + click sinistro su una barra **giocatore dei gruppi**, trascina, rilascia su un'altra barra (vuota = spostamento, piena = scambio). Funziona **anche in combat**; rilascio fuori dalle barre = annulla. *(Le barre MT/OT non si trascinano.)*
+- Actual comp providers in the raid
+- Assigments: Who is asigned to what
+- how many are missing the buff
 
-### MacroBar
+Buff category icons are color coded based on the current composition:
 
-- 12 macro per fase (`preraid` / `preboss` / `infight`), editor in *Config → Macros*.
-- Tastierino a due righe dipendente dalla fase: **ready check** in pre-raid; in pre-boss prima riga **pull 15/20/30**, seconda riga **ready + break 5m/3m/2m**.
-- Integrazione **DBM/BigWigs**: pull timer, richiesta cambi MS e roll/reroll mostrano la barra del timer.
+- greyed-out: The comp can’t provide for it
+- red: someone is missing the buff. Clicking the icon sends raid warning alerts
+- normal: everyone that benefits the buff has it
 
-### Pannello Log
+Buff alerts can also be character specific. Ctrl-click on a name in the frame sends an alert with the buffs missing and the players who have to provide for it.
 
-- Ogni pull è agganciato all'**encounter** (non si perde se muori o ricarichi la UI).
-- Intestazione: durata, fight, **tag taglia/difficoltà** (es. `25H`), Kill/Wipe; dropdown dei fight in alto a destra (click destro su una riga = segna boss/trash).
-- **Grafico sempre visibile** (discretizzazione 1/2/3/5/10 s) e schede: **targets**, **consumables** (per spell ID, non per nome), **auras**, **deaths**, **powers**; le schede storiche (healing, spells, entities, interrupts) restano.
+### MS CHANGE MANAGER:
 
----
+Quick and easy one button MS changes, with timer. Automatically scans the raid chat and stores the specs. Text is parsed with regards to every spec’s short form or abbreviation.
 
-## Debug mode (per chi prova da solo)
+Features easy one click-announcement with auto filled message.
 
-*Config → Debug → Enable debug mode*: simula un raid vero (roster finto, whisper e loot a te stesso), così si prova tutto **senza 24 persone**.
+### LOOT MANAGER:
 
-Con il debug attivo, accanto alla barra compare il pannello **RLS DEBUG** (due righe di tasti): *Fill Raid*, *Test Loot*, *Empty Loot*, *Test Whisplist*, *Test MS*, *Log Test*. Si apre e si chiude insieme al pannello dei tasti (**Raid Control**).
+Chronological loot list with loot timers. Features:
 
-In debug mode la chat scrive righe di traccia utili (`RF …` per l'HUD, `RG …` per il pannello Raid Group): ogni gesto lascia il segno, quindi un problema è sempre leggibile.
+- Rarity threshold
+- Custom ignore list: Ctrl-click on an item to ignore it forever
+- BOE, Recipe, Shards filters to ignore if reserved
+- Roll MS,OS,FFA, Reroll
+- Double rolls filter
+- Winner announcement
+- Roll timers
+- Click to pick up window: each won roll pops up a window with the item in it and the winning player’s name. You just need to click it and drop it in the trade, no more scrambling in your bags.
 
----
+### RAID PROFILES:
 
-## Requisiti
+stores the choices made in groupmaking, macrobar options and configs in a reusable profile so you don't have to set up each time for the same raid
 
-- Client **3.3.5a** (non Retail, non Classic Era, non Cataclysm).
-- Permessi di **raid leader** o assistente per raid warning, ready check, pull timer e assegnazione MT/OT.
-- Nessuna dipendenza obbligatoria: **DBM** (o BigWigs) è opzionale e aggiunge solo la barra del timer.
+### LOGGING:
+
+in-game UwuLogs style log window
