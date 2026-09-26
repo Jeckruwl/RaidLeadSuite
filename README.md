@@ -93,7 +93,7 @@ In-game UwULogs style log window
 **Macro Bar**
 
 ![Macro Bar](_dev/RLS%20screens/1_MacroB.png)
-![Macro Editor](_dev/RLS%20screens/1._MacroED.png)
+![Macro Editor](_dev/RLS%20screens/1.1_MacroED.png)
 
 **Raid Frame**
 ![RaidFrame](_dev/RLS%20screens/2_RaidFrame.png)
