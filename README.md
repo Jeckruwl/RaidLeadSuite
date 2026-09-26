@@ -25,7 +25,7 @@ A practical tool to manage alerts in all possible situations. Each phase has itâ
 
 **Pre-Raid:** ready check
 
-**Pre-Boss:** ready check, Pull timers(10,15,30s), Break timers(2,3,5m)
+**Pre-Boss:** ready check, Pull timers(15,20,30s), Break timers(2,3,5m)
 
 **In-Fight:** no buttons but you can create a macro set for each boss. The addon knows which boss you are facing and provides the correct macro set, so you can see only the macros you need.
 
