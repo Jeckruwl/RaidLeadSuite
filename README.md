@@ -1,5 +1,7 @@
 # RLS – Raid Lead Suite
 
+This addon aims to be the only tool you need to host and manage your Raids.
+
 ##   FEATURES:
 
 ### PHASE BASED MANAGEMENT:
