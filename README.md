@@ -1,9 +1,10 @@
-# RLSuite — Raid Leading Suite
+# RLS — Raid Leading Suite
 
-Addon per **raid leader** su World of Warcraft **Wrath of the Lich King 3.3.5** (Interface `30300`), pensato per **Warmane Lordaeron**.
+This Addon aims to be the only tool you need to host your Raids.
 
-**Versione: 1.11.89**
-
+FEATURES:
+Groupmaking:
+- 
 > Questa è una **build per i tester di gilda**: se qualcosa non funziona, segnalalo al raid leader con **cosa hai fatto**, **cosa ti aspettavi** e **cosa è successo**, più l'eventuale errore Lua.
 
 <!-- NOTA (richieste esplicite del 24/09/2026): la README NON deve contenere
