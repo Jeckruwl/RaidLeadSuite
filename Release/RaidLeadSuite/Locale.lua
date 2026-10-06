@@ -177,51 +177,6 @@ do
     L["Ask MS changes first (MS Manager), then click Test MS."] = true
     L["Start the spammer first, then Whisp test sends the fake whispers."] = true
 
-    -- CombatLog
-    L["Combat log"] = true
-    -- Riga di stato del pannello Log (v1.11.70)
-    L["Recording"] = true
-    L["Idle"] = true
-    L["events lost"] = true
-    L["recovered by watchdog"] = true
-    L["watchdog recoveries"] = true
-    L["you died at"] = true
-    L["Window error"] = true
-    L["pulls"] = true
-    L["Pull marked as %s."] = true
-    L["Close the pull first."] = true
-    L["Right-click: mark this pull as boss/trash"] = true
-    L["boss"] = true
-    L["trash"] = true
-    L["Select fight"] = true
-    L["Send report"] = true
-    L["Shift+click to wipe the saved fights."] = true
-    L["No fights recorded"] = true
-    L["[LIVE]"] = true
-    L["Live"] = true
-    L["Events"] = true
-    L["dropped"] = true
-    L["Total"] = true
-    L["By cast"] = true
-    L["By target"] = true
-    L["Spells list"] = true
-    L["Select player"] = true
-    L["Uptime"] = true
-    L["Interrupts"] = true
-    L["Dispels"] = true
-    L["Damage"] = true
-    L["Healing"] = true
-    L["Enemies"] = true
-    L["Auras"] = true
-    L["Players spells"] = true
-    L["Power"] = true
-    L["Graphs"] = true
-    L["DPS"] = true
-    L["Health"] = true
-    L["Total DPS"] = true
-    L["Step, sec."] = true
-    L["drag: zoom, click: reset, hover: values"] = true
-
     -- MacroBar
     L["Macrobar is disabled in Config."] = true
     L["Phase: %s"] = true

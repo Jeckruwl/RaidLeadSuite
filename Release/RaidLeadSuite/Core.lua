@@ -63,7 +63,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.104"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.105"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -184,16 +184,6 @@ local defaults = {
                         projectiles = false },
             ignoredItems = {},
         },
-        combatlog = {
-            enabled = true,
-            saveFights = 15,
-            maxEvents = 3000,
-            filters = {
-                damage = true, heal = true, death = true, aura = true,
-                cast = true, interrupt = true, dispel = true, energize = true,
-            },
-            options = { showSpellIds = false, disableBuffs = false },
-        },
         appearance = {
             theme = "default",
             font = "Fonts\\FRIZQT__.TTF",
@@ -214,7 +204,6 @@ local defaults = {
             raidframe = { scale = 1 },
             ms = { scale = 1 },
             loot = { scale = 1 },
-            combatlog = { scale = 1 },
             config = { scale = 1 },
         },
     },
@@ -386,9 +375,8 @@ RLSuite.raidDB = {
 -- ============================================================
 -- BOSS → (raid, boss canonico): riconoscimento del boss IN CORSO, serve
 -- alle MACRO IN-FIGHT (la barra mostra le macro del boss che stai
--- affrontando). Su 3.3.5a il client NON manda ENCOUNTER_START/END (vedi
--- l'intestazione di CombatLog.lua), quindi il boss si riconosce dalle
--- UNITA': prima il TARGET, poi boss1..boss4.
+-- affrontando). Su 3.3.5a il client NON manda ENCOUNTER_START/END,
+-- quindi il boss si riconosce dalle UNITA': prima il TARGET, poi boss1..boss4.
 -- Il match per NPC ID (estratto dal GUID: a prova di lingua) e' la via
 -- principale; i NOMI coprono i boss per cui il server non ha un id
 -- affidabile (Gunship, Faction Champions, Assembly of Iron, Quattro
@@ -1515,79 +1503,7 @@ function RLSuite:DebugTestMS()
     self.utils:Print(string.format(L["Debug: %d fake MS whispers sent."], n))
 end
 
--- Pannello DEBUG: "Log Test" — riempie il Combat Log con pull fittizi
--- completi (Marrowgar KILL, Lady Deathwhisper WIPE, Putricide KILL),
--- passando dal percorso reale OnCLEU/Regen: tab e grafici si popolano
--- esattamente come da combattimenti veri.
-function RLSuite:DebugLogTest()
-    if not self:DebugMode() then
-        self.utils:Print(L["Debug mode is OFF."])
-        return
-    end
-    local cl = RLSuite.combatLog
-    if not cl then return end
-    local P = 1024 + 16 + 1     -- player, friendly, affiliato a me
-    local N = 2048 + 64         -- npc, hostile
-    -- entry id nello stesso slot esadecimale dei GUID reali (chars 9-12)
-    local G_MG = "0xF130008F040000AA"   -- Lord Marrowgar (36612 = 0x8F04)
-    local G_LD = "0xF130008FF70000BB"   -- Lady Deathwhisper (36855 = 0x8FF7)
-    local G_PP = "0xF130008F460000CC"   -- Professor Putricide (36678 = 0x8F46)
-    local ts = GetTime()
-    local feed = function(dt, ...)
-        ts = ts + dt
-        cl:OnCLEU(nil, ts, ...)
-        if cl.SampleTick then cl:SampleTick() end
-    end
-
-    -- ---- Pull 1: Lord Marrowgar (KILL) ----
-    cl:OnRegenDisabled()
-    feed(0.1, "SWING_DAMAGE", "0x0p1", "Ironclad", P, G_MG, "Lord Marrowgar", N, 1450, 0, 0)
-    feed(1.0, "SPELL_DAMAGE", "0x0p2", "Zapdora", P, G_MG, "Lord Marrowgar", N, 100, "Fireball", 4, 2900, 0, 0, 0, 0, 0, 1)
-    feed(1.5, "SPELL_DAMAGE", "0x0p3", "Stabbitha", P, G_MG, "Lord Marrowgar", N, 101, "Sinister Strike", 1, 1800, 0)
-    feed(0.8, "SWING_DAMAGE", G_MG, "Lord Marrowgar", N, "0x0p1", "Ironclad", P, 8200, 0, 0)
-    feed(1.0, "SPELL_HEAL", "0x0p4", "Holylite", P, "0x0p1", "Ironclad", P, 200, "Flash Heal", 2, 5600, 400, 0, 0)
-    feed(2.0, "SPELL_AURA_APPLIED", G_MG, "Lord Marrowgar", N, "0x0p3", "Stabbitha", P, 300, "Bone Spike", 6, "DEBUFF")
-    feed(3.0, "SPELL_DAMAGE", "0x0p5", "Shadowmel", P, G_MG, "Lord Marrowgar", N, 102, "Mind Blast", 32, 2400, 0)
-    feed(4.0, "SPELL_AURA_REMOVED", G_MG, "Lord Marrowgar", N, "0x0p3", "Stabbitha", P, 300, "Bone Spike", 6, "DEBUFF")
-    feed(2.0, "SPELL_INTERRUPT", "0x0p3", "Stabbitha", P, G_MG, "Lord Marrowgar", N, 400, "Kick", 1, 500, "Frost Bolt", 4)
-    feed(2.5, "SPELL_ENERGIZE", "0x0p4", "Holylite", P, "0x0p2", "Zapdora", P, 900, "Replenishment", 4, 450, 0)
-    feed(3.0, "SPELL_DAMAGE", "0x0p2", "Zapdora", P, G_MG, "Lord Marrowgar", N, 100, "Fireball", 4, 3100, 0, 0, 0, 0, 0, 1)
-    feed(2.0, "UNIT_DIED", "0x0p0", "", 0, "0x0p3", "Stabbitha", P)
-    feed(2.0, "SPELL_HEAL", "0x0p6", "Totemly", P, "0x0p1", "Ironclad", P, 201, "Chain Heal", 8, 4800, 900, 0, 0)
-    feed(2.0, "SPELL_DAMAGE", "0x0p1", "Ironclad", P, G_MG, "Lord Marrowgar", N, 103, "Bloodthirst", 1, 3400, 0)
-    feed(1.5, "UNIT_DIED", "0x0p0", "", 0, G_MG, "Lord Marrowgar", N)
-    cl:OnRegenEnabled()
-
-    -- ---- Pull 2: Lady Deathwhisper (WIPE) ----
-    cl:OnRegenDisabled()
-    feed(0.1, "SWING_DAMAGE", "0x0p1", "Ironclad", P, G_LD, "Lady Deathwhisper", N, 1300, 0, 0)
-    feed(1.0, "SPELL_DAMAGE", "0x0p2", "Zapdora", P, G_LD, "Lady Deathwhisper", N, 100, "Frostbolt", 16, 2200, 0)
-    feed(1.4, "SPELL_DAMAGE", "0x0p5", "Shadowmel", P, G_LD, "Lady Deathwhisper", N, 102, "Shadow Word: Pain", 32, 900, 0)
-    feed(2.0, "SPELL_DAMAGE", G_LD, "Lady Deathwhisper", N, "0x0p1", "Ironclad", P, 110, "Frostbolt Volley", 16, 7100, 0)
-    feed(1.6, "SPELL_HEAL", "0x0p4", "Holylite", P, "0x0p1", "Ironclad", P, 200, "Flash Heal", 2, 5200, 300, 0, 0)
-    feed(2.0, "SPELL_DAMAGE", "0x0p2", "Zapdora", P, G_LD, "Lady Deathwhisper", N, 100, "Fireball", 4, 2600, 0)
-    feed(3.0, "UNIT_DIED", "0x0p0", "", 0, "0x0p4", "Holylite", P)
-    feed(4.0, "UNIT_DIED", "0x0p0", "", 0, "0x0p1", "Ironclad", P)
-    cl:OnRegenEnabled()
-
-    -- ---- Pull 3: Professor Putricide (KILL) ----
-    cl:OnRegenDisabled()
-    feed(0.1, "SWING_DAMAGE", "0x0p1", "Ironclad", P, G_PP, "Professor Putricide", N, 1500, 0, 0)
-    feed(1.0, "SPELL_DAMAGE", "0x0p3", "Stabbitha", P, G_PP, "Professor Putricide", N, 101, "Eviscerate", 1, 4200, 0, 0, 0, 0, 0, 1)
-    feed(1.2, "SPELL_DAMAGE", "0x0p2", "Zapdora", P, G_PP, "Professor Putricide", N, 100, "Fireball", 4, 3200, 0)
-    feed(2.0, "SPELL_AURA_APPLIED", G_PP, "Professor Putricide", N, "0x0p1", "Ironclad", P, 310, "Malleable Goo", 8, "DEBUFF")
-    feed(2.5, "SPELL_HEAL", "0x0p6", "Totemly", P, "0x0p1", "Ironclad", P, 201, "Chain Heal", 8, 6100, 0, 0, 1)
-    feed(3.0, "SPELL_INTERRUPT", "0x0p1", "Ironclad", P, G_PP, "Professor Putricide", N, 410, "Pummel", 1, 510, "Slime Spray", 8)
-    feed(2.0, "SPELL_AURA_REMOVED", G_PP, "Professor Putricide", N, "0x0p1", "Ironclad", P, 310, "Malleable Goo", 8, "DEBUFF")
-    feed(2.5, "SPELL_DAMAGE", "0x0p5", "Shadowmel", P, G_PP, "Professor Putricide", N, 102, "Mind Blast", 32, 2900, 0)
-    feed(2.0, "UNIT_DIED", "0x0p0", "", 0, G_PP, "Professor Putricide", N)
-    cl:OnRegenEnabled()
-
-    if cl.RefreshUI then cl:RefreshUI() end
-    self.utils:Print(string.format(L["Debug: combat log filled with %d fights."], #cl.db.fights))
-end
-
--- Pannello DEBUG: "Clear loot" — svuota la storia del Loot Manager e-- Pannello DEBUG: "Clear loot" — svuota la storia del Loot Manager e
+-- Pannello DEBUG: "Clear loot" — svuota la storia del Loot Manager e
 -- chiude le finestre pickup (non richiede lo stop del debug).
 function RLSuite:DebugClearLoot()
     if not (self.lootManager and self.lootManager.ClearHistory) then return end
@@ -1622,7 +1538,6 @@ function RLSuite:DebugPanelDefs()
             end
         end },
         { text = L["Test MS"], i = 4, fn = function() RLSuite:DebugTestMS() end },
-        { text = L["Log Test"], i = 5, fn = function() RLSuite:DebugLogTest() end },
     }
 end
 
@@ -2502,7 +2417,6 @@ function RLSuite:InitModules()
     if self.raidFrame and self.raidFrame.Init then self.raidFrame:Init() end
     if self.msManager and self.msManager.Init then self.msManager:Init() end
     if self.lootManager and self.lootManager.Init then self.lootManager:Init() end
-    if self.combatLog and self.combatLog.Init then self.combatLog:Init() end
     if self.config and self.config.Init then self.config:Init() end
     if self.mainWindow and self.mainWindow.Init then self.mainWindow:Init() end
     if self.config and self.config.ApplyTheme then

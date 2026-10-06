@@ -1455,7 +1455,6 @@ function CFG:ApplyAll()
     scale(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame)
     scale(RLSuite.msManager and RLSuite.msManager.frame)
     scale(RLSuite.lootManager and RLSuite.lootManager.frame)
-    scale(RLSuite.combatLog and RLSuite.combatLog.frame)
 end
 
 function CFG:ApplyTheme(theme)

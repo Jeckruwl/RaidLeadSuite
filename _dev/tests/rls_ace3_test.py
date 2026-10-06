@@ -591,7 +591,7 @@ LIBS = [
 ADDON_FILES = [
     "Locale.lua", "Utils.lua", "Core.lua", "RaidProfile.lua",
     "MacroBar.lua", "GroupMaking.lua", "RaidFrame.lua",
-    "MSManager.lua", "LootManager.lua", "CombatLog.lua", "Config.lua",
+    "MSManager.lua", "LootManager.lua", "Config.lua",
 ]
 
 # La suite vive in _dev/tests/ (materiale di sviluppo). L'addon sta in
@@ -1521,31 +1521,23 @@ check(bool(rt.eval("MB_ICC_INF['Lord Marrowgar'] == true and MB_ICC_INF['Lady De
       "inferenza ICC: trovarsi su Saurfang implica Marrowgar + Deathwhisper + Gunship battuti")
 check(bool(rt.eval("MB_ICC_NEXT == 'Deathbringer Saurfang'")), "inferenza ICC: il counter punta a Saurfang")
 
-# --- Combat log: la kill entra nel counter, ma NON in debug ---------------
+# --- Boss kill tracking via RecordBossKill ---------------
 rt.execute("""
-    RLSuite:ResetBossProgress('Icecrown Citadel')
+    RLSuite:ResetBossProgress()
+    RLSuite.db.profile.bossProgress = {}
     MOCK_UNITS_BOSS = {}
-    MB_DBG = RLSuite:DebugMode()
-    CL_MOCK = RLSuite.combatLog
-    CL_MOCK.current = { events = {}, count = 0, dropped = 0, startTime = 0, samples = { health = {}, power = {} } }
-    CL_MOCK:OnCLEU('COMBAT_LOG_EVENT_UNFILTERED', 0, 'UNIT_DIED', '', '', 0, '0xF130008F040000AA', 'Lord Marrowgar', 0)
-    MB_CLEU_DEBUG_N = RLSuite:KilledBossCount('Icecrown Citadel')
-    CL_MOCK.current = nil
-""")
-check(bool(rt.eval("MB_DBG == true")), "harness: questa suite gira in debug mode")
-check(bool(rt.eval("MB_CLEU_DEBUG_N == 0")),
-      "combat log in debug: i pull finti NON sporcano la progressione vera")
-rt.execute("""
     RLSuite.db.profile.debug = false
-    MB_CLEU_OK = RLSuite.combatLog:NoteBossKill('0xF130008F040000AA')
+    local npcId = RLSuite.utils:NpcIdFromGUID('0xF130008F040000AA')
+    MB_CLEU_OK = RLSuite:RecordBossKill(npcId)
     MB_CLEU_N = RLSuite:KilledBossCount('Icecrown Citadel')
-    MB_CLEU_UNKNOWN = RLSuite.combatLog:NoteBossKill('0xF1300001000000AA')
+    local unkId = RLSuite.utils:NpcIdFromGUID('0xF1300001000000AA')
+    MB_CLEU_UNKNOWN = RLSuite:RecordBossKill(unkId)
     RLSuite.db.profile.debug = true
 """)
 check(bool(rt.eval("MB_CLEU_OK == true and MB_CLEU_N == 1")),
-      "combat log: la morte di un boss noto (GUID) entra nel counter")
+      "boss kill: la morte di un boss noto (GUID/ID) entra nel counter")
 check(bool(rt.eval("MB_CLEU_UNKNOWN == false")),
-      "combat log: un NPC sconosciuto non entra nel counter")
+      "boss kill: un NPC sconosciuto non entra nel counter")
 # --- La barra si riallinea da sola quando il counter avanza --------------
 rt.execute("""
     RLSuite:ResetBossProgress('Icecrown Citadel')
@@ -3172,12 +3164,12 @@ local function cellXY(idx)
     local row = math.floor((idx - 1) / cols)
     return 4 + col * (90 + 8), -4 - row * (22 + 4)
 end
-CELL_MT_X, CELL_MT_Y = cellXY(6)      -- MT & OT = 6a cella
-CELL_LOOT_X, CELL_LOOT_Y = cellXY(7)  -- Loot = 7a cella
+CELL_MT_X, CELL_MT_Y = cellXY(5)      -- MT & OT = 5a cella
+CELL_LOOT_X, CELL_LOOT_Y = cellXY(6)  -- Loot = 6a cella
 """)
 rt.execute("""
 -- ORDINE RICHIESTO, letto dalle celle vere della matrice:
---   Groupmaking, Raid Frame, MS, Log, Macrobar, MT & OT, Loot, SaveRaid
+--   Groupmaking, Raid Frame, MS, Macrobar, MT & OT, Loot, SaveRaid
 local MWo = RLSuite.mainWindow
 local names = {}
 for _, c in ipairs(MWo.matrixOrder or {}) do
@@ -3200,7 +3192,7 @@ local function cellXY(idx)
     local row = math.floor((idx - 1) / cols)
     return 4 + col * (90 + 8), -4 - row * (22 + 4)
 end
-local EXPECT = { "Groupmaking", "Raid Frame", "MS", "Log", "Macrobar", "MT & OT", "Loot", "SaveRaid" }
+local EXPECT = { "Groupmaking", "Raid Frame", "MS", "Macrobar", "MT & OT", "Loot", "SaveRaid" }
 BAR_ORDER_OK = true
 for i, want in ipairs(EXPECT) do
     local c = MWo.matrixOrder[i]
@@ -3224,10 +3216,10 @@ for i, c in ipairs(MWo.matrixOrder) do
 end
 BAR_POS_OK = posOK
 """)
-check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 8")), "main bar button order is Groupmaking, Raid Frame, MS, Log, Macrobar, MT & OT, Loot, SaveRaid (%s)" % rt.eval("BAR_ORDER"))
+check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 7")), "main bar button order is Groupmaking, Raid Frame, MS, Macrobar, MT & OT, Loot, SaveRaid (%s)" % rt.eval("BAR_ORDER"))
 check(bool(rt.eval("BAR_POS_OK == true")), "each button really sits in its cell, row by row (MT & OT in its own cell, SaveRaid last)")
-check(bool(rt.eval("MTXOF == CELL_MT_X and MTYOF == CELL_MT_Y")), "MT / OT pair occupies the 6th cell of the matrix (own cell, no more 'under Raid Frame')")
-check(bool(rt.eval("LOOTXOF == CELL_LOOT_X and LOOTYOF == CELL_LOOT_Y")), "Loot sits in its own 7th cell (no shifting around Raid Frame)")
+check(bool(rt.eval("MTXOF == CELL_MT_X and MTYOF == CELL_MT_Y")), "MT / OT pair occupies the 5th cell of the matrix (own cell, no more 'under Raid Frame')")
+check(bool(rt.eval("LOOTXOF == CELL_LOOT_X and LOOTYOF == CELL_LOOT_Y")), "Loot sits in its own 6th cell (no shifting around Raid Frame)")
 # --- I tasti MT/OT sono ora SECURE macro buttons: SetPartyAssignment e' PROTETTA ---
 # --- (forbidden dal client) -> il click assembla "/maintank <nome>" via PreClick. ---
 rt.execute("""
@@ -3645,25 +3637,11 @@ check(bool(rt.eval("H_PICKED == true and H_TRADECL == true and H_CLOSED2 == true
 rt.execute("local lm = RLSuite.lootManager; lm.history = {}; if lm.db then lm.db.history = lm.history end; lm.selectedItem = nil; lm:UpdateHistory()")
 
 # =====================================================================
-print("== Scenario I: Combat Log (parser 3.3.5, segmentazione pull, store, aggregazioni, UI tabs, grafico) ==")
-# =====================================================================
-
-# --- I.1 wiring: tab, finestra, defaults ---
-check(bool(rt.eval("RLSuite.combatLog ~= nil and RLSuite.combatLog.frame ~= nil")), "combat log module and window exist")
+print("== Scenario I: TOC Version & Core integrity checks ==")
 _toc_ver = open("RaidLeadSuite.toc", encoding="utf-8").read().split("## Version:")[1].split("\n")[0].strip()
 _ver = rt.eval("RLSuite.version")
-check(_ver == _toc_ver, "v1.11.69: la versione mostrata in chat coincide col .toc (%r vs %r) — un tester deve poter dire quale build ha" % (_ver, _toc_ver))
-check("GetAddOnMetadata" in open("Core.lua", encoding="utf-8").read(), "v1.11.69: la versione e' letta dal .toc (niente piu' costanti che restano indietro)")
-check(rt.eval("RLSuite.combatLog._initError") is None, "v1.11.66: la finestra del Log si e' costruita SENZA errori (nessun errore ingoiato dal pcall): %r" % rt.eval("RLSuite.combatLog._initError"))
-check(bool(rt.eval("RLSuite.combatLog.gridPane ~= nil and RLSuite.combatLog.deathPane ~= nil and RLSuite.combatLog.tabGroup ~= nil")), "v1.11.66: tutti i pannelli del Log esistono (griglia, morti, tab group)")
-check(bool(rt.eval("RLSuite.mainWindow:PaneForTab('log') == RLSuite.combatLog.frame")), "main window 'log' tab pane is the combat log window")
-check(bool(rt.eval("RLSuite.mainWindow.tabs.log ~= nil")), "'Log' tab button exists on the main bar")
-check(bool(rt.eval("RLSuite.combatLog.graph ~= nil")), "combat log graph widget created at init")
-check(bool(rt.eval("RLSuite.mainWindow:LayoutKeyForTab('log') == 'combatlog'")), "layout key for the log tab is 'combatlog' (matches drag/resize persistence)")
-rt.execute("RLSuite.mainWindow:ShowTab('log')")
-check(bool(rt.eval("RLSuite.mainWindow.currentTab == 'log'")), "SelectTab keeps the 'log' key (was silently rewritten to 'group' -> opened Groupmaking)")
-check(bool(rt.eval("RLSuite.combatLog.frame:IsShown() == true")), "clicking the Log tab shows the combat log window (not Groupmaking)")
-rt.execute("RLSuite.combatLog.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
+check(_ver == _toc_ver, "v1.11.105: la versione mostrata coincide col .toc (%r vs %r)" % (_ver, _toc_ver))
+check("GetAddOnMetadata" in open("Core.lua", encoding="utf-8").read(), "la versione e' letta dal .toc")
 
 # resize grip regression: delta relativo al mouse-down, clampato allo schermo
 rt.execute("Rh = CreateFrame('Frame', nil, UIParent); Rh:Show(); Rh:SetSize(300, 200); Rh:SetPoint('TOPLEFT', UIParent, 'TOPLEFT', -100, -100)")
@@ -3685,254 +3663,13 @@ R_LASTW = RLSuite.utils:WindowLayout('rsztest').width
 GetCursorPosition, IsMouseButtonDown = SAVED_GCP_R, SAVED_IMBD_R
 """)
 check(rt.eval("math.abs(R_W1 - 400) < 0.01 and math.abs(R_H1 - 150) < 0.01"), "resize grip follows the mouse delta while dragging (400x150)")
-check(rt.eval("R_W2 <= 1024 and R_H2 <= 768"), "resize grip CLAMPED to the screen: window can never become huge again (was the StartSizing bug)")
-check(rt.eval("R_LASTW == R_W2 and R_LASTW > 0"), "resize grip size persisted on release (auto-finish outside the grip works)")
+check(rt.eval("R_W2 <= 1024 and R_H2 <= 768"), "resize grip CLAMPED to the screen: window can never become huge again")
+check(rt.eval("R_LASTW == R_W2 and R_LASTW > 0"), "resize grip size persisted on release")
 rt.execute("Rh:Hide()")
 
-# window self-heal regression: brutalized saved sizes are clamped back on open
-rt.execute("RLSuite.utils:WindowLayout('combatlog').width = 5001; RLSuite.utils:WindowLayout('combatlog').height = 3001")
-rt.execute("RLSuite.mainWindow:ShowTab('log')")
-check(rt.eval("RLSuite.combatLog.frame:GetWidth() <= 1024 and RLSuite.combatLog.frame:GetHeight() <= 768"), "opening a tab heals oversized SAVED window dims (<= screen): the Log window comes back on-screen by itself")
-check(rt.eval("RLSuite.utils:WindowLayout('combatlog').width == 1024"), "healed size written back into the saved layout (no more repeating blow-up)")
 rt.execute("Cw = CreateFrame('Frame', nil, UIParent); Cw:Show(); Cw:SetSize(5000, 3000); Cw:SetPoint('TOPLEFT', UIParent, 'TOPLEFT', 0, 0); RLSuite.utils:ClampWindowToScreen(Cw)")
 check(rt.eval("Cw:GetWidth() == 1024 and Cw:GetHeight() == 768"), "ClampWindowToScreen directly clamps any oversized frame to the screen")
-rt.execute("Cw:Hide(); RLSuite.combatLog.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
-
-
-check(bool(rt.eval("RLSuite.combatLog.db ~= nil and RLSuite.combatLog.db.saveFights == 15 and RLSuite.combatLog.db.maxEvents == 3000")), "db.combatlog defaults loaded (saveFights 15, maxEvents 3000)")
-
-# --- I.2 helpers: guid npc id + realm strip + flags ---
-rt.execute("""
-local cl = RLSuite.combatLog
-G_NPC = cl:NpcIdFromGUID('0xF130008F040000AA')
-G_NPC2 = cl:NpcIdFromGUID('0xF1300090020000BB')
-G_MODERN = cl:NpcIdFromGUID('Creature-0-1463-0-63-36612-0000123ABC')
-G_PLAYERGUID = cl:NpcIdFromGUID('0x0700000001234ABC')
-G_SHORT = cl:ShortName('Testplayer-TestRealm')
-G_SHORT2 = cl:ShortName('OtherName')
-""")
-check(bool(rt.eval("G_NPC == 36612")), "3.3.5 GUID parse: Marrowgar npc id 36612 from hex GUID")
-check(bool(rt.eval("G_NPC2 == 36866")), "3.3.5 GUID parse: second npc id (36866)")
-check(bool(rt.eval("G_MODERN == 36612")), "modern dash GUID parse also yields the npc id")
-check(bool(rt.eval("G_PLAYERGUID == nil")), "player GUID does not produce an npc id")
-check(bool(rt.eval("G_SHORT == 'Testplayer' and G_SHORT2 == 'OtherName'")), "realm suffix stripped for same-realm names only")
-
-# --- I.3 registrazione: pull, eventi, kill, ring buffer, filtri ---
-rt.execute("""
-local cl = RLSuite.combatLog
-local now = GetTime()
-cl.selFight = nil
--- fight 1: danni + kill Marrowgar
-cl:OnRegenDisabled()
-I_REC1 = (cl.current ~= nil)
--- player -> boss: SPELL_DAMAGE (id, name, school, amount, overkill, school2, resisted, blocked, absorbed, critical)
-cl:OnCLEU(nil, now, 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
-cl:OnCLEU(nil, now, 'SPELL_DAMAGE', '0x0p', 'PlayerTwo', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Frostbolt', 2, 3000, 100, 0, 0, 200, 0, 0)
-cl:OnCLEU(nil, now, 'SWING_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 1500, 0, 1, 0, 0, 0, 0)
-cl:OnCLEU(nil, now, 'SPELL_HEAL', '0x0p', 'HealerOne', 1024+16+1, '0x0q', 'PlayerOne', 1024+16+1, 200, 'Flash Heal', 2, 4000, 500, 0, 0)
--- aura uptime: 10s applicate poi rimosse (fake GetTime avanzato via t2)
-cl:OnCLEU(nil, now, 'SPELL_AURA_APPLIED', '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, '0x0p', 'PlayerOne', 1024+16+1, 300, 'Bone Spike', 6, 'DEBUFF')
-cl:OnCLEU(nil, now, 'SPELL_INTERRUPT', '0x0p', 'KickerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 400, 'Kick', 1, 500, 'Frost Bolt', 4)
-cl:OnCLEU(nil, now, 'UNIT_DIED', '0x0p', '', 0, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64)
-I_BOSS = cl.current.boss
-I_KILL0 = cl.current.kill
-I_CNT1 = cl.current.count
-cl:OnRegenEnabled()
-I_REC0 = (cl.current == nil)
-I_F1 = cl.db.fights[1]
-I_KILLF = I_F1.kill == true
-I_PERSISTCNT = #cl.db.fights
-""")
-check(bool(rt.eval("I_REC1 == true and I_REC0 == true")), "combat start/end opens and closes a fight segment")
-check(bool(rt.eval("I_BOSS == 'Lord Marrowgar' and I_KILLF == true")), "fight named after the boss NPC and marked KILL on its UNIT_DIED")
-check(bool(rt.eval("I_CNT1 == 7 and I_PERSISTCNT == 1")), "7 events captured and fight persisted into db.fights")
-check(rt.eval("I_F1.name") == "Lord Marrowgar", "saved fight carries the boss name")
-
-# --- I.4 filtri cattura: damage off => non registrato; buffs off ---
-rt.execute("""
-local cl = RLSuite.combatLog
-cl.db.filters.damage = false
-cl:OnRegenDisabled()
-local now = GetTime()
-cl:OnCLEU(nil, now, 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF1300090020000BB', 'Sindragosa', 2048+64, 100, 'Fireball', 4, 5000, 0)
-cl:OnCLEU(nil, now, 'SPELL_HEAL', '0x0p', 'HealerOne', 1024+16+1, '0x0q', 'PlayerOne', 1024+16+1, 200, 'Flash Heal', 2, 4000, 500, 0, 0)
-I_FLTCNT = cl.current.count
-cl:OnRegenEnabled()
-cl.db.filters.damage = true
-""")
-check(bool(rt.eval("I_FLTCNT == 1")), "capture filters skip disabled categories (damage off: only the heal lands)")
-
-# --- I.5 aggregazioni ---
-rt.execute("""
-local cl = RLSuite.combatLog
-ROSTER_MOCK = { { 'PlayerOne', 1, 1, 80, 80, 'WARRIOR' }, { 'PlayerTwo', 1, 1, 80, 80, 'PALADIN' }, { 'HealerOne', 1, 1, 80, 80, 'DRUID' } }
-local f = cl.db.fights[2] -- fight di Marrowgar (subito dopo: il fight filtrato e' [1])
-local rows, total = cl:AggTotals(f, 'damage')
-I_TOT = total
-I_TOP = rows[1] and rows[1].name
-I_TOPAMT = rows[1] and rows[1].amt
-local srows, stotal = cl:AggSpells(f, 'damage', 'PlayerOne')
-I_SPELLS = #srows
-I_SP1 = srows[1] and srows[1].amt
-local arows = cl:AggAuras(f)
-I_AURAUPS = 0
-for _, a in ipairs(arows) do if a.name == 'Bone Spike' then I_AURAUPS = a.up end end
-local erows, etotal = cl:AggEnemies(f)
-I_ENEMY = erows[1] and erows[1].name
-local irows = cl:AggInterrupts(f, 'interrupt')
-I_ITXT = irows[1] and irows[1].text
-local prows = cl:FightPlayers(f)
-I_PSP = #prows
-local dps = cl:DpsSeries(f, 'PlayerOne', 1)
-I_DPSMAX = 0
-for _, p in ipairs(dps) do if p[2] > I_DPSMAX then I_DPSMAX = p[2] end end
-""")
-check(bool(rt.eval("I_TOT == 9500 and I_TOP == 'PlayerOne' and I_TOPAMT == 6500")), "damage totals per source aggregated (PlayerOne 6500 of 9500)")
-check(bool(rt.eval("I_SPELLS >= 2 and I_SP1 == 5000")), "per-spell breakdown for the selected source")
-check(bool(rt.eval("I_AURAUPS > 0")), "aura uptime engine closes the opened aura at fight end")
-check(bool(rt.eval("I_ENEMY == 'Lord Marrowgar'")), "enemies tab: damage taken by boss")
-check(bool(rt.eval("I_ITXT == 'KickerOne interrupt Lord Marrowgar with Kick (Frost Bolt)'")), "interrupt row formatted MRT-style (X interrupt Y with Z (interrupted))")
-check(bool(rt.eval("I_PSP >= 3")), "player list of the fight enumerated from GUID flags")
-check(bool(rt.eval("I_DPSMAX >= 6000")), "DPS series buckets spike over 6000 on the nuke second")
-
-# --- I.5b v1.11.58: il grafico e' una CURVA CONTINUA, non barrette --------
-# Il vecchio disegno tentava di tracciare una polilinea con texture ruotate:
-# Texture:SetRotation ruota il DISEGNO dentro la texture, non il rettangolo,
-# quindi su colore pieno non cambia nulla e i tratti restano orizzontali
-# ("accrocchio di barrette"). Ora: colonne che riempiono l'area + linea sopra.
-_cl_src = open("CombatLog.lua", encoding="utf-8").read()
-_cl_code = "\n".join(l for l in _cl_src.split("\n") if not l.strip().startswith("--"))
-check('SetRotation' not in _cl_code, "no rotated textures left in the drawing code (rotation never worked on a flat texture)")
-check('g.ValueAt = function' in _cl_src, "graph exposes ValueAt (interpolated value at any x, used by draw + mouse readout)")
-
-rt.execute("""
-    G = RLSuite.combatLog.graph
-    -- serie sintetica a rampa: 0 -> 10000 in 10 passi
-    SYN = {}
-    for i = 0, 10 do SYN[#SYN + 1] = { i, i * 1000 } end
-    G:SetData(SYN, {})
-    SYN_FILLS, SYN_CAPS, SYN_H, SYN_YMAX = 0, 0, 0, G._yMax
-    prevCapTop, CONT = nil, true
-    for i, t in ipairs(G._linePool) do
-        if t:IsShown() then
-            SYN_FILLS = SYN_FILLS + 1
-            local p = t._points[1] or {}
-            local top = (p[5] or 0) + (t._h or 0)
-            if prevCapTop and math.abs(top - prevCapTop) > 60 then CONT = false end
-            prevCapTop = top
-        end
-    end
-    for i, t in ipairs(G._capPool) do if t:IsShown() then SYN_CAPS = SYN_CAPS + 1 end end
-    -- altezza massima del riempimento = altezza del grafico (valore di picco)
-    local hi = 0
-    for i, t in ipairs(G._linePool) do
-        if t:IsShown() and (t._h or 0) > hi then hi = t._h end
-    end
-    SYN_H = hi
-    SYN_PLOTH = G.height - 4
-""")
-check(bool(rt.eval("SYN_FILLS > 200 and SYN_CAPS == SYN_FILLS")),
-      "curve drawn as %d columns, each with its own line cap" % rt.eval("SYN_FILLS"))
-check(bool(rt.eval("CONT == true")),
-      "adjacent columns never jump: the curve is CONTINUOUS (no more dashes)")
-check(bool(rt.eval("SYN_H >= SYN_PLOTH - 2 and SYN_YMAX == 10000")),
-      "column heights follow the values (peak = full plot height)")
-rt.execute("""
-    V1 = G:ValueAt(2.5)
-    V2 = G:ValueAt(7.5)
-    V3 = G:ValueAt(0)
-    V4 = G:ValueAt(10)
-    GRID = 0
-    for i, t in ipairs(G._gridPool) do if t:IsShown() then GRID = GRID + 1 end end
-""")
-check(rt.eval("V1") == 2500 and rt.eval("V2") == 7500, "ValueAt interpolates linearly between samples (mouse readout values)")
-check(rt.eval("V3") == 0 and rt.eval("V4") == 10000, "ValueAt clamps at the series ends")
-check(bool(rt.eval("GRID") == 3), "horizontal grid lines at 25/50/75%% of the scale")
-
-# -- il tooltip legge tempo + valore (con l'unita' del modo attivo) --------
-rt.execute("""
-    TIP_OK = false
-    if GameTooltip and G.ValueAt then
-        G.series = SYN
-        G.xMin, G.xMax, G._hoverOn = 0, 10, true
-        TOOLTIP_LINES = {}
-        local tip = GameTooltip
-        local oldAdd, oldClear = tip.AddLine, tip.ClearLines
-        tip.AddLine = function(self2, txt) TOOLTIP_LINES[#TOOLTIP_LINES + 1] = tostring(txt) return self2 end
-        tip.ClearLines = function(self2) return self2 end
-        G:GetScript("OnUpdate")(G, 0.2)
-        tip.AddLine, tip.ClearLines = oldAdd, oldClear
-        G._hoverOn = false
-        TIP_OK = (#TOOLTIP_LINES >= 1)
-    end
-""")
-check(bool(rt.eval("TIP_OK == true")), "hovering the graph opens a readout tooltip (time + value)")
-
-# --- I.6 UI (v1.11.63, layout stile UwU): griglia + tab + grafico fanno parte
-# --- di una sola finestra: grafico sempre visibile, tab che cambiano il
-# --- contenuto (griglia / due liste storiche / morti).
-rt.execute("""
-local cl = RLSuite.combatLog
-ROSTER_MOCK = { { 'PlayerOne', 1, 1, 80, 80, 'WARRIOR' } }
-cl.selFight = cl.db.fights[2]
-cl:SelectTab('damage')
-I_GRID_TAB = cl.gridPane:IsShown() and not cl.legacyPane:IsShown()
-I_COLS = #(cl.grid.cols or {})
-I_ROWS = #(cl.grid.pool[I_COLS] or {})
-I_HDR = cl.grid.hdrPool[1] and cl.grid.hdrPool[1].btn.fs:GetText()
--- click su una riga (la 1 e' la riga TOTAL, senza nome): la 2 = primo player
-local row = cl.grid.pool[I_COLS] and cl.grid.pool[I_COLS][2]
-I_ROWTXT = row and row.cells[1].fs:GetText()
-if row and row._scripts.OnClick then row._scripts.OnClick(row) end
-I_SEL = cl.selSource
-cl:SelectTab('interrupts')
-I_IL = 0
-for _, r in ipairs(cl._lRows) do if r:IsShown() then I_IL = I_IL + 1 end end
-I_LEGACY = cl.legacyPane:IsShown() and not cl.gridPane:IsShown()
-cl:SelectTab('deaths')
-I_DEATH = cl.deathPane:IsShown() and not cl.gridPane:IsShown()
-cl:SelectTab('damage')
-I_BACK = cl.gridPane:IsShown() and not cl.deathPane:IsShown()
-cl:RefreshGraph()
-I_SERIES = (cl.graph.series ~= nil and #cl.graph.series > 0)
-I_VLINES = (cl.graph.vlines ~= nil and #cl.graph.vlines >= 1)
-I_GPANE = (cl.graphPane:IsShown() == true)
-""")
-check(bool(rt.eval("I_GRID_TAB == true and I_COLS >= 6")), "v1.11.63: damage tab draws a GRID (name/rank/dps/useful/heal/taken)")
-check(bool(rt.eval("I_HDR == 'Name'")), "v1.11.63: grid column headers rendered (first = Name)")
-check(bool(rt.eval("I_ROWS >= 2")), "v1.11.63: grid has the TOTAL row + one row per player")
-check(bool(rt.eval("I_SEL == 'PlayerOne'")), "v1.11.63: clicking a grid row selects the player for the graph")
-check(bool(rt.eval("I_IL == 1")), "interrupts tab lists the kick event (legacy two-list pane)")
-check(bool(rt.eval("I_LEGACY == true")), "v1.11.63: legacy tabs show the two-list pane and hide the grid")
-check(bool(rt.eval("I_DEATH == true")), "v1.11.63: deaths tab shows its own pane (list + recap)")
-check(bool(rt.eval("I_BACK == true")), "v1.11.63: going back to damage restores the grid")
-check(bool(rt.eval("I_GPANE == true and I_SERIES == true and I_VLINES == true")), "v1.11.63: the graph is ALWAYS visible (own pane) and still draws series + death markers")
-
-# --- I.7 clear + report + live dropdown ---
-rt.execute("""
-local cl = RLSuite.combatLog
-CHAT_LOG = {}
-IsShiftKeyDown = function() return true end
-cl.clearBtn._scripts.OnClick(cl.clearBtn)
-I_WIPED = (#cl.db.fights == 0)
-IsShiftKeyDown = SAVED_ISD or function() return false end
-""")
-check(bool(rt.eval("I_WIPED == true")), "Shift+Clear wipes the saved fights")
-
-# --- I.8 ring buffer cap (saveFights) ---
-rt.execute("""
-local cl = RLSuite.combatLog
-cl.db.saveFights = 3
-for i = 1, 5 do
-    cl:OnRegenDisabled()
-    cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 100, 0)
-    cl:OnRegenEnabled()
-end
-I_CAP = #cl.db.fights
-cl.db.saveFights = 15
-cl.db.fights = {}
-""")
-check(bool(rt.eval("I_CAP == 3")), "fights ring buffer capped at saveFights (3/5 kept)")
+rt.execute("Cw:Hide(); RLSuite.mainWindow.frame:Show()")
 
 # --- Debug panel (RLS DEBUG bar with Fill Group / Fill Loot / Whisp test / Test MS) ---
 rt.execute("""
@@ -3942,7 +3679,7 @@ RLSuite:ApplyDebugMode()
 """)
 check(bool(rt.eval("RLSuite.debugPanel ~= nil")), "debug panel created when debug mode turns on")
 check(bool(rt.eval("RLSuite.debugPanel:IsShown() == true")), "debug panel shown only while debug mode is on (looks like a mini main bar)")
-check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 6")), "debug panel has 6 command buttons (with Log Test)")
+check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 5")), "debug panel has 5 command buttons")
 check(bool(rt.eval("RLSuite.debugPanel.debugButtons[1]:GetText() == 'Fill Raid'")), "first debug button is Fill Group")
 rt.execute("RLSuite:DebugFillGroup()")
 check(bool(rt.eval("#RLSuite:DebugRoster() == 25")), "v1.11.86: Fill Raid porta il raid simulato a 25 (tu + 24 finti)")
@@ -4127,27 +3864,6 @@ check(bool(rt.eval("RLL_TRADE_N == 2")), "two roll cycles each stacked one pick-
 check(bool(rt.eval("RLL_CLICK_OK")), "loot list rows stay CLICKABLE after two rolls (regression of the blocked list)")
 check(bool(rt.eval("RLL_P ~= nil and RLL_P[2] == RLSuite.lootManager.frame")), "pick-up windows anchor to the loot window EDGE, never over the list")
 
-# --- Debug panel: Log Test fills the combat log with fake fights ---
-rt.execute("""
-DBG_L_SAVED = RLSuite.db.profile.debug
-RLSuite.db.profile.debug = true
-RLSuite.combatLog.db.fights = {}
-local btn = RLSuite.debugPanel.debugButtons[6]
-btn._scripts["OnClick"](btn)
-CL_N = #RLSuite.combatLog.db.fights
-CL_MG = nil
-CL_LD = nil
-for _, fq in ipairs(RLSuite.combatLog.db.fights) do
-    if fq.name == 'Lord Marrowgar' then CL_MG = fq end
-    if fq.name == 'Lady Deathwhisper' then CL_LD = fq end
-end
-""")
-check(bool(rt.eval("CL_N == 3")), "Log Test feeds three fake fights into the combat log")
-check(bool(rt.eval("CL_MG ~= nil and CL_MG.kill == true")), "fake Marrowgar fight is a named KILL (segmentation works through the real path)")
-check(bool(rt.eval("CL_LD ~= nil and CL_LD.kill ~= true")), "fake Lady fight is a WIPE")
-check(bool(rt.eval("(function() local rows, tot = RLSuite.combatLog:AggTotals(CL_MG, 'damage') return tot ~= nil and tot > 5000 end)()")), "fake fights contain real damage aggregation (tabs/graphs have data)")
-rt.execute("RLSuite.combatLog.db.fights = {}; RLSuite.db.profile.debug = DBG_L_SAVED")
-
 check(bool(rt.eval("RLSuite.debugPanel.debugButtons[2]:GetText() == 'Test Loot' and RLSuite.debugPanel.debugButtons[3]:GetText() == 'Empty Loot' and RLSuite.debugPanel.debugButtons[4]:GetText() == 'Test Whisplist'")), "debug bar buttons are in English on EVERY client locale")
 
 check(bool(rt.eval("RLSuite.debugPanel._noOuterBorder == true")), "debug bar has no dialog border (borderless like the main bar)")
@@ -4242,7 +3958,7 @@ DBG_TITLE_STYLE = {
 check(bool(rt.eval("DBG_LAYOUT.rows == 2 and DBG_ROW_COUNT == 2 and DBG_LAYOUT.cols >= 4")), "debug panel is a matrix on TWO rows and N columns (%d x %d for %d buttons + title)" % (rt.eval("DBG_LAYOUT.rows"), rt.eval("DBG_LAYOUT.cols"), rt.eval("DBG_LAYOUT.n")))
 check(bool(rt.eval("DBG_TITLE_CELL.x ~= nil and DBG_TITLE_CELL.parent == RLSuite.debugPanel and DBG_FLOW.firstAfterTitle == true")), "the 'RLS DEBUG' title sits in the FIRST cell of the matrix (first button in the cell right after it)")
 check(bool(rt.eval("DBG_TITLE_STYLE.noBackdrop == true and DBG_TITLE_STYLE.mouseOff == true and DBG_TITLE_STYLE.notClickable == true")), "title slot is a plain cell like the MacroBar phase tile (no backdrop, no border, not clickable)")
-check(bool(rt.eval("DBG_GAP.n == 1 and DBG_GAP.cells == 8")), "RLS DEBUG grid has ONE empty cell (8 cells: title + 6 buttons + blank)")
+check(bool(rt.eval("DBG_GAP.n == 1 and DBG_GAP.cells == 7")), "RLS DEBUG grid has ONE empty cell (7 cells: title + 5 buttons + blank)")
 check(bool(rt.eval("DBG_GAP.nameBefore == 'Empty Loot'")), "the blank cell sits right AFTER 'Empty Loot' (%s -> vuota)" % rt.eval("DBG_GAP.nameBefore"))
 check(bool(rt.eval("DBG_GAP.freeCell == true and DBG_GAP.afterAt.y == DBG_GAP.y and DBG_GAP.afterAt.x == DBG_GAP.nextColX")), "no button sits in the blank cell: '%s' starts the cell right after it" % rt.eval("DBG_GAP.afterName"))
 check(bool(rt.eval("""(function() local f = RLSuite.debugPanel return f._points[1] ~= nil and f._points[1][2] == RLSuite.mainWindow.frame end)()""")), "debug panel is anchored to the main bar (moves with it, never saved)")
@@ -4290,19 +4006,13 @@ RLSuite:ApplyDebugMode()
 check(bool(rt.eval("LL_N == 0")), "enabling debug mode no longer spawns loot by itself")
 check(bool(rt.eval("LL_N2 > 0")), "the Fill Loot button is the ONLY thing spawning debug loot")
 
-# --- CombatLog window: dropdown clears the close X; min width covers the tab row ---
-check(bool(rt.eval("""(function() local p = RLSuite.combatLog.fightDropdown._points[1] return p ~= nil and p[4] ~= nil and p[4] <= -24 end)()""")), "fight dropdown stays CLEAR of the close X (11px wide at -4)")
-check(bool(rt.eval("RLSuite.windowMins.log() >= 730")), "log min width covers the full top tab row (8 tabs x 88px + margins)")
-check(bool(rt.eval("(function() local _, h = RLSuite.windowMins.log() return h ~= nil and h >= 540 end)()")), "log min height covers the stacked content (lists 398 + top area 78 + bottom bar, never clipped)")
-check(bool(rt.eval("(function() local tx = 0 for _ in pairs(RLSuite.combatLog.tabBtns) do tx = tx + 1 end return (14 + tx * 83 + 14) <= RLSuite.windowMins.log() + 10 end)()")), "every top tab stays inside the min-width window")
-
 # --- Loot Manager: min width includes the MS announce button# --- Loot Manager: min width includes the MS announce button; window fixed like the equip panel ---
 rt.execute("LM_MINW = RLSuite.windowMins.loot()")
 check(bool(rt.eval("LM_MINW >= 506")), "loot min width fits all roll buttons incl. Announce Changes (no clipping)")
 rt.execute("RLSuite.mainWindow:ShowTab('loot')")
 check(bool(rt.eval("RLSuite.lootManager.frame._scripts['OnDragStart'] == nil")), "loot window is NOT draggable anymore (behaves like the native equip panel)")
 check(bool(rt.eval("""(function() local p = RLSuite.lootManager.frame._points[1] return p ~= nil and p[1] == 'TOPLEFT' and p[2] == UIParent and p[4] == 16 and p[5] == -116 end)()""")), "loot window anchors to the fixed equip-style spot (TOPLEFT 16,-116 of UIParent)")
-check(bool(rt.eval("RLSuite.combatLog.frame._scripts['OnDragStart'] ~= nil")), "other windows keep their draggable behavior (combat log untouched)")
+check(bool(rt.eval("RLSuite.groupmaking.mainFrame._scripts['OnDragStart'] ~= nil")), "other windows keep their draggable behavior (groupmaking untouched)")
 rt.execute("RLSuite.lootManager.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
 
 # --- Loot Manager yields the left side to an open Trade (native panel behavior) ---
@@ -4499,7 +4209,7 @@ check(bool(rt.eval("PH_LABEL == 'Pre-raid' or PH_LABEL == 'Pre-boss' or PH_LABEL
       "phase name shows the current phase ('%s')" % rt.eval("PH_LABEL"))
 check(bool(rt.eval("SAVE_TXT == 'SaveRaid'")), "SaveRaid is a TEXT BUTTON showing 'SaveRaid'")
 check(bool(rt.eval("SAVE_W == 90 and SAVE_H == 22")), "SaveRaid button has the same size as the matrix buttons (90x22)")
-check(bool(rt.eval("SAVE_IS_MATRIX == true and SAVE_IDX == 7")), "SaveRaid joins the button matrix as the 7th button")
+check(bool(rt.eval("SAVE_IS_MATRIX == true and SAVE_IDX == 6")), "SaveRaid joins the button matrix as the 6th button")
 check(bool(rt.eval("SAVE_HAS_ICON == false")), "SaveRaid is no longer an icon button")
 
 # -- la barra e' piu' bassa e i tasti sono ADERENTI al bordo (PAD ridotto)
@@ -4969,13 +4679,12 @@ local function chk(btn)
         end
     end
 end
-chk(RLSuite.combatLog and RLSuite.combatLog.frame and RLSuite.combatLog.frame.closeBtn)
 chk(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame and RLSuite.groupmaking.mainFrame.closeBtn)
 chk(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame and RLSuite.groupmaking.whisplistFrame.closeBtn)
 chk(RLSuite.lootManager and RLSuite.lootManager.frame and RLSuite.lootManager.frame.closeBtn)
 chk(RLSuite.msManager and RLSuite.msManager.frame and RLSuite.msManager.frame.closeBtn)
 """)
-check(int(rt.eval("CLOSE_OK") or 0) == 5, "all 5 built window-close buttons are the 11x11 close.tga X, HALVED (CL/GM/GM-wl/LM/MS)")
+check(int(rt.eval("CLOSE_OK") or 0) == 4, "all 4 built window-close buttons are the 11x11 close.tga X, HALVED (GM/GM-wl/LM/MS)")
 check(rt.eval("CLOSE_BAD") == '', "no close button kept the old red Blizzard artwork")
 
 # -- LA X ROSSA nella main bar: eliminata
@@ -5028,7 +4737,6 @@ check('ClampWindowToScreen(self2)' in open("MacroBar.lua", encoding="utf-8").rea
 
 # -- scroll clip util: registrazione nei moduli
 check(bool(rt.eval("RLSuite.lootManager.histContent._rlsScrollClip ~= nil")), "scroll clip registered on LootManager history")
-check(bool(rt.eval("RLSuite.combatLog.leftContent._rlsScrollClip ~= nil and RLSuite.combatLog.rightContent._rlsScrollClip ~= nil")), "scroll clip registered on CombatLog panes")
 check(bool(rt.eval("RLSuite.msManager.listContent._rlsScrollClip ~= nil")), "scroll clip registered on MS changes list")
 check(bool(rt.eval("RLSuite.groupmaking.wlContent._rlsScrollClip ~= nil")), "scroll clip registered on whisplist")
 
@@ -5498,974 +5206,6 @@ check(bool(rt.eval("IM_H_MAT_OFF == IM_H_MAT_ON and IM_Y6_MAT_OFF == IM_Y6_MAT_O
 check(bool(rt.eval("IM_MT_Y_ONE == IM_MT_Y_FULL")), "v1.11.62: il blocco Tanks e' riservato sempre (barra MT ferma: %r / %r)" % (rt.eval("IM_MT_Y_ONE"), rt.eval("IM_MT_Y_FULL")))
 check(bool(rt.eval("IM_BTN_EMPTY_SHOWN == false and IM_BTN_FULL_SHOWN == true")), "v1.11.62: a roster vuoto il tasto 'Raid Buffs' resta nascosto e riappare col roster")
 
-rt.execute("""
--- =====================================================================
--- v1.11.63: report stile UwU Logs (targets/consumables/auras/deaths/powers)
--- Fight SINTETICO deterministico: numeri esatti per ogni aggregazione.
--- =====================================================================
-CLT = RLSuite.combatLog
-CLT.db.enabled = true
-UW_P = 1024 + 16 + 1      -- player, friendly, affiliato al raid
-UW_N = 2048 + 64          -- npc, hostile
-UW_FLASK = 53760          -- Flask of Endless Rage (in RLSuite.buffData.flask)
-UW_FOOD = 57399           -- Well Fed (Fish Feast)
-UW_F = {
-    name = "Test Boss", kill = true, duration = 100, startTime = 0, startUTC = 0,
-    count = 0, events = {}, samples = { health = {}, power = {} },
-    player = "Alpha", raidSize = 25, difficulty = 6, boss = "Test Boss",
-}
-function UWPush(t, sub, src, srcf, dst, dstf, sid, sname, amt, over)
-    local ev = { t, sub, src, srcf or 0, dst, dstf or 0, sid, sname, amt, over }
-    UW_F.count = UW_F.count + 1
-    UW_F.events[UW_F.count] = ev
-    return ev
-end
-for i = 1, 6 do
-    UWPush(10 * i, "SPELL_DAMAGE", "Alpha", UW_P, "Test Boss", UW_N, 48230, "Fireball", 10000, 0)[17] = true
-end
-for i = 1, 4 do
-    UWPush(12 * i, "SPELL_DAMAGE", "Beta", UW_P, "Test Boss", UW_N, 47488, "Mortal Strike", 10000, 0)[17] = true
-end
-UWPush(30, "SWING_DAMAGE", "Alpha", UW_P, "Trash Mob", UW_N, 0, "Melee", 10000, 0)
-UWPush(40, "SPELL_DAMAGE", "Test Boss", UW_N, "Alpha", UW_P, 59448, "Cleave", 5000, 0)
-UWPush(45, "SPELL_HEAL", "Alpha", UW_P, "Beta", UW_P, 48782, "Holy Light", 3000, 200)
-UWPush(46, "SPELL_HEAL", "Beta", UW_P, "Beta", UW_P, 43185, "Runic Healing Potion", 2000, 0)
-UWPush(0, "SPELL_AURA_APPLIED", "Alpha", UW_P, "Alpha", UW_P, UW_FLASK, "Flask of Endless Rage")
-UWPush(50, "SPELL_AURA_REMOVED", "Alpha", UW_P, "Alpha", UW_P, UW_FLASK, "Flask of Endless Rage")
-UWPush(0, "SPELL_AURA_APPLIED", "Alpha", UW_P, "Beta", UW_P, UW_FOOD, "Well Fed")
-UWPush(20, "SPELL_CAST_SUCCESS", "Alpha", UW_P, "Alpha", UW_P, 53908, "Potion of Speed")
-UWPush(5, "SPELL_ENERGIZE", "Alpha", UW_P, "Alpha", UW_P, 29131, "Bloodrage", 500)
-UWPush(6, "SPELL_ENERGIZE", "Beta", UW_P, "Beta", UW_P, 29131, "Bloodrage", 300)
-UWPush(89.5, "SPELL_DAMAGE", "Test Boss", UW_N, "Beta", UW_P, 59448, "Cleave", 4000, 1000)
-UWPush(89.7, "SPELL_CAST_SUCCESS", "Test Boss", UW_N, "Beta", UW_P, 59448, "Cleave")
-UWPush(89.9, "SPELL_HEAL", "Alpha", UW_P, "Beta", UW_P, 48782, "Holy Light", 800, 100)
-UWPush(90, "UNIT_DIED", nil, 0, "Beta", UW_P)
-
-local st = CLT:AggPlayerStats(UW_F)
-UW_ORDER = {}
-for _, a in ipairs(st.rows) do UW_ORDER[#UW_ORDER + 1] = a.name end
-UW_A = st.rows[1]
-UW_B = st.rows[2]
-UW_STATS = {
-    order = table.concat(UW_ORDER, ","),
-    a_useful = UW_A.useful, a_total = UW_A.total, a_heal = UW_A.heal, a_taken = UW_A.taken,
-    b_useful = UW_B.useful, b_taken = UW_B.taken, b_heal = UW_B.heal,
-    t_useful = st.total.useful, t_total = st.total.total, t_heal = st.total.heal,
-    t_taken = st.total.taken, dur = st.duration,
-}
-
-local tg = CLT:AggTargets(UW_F)
-UW_TG = {
-    ncol = #tg.targetCols,
-    c1 = tg.targetCols[1].name, c1boss = tg.targetCols[1].boss,
-    c2 = tg.targetCols[2].name, c2boss = tg.targetCols[2].boss,
-    a_useful = tg.rows[1].useful, a_total = tg.rows[1].total,
-    a_boss = tg.rows[1].byTarget["Test Boss"], a_trash = tg.rows[1].byTarget["Trash Mob"],
-    t_total = tg.totalRow.total, t_useful = tg.totalRow.useful,
-}
-
-local cg = CLT:AggConsumables(UW_F)
-UW_CONS = { ncol = #cg.cols, nplayers = #cg.players }
-for _, c in ipairs(cg.cols) do
-    if c.sid == UW_FLASK then UW_CONS.flask = c.key end
-    if c.name == "Potion of Speed" then UW_CONS.pot = c.key end
-    if c.name == "Well Fed" then UW_CONS.food = c.key end
-end
-UW_CONS.a_flask = cg.cells["Alpha"] and UW_CONS.flask and cg.cells["Alpha"][UW_CONS.flask]
-UW_CONS.a_pot = cg.cells["Alpha"] and UW_CONS.pot and cg.cells["Alpha"][UW_CONS.pot]
-UW_CONS.b_food = cg.cells["Beta"] and UW_CONS.food and cg.cells["Beta"][UW_CONS.food]
-UW_CONS.b_pot = cg.cells["Beta"] and cg.cells["Beta"][tostring(43185) .. "|Runic Healing Potion"]
-
-local ag = CLT:AggAuraMatrix(UW_F)
-UW_AUR = { ncol = #ag.cols, dur = ag.duration }
-local acell = ag.cells["Alpha"] and ag.cells["Alpha"][UW_FLASK]
-if acell then UW_AUR.a_flask_count = acell.count; UW_AUR.a_flask_pct = acell.up / ag.duration * 100 end
-local fcell = ag.cells["Beta"] and ag.cells["Beta"][UW_FOOD]
-if fcell then UW_AUR.b_food_count = fcell.count; UW_AUR.b_food_pct = fcell.up / ag.duration * 100 end
-
-local pm = CLT:AggPowerMatrix(UW_F)
-UW_POW = { ncol = #pm.cols, total = pm.total, nplayers = #pm.players, sid = pm.cols[1].sid }
-if pm.cells["Alpha"] then UW_POW.a = pm.cells["Alpha"][pm.cols[1].key] end
-if pm.cells["Beta"] then UW_POW.b = pm.cells["Beta"][pm.cols[1].key] end
-
-local de = CLT:AggDeaths(UW_F)
-UW_DEATH = { n = #de, name = de[1] and de[1].name, t = de[1] and de[1].t, killer = de[1] and de[1].killer }
-local dd = CLT:DeathDetail(UW_F, "Beta", 90, 12)
-UW_DD = { n = #dd, first_kind = dd[1] and dd[1].kind }
-for _, r in ipairs(dd) do
-    if r.kind == "DAMAGE" and r.spell == "Cleave" and r.val == "4000" then
-        UW_DD.dmg_val, UW_DD.dmg_over, UW_DD.dmg_flag, UW_DD.dmg_src = r.val, r.over, r.flag, r.src
-    end
-    if r.kind == "CAST" then UW_DD.cast_flag = r.flag end
-    if r.kind == "HEAL" and r.val == "800" then UW_DD.heal_over = r.over end
-end
-UW_DD.stamp = CLT:RelStamp(-0.887)
-
--- titolo/etichette + dropdown
-UW_TITLE = CLT:FightTitle(UW_F)
-UW_LABEL = CLT:FightLabel(UW_F, 1)
-local savedFights = CLT.db.fights
-CLT.db.fights = { UW_F }
-local items = CLT:FightListItems()
-UW_ITEM1 = items[1] and items[1].text
-UW_HAS_ALL = false
-for _, it in ipairs(items) do
-    if it.text == "All Test Boss segments" then UW_HAS_ALL = true end
-end
-
--- fight unito ("All <boss> segments") su due pull
-local fa = { name = "Same Boss", kill = false, duration = 100, startTime = 0,
-    count = 1, events = { { 10, "SPELL_DAMAGE", "Alpha", UW_P, "Boss", UW_N, 1, "Hit", 100 } },
-    samples = { health = {}, power = {} } }
-local fb = { name = "Same Boss", kill = true, duration = 50, startTime = 200,
-    count = 1, events = { { 5, "SPELL_DAMAGE", "Alpha", UW_P, "Boss", UW_N, 1, "Hit", 200 } },
-    samples = { health = {}, power = {} } }
-CLT.db.fights = { fb, fa }
-local mf = CLT:MergedFight("Same Boss")
-UW_MERGE = { n = mf and mf.count, dur = mf and mf.duration, seg = mf and mf.segments,
-    kill = mf and mf.kill, t2 = mf and mf.events[2] and mf.events[2][1] }
-CLT.db.fights = savedFights
-
--- grafico: 6 discretizzazioni + serie "media dell'intero fight"
-CLT.selFight = UW_F
-CLT:SelectTab("damage")
-UW_STEPS = CLT.stepDropdown.options
-UW_STEP1 = UW_STEPS[1] and UW_STEPS[1].text
-UW_STEP6 = UW_STEPS[6] and UW_STEPS[6].text
-UW_STEPN = #UW_STEPS
-UW_GSTEP = CLT.graphStep
-local s0 = CLT:DpsSeries(UW_F, nil, 0)
-local s5 = CLT:DpsSeries(UW_F, nil, 5)
-UW_SER = { n0 = #s0, first0 = s0[1] and s0[1][2], last0 = s0[#s0] and s0[#s0][2],
-    n5 = #s5, b2_5 = s5[3] and s5[3][2] }
-
--- i tab si costruiscono senza errori e con le colonne giuste
-UW_TABS = {}
-for _, tab in ipairs({ "damage", "targets", "consumables", "auras", "powers" }) do
-    CLT:SelectTab(tab)
-    local cols = CLT.grid.cols or {}
-    local rows = CLT.grid.pool[#cols] or {}
-    UW_TABS[#UW_TABS + 1] = tab .. ":" .. #cols .. "x" .. (CLT.grid.rowCount or 0)
-end
-CLT:SelectTab("targets")
-UW_TG_LABEL = CLT.grid.cols[4] and CLT.grid.cols[4].label
-UW_TG_TIP = CLT.grid.cols[4] and CLT.grid.cols[4].tip
-CLT:SelectTab("consumables")
-UW_CONS_ICON = false
-for _, c in ipairs(CLT.grid.cols) do
-    if c.ic and tostring(c.ic):find("Tex:") then UW_CONS_ICON = true end
-end
-CLT:SelectTab("deaths")
-UW_DEATH_ROWS = #CLT._dRows
-local drows = CLT.deathGrid.pool[#(CLT.deathGrid.cols or {})] or {}
-UW_DEATH_DETAIL_ROWS = CLT.deathGrid.rowCount or 0
-UW_DEATH_FIRST = drows[1] and drows[1].cells[2].fs:GetText()
-CLT:SelectTab("damage")
-UW_BACK = CLT.gridPane:IsShown()
--- chiusura: nessuna finestra lasciata aperta dai test
-CLT.selFight = nil
-CLT.selTab = "damage"
-CLT.db.fights = savedFights
-CLT:RefreshUI()
-""")
-
-
-check(bool(rt.eval("UW_STATS.order == 'Alpha,Beta'")), "v1.11.63 AggPlayerStats: righe ordinate per danno utile (%s)" % rt.eval("UW_STATS.order"))
-check(bool(rt.eval("UW_STATS.a_useful == 60000 and UW_STATS.a_total == 70000")), "v1.11.63 AggPlayerStats: danno utile (solo boss) separato dal totale (%r/%r)" % (rt.eval("UW_STATS.a_useful"), rt.eval("UW_STATS.a_total")))
-check(bool(rt.eval("UW_STATS.a_taken == 5000 and UW_STATS.b_taken == 4000")), "v1.11.63 AggPlayerStats: danno SUBITO per giocatore (%r/%r)" % (rt.eval("UW_STATS.a_taken"), rt.eval("UW_STATS.b_taken")))
-check(bool(rt.eval("UW_STATS.a_heal == 3800 and UW_STATS.b_heal == 2000")), "v1.11.63 AggPlayerStats: cure per giocatore (%r/%r)" % (rt.eval("UW_STATS.a_heal"), rt.eval("UW_STATS.b_heal")))
-check(bool(rt.eval("UW_STATS.t_useful == 100000 and UW_STATS.t_total == 110000 and UW_STATS.t_heal == 5800 and UW_STATS.t_taken == 9000")), "v1.11.63 AggPlayerStats: riga TOTAL (utile %r, totale %r, cure %r, subito %r)" % (rt.eval("UW_STATS.t_useful"), rt.eval("UW_STATS.t_total"), rt.eval("UW_STATS.t_heal"), rt.eval("UW_STATS.t_taken")))
-check(bool(rt.eval("UW_TG.ncol == 2 and UW_TG.c1boss == true and UW_TG.c2boss == false")), "v1.11.63 AggTargets: un boss e' marcato come tale (danno utile), lo spazzino no")
-check(bool(rt.eval("UW_TG.a_useful == 60000 and UW_TG.a_boss == 60000 and UW_TG.a_trash == 10000")), "v1.11.63 AggTargets: danno per bersaglio per giocatore (%r boss / %r spazzino)" % (rt.eval("UW_TG.a_boss"), rt.eval("UW_TG.a_trash")))
-check(bool(rt.eval("UW_TG.t_total == 110000 and UW_TG.t_useful == 100000")), "v1.11.63 AggTargets: totali di colonna/riga coerenti")
-check(bool(rt.eval("UW_CONS.ncol == 4 and UW_CONS.a_flask == 1 and UW_CONS.a_pot == 1")), "v1.11.63 AggConsumables: flask (per ID) e pozione (per nome) contati 1 volta (%r/%r su %r colonne)" % (rt.eval("UW_CONS.a_flask"), rt.eval("UW_CONS.a_pot"), rt.eval("UW_CONS.ncol")))
-check(bool(rt.eval("UW_CONS.b_food == 1 and UW_CONS.b_pot == 1")), "v1.11.63 AggConsumables: Well Fed (aura) e pozione curativa (heal su di se') riconosciute")
-check(bool(rt.eval("UW_AUR.a_flask_count == 1 and math.abs(UW_AUR.a_flask_pct - 50) < 0.01")), "v1.11.63 AggAuraMatrix: applicazioni + uptime%% della flask (%r appl., %r%%)" % (rt.eval("UW_AUR.a_flask_count"), rt.eval("UW_AUR.a_flask_pct")))
-check(bool(rt.eval("UW_AUR.b_food_count == 1 and math.abs(UW_AUR.b_food_pct - 100) < 0.01")), "v1.11.63 AggAuraMatrix: aura ancora aperta a fine pull = 100%% di uptime")
-check(bool(rt.eval("UW_POW.total == 800 and UW_POW.a == 500 and UW_POW.b == 300")), "v1.11.63 AggPowerMatrix: risorsa generata per giocatore e per spell (%r)" % rt.eval("UW_POW.total"))
-check(bool(rt.eval("UW_DEATH.n == 1 and UW_DEATH.name == 'Beta' and UW_DEATH.killer == 'Test Boss'")), "v1.11.63 AggDeaths: morto + chi ha dato il colpo finale (%s da %s)" % (rt.eval("UW_DEATH.name"), rt.eval("UW_DEATH.killer")))
-check(bool(rt.eval("UW_DD.first_kind == 'DIED'")), "v1.11.63 DeathDetail: la riga DIED e' la prima (tempo 0:00.000)")
-check(bool(rt.eval("UW_DD.dmg_val == '4000' and UW_DD.dmg_over == '1000' and UW_DD.dmg_flag == 'SPELL'")), "v1.11.63 DeathDetail: colpo con valore e overkill (%r, over %r, %s)" % (rt.eval("UW_DD.dmg_val"), rt.eval("UW_DD.dmg_over"), rt.eval("UW_DD.dmg_flag")))
-check(bool(rt.eval("UW_DD.cast_flag == 'SUCCESS' and UW_DD.heal_over == '100'")), "v1.11.63 DeathDetail: righe CAST (SUCCESS) e HEAL con overheal")
-check(bool(rt.eval("UW_DD.stamp == '-0:00.887'")), "v1.11.63 DeathDetail: timestamp relativo -m:ss.mmm (%s)" % rt.eval("UW_DD.stamp"))
-check(bool(rt.eval("UW_TITLE == '1:40.000  Test Boss 25H  Kill'")), "v1.11.63 testata fight: durata + nome + taglia/difficolta' + esito (%s)" % rt.eval("UW_TITLE"))
-check(bool(rt.eval("UW_LABEL == '1:40.000 | Kill 25H  Test Boss'")), "v1.11.63 etichetta del dropdown con tag (%s)" % rt.eval("UW_LABEL"))
-check(bool(rt.eval("UW_HAS_ALL == true")), "v1.11.63 dropdown: voce 'All <boss> segments' per i segmenti uniti")
-check(bool(rt.eval("UW_MERGE.n == 2 and UW_MERGE.dur == 150 and UW_MERGE.seg == 2 and UW_MERGE.kill == true")), "v1.11.63 MergedFight: eventi dei pull concatenati su una linea di tempo continua (%r)" % rt.eval("UW_MERGE.n"))
-check(bool(rt.eval("UW_MERGE.t2 == 105")), "v1.11.63 MergedFight: il secondo pull parte dopo la durata del primo (t=%r)" % rt.eval("UW_MERGE.t2"))
-check(bool(rt.eval("UW_STEPN == 6 and UW_STEP1 == 'Avg whole fight' and UW_STEP6 == 'Avg every 10 seconds'")), "v1.11.63 grafico: le 6 discretizzazioni di UwU (%s ... %s)" % (rt.eval("UW_STEP1"), rt.eval("UW_STEP6")))
-check(bool(rt.eval("UW_GSTEP == 0")), "v1.11.63 grafico: default = 'Avg whole fight' (media dell'intero fight)")
-check(bool(rt.eval("UW_SER.n0 == 61 and UW_SER.first0 == 0 and math.abs(UW_SER.last0 - 110000/61) < 0.01")), "v1.11.63 DpsSeries step 0 = media cumulativa (parte da 0 e finisce a 110000/61 = %.1f dps: %r)" % (110000/61, rt.eval("UW_SER.last0")))
-check(bool(rt.eval("UW_SER.n5 == 13 and UW_SER.b2_5 == 4000")), "v1.11.63 DpsSeries step 5 = bucket da 5s (20k dmg nel bucket 10-15s = 4000 dps: %r)" % rt.eval("UW_SER.b2_5"))
-check(bool(rt.eval("UW_TABS[1] == 'damage:6x3'")), "v1.11.63 tab Damage: 6 colonne (Name/Rank/Dps%%/Useful/Heal/Taken) e 3 righe (TOTAL + 2) (%s)" % rt.eval("UW_TABS[1]"))
-check(bool(rt.eval("UW_TABS[2] == 'targets:5x3'")), "v1.11.63 tab Targets: Name + Useful + Total + 2 bersagli (%s)" % rt.eval("UW_TABS[2]"))
-check(bool(rt.eval("UW_CONS_ICON == true")), "v1.11.63 tab Consumables: colonne con l'icona della spell")
-check(bool(rt.eval("UW_TG_TIP and UW_TG_TIP:find('BOSS') ~= nil")), "v1.11.63 tab Targets: tooltip dell'intestazione che spiega il danno utile")
-check(bool(rt.eval("UW_DEATH_ROWS == 1 and UW_DEATH_DETAIL_ROWS >= 4 and UW_DEATH_FIRST == 'DIED'")), "v1.11.63 tab Deaths: lista dei morti + recap (prima riga %s, %r righe)" % (rt.eval("UW_DEATH_FIRST"), rt.eval("UW_DEATH_DETAIL_ROWS")))
-check(bool(rt.eval("UW_BACK == true")), "v1.11.63: tornando sul tab Damage la griglia e' di nuovo visibile")
-
-rt.execute("""
--- ---- v1.11.63: struttura della finestra (layout UwU) ----
-local cl = RLSuite.combatLog
-UW_LAYOUT = {
-    w = cl.frame._w, h = cl.frame._h,
-    graphH = cl.graphPane._h,
-    graphVis = cl.graphPane:IsShown(),
-    steps = {},
-    tabs = {},
-    deaths_left = (cl.deathListBox ~= nil),
-    deaths_right = (cl.deathGrid ~= nil),
-    title_anchor = cl.titleText._points[1] and cl.titleText._points[1][1],
-    dd_pt = cl.fightDropdown._points[1] and cl.fightDropdown._points[1][1],
-    dd_rel = cl.fightDropdown._points[1] and cl.fightDropdown._points[1][3],
-}
-for _, st in ipairs(cl.graphSteps or {}) do UW_LAYOUT.steps[#UW_LAYOUT.steps + 1] = st.text end
-for _, def in ipairs(cl.uiTabs or {}) do UW_LAYOUT.tabs[#UW_LAYOUT.tabs + 1] = def.key end
-UW_LAYOUT.stepn = #UW_LAYOUT.steps
-UW_LAYOUT.tabn = #UW_LAYOUT.tabs
-local minW, minH = RLSuite.windowMins.log()
-UW_LAYOUT.minW, UW_LAYOUT.minH = minW, minH
--- "Show graph" spegne/riaccende il grafico senza toccare il resto
-cl.showGraphCheck:SetChecked(true)
-cl.showGraphCheck._scripts.OnClick(cl.showGraphCheck)
-UW_LAYOUT.graphOn1 = cl.graphPane:IsShown()
-cl.showGraphCheck:SetChecked(false)
-cl.showGraphCheck._scripts.OnClick(cl.showGraphCheck)
-UW_LAYOUT.graphOn2 = cl.graphPane:IsShown()
-cl.showGraphCheck:SetChecked(true)
-if not cl.graphPane:IsShown() then cl.graphPane:Show() end
-""")
-
-
-check(bool(rt.eval("UW_LAYOUT.w >= 870 and UW_LAYOUT.h >= 660")), "v1.11.63 layout: la finestra non e' mai sotto il minimo del nuovo layout (%rx%r)" % (rt.eval("UW_LAYOUT.w"), rt.eval("UW_LAYOUT.h")))
-_uw_src = open("CombatLog.lua", encoding="utf-8").read()
-check('local CL_WIN_W, CL_WIN_H = 900, 660' in _uw_src, "v1.11.63 layout: dimensione di progetto della finestra = 900x660 (riga titolo + controlli + grafico + tab + contenuto + footer)")
-check(bool(rt.eval("UW_LAYOUT.minW == 870 and UW_LAYOUT.minH == 660")), "v1.11.63 layout: minimi della finestra Log aggiornati (%rx%r)" % (rt.eval("UW_LAYOUT.minW"), rt.eval("UW_LAYOUT.minH")))
-check(bool(rt.eval("UW_LAYOUT.graphH == 150 and UW_LAYOUT.graphVis == true")), "v1.11.63 layout: grafico SEMPRE visibile in alto, altezza fissa (%r px)" % rt.eval("UW_LAYOUT.graphH"))
-check(bool(rt.eval("UW_LAYOUT.graphOn1 == true and UW_LAYOUT.graphOn2 == false")), "v1.11.63 layout: la casella 'Show graph' accende/spegne il grafico")
-check(bool(rt.eval("UW_LAYOUT.title_anchor == 'TOPLEFT' and UW_LAYOUT.dd_pt == 'TOPRIGHT' and UW_LAYOUT.dd_rel == 'TOPRIGHT'")), "v1.11.63 layout: nome fight in alto a SINISTRA, dropdown dei fight in alto a DESTRA")
-check(bool(rt.eval("UW_LAYOUT.stepn == 6 and UW_LAYOUT.steps[1] == 'Avg whole fight' and UW_LAYOUT.steps[6] == 'Avg every 10 seconds'")), "v1.11.63 layout: discretizzazioni del grafico identiche al terzo screen (%r voci)" % rt.eval("UW_LAYOUT.stepn"))
-check(bool(rt.eval("UW_LAYOUT.tabs[1] == 'damage' and UW_LAYOUT.tabs[2] == 'targets' and UW_LAYOUT.tabs[3] == 'consumables' and UW_LAYOUT.tabs[4] == 'auras' and UW_LAYOUT.tabs[5] == 'deaths' and UW_LAYOUT.tabs[6] == 'powers'")), "v1.11.63 layout: tab group nell'ordine di UwU (Damage/Targets/Consumables/Auras/Deaths/Powers) e poi gli storici")
-check(bool(rt.eval("UW_LAYOUT.deaths_left == true and UW_LAYOUT.deaths_right == true")), "v1.11.63 layout: tab Deaths = lista dei morti a sinistra + tabella di dettaglio a destra")
-
-rt.execute("""
--- ---- v1.11.64: regressione del crash ScrollFrame senza nome ----
-UW_NAMES = {
-    grid = (_G["RLSuiteCombatLogGrid"] ~= nil),
-    dgrid = (_G["RLSuiteCombatLogDeathGrid"] ~= nil),
-    left = (_G["RLSuiteCombatLogLeft"] ~= nil),
-    right = (_G["RLSuiteCombatLogRight"] ~= nil),
-    deaths = (_G["RLSuiteCombatLogDeaths"] ~= nil),
-    gridbar = (_G["RLSuiteCombatLogGridScrollBar"] ~= nil),
-    dgridbar = (_G["RLSuiteCombatLogDeathGridScrollBar"] ~= nil),
-    gridparent = (RLSuite.combatLog.grid and RLSuite.combatLog.grid.scroll._parent ~= nil),
-}
--- l'harness ora RIFIUTA uno ScrollFrame senza nome (crash reale del client)
-UW_STRICT = false
-local ok = pcall(function()
-    CreateFrame("ScrollFrame", nil, UIParent, "UIPanelScrollFrameTemplate")
-end)
-UW_STRICT = (ok == false)
-""")
-
-
-check(bool(rt.eval("UW_NAMES.grid == true and UW_NAMES.dgrid == true")), "v1.11.64: gli ScrollFrame delle griglie hanno un NOME globale (rlSuiteCombatLogGrid / ...DeathGrid)")
-check(bool(rt.eval("UW_NAMES.gridbar == true and UW_NAMES.dgridbar == true")), "v1.11.64: il template UIPanelScrollFrameTemplate trova le sue barre (<nome>ScrollBar)")
-check(bool(rt.eval("UW_NAMES.left == true and UW_NAMES.right == true and UW_NAMES.deaths == true")), "v1.11.64: anche gli ScrollFrame storici sono nominati")
-check(bool(rt.eval("UW_STRICT == true")), "v1.11.64: l'harness riproduce il crash del client (ScrollFrame senza nome = errore), cosi' non ricapita")
-_uw_scroll = ["CombatLog.lua", "Config.lua", "GroupMaking.lua", "LootManager.lua", "MSManager.lua", "RaidProfile.lua", "RaidFrame.lua", "MacroBar.lua", "Core.lua", "Utils.lua"]
-UW_BADNAME = []
-for _f in _uw_scroll:
-    try:
-        _t = open(_f, encoding="utf-8").read()
-    except Exception:
-        continue
-    for _line in _t.split("\n"):
-        if 'CreateFrame("ScrollFrame", nil' in _line:
-            UW_BADNAME.append(_f)
-check(not UW_BADNAME, "v1.11.64: nessuno ScrollFrame senza nome in tutto l'addon (%s)" % (UW_BADNAME or "ok"))
-
-rt.execute("""
--- =====================================================================
--- v1.11.65: TAB GROUP vero + griglia che non si incasina (no wrap)
--- =====================================================================
-local cl = RLSuite.combatLog
-UW_TAB = {
-    isGroup = (cl.tabGroup ~= nil),
-    parent_ok = true, same_width = true, contiguous = true,
-    overlap = cl.tabGroup and cl.tabGroup._tabOverlap,
-    w = cl.tabGroup and cl.tabGroup._tabW,
-    n = #(cl.tabOrder or {}),
-    nbtns = 0,
-}
-for _, _ in pairs(cl.tabBtns or {}) do UW_TAB.nbtns = UW_TAB.nbtns + 1 end
-for i, def in ipairs(cl.tabOrder or {}) do
-    local b = cl.tabBtns[def.key]
-    if b._parent ~= cl.tabGroup then UW_TAB.parent_ok = false end
-    if b._w ~= UW_TAB.w then UW_TAB.same_width = false end
-    local p = b._points[1]
-    if i == 1 then
-        if p[2] ~= cl.tabGroup or p[4] ~= 0 then UW_TAB.contiguous = false end
-    else
-        local prev = cl.tabBtns[cl.tabOrder[i - 1].key]
-        if p[2] ~= prev or p[4] ~= -UW_TAB.overlap then UW_TAB.contiguous = false end
-    end
-end
-UW_TAB.id = cl.tabBtns.targets and cl.tabBtns.targets:GetID()
-cl:SelectTab("auras")
-UW_TAB.sel_auras = (cl.tabBtns.auras._sel:IsShown() == true)
-UW_TAB.sel_damage = (cl.tabBtns.damage._sel:IsShown() == true)
-UW_TAB.pt = cl.tabGroup.selectedTab
-cl:SelectTab("damage")
-UW_TAB.back = (cl.tabBtns.damage._sel:IsShown() == true and cl.tabBtns.auras._sel:IsShown() == false)
-
--- troncamento: il testo non esce MAI dalla colonna
-local probe = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-if probe.SetWordWrap then probe:SetWordWrap(false) end
-RLSuite.combatLog.FitText(probe, string.rep("Lunghissimo", 6), 100)
-UW_FIT = { text = probe:GetText(), len = #probe:GetText(), w = probe:GetStringWidth() }
-
--- 3.3.5: GetStringWidth NON vede il SetText appena fatto (testo misurato solo
--- al frame dopo). Senza la stima, il troncamento non scattava MAI e il testo
--- usciva dalla colonna (le tabelle "sovrapposte" viste in game).
-local probe2 = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-local realW = probe2.GetStringWidth
-probe2.GetStringWidth = function() return 0 end   -- simula la misura "stantia"
-RLSuite.combatLog.FitText(probe2, string.rep("Lunghissimo", 3), 70)
-UW_STALE = { len = #probe2:GetText(), text = probe2:GetText() }
-probe2.GetStringWidth = realW
-local probe3 = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-probe3.GetStringWidth = function() return 0 end
-RLSuite.combatLog.FitText(probe3, "Breve", 200)
-UW_STALE.kept = probe3:GetText()
-
--- celle della griglia: niente word wrap, larghezza rispettata
-cl.selFight = UW_F
-cl:SelectTab("damage")
-local g = cl.grid
-local cols = g.cols or {}
-local rows = g.pool[#cols] or {}
-UW_CELL = { wrap = {}, ok = true, maxw = 0, colw = 0 }
-for ci, c in ipairs(cols) do
-    local cell = rows[1].cells[ci]
-    local fs = cell.fs
-    UW_CELL.wrap[#UW_CELL.wrap + 1] = (fs._wordWrap == false) and "n" or "y"
-    local cw = math.max(18, c.px - 8)
-    if (fs:GetStringWidth() or 0) > cw then UW_CELL.ok = false end
-    if cw > UW_CELL.maxw then UW_CELL.maxw = cw end
-    UW_CELL.colw = UW_CELL.colw + c.px
-end
-UW_CELL.wrap = table.concat(UW_CELL.wrap, "")
-UW_CELL.headers_wrap = (g.hdrPool[1].btn.fs._wordWrap == false)
-
--- larghezza VIVA: se la finestra viene ridimensionata le colonne si rifanno
-local before = cols[1].px
-g._w = 1200
-cl:RefreshLists()
-local cols2 = cl.grid.cols or {}
-UW_LIVE = { before = before, after = cols2[1] and cols2[1].px, content = cl.grid.content._w }
-cl.grid._w = 0
-cl:RefreshLists()
--- senza pull registrati: nessun tab deve andare in errore (era un crash)
-UW_NOFIGHT = { ok = true }
-cl.selFight = nil
-for _, tab in ipairs({ "damage", "targets", "consumables", "auras", "powers", "deaths", "healing" }) do
-    local ok2 = pcall(function() cl:SelectTab(tab) end)
-    if not ok2 then UW_NOFIGHT.ok = false; UW_NOFIGHT.fail = tab end
-end
-cl:SelectTab("damage")
-""")
-
-
-check(bool(rt.eval("UW_TAB.isGroup == true and UW_TAB.n == UW_TAB.nbtns")), "v1.11.65: i tab stanno in UN SOLO gruppo (RLSuiteCombatLogTabs), non in pulsanti sparsi (%r tab)" % rt.eval("UW_TAB.n"))
-check(bool(rt.eval("UW_TAB.parent_ok == true")), "v1.11.65: ogni tab e' figlio del gruppo dei tab")
-check(bool(rt.eval("UW_TAB.same_width == true and UW_TAB.w > 40")), "v1.11.65: tab di larghezza identica (%r px) che riempiono il gruppo" % rt.eval("UW_TAB.w"))
-check(bool(rt.eval("UW_TAB.contiguous == true and UW_TAB.overlap == 16")), "v1.11.65: tab ATTACCATI l'uno all'altro (overlap %r px, niente buchi da pulsanti sciolti)" % rt.eval("UW_TAB.overlap"))
-check(bool(rt.eval("UW_TAB.id == 2")), "v1.11.65: ogni tab ha il suo ID (per PanelTemplates): targets = 2")
-check(bool(rt.eval("UW_TAB.sel_auras == true and UW_TAB.sel_damage == false and UW_TAB.pt == 4")), "v1.11.65: un solo tab selezionato (PanelTemplates.selectedTab = %r)" % rt.eval("UW_TAB.pt"))
-check(bool(rt.eval("UW_TAB.back == true")), "v1.11.65: cambiando tab l'evidenza si sposta (auras -> damage)")
-check(bool(rt.eval("UW_FIT.len < 72 and UW_FIT.w <= 100")), "v1.11.65 FitText: il testo viene troncato per stare nella larghezza (\"%s\" = %rpx)" % (rt.eval("UW_FIT.text"), rt.eval("UW_FIT.w")))
-check(bool(rt.eval("UW_STALE.len < 39 and UW_STALE.text:sub(-2) == '..'")), "v1.11.66 FitText: tronca anche quando il client non ha ancora misurato il testo (3.3.5) — \"%s\"" % rt.eval("UW_STALE.text"))
-check(bool(rt.eval("UW_STALE.kept == 'Breve'")), "v1.11.66 FitText: un testo che ci sta non viene toccato")
-check(bool(rt.eval("UW_CELL.wrap == 'nnnnnn'")), "v1.11.65: NESSUNA cella della tabella va a capo (word wrap OFF, era la causa delle tabelle incasinate: %s)" % rt.eval("UW_CELL.wrap"))
-check(bool(rt.eval("UW_CELL.ok == true")), "v1.11.65: ogni testo sta dentro la sua colonna (nessuna sovrapposizione fra celle/righe)")
-check(bool(rt.eval("UW_CELL.headers_wrap == true")), "v1.11.65: anche le intestazioni non vanno a capo")
-check(bool(rt.eval("UW_LIVE.after > UW_LIVE.before and UW_LIVE.content > 1000")), "v1.11.65: la larghezza delle colonne usa quella VERA della finestra (%r -> %r px a finestra larga)" % (rt.eval("UW_LIVE.before"), rt.eval("UW_LIVE.after")))
-check(bool(rt.eval("UW_NOFIGHT.ok == true")), "v1.11.65: senza pull registrati ogni tab si apre senza errori (crash su colonna senza larghezza: %r)" % rt.eval("UW_NOFIGHT.fail"))
-
-rt.execute("""
--- =====================================================================
--- v1.11.67: le tab NON devono condividere/impilare le tabelle.
--- Il pool delle righe e' diviso per NUMERO di colonne: passando da una tab
--- con 6 colonne (Damage) a una con 5 (Targets) le righe del pool precedente
--- restavano visibili -> tutte le tab sembravano la stessa tabella.
--- =====================================================================
-function UW_VisibleRows(g)
-    local n = 0
-    for _, p in pairs(g.pool or {}) do
-        for _, r in ipairs(p) do if r:IsShown() then n = n + 1 end end
-    end
-    return n
-end
-function UW_Pools(g)
-    local n = 0
-    for _, _ in pairs(g.pool or {}) do n = n + 1 end
-    return n
-end
-local cl = RLSuite.combatLog
-cl.selFight = UW_F
-
-UW_STACK = { tabs = {} }
-local seq = { "damage", "targets", "consumables", "auras", "powers", "damage" }
-for _, tab in ipairs(seq) do
-    cl:SelectTab(tab)
-    local cols = #(cl.grid.cols or {})
-    local vis = UW_VisibleRows(cl.grid)
-    UW_STACK.tabs[#UW_STACK.tabs + 1] = string.format("%s:%dcol:%drow:%dvis", tab, cols,
-        cl.grid.rowCount or -1, vis)
-end
--- la griglia dei morti: si ri-renderizza con un altro numero di colonne
-cl:SelectTab("deaths")
-UW_STACK.death1 = UW_VisibleRows(cl.deathGrid)
-cl:SelectTab("targets")
-cl:SelectTab("deaths")            -- ritorno sulla tab dei morti
-UW_STACK.death2 = UW_VisibleRows(cl.deathGrid)
-UW_STACK.death_rows = cl.deathGrid.rowCount or -1
-UW_STACK.pools = UW_Pools(cl.grid)
-cl:SelectTab("damage")
-UW_STACK.vis_damage = UW_VisibleRows(cl.grid)
-UW_STACK.rows_damage = cl.grid.rowCount
-cl.selFight = nil
-cl:SelectTab("damage")
-""")
-
-
-UW_STACK_SEQ = str(rt.eval("table.concat(UW_STACK.tabs, ' | ')"))
-check(bool(rt.eval("(function() for _, t in ipairs(UW_STACK.tabs) do local r, v = t:match('%d+col:(%d+)row:(%d+)vis'); if tonumber(r) ~= tonumber(v) then return false end end return true end)()")),
-    "v1.11.67: in OGNI tab le righe visibili sono SOLO quelle della tabella corrente (niente tabelle impilate) -> %s" % UW_STACK_SEQ)
-check(bool(rt.eval("UW_STACK.tabs[1]:find('damage:6col') ~= nil and UW_STACK.tabs[2]:find('targets:5col') ~= nil")),
-    "v1.11.67: le tabelle hanno davvero un numero di colonne diverso (e' il caso che le impilava)")
-check(bool(rt.eval("UW_STACK.tabs[6] == UW_STACK.tabs[1]")), "v1.11.67: tornando su Damage la tabella e' identica (stesse colonne, stesse righe visibili)")
-check(bool(rt.eval("UW_STACK.death1 == UW_STACK.death2 and UW_STACK.death2 == UW_STACK.death_rows")), "v1.11.67: tornando sulla tab Deaths la tabella mostra solo le sue righe (%r visibili / %r righe)" % (rt.eval("UW_STACK.death2"), rt.eval("UW_STACK.death_rows")))
-
-rt.execute("""
--- =====================================================================
--- v1.11.68: ICONE e NOMI delle spell visibili nelle tabelle
--- =====================================================================
-CLT = RLSuite.combatLog
-CLT.selFight = UW_F
-UW_ICON = {}
--- la risoluzione dell'icona usa GetSpellTexture e, se fallisce, GetSpellInfo
-local realGST = GetSpellTexture
-GetSpellTexture = function(id) if id == 48230 then return "ICON_FIREBOLT" end return nil end
-CLT.spellIconCache[48230] = nil
-CLT.spellIconCache[99999] = nil
-UW_ICON.tex = CLT:SpellIcon(48230)
-UW_ICON.fallback = CLT:SpellIcon(99999)   -- GetSpellInfo mock -> icona
-GetSpellTexture = realGST
-UW_ICON.none = CLT:SpellIcon(nil)
-
--- tab a icone: ogni colonna ha icona E nome
-UW_ICON.cols = {}
-for _, tab in ipairs({ "consumables", "auras", "powers" }) do
-    CLT:SelectTab(tab)
-    local has_icon, has_name, blank = 0, 0, 0
-    for _, c in ipairs(CLT.grid.cols or {}) do
-        if c.ic then has_icon = has_icon + 1 end
-        if c.label and c.label ~= "" then has_name = has_name + 1 end
-        if (not c.ic) and (not c.label or c.label == "") then blank = blank + 1 end
-    end
-    UW_ICON.cols[tab] = string.format("icone=%d nomi=%d vuote=%d", has_icon, has_name, blank)
-end
-CLT:SelectTab("auras")
-UW_ICON.hdr_h = CLT.grid.hdr._h
-local hb = CLT.grid.hdrPool[#(CLT.grid.cols or {})]
-UW_ICON.hdr_shown = hb and hb.btn.fs:IsShown() and (hb.btn.fs:GetText() ~= "")
-UW_ICON.hdr_text = hb and hb.btn.fs:GetText()
-UW_ICON.hdr_icon = hb and hb.btn.icon:IsShown()
--- intestazione SENZA icona: deve restare il nome (mai vuota)
-local cols2 = { { label = "Spell Name", w = 100, fix = true, align = "CENTER", ic = nil } }
-CLT:GridRender(CLT.grid, cols2, { { { t = "x" } } }, {})
-local h2 = CLT.grid.hdrPool[1]
-UW_ICON.noicon_text = h2.btn.fs:GetText()
-UW_ICON.noicon_icon = h2.btn.icon:IsShown()
-UW_ICON.noicon_shown = h2.btn.fs:IsShown()
--- lista Spells: icona sulla riga
-CLT:SelectTab("spells")
-CLT.selSource = "Alpha"
-CLT:RefreshLists()
-local anyIcon = false
-for _, r in ipairs(CLT._rRows or {}) do
-    if r.spellIcon and r.spellIcon:IsShown() then anyIcon = true end
-end
-UW_ICON.rows = anyIcon
-CLT.selSource = nil
-CLT.selFight = nil
-CLT:SelectTab("damage")
-""")
-
-
-check(bool(rt.eval("tostring(UW_ICON.tex) == 'ICON_FIREBOLT'")), "v1.11.68: l'icona della spell viene risolta da GetSpellTexture (%r)" % rt.eval("UW_ICON.tex"))
-check(bool(rt.eval("UW_ICON.fallback ~= nil")), "v1.11.68: se GetSpellTexture fallisce si usa l'icona di GetSpellInfo (3o valore, catalogo locale)")
-check(bool(rt.eval("UW_ICON.none == nil")), "v1.11.68: nessuna spell = nessuna icona (nessun errore)")
-check(bool(rt.eval("UW_ICON.cols.consumables and UW_ICON.cols.consumables:find('vuote=0') ~= nil")), "v1.11.68 tab Consumables: ogni colonna ha icona e NOME (%s)" % rt.eval("UW_ICON.cols.consumables"))
-check(bool(rt.eval("UW_ICON.cols.auras and UW_ICON.cols.auras:find('vuote=0') ~= nil")), "v1.11.68 tab Auras: ogni colonna ha icona e NOME (%s)" % rt.eval("UW_ICON.cols.auras"))
-check(bool(rt.eval("UW_ICON.cols.powers and UW_ICON.cols.powers:find('vuote=0') ~= nil")), "v1.11.68 tab Powers: ogni colonna ha icona e NOME (%s)" % rt.eval("UW_ICON.cols.powers"))
-check(bool(rt.eval("UW_ICON.hdr_h == 34")), "v1.11.68: intestazione alta 34px (icona sopra, nome sotto)")
-check(bool(rt.eval("UW_ICON.hdr_icon == true and UW_ICON.hdr_shown == true")), "v1.11.68: nell'intestazione si vedono icona E nome della spell (\"%s\")" % rt.eval("UW_ICON.hdr_text"))
-check(bool(rt.eval("UW_ICON.noicon_shown == true and UW_ICON.noicon_text == 'Spell Name' and UW_ICON.noicon_icon == false")), "v1.11.68: senza icona l'intestazione mostra il NOME (mai una colonna vuota)")
-check(bool(rt.eval("UW_ICON.rows == true")), "v1.11.68 tab Spells: l'icona compare anche accanto al nome di ogni spell nella lista")
-
-rt.execute("""
--- =====================================================================
--- v1.11.70: encounter-anchored (la morte non chiude il pull) + watchdog
---           + riga di stato
--- =====================================================================
-local cl = RLSuite.combatLog
-local R_IAC, R_DEAD, R_NRAID, R_PARTY, R_UE, R_UG = UnitAffectingCombat, UnitIsDeadOrGhost, GetNumRaidMembers, GetNumPartyMembers, UnitExists, UnitGUID
-local R_DEADU, R_HEALTH = UnitIsDead, UnitHealth
-UW_COMBAT, UW_DEAD, UW_RAIDN = {}, false, 0
-UnitAffectingCombat = function(u) return UW_COMBAT[u] == true end
-GetNumRaidMembers = function() return UW_RAIDN end
-GetNumPartyMembers = function() return 0 end
-UW_BOSS_UNITS, UW_BOSS_DEAD = {}, {}
-UnitExists = function(u)
-    return (UW_COMBAT[u] ~= nil) or u == "player" or (UW_BOSS_UNITS[u] ~= nil)
-end
-UnitIsDead = function(u) return UW_BOSS_DEAD[u] == true end
-UnitIsDeadOrGhost = function(u)
-    if u ~= "player" then return UW_BOSS_DEAD[u] == true end
-    return UW_DEAD
-end
-UnitHealth = function(u) if u == "player" then return 100 end return (UW_BOSS_DEAD[u] and 0) or 100 end
-
-cl.db.fights = {}
-cl.current = nil
-cl.selFight = nil
-cl.recoveries = 0
-cl.sessionLost = 0
-cl._initError = nil
-
--- A) morte a meta' pull: il pull NON si chiude, la morte viene annotata
-UW_COMBAT = { player = true, raid1 = true, boss1 = true }
-UW_RAIDN = 2
-UW_DEAD = false
-cl:OnRegenDisabled()
-UW_A_OPEN = (cl.current ~= nil)
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
-UW_DEAD = true
-cl:OnRegenEnabled()                        -- scatta QUANDO MUORI (esci dalla hate list)
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerTwo', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Frostbolt', 2, 3000, 0, 0, 0, 0, 0, 0)
-UW_A_STILL = (cl.current ~= nil)
-UW_A_DIED = cl.current and cl.current.playerDied
-UW_A_CNT = cl.current and cl.current.count
-UW_A_NFIGHTS = #cl.db.fights
-
--- B) res in combat: stesso pull, nessun secondo record
-UW_DEAD = false
-cl:OnRegenDisabled()
-UW_B_SAME = (cl.current ~= nil)
-UW_B_DIED = cl.current and cl.current.playerDied
-cl:WatchTick('tick')                       -- il tick da 1 Hz annota la ripresa
-UW_B_ALIVE = cl.current and cl.current.playerAlive
-UW_B_NFIGHTS = #cl.db.fights
-
--- C) l'encounter finisce -> il pull si chiude (una volta sola)
-UW_COMBAT = {}
-cl:WatchTick('test')
-UW_C_CLOSED = (cl.current == nil)
-UW_C_NF = #cl.db.fights
-UW_C_F = cl.db.fights[1] or {}
-UW_C_REASON = UW_C_F.closeReason
-UW_C_DIED = UW_C_F.playerDied
-UW_C_ALIVE = UW_C_F.playerAlive
-
--- C2) kill del boss + trash a catena: il pull si chiude lo stesso
-cl.current = nil
-cl.db.fights = {}
-UW_COMBAT = { raid1 = true }
-UW_RAIDN = 2
-cl:OpenFight(false)
-cl.current.boss = "Lord Marrowgar"
-cl.current.kill = true
-cl:WatchTick('kill')
-UW_C2_CLOSED = (cl.current == nil)
-UW_C2_NF = #cl.db.fights
--- C3) encounter MULTI-BOSS: un boss muore ma un altro e' vivo -> resta aperto
-cl.current = nil
-cl.db.fights = {}
-UW_BOSS_UNITS = { boss1 = true, boss2 = true }
-UW_BOSS_DEAD = { boss1 = true }
-cl:OpenFight(false)
-cl.current.boss = "Blood Prince Council"
-cl.current.kill = true
-cl:WatchTick('multiboss')
-UW_C3_OPEN = (cl.current ~= nil)
--- ora muore anche il secondo
-UW_BOSS_DEAD = { boss1 = true, boss2 = true }
-cl:WatchTick('multiboss')
-UW_C3_CLOSED = (cl.current == nil)
-UW_BOSS_UNITS, UW_BOSS_DEAD = {}, {}
-
--- D) watchdog: in combat senza pull aperto -> apri e marca "recuperato"
-cl.current = nil
-cl.db.fights = {}
-UW_COMBAT = { raid1 = true }
-UW_RAIDN = 2
-local rec0 = cl.recoveries or 0
-cl:WatchTick('test')
-UW_D_OPEN = (cl.current ~= nil)
-UW_D_REC = cl.current and cl.current.recovered
-UW_D_COUNT = (cl.recoveries or 0) - rec0
-cl.current = nil
-
--- E) re-arm dopo /reload: PLAYER_ENTERING_WORLD mentre sei in combat
-cl.db.fights = {}
-UW_COMBAT = { player = true }
-UW_E_BEFORE = (cl.current == nil)
-cl:OnEnteringWorld()
-UW_E_AFTER = (cl.current ~= nil)
-UW_E_REC = cl.current and cl.current.recovered
-cl.current = nil
-
--- F) riga di stato
-cl.db.fights = {}
-cl.recoveries = 0
-cl.sessionLost = 0
-cl.current = nil
-cl:RefreshInfo(nil)
-UW_F_IDLE = tostring(cl.infoText:GetText())
-UW_COMBAT = { raid1 = true }
-UW_RAIDN = 2
-cl:OpenFight(true)
-cl:RefreshInfo(nil)
-UW_F_REC = tostring(cl.infoText:GetText())
-cl.current.recovered = nil
-cl.current.dropped = 12
-cl:RefreshInfo(nil)
-UW_F_LOST = tostring(cl.infoText:GetText())
-cl.current = nil
-cl.sessionLost = 40
-cl:RefreshInfo(nil)
-UW_F_SESS = tostring(cl.infoText:GetText())
-cl.sessionLost = 0
-cl.recoveries = 1
-cl:RefreshInfo(nil)
-UW_F_RECOVERY = tostring(cl.infoText:GetText())
-cl.recoveries = 0
-cl._initError = 'boom in CreateFrame'
-cl:RefreshInfo(nil)
-UW_F_ERR = tostring(cl.infoText:GetText())
-cl._initError = nil
-cl:RefreshInfo(nil)
-UW_F_IDLE2 = tostring(cl.infoText:GetText())
-cl:RefreshInfo(nil)
-
--- G) pull salvato VECCHIO (senza i campi nuovi) si apre ancora
-UW_LEGACY = { name = 'Sindragosa', duration = 95, kill = false, events = {}, count = 0 }
-UW_G_LABEL = cl:FightLabel(UW_LEGACY, 1)
-UW_G_TITLE = cl:FightTitle(UW_LEGACY)
-
-UnitAffectingCombat, UnitIsDeadOrGhost, GetNumRaidMembers, GetNumPartyMembers, UnitExists, UnitGUID, UnitIsDead, UnitHealth = R_IAC, R_DEAD, R_NRAID, R_PARTY, R_UE, R_UG, R_DEADU, R_HEALTH
-cl.current = nil
-cl.db.fights = {}
-cl.recoveries = 0
-cl.sessionLost = 0
-cl:RefreshInfo(nil)
-""")
-
-
-check(bool(rt.eval("UW_A_OPEN == true and UW_A_STILL == true")), "v1.11.70: la morte del tuo personaggio NON chiude piu' il pull (l'encounter e' ancora in corso)")
-check(bool(rt.eval("UW_A_DIED ~= nil and UW_A_CNT == 2")), "v1.11.70: la morte viene annotata (t=%r) e il pull continua a registrare anche dopo" % rt.eval("UW_A_DIED"))
-check(bool(rt.eval("UW_A_NFIGHTS == 0")), "v1.11.70: morendo NON nasce un pull falso con esito Wipe")
-check(bool(rt.eval("UW_B_SAME == true and UW_B_DIED == UW_A_DIED and UW_B_ALIVE ~= nil")), "v1.11.70: la res in combat continua lo STESSO pull (ripresa annotata a t=%r)" % rt.eval("UW_B_ALIVE"))
-check(bool(rt.eval("UW_B_NFIGHTS == 0")), "v1.11.70: la res non crea un pull fantasma")
-check(bool(rt.eval("UW_C_CLOSED == true and UW_C_NF == 1")), "v1.11.70: quando l'encounter finisce il pull si chiude (e una volta sola)")
-check(bool(rt.eval("tostring(UW_C_REASON) == 'test' and UW_C_DIED ~= nil and UW_C_ALIVE ~= nil")), "v1.11.70: il pull salvato porta motivo di chiusura, morte e ripresa (%r / %r / %r)" % (rt.eval("UW_C_REASON"), rt.eval("UW_C_DIED"), rt.eval("UW_C_ALIVE")))
-check(bool(rt.eval("UW_D_OPEN == true and UW_D_REC == true and UW_D_COUNT == 1")), "v1.11.70 watchdog: in combat senza pull aperto lo apre da solo e lo marca 'recuperato'")
-check(bool(rt.eval("UW_C2_CLOSED == true and UW_C2_NF == 1")), "v1.11.70: boss ucciso + trash a catena -> il pull si chiude comunque (kill pulito)")
-check(bool(rt.eval("UW_C3_OPEN == true and UW_C3_CLOSED == true")), "v1.11.70: encounter multi-boss, un boss morto NON chiude il pull; si chiude quando muoiono tutti")
-check(bool(rt.eval("UW_E_BEFORE == true and UW_E_AFTER == true and UW_E_REC == true")), "v1.11.70 re-arm: rientrando nel mondo in combat (dopo un /reload) il pull riparte da solo")
-check(bool(rt.eval("UW_F_IDLE:find('Idle') ~= nil and UW_F_IDLE:find('8') == nil")), "v1.11.70 riga di stato a riposo: \"%s\"" % rt.eval("UW_F_IDLE"))
-check(bool(rt.eval("UW_F_REC:find('Recording') ~= nil and UW_F_REC:find('watchdog') ~= nil")), "v1.11.70 riga di stato con pull recuperato: \"%s\"" % rt.eval("UW_F_REC"))
-check(bool(rt.eval("UW_F_LOST:find('12') ~= nil and UW_F_LOST:find('lost') ~= nil")), "v1.11.70 riga di stato con eventi persi: \"%s\"" % rt.eval("UW_F_LOST"))
-check(bool(rt.eval("UW_F_SESS:find('40') ~= nil")), "v1.11.70 riga di stato a riposo con eventi persi in sessione: \"%s\"" % rt.eval("UW_F_SESS"))
-check(bool(rt.eval("UW_F_RECOVERY:find('watchdog') ~= nil")), "v1.11.70 riga di stato a riposo con un recupero del watchdog: \"%s\"" % rt.eval("UW_F_RECOVERY"))
-check(bool(rt.eval("UW_F_ERR:find('Window error') ~= nil and UW_F_ERR:find('boom') ~= nil")), "v1.11.70 riga di stato con finestra rotta: \"%s\"" % rt.eval("UW_F_ERR"))
-check(bool(rt.eval("UW_G_LABEL ~= nil and UW_G_TITLE ~= nil")), "v1.11.70: i pull salvati con il formato vecchio (senza campi nuovi) si aprono ancora: \"%s\"" % rt.eval("UW_G_TITLE"))
-
-rt.execute("""
--- =====================================================================
--- v1.11.71: lista boss UNICA (dalle macro) + pull etichettato col
---           bersaglio principale + sfratto trash-first + override manuale
--- =====================================================================
-local cl = RLSuite.combatLog
-cl:EnsureBossIndex()
-cl.current = nil
-cl.selFight = nil
-local CAP0 = cl.db.saveFights
-cl.db.fights = {}
-
--- A) l'indice copre TUTTO quello che c'e' in bossUnits (una sola fonte)
-local total, missing = 0, 0
-for _, bosses in pairs(RLSuite.bossUnits or {}) do
-    for _, info in pairs(bosses) do
-        for _, id in ipairs(info.npcs or {}) do
-            total = total + 1
-            if not cl:BossNameForNpc(id) then missing = missing + 1 end
-        end
-    end
-end
-UW_P2_TOTAL, UW_P2_MISSING = total, missing
--- i 4 boss dei raid da un solo boss (non erano coperti dal mio parser di prova)
-UW_P2_SINGLE = {
-    tostring(cl:BossNameForNpc(10184)), tostring(cl:BossNameForNpc(28859)),
-    tostring(cl:BossNameForNpc(28860)), tostring(cl:BossNameForNpc(39863)),
-}
-UW_P2_ICC = tostring(cl:BossNameForNpc(36853))
-UW_P2_UNKNOWN = (cl:BossNameForNpc(123456) == nil)
-UW_P2_BYNAME = tostring(cl:BossNameForName("lord marrowgar"))
-
--- helper: GUID di NPC come li manda il client
-function UW_GUID(id) return string.format("0xF13000%04X0000AA", id) end
-
-local function openTrash(dstName)
-    cl:OnRegenDisabled()
-    cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
-        UW_GUID(555555), dstName, 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
-    cl:CloseFight("test")
-    return cl.db.fights[1]
-end
-
--- B) TRASH: etichettato col bersaglio principale, classificato trash
-local tr = openTrash("Skybreaker Sorcerer")
-UW_P2_TRASH = { name = tr.name, target = tr.target, isBoss = tr.isBoss }
-
--- C) BOSS: riconosciuto dall'id (lista completa) e classificato boss
-cl:OnRegenDisabled()
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
-    UW_GUID(36853), 'Sindragosa', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
-cl:CloseFight("test")
-local bo = cl.db.fights[1]
-UW_P2_BOSS = { name = bo.name, target = bo.target, isBoss = bo.isBoss, boss = bo.boss }
-
--- D) boss SOLO come sorgente (colpisce il raid) + danno nostro su trash:
---    resta un pull di boss (conservativo: non si perde un pull di boss)
-cl:OnRegenDisabled()
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', UW_GUID(36612), 'Lord Marrowgar', 2048+64,
-    '0x0p', 'PlayerOne', 1024+16+1, 100, 'Bone Slice', 4, 4000, 0, 0, 0, 0, 0, 0)
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
-    UW_GUID(555556), 'Trash Mob', 2048+64, 100, 'Fireball', 4, 9000, 0, 0, 0, 0, 0, 1)
-cl:CloseFight("test")
-local mixF = cl.db.fights[1]
-UW_P2_MIX = { name = mixF.name, isBoss = mixF.isBoss, target = mixF.target }
-
--- E) SFRATTO TRASH-FIRST: con cap 3 il boss sopravvive a 3 trash
-cl.db.saveFights = 3
-cl.db.fights = {}
-cl:OnRegenDisabled()
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
-    UW_GUID(36612), 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
-cl:CloseFight("test")
-openTrash("Trash One")
-openTrash("Trash Two")
-openTrash("Trash Three")
-UW_P2_EVICT = { n = #cl.db.fights, names = {}, bossLeft = false }
-for i, x in ipairs(cl.db.fights) do
-    UW_P2_EVICT.names[#UW_P2_EVICT.names + 1] = (x.isBoss and "BOSS:" or "trash:") .. tostring(x.name)
-    if x.isBoss then UW_P2_EVICT.bossLeft = true end
-end
-UW_P2_EVICT.names = table.concat(UW_P2_EVICT.names, " | ")
-cl.db.saveFights = CAP0
-
--- F) OVERRIDE MANUALE (click destro sul selettore)
-cl.db.fights = {}
-local t2 = openTrash("Skybreaker Sorcerer")
-cl.selFight = t2
-UW_P2_OVR0 = t2.isBoss
-cl:ToggleFightKind(t2)
-UW_P2_OVR1 = t2.isBoss
-cl:ToggleFightKind(t2)
-UW_P2_OVR2 = t2.isBoss
--- il pull in corso non si tocca
-cl:OnRegenDisabled()
-local cur0 = cl.current.isBoss
-cl:ToggleFightKind(cl.current)
-UW_P2_OVR_CUR = (cl.current.isBoss == cur0 and cl.current ~= nil)
-cl:CloseFight("test")
--- il click destro arriva davvero dall'handler del dropdown
-if cl.fightDropdown and cl.fightDropdown._scripts and cl.fightDropdown._scripts.OnMouseUp then
-    cl.selFight = cl.db.fights[1]
-    local before = cl.selFight.isBoss
-    cl.fightDropdown._scripts.OnMouseUp(cl.fightDropdown, "RightButton")
-    UW_P2_RIGHT = (cl.selFight.isBoss ~= before)
-else
-    UW_P2_RIGHT = false
-end
-UW_P2_HOOK = (type(cl.fightDropdown.onRightClick) == "function")
-
--- G) riga di stato: conteggio boss/trash dai flag nuovi
-cl.db.fights = {}
-openTrash("Trash One")
-cl:OnRegenDisabled()
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
-    UW_GUID(36612), 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
-cl:CloseFight("test")
-cl.current = nil
-cl:RefreshInfo(nil)
-UW_P2_STATUS = tostring(cl.infoText:GetText())
-cl.db.fights = {}
-cl.selFight = nil
-cl:RefreshInfo(nil)
-""")
-
-
-check(bool(rt.eval("UW_P2_TOTAL > 45 and UW_P2_MISSING == 0")), "v1.11.71: l'indice boss del Log copre TUTTI i %r id delle macro (0 mancanti)" % rt.eval("UW_P2_TOTAL"))
-check(bool(rt.eval("UW_P2_SINGLE[1] == 'Onyxia' and UW_P2_SINGLE[2] == 'Malygos' and UW_P2_SINGLE[3] == 'Sartharion' and UW_P2_SINGLE[4] == 'Halion'")), "v1.11.71: anche i boss dei raid da un solo boss (%s)" % ", ".join(rt.eval("UW_P2_SINGLE").values()))
-check(bool(rt.eval("UW_P2_ICC == 'Sindragosa' and UW_P2_BYNAME == 'Lord Marrowgar' and UW_P2_UNKNOWN == true")), "v1.11.71: risoluzione per id (%r) e per nome (%r), e un id ignoto resta ignoto" % (rt.eval("UW_P2_ICC"), rt.eval("UW_P2_BYNAME")))
-check(bool(rt.eval("UW_P2_TRASH.name == 'Skybreaker Sorcerer' and UW_P2_TRASH.target == 'Skybreaker Sorcerer' and UW_P2_TRASH.isBoss == false")), "v1.11.71: il pull di TRASH e' etichettato col bersaglio principale (%r) ed e' classificato trash" % rt.eval("UW_P2_TRASH.name"))
-check(bool(rt.eval("UW_P2_BOSS.name == 'Sindragosa' and UW_P2_BOSS.isBoss == true and UW_P2_BOSS.target == 'Sindragosa'")), "v1.11.71: il pull di BOSS e' riconosciuto dall'id e classificato boss (%r)" % rt.eval("UW_P2_BOSS.name"))
-check(bool(rt.eval("UW_P2_MIX.isBoss == true and UW_P2_MIX.name == 'Lord Marrowgar'")), "v1.11.71: boss che colpisce il raid (sorgente) + danno nostro su trash = pull di BOSS (non si perde un pull di boss)")
-check(bool(rt.eval("UW_P2_EVICT.n == 3 and UW_P2_EVICT.bossLeft == true")), "v1.11.71: sfratto trash-first con cap 3: %s" % rt.eval("UW_P2_EVICT.names"))
-check(bool(rt.eval("UW_P2_OVR0 == false and UW_P2_OVR1 == true and UW_P2_OVR2 == false")), "v1.11.71: override manuale boss/trash (click destro sul selettore) - %r -> %r -> %r" % (rt.eval("UW_P2_OVR0"), rt.eval("UW_P2_OVR1"), rt.eval("UW_P2_OVR2")))
-check(bool(rt.eval("UW_P2_HOOK == true and UW_P2_RIGHT == true")), "v1.11.71: il tasto destro sul selettore passa dall'handler del dropdown e cambia la classificazione")
-check(bool(rt.eval("UW_P2_OVR_CUR == true")), "v1.11.71: il pull IN CORSO non si puo' riclassificare (avviso, nessuna modifica)")
-check(bool(rt.eval("UW_P2_STATUS:find('1 boss') ~= nil and UW_P2_STATUS:find('1 trash') ~= nil")), "v1.11.71: la riga di stato conta boss e trash coi flag nuovi: \"%s\"" % rt.eval("UW_P2_STATUS"))
-
-rt.execute("""
--- =====================================================================
--- v1.11.72: consumabili per SPELL ID (il nome della spell non basta:
--- "Potion of Speed" usa la spell "Speed")
--- =====================================================================
-local cl = RLSuite.combatLog
-local f = { boss = "Test", events = {}, count = 0, duration = 60, samples = { health = {}, power = {} } }
-local function ev(sub, sid, sname, src, dst, srcf, dstf)
-    local e = {}
-    e[1] = 1; e[2] = sub
-    e[3] = src or "PlayerOne"; e[4] = srcf or (1024+16+1)
-    e[5] = dst or "PlayerOne"; e[6] = dstf or (1024+16+1)
-    e[7] = sid; e[8] = sname
-    f.events[#f.events + 1] = e
-end
--- A) potion of speed: aura con id 53908 e nome "Speed" (nessun pattern matcha)
-ev("SPELL_AURA_APPLIED", 53908, "Speed")
--- B) wild magic: cast con id 53909 e nome "Wild Magic"
-ev("SPELL_CAST_SUCCESS", 53909, "Wild Magic")
--- C) elisir per id: 53763 "Protection"
-ev("SPELL_AURA_APPLIED", 53763, "Protection")
--- D) potion of speed con cast + aura: NON deve contare due volte
-ev("SPELL_CAST_SUCCESS", 53908, "Speed", "PlayerTwo")
-ev("SPELL_AURA_APPLIED", 53908, "Speed", "PlayerTwo", "PlayerTwo")
--- E) fallback per nome: una pozione non in tabella
-ev("SPELL_AURA_APPLIED", 999999, "Runic Healing Potion")
--- F) buff qualunque: NON e' un consumabile
-ev("SPELL_AURA_APPLIED", 12345, "Arcane Intellect")
--- G) flask per id (dalle liste curate) come prima
-ev("SPELL_AURA_APPLIED", 53755, "Flask of the Frost Wyrm")
-local agg = cl:AggConsumables(f)
-UW_P3 = { kinds = {}, byName = {} }
-for _, c in ipairs(agg.cols) do
-    UW_P3.kinds[#UW_P3.kinds + 1] = tostring(c.name) .. "=" .. tostring(c.kind) .. "x" .. tostring(c.amt)
-    UW_P3.byName[tostring(c.name)] = { kind = c.kind, amt = c.amt }
-end
-UW_P3.list = table.concat(UW_P3.kinds, " | ")
-UW_P3.speed = UW_P3.byName["Speed"]
-UW_P3.total = agg.total and agg.total.PlayerOne
-""")
-
-
-check(bool(rt.eval("UW_P3.speed ~= nil and UW_P3.speed.kind == 'potion' and UW_P3.speed.amt == 2")), "v1.11.72: \"Speed\" (Potion of Speed, id 53908) ora viene contata come pozione: cast+aura = %r" % rt.eval("UW_P3.speed and UW_P3.speed.amt"))
-check(bool(rt.eval("UW_P3.byName['Wild Magic'] ~= nil and UW_P3.byName['Wild Magic'].kind == 'potion'")), "v1.11.72: \"Wild Magic\" (Potion of Wild Magic, id 53909) contata come pozione")
-check(bool(rt.eval("UW_P3.byName['Protection'] ~= nil and UW_P3.byName['Protection'].kind == 'elixir'")), "v1.11.72: \"Protection\" (Elixir of Protection, id 53763) contata come elisir")
-check(bool(rt.eval("UW_P3.byName['Runic Healing Potion'] ~= nil")), "v1.11.72: il riconoscimento per NOME resta come fallback per gli id non in tabella")
-check(bool(rt.eval("UW_P3.byName['Arcane Intellect'] == nil")), "v1.11.72: un buff qualunque NON viene contato come consumabile")
-check(bool(rt.eval("UW_P3.byName['Flask of the Frost Wyrm'] ~= nil and UW_P3.byName['Flask of the Frost Wyrm'].kind == 'flask'")), "v1.11.72: il flask (id dalle liste curate) continua a funzionare")
-check(bool(rt.eval("tostring(UW_P3.list):find('Speed=potion') ~= nil")), "v1.11.72: colonne della tab Consumables -> %s" % rt.eval("UW_P3.list"))
-rt.execute("""
--- =====================================================================
--- v1.11.73: TAG taglia+difficolta' ("25H") nel titolo e nel selettore
--- =====================================================================
-local cl = RLSuite.combatLog
-local GM_II, GM_ID, GM_NRM = GetInstanceInfo, GetInstanceDifficulty, GetNumRaidMembers
-local II, ID, NRM = nil, nil, 0
-GetInstanceInfo = function()
-    if not II then return nil end
-    return II[1], II[2], II[3], II[4], II[5], II[6]
-end
-GetInstanceDifficulty = function() return ID end
-GetNumRaidMembers = function() return NRM end
-
-local function snap()
-    local sz, did, hero = cl:DifficultySnapshot()
-    return { sz = sz, did = did, hero = hero,
-             tag = cl:FightSizeTag({ raidSize = sz, difficulty = did, heroic = hero }) }
-end
-
--- A) ICC 25 heroic: istanza dinamica (dynamicDifficulty = 1)
-II, ID, NRM = { "Icecrown Citadel", "raid", 4, "25 Player (Heroic)", 25, 1 }, nil, 25
-UW_P4_A = snap()
--- B) ICC 10 normal: dinamica, dynamicDifficulty = 0 (12 persone in raid)
-II, NRM = { "Icecrown Citadel", "raid", 3, "10 Player", 10, 0 }, 12
-UW_P4_B = snap()
--- C) niente GetInstanceInfo: ripiego su GetInstanceDifficulty (6 = 25 heroic)
-II, ID, NRM = nil, 6, 25
-UW_P4_C = snap()
--- D) nessun dato di difficolta': taglia dai membri del raid, NIENTE lettera
---    (la modalita' non si inventa)
-II, ID, NRM = nil, nil, 24
-UW_P4_D = snap()
--- E) dungeon da 5: nessun tag
-II, ID, NRM = { "Utgarde Keep", "party", 1, "Normal", 5, 0 }, 1, 0
-UW_P4_E = snap()
-
--- F) dal vivo: il tag viene letto all'APERTURA e sopravvive alla chiusura
---    anche se nel frattempo si e' usciti dall'istanza
-cl.db.fights = {}
-cl.current = nil
-cl.selFight = nil
-II, ID, NRM = { "Icecrown Citadel", "raid", 4, "25 Player (Heroic)", 25, 1 }, nil, 25
-cl:OnRegenDisabled()
-UW_P4_F_OPEN = { sz = cl.current.raidSize, hero = cl.current.heroic }
-UW_P4_F_LIVE = tostring(cl:FightListItems()[1].text)
-II, ID, NRM = { "Dalaran", "none", 0, "", 0, 0 }, nil, 0
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
-    UW_GUID(36853), 'Sindragosa', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
-cl:CloseFight("test")
-local ff = cl.db.fights[1]
-UW_P4_F = { sz = ff.raidSize, hero = ff.heroic, tag = cl:FightSizeTag(ff),
-            title = cl:FightTitle(ff), label = cl:FightLabel(ff, 1),
-            drop = tostring(cl:FightListItems()[1].text) }
-
--- G) vista unificata ("All <boss> segments")
-local seg = cl:MergedFight("Sindragosa")
-UW_P4_G = { tag = cl:FightSizeTag(seg), title = cl:FightTitle(seg) }
-
--- H) pull VECCHIO senza i campi nuovi: nessun tag, titolo leggibile
-local legacy = { name = "Sindragosa", duration = 95, kill = false, events = {}, count = 0 }
-UW_P4_H = { tag = cl:FightSizeTag(legacy), label = cl:FightLabel(legacy, 1),
-            title = cl:FightTitle(legacy) }
-
-GetInstanceInfo, GetInstanceDifficulty, GetNumRaidMembers = GM_II, GM_ID, GM_NRM
-cl.current = nil
-cl.db.fights = {}
-cl.selFight = nil
-cl:RefreshInfo(nil)
-""")
-
-
-check(bool(rt.eval("UW_P4_A.sz == 25 and UW_P4_A.hero == true and UW_P4_A.tag == '25H'")), "v1.11.73: ICC 25 heroic (istanza dinamica) -> tag %r" % rt.eval("UW_P4_A.tag"))
-check(bool(rt.eval("UW_P4_B.sz == 10 and UW_P4_B.hero == false and UW_P4_B.tag == '10N'")), "v1.11.73: ICC 10 normal (dinamica, 12 persone in raid) -> tag %r" % rt.eval("UW_P4_B.tag"))
-check(bool(rt.eval("UW_P4_C.sz == 25 and UW_P4_C.hero == true and UW_P4_C.tag == '25H'")), "v1.11.73: senza GetInstanceInfo si ripiega su GetInstanceDifficulty -> tag %r" % rt.eval("UW_P4_C.tag"))
-check(bool(rt.eval("UW_P4_D.sz == 25 and UW_P4_D.hero == nil and UW_P4_D.tag == '25'")), "v1.11.73: senza dati di difficolta' il tag resta di sola taglia (%r), la modalita' non si inventa" % rt.eval("UW_P4_D.tag"))
-check(bool(rt.eval("UW_P4_E.sz == 0 and UW_P4_E.tag == ''")), "v1.11.73: in un dungeon da 5 non si mette nessun tag")
-check(bool(rt.eval("UW_P4_F_OPEN.sz == 25 and UW_P4_F_OPEN.hero == true")), "v1.11.73: il pull in corso mostra subito la taglia e la modalita' lette all'apertura (%r/%r)" % (rt.eval("UW_P4_F_OPEN.sz"), rt.eval("UW_P4_F_OPEN.hero")))
-check(bool(rt.eval("tostring(UW_P4_F_LIVE):find('25H') ~= nil")), "v1.11.73: nel selettore il pull IN CORSO porta il tag -> %s" % rt.eval("UW_P4_F_LIVE"))
-check(bool(rt.eval("UW_P4_F.sz == 25 and UW_P4_F.hero == true and UW_P4_F.tag == '25H'")), "v1.11.73: uscendo dall'istanza durante il pull il tag NON si perde (%r)" % rt.eval("UW_P4_F.tag"))
-check(bool(rt.eval("UW_P4_F.title:find('Sindragosa 25H') ~= nil")), "v1.11.73: titolo del pull -> \"%s\"" % rt.eval("UW_P4_F.title"))
-check(bool(rt.eval("UW_P4_F.label:find('25H') ~= nil")), "v1.11.73: riga del selettore -> \"%s\"" % rt.eval("UW_P4_F.label"))
-check(bool(rt.eval("UW_P4_F.drop:find('25H') ~= nil")), "v1.11.73: voce salvata nel selettore -> \"%s\"" % rt.eval("UW_P4_F.drop"))
-check(bool(rt.eval("UW_P4_G.tag == '25H' and UW_P4_G.title:find('25H') ~= nil")), "v1.11.73: anche la vista unificata porta il tag -> \"%s\"" % rt.eval("UW_P4_G.title"))
-check(bool(rt.eval("tostring(UW_P4_H.tag) == '' and UW_P4_H.title:find('Sindragosa') ~= nil")), "v1.11.73: un pull vecchio (senza i campi nuovi) si legge ancora e non prende tag falsi -> \"%s\"" % rt.eval("UW_P4_H.title"))
 rt.execute("""
 -- =====================================================================
 -- v1.11.74: drag & drop dei player ANCHE IN COMBAT (gate di fase rimosso)
@@ -8710,27 +7450,15 @@ check(bool(rt.eval("V103.chat1 ~= nil and V103.chat1:find('GUILD|', 1, true) == 
 check(bool(rt.eval("V103.chat2 ~= nil and V103.chat2:find('YELL|', 1, true) == 1")), "v1.11.103: Canale Yell invia su YELL")
 
 # ============================================================
-# v1.11.104: CombatLog session-only fights (no disk explosion)
 # ============================================================
-print("== v1.11.104: CombatLog volatile session fights (WTF SavedVariables clean) ==")
-rt.execute("""
-V104 = {}
-local cl = RLSuite.combatLog
--- 1. Verifica che durante la sessione i fights funzionino
-cl.db.fights = { { name = "Lord Marrowgar", duration = 120 } }
-V104.in_session = (#cl.db.fights == 1 and cl.fights == cl.db.fights)
+# v1.11.105: CombatLog module completely removed
+# ============================================================
+print("== v1.11.105: CombatLog module completely removed ==")
+check(bool(rt.eval("RLSuite.combatLog == nil")), "v1.11.105: RLSuite.combatLog is nil")
+check(bool(rt.eval("RLSuite.mainWindow.tabs.log == nil")), "v1.11.105: 'log' tab button removed from main window")
+check(bool(rt.eval("RLSuite.mainWindow:PaneForTab('log') == nil")), "v1.11.105: PaneForTab('log') is nil")
+check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 5")), "v1.11.105: debug panel has exactly 5 buttons (Log Test removed)")
 
--- 2. Al logout, fights e' nil nel profilo grezzo SavedVariables
-cl:OnPlayerLogout()
-V104.logout_profile_fights = (RLSuite.db.profile.combatlog.fights == nil)
--- Ma in memoria nella sessione rimangono accessibili
-V104.session_still_has = (#cl.fights == 1 and #cl.db.fights == 1)
-""")
-check(bool(rt.eval("V104.in_session == true")), "v1.11.104: durante la sessione cl.db.fights e' attivo e punta a cl.fights")
-check(bool(rt.eval("V104.logout_profile_fights == true")), "v1.11.104: al logout fights e' nil nel profilo salvato su disco")
-check(bool(rt.eval("V104.session_still_has == true")), "v1.11.104: i fight della sessione restano integri in memoria")
-
-print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
     sys.exit(1)

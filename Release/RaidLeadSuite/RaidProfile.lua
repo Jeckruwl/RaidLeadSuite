@@ -134,7 +134,7 @@ end
 -- Offset a cascata per le finestre senza posizione salvata: cosi'
 -- aprendone piu' d'una non si sovrappongono tutte nello stesso punto.
 function MW:DefaultCascadeOffset(ignoreKey)
-    local ALL_KEYS = { "group", "raidframe", "ms", "loot", "log" }
+    local ALL_KEYS = { "group", "raidframe", "ms", "loot" }
     local n = 0
     for _, k in ipairs(ALL_KEYS) do
         if k ~= ignoreKey and self:IsTabOpen(k) then
@@ -262,20 +262,19 @@ function MW:CreateFrame()
     -- (clic destro) o da /rls config.
 
     -- ORDINE DEI TASTI DELLA MATRICE (richiesto): Groupmaking, Raid Frame,
-    -- MS, Log, Macrobar, MT & OT, Loot, SaveRaid. I tab si creano in
+    -- MS, Macrobar, MT & OT, Loot, SaveRaid. I tab si creano in
     -- quest'ordine e la griglia li dispone riga per riga (vedi matrixOrder).
     self.tabDefs = {
         { key = "group",     label = "Groupmaking" },
         { key = "raidframe", label = "Raid Frame" },
         { key = "ms",        label = "MS" },
-        { key = "log",       label = "Log" },
         { key = "macro",     label = "Macrobar" },
         { key = "loot",      label = "Loot" },
     }
     self.tabs = {}
     self.currentTab = nil
 
-    -- Matrice colonne x righe configurabile: 6 tab
+    -- Matrice colonne x righe configurabile: 5 tab
     self.matrixButtons = {}
     for i, def in ipairs(self.tabDefs) do
         local tab = CreateFrame("Button", "RLSuiteTab" .. def.key, f, "UIPanelButtonTemplate")
@@ -446,14 +445,13 @@ function MW:CreateFrame()
     end)
     self.saveRaidBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     -- ORDINE DELLE CELLE DELLA MATRICE: la coppia MT & OT occupa UNA cella e
-    -- sta al 6o posto (prima era "appesa" sotto Raid Frame, con i tasti
+    -- sta al 5o posto (prima era "appesa" sotto Raid Frame, con i tasti
     -- seguenti che scalavano di uno: con un ordine esplicito non serve piu'
     -- nessun caso particolare).
     self.matrixOrder = {
         { btn = self.tabs["group"] },
         { btn = self.tabs["raidframe"] },
         { btn = self.tabs["ms"] },
-        { btn = self.tabs["log"] },
         { btn = self.tabs["macro"] },
         { role = true },                    -- MT & OT nella stessa cella
         { btn = self.tabs["loot"] },
@@ -563,7 +561,7 @@ function MW:ApplyLayout()
     local x0 = PAD
     local topY = -PAD
     -- POSIZIONAMENTO IN ORDINE: riga per riga, da sinistra a destra
-    -- (Groupmaking, Raid Frame / MS, Log / Macrobar, MT & OT / Loot, SaveRaid
+    -- (Groupmaking, Raid Frame / MS, Macrobar / MT & OT, Loot / SaveRaid
     -- con 2 colonne). La cella della coppia MT & OT ospita i due mezzi tasti.
     local halfGap = 4
     local halfW = (bw - halfGap) / 2
@@ -640,8 +638,6 @@ function MW:PaneForTab(key)
         return RLSuite.msManager and RLSuite.msManager.frame
     elseif key == "loot" then
         return RLSuite.lootManager and RLSuite.lootManager.frame
-    elseif key == "log" then
-        return RLSuite.combatLog and RLSuite.combatLog.frame
     end
     return nil
 end
@@ -650,13 +646,12 @@ end
 function MW:LayoutKeyForTab(key)
     if key == "group" then return "groupmaking" end
     if key == "raidframe" then return "raidframe" end
-    if key == "log" then return "combatlog" end
     return key -- ms / loot
 end
 
 function MW:HideAllWindows()
     if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
-    local keys = { "group", "raidframe", "ms", "loot", "log" }
+    local keys = { "group", "raidframe", "ms", "loot" }
     for _, k in ipairs(keys) do
         local pane = self:PaneForTab(k)
         if pane then pane:Hide() end
@@ -702,20 +697,12 @@ function MW:RegisterAllWindows()
         -- sotto i 506 il tasto MS "Announce Changes" sborda fuori finestra.
         return 510, 340
     end
-    RLSuite.windowMins.log = function()
-        -- Layout v1.11.63 (stile UwU Logs): la riga dei tab ha 10 tasti da
-        -- 78px + 5 di gap (14 + 10*83 + 14 = 853): sotto ~870 i tasti
-        -- sbordano. Altezza = riga titolo (28) + controlli grafico (28) +
-        -- grafico (150) + tab (24) + contenuto (360) + footer (42) + margini.
-        return 870, 660
-    end
 
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
     local layoutKeys = {
         group = "groupmaking",
         ms = "ms",
         loot = "loot",
-        log = "combatlog",
     }
     for key, lkey in pairs(layoutKeys) do
         local pane = self:PaneForTab(key)
@@ -747,7 +734,6 @@ function MW:RegisterAllWindows()
         group = { "groupmaking", 420, 380, "groupmaking" },
         ms = { "ms", 320, 260, "ms" },
         loot = { "loot", 440, 300, "loot" },
-        log = { "combatlog", 900, 646, "combatlog" },
     }
     for key, cfg in pairs(resizable) do
         local pane = self:PaneForTab(key)
@@ -776,7 +762,7 @@ function MW:SelectTab(key)
         key = def and def.key or "group"
     end
     if key ~= "group" and key ~= "raidframe"
-        and key ~= "ms" and key ~= "loot" and key ~= "log" then
+        and key ~= "ms" and key ~= "loot" then
         key = "group"
     end
     self.currentTab = key
