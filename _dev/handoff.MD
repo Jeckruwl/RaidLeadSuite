@@ -16,6 +16,15 @@ che non si vedono in `git log`.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.104**.
 
+
+## 1.11.108 — RaidFrame headers, button size, role icon, distance fade & player dropdown/tooltip
+
+1. **Group Headers**: visualizzati per esteso ("Group 1".."Group 6") con opzione toggle "Show group headers" nel Config.
+2. **Raid Buffs Button**: larghezza pari allo spazio dei 4 CD (`m.cdReserve`), altezza pari alle barre player (`m.barHeight`).
+3. **Role Icon**: spazio dedicato per una singola icona a sinistra della barra HP con icone Blizzard di default (Leader, Assist, ML, Tank, Main Assist).
+4. **Distance Fade**: risolto bug opacità (supporto a `UnitIsConnected`, `UnitIsVisible`, `UnitInRange == 1/nil`, fade esteso al font del nome e a tutti gli elementi).
+5. **Player Tooltip & Right-Click Menu**: tooltip di default Blizzard (`GameTooltip:SetUnit`) al mouseover e menu a tendina contestuale Blizzard (`UnitPopup_ShowMenu`) al click destro sulla riga.
+
 ## 1.11.107 — RaidFrame consumables removed, Buff Matrix clean Flask/Food/Durability & Feast/Bot Raid Warnings
 
 Changelog:

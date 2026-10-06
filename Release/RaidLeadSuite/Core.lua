@@ -83,7 +83,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.107"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.108"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -167,6 +167,7 @@ local defaults = {
             showBuffs = true,
             showFlask = true,
             showFood = true,
+            showGroupHeaders = true,
             locked = true,
             scale = 1.0,
             width = 380,

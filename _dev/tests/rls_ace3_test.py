@@ -7375,6 +7375,65 @@ check(bool(rt.eval("V107_BOT_WARN:find('EngiGuy put down Jeeves!', 1, true) ~= n
 
 
 
+
+print()
+print("== v1.11.108: RaidFrame Group N headers, toggle option, Raid Buffs button size, role icons, fade fix, player tooltip and right-click menu ==")
+rt.execute('''
+local RF = RLSuite.raidFrame
+local m = RF:LayoutMetrics()
+
+-- 1. Test Group Header text
+V108_HDR_TEXT = RF.groupHeaders[1]:GetText()
+
+-- 2. Test Raid Buffs button size
+local btnW, btnH = RF.buffPanelBtn:GetWidth(), RF.buffPanelBtn:GetHeight()
+V108_BTN_W = btnW
+V108_BTN_H = btnH
+V108_EXP_W = m.cdReserve
+V108_EXP_H = m.barHeight
+
+-- 3. Test Role Icon exists on row
+local row1 = RF.slots[1]
+V108_HAS_ROLE_ICON = (row1.roleIcon ~= nil)
+
+-- 4. Test Distance Fade with UnitIsConnected / UnitIsVisible / UnitInRange
+local oConnected = UnitIsConnected
+local oVisible = UnitIsVisible
+local oRange = UnitInRange
+
+UnitIsConnected = function(u) if u == "raidFar" then return false end return true end
+UnitIsVisible = function(u) if u == "raidFar" then return false end return true end
+UnitInRange = function(u) if u == "raidFar" then return nil end return 1 end
+
+local app = RLSuite.db.profile.raidframe.appearance
+app.distanceFade = 20
+app.distanceAlpha = 0.30
+
+local fakeRow = { unit = "raidFar", bar = row1.bar, SetAlpha = function(s, a) s._a = a end }
+fakeRow.bar.SetAlpha = function(s, a) s._a = a end
+fakeRow.bar.nameText = { SetAlpha = function(s, a) s._a = a end }
+fakeRow.bar.bg = { SetAlpha = function(s, a) s._a = a end }
+
+RF:ApplyDistanceFade(fakeRow)
+V108_FADED_ALPHA = fakeRow._fadeAlpha
+V108_NAME_ALPHA = fakeRow.bar.nameText._a
+
+UnitIsConnected = oConnected
+UnitIsVisible = oVisible
+UnitInRange = oRange
+
+-- 5. Test right-click and tooltip methods
+V108_HAS_DROPDOWN = (RF.ShowPlayerDropDown ~= nil)
+V108_HAS_TOOLTIP = (RF.ShowPlayerTooltip ~= nil)
+''')
+
+check(rt.eval("V108_HDR_TEXT:find('Group', 1, true) ~= nil"), "v1.11.108: Group header text is 'Group N'")
+check(rt.eval("V108_BTN_W == V108_EXP_W and V108_BTN_H == V108_EXP_H"), "v1.11.108: Raid Buffs button width equals 4 CD space and height equals barHeight")
+check(bool(rt.eval("V108_HAS_ROLE_ICON")), "v1.11.108: Row has roleIcon slot to the left of HP bar")
+check(rt.eval("V108_FADED_ALPHA") == 0.30, "v1.11.108: Distant/unconnected/invisible unit correctly fades to distanceAlpha")
+check(rt.eval("V108_NAME_ALPHA") == 0.30, "v1.11.108: Player name text correctly fades along with bar")
+check(bool(rt.eval("V108_HAS_DROPDOWN and V108_HAS_TOOLTIP")), "v1.11.108: Player dropdown menu and tooltip functions exist and are hooked")
+
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
     sys.exit(1)

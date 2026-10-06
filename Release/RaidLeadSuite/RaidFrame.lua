@@ -307,7 +307,7 @@ function RF:GetGroupedRoster()
     local num = GetNumRaidMembers() or 0
     local groupCount = { 0, 0, 0, 0, 0, 0 }
     for i = 1, num do
-        local name, _, subgroup = GetRaidRosterInfo(i)
+        local name, rank, subgroup, _, _, _, _, _, _, role, isML = GetRaidRosterInfo(i)
         if name then
             local class = select(2, UnitClass("raid" .. i)) or "WARRIOR"
             subgroup = tonumber(subgroup) or 1
@@ -322,6 +322,9 @@ function RF:GetGroupedRoster()
                     unit = "raid" .. i,
                     fake = false,
                     raidIndex = i,
+                    rank = rank,
+                    role = role,
+                    isML = isML,
                 }
             end
         end
@@ -351,13 +354,15 @@ function RF:LayoutMetrics()
     -- finisce al bordo destro delle barre e TUTTA la grafica matrice (icone,
     -- strip, backdrop) viene disegnata OLTRE il bordo destro. Cosi' la zona
     -- buff e' COMPLETAMENTE CLICK-THROUGH, a matrice aperta o chiusa.
-    -- Layout per row: [flask][food] ... [HP bar = barWidth] ... [up to 4 CDs]
+    -- Layout per row: [roleIcon (iconSize)] [HP bar = barWidth] [4 CDs]
+    local roleReserve = iconSize + 4
     local cdReserve = 4 * iconSize + 3 * 2 + 4
-    local rowWidth = barWidth + cdReserve + 4
+    local rowWidth = roleReserve + barWidth + cdReserve + 4
     local W = rowWidth + abw + gap
     local rowHeight = math.max(barHeight, iconSize) + 4
     return {
         W = W, abw = abw, rowWidth = rowWidth,
+        roleReserve = roleReserve, cdReserve = cdReserve,
         barWidth = barWidth, barHeight = barHeight,
         iconSize = iconSize, nameFontSize = nameFontSize,
         rowHeight = rowHeight,
@@ -376,7 +381,7 @@ function RF:EnsureSlots()
     for g = 1, RF_GROUPS do
         if not self.groupHeaders[g] then
             local lbl = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            lbl:SetText("G" .. g)
+            lbl:SetText(L["Group "] .. g)
             lbl:SetTextColor(1, 0.82, 0)
             lbl:SetJustifyH("LEFT")
             self.groupHeaders[g] = lbl
@@ -427,6 +432,72 @@ end
 -- HANDLER CONDIVISI fra la riga-Button e l'overlay SECURE (la zona
 -- coperta dal secure overlay non consegna piu' input alla riga sotto: per
 -- questo aggiungi un misero correlate handler anche li').
+local RF_PlayerDropDown = CreateFrame("Frame", "RLSuitePlayerDropDown", UIParent, "UIDropDownMenuTemplate")
+UIDropDownMenu_Initialize(RF_PlayerDropDown, function(self)
+    local parent = self:GetParent()
+    local unit = parent and parent.unit
+    if not unit then return end
+
+    local menu, name, id
+    if UnitIsUnit and UnitIsUnit(unit, "player") then
+        menu = "SELF"
+    elseif UnitIsUnit and UnitIsUnit(unit, "vehicle") then
+        menu = "VEHICLE"
+    elseif UnitIsUnit and UnitIsUnit(unit, "pet") then
+        menu = "PET"
+    elseif UnitIsPlayer and UnitIsPlayer(unit) then
+        id = UnitInRaid and UnitInRaid(unit)
+        if id and GetRaidRosterInfo then
+            menu = "RAID_PLAYER"
+            name = GetRaidRosterInfo(id)
+        elseif UnitInParty and UnitInParty(unit) then
+            menu = "PARTY"
+        else
+            menu = "PLAYER"
+        end
+    else
+        menu = "TARGET"
+        name = RAID_TARGET_ICON or "Target"
+    end
+    if menu and UnitPopup_ShowMenu then
+        UnitPopup_ShowMenu(self, menu, unit, name, id)
+    end
+end, "MENU")
+
+function RF:ShowPlayerDropDown(row)
+    if not row or not row.unit then return end
+    if not ToggleDropDownMenu then return end
+    RF_PlayerDropDown:SetParent(row)
+    ToggleDropDownMenu(1, nil, RF_PlayerDropDown, "cursor", 0, 0)
+end
+
+function RF:ShowPlayerTooltip(row)
+    if not row then return end
+    if not GameTooltip then return end
+    local unit = row.unit
+    if unit and UnitExists and UnitExists(unit) then
+        GameTooltip_SetDefaultAnchor(GameTooltip, row)
+        GameTooltip:SetUnit(unit)
+        GameTooltip:Show()
+    elseif row.name then
+        GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+        GameTooltip:ClearLines()
+        local r, g, b = 1, 1, 1
+        if row.class and RLSuite.utils then
+            r, g, b = RLSuite.utils:GetClassColor(row.class)
+        end
+        GameTooltip:AddLine(row.name, r, g, b)
+        if row.class then GameTooltip:AddLine(row.class, 0.8, 0.8, 0.8) end
+        GameTooltip:Show()
+    end
+end
+
+function RF:HidePlayerTooltip(row)
+    if GameTooltip and GameTooltip:IsShown() then
+        GameTooltip:Hide()
+    end
+end
+
 local function RowBodyOnMouseDown(self2, button)
         if button == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() then
             local f = RF.frame
@@ -515,8 +586,13 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
     -- quindi le icone consumabili diventavano non cliccabili fuori pre-boss.
     row:EnableMouse(true)
 
-    -- Left: flask / Well Fed missing-consumable icons.
-    -- Le barre TANK non li hanno: al loro posto il tag MT/OT dorato.
+    -- Left: Role icon (leader, assist, ML, tank, assist).
+    -- Icona singola a sinistra della barra HP (posizionata in LayoutSlotGeometry).
+    local roleIcon = self.content:CreateTexture(nil, "ARTWORK")
+    roleIcon:Hide()
+    row.roleIcon = roleIcon
+
+    -- Le barre TANK al posto della roleIcon hanno il tag MT/OT dorato.
     if row.isTank then
         -- Anche il tag MT/OT fuori dalla riga (stessa regola della barra).
         local tag = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -630,6 +706,10 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
     row.secTarget = sec
     sec:SetScript("OnMouseDown", function(s, button) RowBodyOnMouseDown(row, button) end)
     sec:SetScript("OnMouseUp", function(s, button) RowBodyOnMouseUp(row, button) end)
+    sec:SetScript("OnEnter", function(s) RF:ShowPlayerTooltip(row) end)
+    sec:SetScript("OnLeave", function(s) RF:HidePlayerTooltip(row) end)
+    row:SetScript("OnEnter", function(s) RF:ShowPlayerTooltip(row) end)
+    row:SetScript("OnLeave", function(s) RF:HidePlayerTooltip(row) end)
 
     -- Indicatore di DROP puro-visuale: bordino dorato su frame figlio.
     -- EnableMouse(false) qui e' SICURO (decorazione, NON lo slot): non
@@ -801,10 +881,20 @@ function RF:LayoutSlotGeometry(slot, m)
         slot.foodIcon:ClearAllPoints()
         slot.foodIcon:Hide()
     end
+    local roleReserve = m.roleReserve or (iconSize + 4)
+    if slot.roleIcon then
+        slot.roleIcon:ClearAllPoints()
+        slot.roleIcon:SetSize(iconSize, iconSize)
+        slot.roleIcon:SetPoint("LEFT", slot, "LEFT", 0, 0)
+    end
     if slot.bar then
         slot.bar:ClearAllPoints()
         slot.bar:SetSize(m.barWidth, m.barHeight)
-        slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, 0)
+        if slot.isTank then
+            slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, 0)
+        else
+            slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", roleReserve, 0)
+        end
         -- Tag MT/OT: ATTACCATO a sinistra della barra
         if slot.tankTag then
             slot.tankTag:ClearAllPoints()
@@ -930,6 +1020,9 @@ function RF:ClearSlot(slot)
         slot.secTarget:Hide()
     end
 
+    if slot.roleIcon then
+        slot.roleIcon:Hide()
+    end
     if slot.bar then
         slot.bar:SetValue(0)
         if slot.bar.nameText then slot.bar.nameText:SetText("") end
@@ -1067,7 +1160,8 @@ function RF:RefreshDropTargets()
         end
         local hdr = self.groupHeaders and self.groupHeaders[g]
         if hdr then
-            if anyMember or dragging then
+            local showHeaders = (self.db and self.db.showGroupHeaders ~= false)
+            if showHeaders and (anyMember or dragging) then
                 hdr:Show()
             else
                 hdr:Hide()
@@ -1274,6 +1368,64 @@ function RF:UpdateTankTargets()
     end
 end
 
+local RF_ROLE_ICONS = {
+    leader = "Interface\\GroupFrame\\UI-Group-LeaderIcon",
+    assist = "Interface\\GroupFrame\\UI-Group-AssistantIcon",
+    ml = "Interface\\GroupFrame\\UI-Group-MasterLooter",
+    tank = "Interface\\GroupFrame\\UI-Group-MainTankIcon",
+    mainassist = "Interface\\GroupFrame\\UI-Group-MainAssistIcon",
+}
+
+function RF:UpdateRoleIcon(row)
+    if not row or not row.roleIcon then return end
+    if row.isTank then
+        row.roleIcon:Hide()
+        return
+    end
+    local unit = row.unit
+    local rank = 0
+    local isML = false
+    local role = nil
+
+    if row.member then
+        rank = row.member.rank or 0
+        isML = row.member.isML
+        role = row.member.role
+    end
+
+    if unit and not row.fake and UnitExists and UnitExists(unit) then
+        if GetNumRaidMembers and GetNumRaidMembers() > 0 and row.raidIndex then
+            local _, rk, _, _, _, _, _, _, _, rl, ml = GetRaidRosterInfo(row.raidIndex)
+            rank = rk or rank
+            if ml ~= nil then isML = ml end
+            if rl ~= nil then role = rl end
+        end
+        if UnitIsPartyLeader and UnitIsPartyLeader(unit) then
+            rank = 2
+        end
+    end
+
+    local icon = nil
+    if rank == 2 then
+        icon = RF_ROLE_ICONS.leader
+    elseif rank == 1 then
+        icon = RF_ROLE_ICONS.assist
+    elseif isML then
+        icon = RF_ROLE_ICONS.ml
+    elseif role == "maintank" or role == "MAINTANK" then
+        icon = RF_ROLE_ICONS.tank
+    elseif role == "mainassist" or role == "MAINASSIST" then
+        icon = RF_ROLE_ICONS.mainassist
+    end
+
+    if icon then
+        row.roleIcon:SetTexture(icon)
+        row.roleIcon:Show()
+    else
+        row.roleIcon:Hide()
+    end
+end
+
 function RF:UpdateRow(row)
     if not row or not row.bar then return end
     local bar = row.bar
@@ -1282,6 +1434,7 @@ function RF:UpdateRow(row)
         bar:SetMinMaxValues(0, 100)
         bar:SetValue(pct)
         self:UpdateConsumables(row)
+        self:UpdateRoleIcon(row)
         return
     end
     local unit = row.unit
@@ -1296,6 +1449,7 @@ function RF:UpdateRow(row)
     bar:SetValue(hp)
 
     self:UpdateConsumables(row)
+    self:UpdateRoleIcon(row)
 
     for _, cd in ipairs(row.cdIcons) do
         if cd and cd.ability then
@@ -1654,6 +1808,8 @@ function RF:RowPlainClick(row, button)
     local fired = self:FireConsumableFromCursor(row, button)
     if not fired and button == "LeftButton" then
         self:TargetRow(row)
+    elseif button == "RightButton" then
+        self:ShowPlayerDropDown(row)
     end
 end
 
@@ -2240,13 +2396,19 @@ function RF:ApplyLayout()
         -- Bottone "Raid Buffs": sotto le barre target dei tank, allineato
         -- come l'header G1: bordo INFERIORE = fondo della zona strip, bordo
         -- DESTRO = fine barra. (Show/Hide li decide RebuildTanks.)
-        if self.buffPanelBtn and otSlot and otSlot.targetBar then
+        if self.buffPanelBtn and otSlot then
+            local btnW = m.cdReserve or (4 * m.iconSize + 6)
+            local btnH = m.barHeight or m.rowHeight
+            self.buffPanelBtn:SetSize(btnW, btnH)
             self.buffPanelBtn:ClearAllPoints()
             if headersOn then
                 self.buffPanelBtn:SetPoint("BOTTOMRIGHT", self.content, "TOPLEFT",
                     m.rowWidth, y - stripH)
-            else
+            elseif otSlot.targetBar then
                 self.buffPanelBtn:SetPoint("TOPRIGHT", otSlot.targetBar, "BOTTOMRIGHT", 0, 0)
+            else
+                self.buffPanelBtn:SetPoint("BOTTOMRIGHT", self.content, "TOPLEFT",
+                    m.rowWidth, y)
             end
             -- Show/Hide NON qui: lo decide RebuildTanks (spento a roster vuoto).
         end
@@ -3104,10 +3266,17 @@ end
 function RF:UnitDistanceYards(unit)
     if not unit then return nil end
     if unit == "player" then return 0 end
+    if UnitIsConnected and not UnitIsConnected(unit) then
+        return RF_FAR_YARDS
+    end
+    if UnitIsVisible and not UnitIsVisible(unit) then
+        return RF_FAR_YARDS
+    end
     if UnitInRange then
         local inRange, yards = UnitInRange(unit)
         if yards then return yards end
-        if inRange == false then return RF_FAR_YARDS end
+        if inRange == 1 or inRange == true then return 0 end
+        if inRange == 0 or inRange == false or inRange == nil then return RF_FAR_YARDS end
     end
     return nil
 end
@@ -3125,6 +3294,9 @@ function RF:ApplyDistanceFade(row)
         row._fadeAlpha = alpha
         if row.SetAlpha then row:SetAlpha(alpha) end
         if row.bar and row.bar.SetAlpha then row.bar:SetAlpha(alpha) end
+        if row.bar and row.bar.nameText and row.bar.nameText.SetAlpha then row.bar.nameText:SetAlpha(alpha) end
+        if row.bar and row.bar.bg and row.bar.bg.SetAlpha then row.bar.bg:SetAlpha(alpha) end
+        if row.roleIcon and row.roleIcon.SetAlpha then row.roleIcon:SetAlpha(alpha) end
         if row.flaskIcon and row.flaskIcon.SetAlpha then row.flaskIcon:SetAlpha(alpha) end
         if row.foodIcon and row.foodIcon.SetAlpha then row.foodIcon:SetAlpha(alpha) end
         if row.cdHolder and row.cdHolder.SetAlpha then row.cdHolder:SetAlpha(alpha) end

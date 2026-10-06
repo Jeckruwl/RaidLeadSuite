@@ -564,6 +564,9 @@ function CFG:BuildOptionsTable()
         groupHeaderFontSize = slider(L["Group header font size"], L["Font size of the group labels (Tanks, G1..G6)."], 15, 8, 16, 1,
             function() return rf.appearance.groupHeaderFontSize or 10 end,
             function(_, v) rf.appearance.groupHeaderFontSize = v; self:ApplyAll() end),
+        showGroupHeaders = toggle(L["Show group headers"], L["Show or hide the Group headers (Group 1..Group 6)."], 16,
+            function() return rf.showGroupHeaders ~= false end,
+            function(_, v) rf.showGroupHeaders = v; self:ApplyAll() end),
         matrixBackdrop = {
             name = L["Buff check backdrop"],
             desc = L["Backdrop color and transparency of the Raid Buffs matrix rows."],
