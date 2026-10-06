@@ -3055,7 +3055,7 @@ local function cellXY(idx)
     local row = math.floor((idx - 1) / cols)
     return 4 + col * (90 + 8), -4 - row * (22 + 4)
 end
-local EXPECT = { "Groupmaking", "MS", "Macrobar", "MT & OT", "Loot", "SaveRaid" }
+local EXPECT = { "Pugger", "MS", "Macrobar", "MT & OT", "Loot", "SaveRaid" }
 BAR_ORDER_OK = true
 for i, want in ipairs(EXPECT) do
     local c = MWo.matrixOrder[i]
@@ -3079,7 +3079,7 @@ for i, c in ipairs(MWo.matrixOrder) do
 end
 BAR_POS_OK = posOK
 """)
-check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 6")), "main bar button order is Groupmaking, MS, Macrobar, MT & OT, Loot, SaveRaid (%s)" % rt.eval("BAR_ORDER"))
+check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 6")), "main bar button order is Pugger, MS, Macrobar, MT & OT, Loot, SaveRaid (%s)" % rt.eval("BAR_ORDER"))
 check(bool(rt.eval("BAR_POS_OK == true")), "each button really sits in its cell, row by row (MT & OT in its own cell, SaveRaid last)")
 check(bool(rt.eval("MTXOF == CELL_MT_X and MTYOF == CELL_MT_Y")), "MT / OT pair occupies the 4th cell of the matrix (own cell, no more 'under Raid Frame')")
 check(bool(rt.eval("LOOTXOF == CELL_LOOT_X and LOOTYOF == CELL_LOOT_Y")), "Loot sits in its own 5th cell (no shifting around Raid Frame)")
@@ -6120,7 +6120,7 @@ CMD_EXPECT = {
     "/rls            Main bar (buttons + phase)",
     "/rls help       This list",
     "/rls config     Config window",
-    "/rls group      Groupmaking panel",
+    "/rls group      Pugger panel",
     "/rls inv        InviteEngine (whisper + auto-invite)",
     "/rls macrobar   MacroBar HUD",
     "/rls ms         MS Manager panel",

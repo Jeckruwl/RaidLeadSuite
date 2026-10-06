@@ -253,11 +253,11 @@ function MW:CreateFrame()
     -- X di chiusura e icona SaveRaid). La Config si apre dalla minimappa
     -- (clic destro) o da /rls config.
 
-    -- ORDINE DEI TASTI DELLA MATRICE (richiesto): Groupmaking, Raid Frame,
+    -- ORDINE DEI TASTI DELLA MATRICE (richiesto): Pugger, Raid Frame,
     -- MS, Macrobar, MT & OT, Loot, SaveRaid. I tab si creano in
     -- quest'ordine e la griglia li dispone riga per riga (vedi matrixOrder).
     self.tabDefs = {
-        { key = "group",     label = "Groupmaking" },
+        { key = "group",     label = "Pugger" },
         { key = "ms",        label = "MS" },
         { key = "macro",     label = "Macrobar" },
         { key = "loot",      label = "Loot" },
@@ -551,7 +551,7 @@ function MW:ApplyLayout()
     local x0 = PAD
     local topY = -PAD
     -- POSIZIONAMENTO IN ORDINE: riga per riga, da sinistra a destra
-    -- (Groupmaking, Raid Frame / MS, Macrobar / MT & OT, Loot / SaveRaid
+    -- (Pugger, Raid Frame / MS, Macrobar / MT & OT, Loot / SaveRaid
     -- con 2 colonne). La cella della coppia MT & OT ospita i due mezzi tasti.
     local halfGap = 4
     local halfW = (bw - halfGap) / 2

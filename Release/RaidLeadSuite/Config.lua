@@ -71,7 +71,7 @@ end
 local CATEGORIES = {
     { value = "general", text = "General" },
     { value = "modulemenu", text = "Module Menu" },
-    { value = "groupmaking", text = "Groupmaking" },
+    { value = "groupmaking", text = "Pugger" },
     { value = "macros", text = "Macros", children = {
         { value = "layout", text = "Bar Layout" },
         { value = "editor", text = "Macro Editor" },
@@ -664,7 +664,7 @@ function CFG:BuildOptionsTable()
         args = {
             general = { type = "group", name = L["General"], order = 1, args = general },
             modulemenu = { type = "group", name = L["Module Menu"], order = 2, args = moduleMenu },
-            groupmaking = { type = "group", name = L["Groupmaking"], order = 3, args = groupmaking },
+            groupmaking = { type = "group", name = L["Pugger"], order = 3, args = groupmaking },
             macros = { type = "group", name = L["Macros"], order = 4, args = macros },
             raidframe = { type = "group", name = L["Raid Frame"], order = 5, args = raidframe },
             savedraids = savedraids,

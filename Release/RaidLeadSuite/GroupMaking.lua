@@ -194,7 +194,7 @@ function GM:CreateMainWindow()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
-    title:SetText("Group Making")
+    title:SetText("Pugger")
 
     local raidLabel = FontStr(f, "OVERLAY", 14)
     raidLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -36)

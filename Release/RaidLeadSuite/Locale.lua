@@ -38,7 +38,7 @@ do
     L["  /rls            Main bar (buttons + phase)"] = true
     L["  /rls help       This list"] = true
     L["  /rls config     Config window"] = true
-    L["  /rls group      Groupmaking panel"] = true
+    L["  /rls group      Pugger panel"] = true
     L["  /rls inv        InviteEngine (whisper + auto-invite)"] = true
     L["  /rls macrobar   MacroBar HUD"] = true
     L["  /rls ms         MS Manager panel"] = true
@@ -282,7 +282,7 @@ do
     L["Borders:"] = true
     L["Border thickness"] = true
     L["Font size"] = true
-    L["Simulates a raid group. Macros, LFM, rolls, loot and MS changes are whispered to you. Fake loot uses the raid selected in Groupmaking."] = true
+    L["Simulates a raid group. Macros, LFM, rolls, loot and MS changes are whispered to you. Fake loot uses the raid selected in Pugger."] = true
     L["Enable debug mode"] = true
     L["Fill fake loot"] = true
     L["Bar and tab windows"] = true
