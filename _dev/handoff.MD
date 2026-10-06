@@ -1,10 +1,17 @@
 # Handoff — RaidLeadSuite (agent → agent)
 
 Documento di passaggio per continuare il lavoro su questa repo in una nuova chat.
-Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 0430146`
-(che già include il merge della PR #4 della sessione precedente, branch
-`arena/01a0aa40-raidleadsuite`, 1.11.30 → 1.11.48).
+Branch di lavoro corrente: `arena/be6d8187-raidleadsuite` — base `main @ b468a85`
+(main contiene già tutto il lavoro delle sessioni precedenti fino alla **1.11.102**;
+la catena storica dei branch è `arena/01a0aa40-…` → PR #4 → `arena/01a0c461-…`).
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
+
+Stato verificato a inizio sessione (nessuna modifica al codice):
+suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
+= 1.11.102, coerente col fallback in `Core.lua`. `lupa` va installato con
+`pip install --break-system-packages lupa`. Il checkout dell'ambiente è
+*shallow* (un solo commit, `grafted`): non fare `git rebase`/`reset` su commit
+che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.102**.
