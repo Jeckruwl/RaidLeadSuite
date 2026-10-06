@@ -352,9 +352,8 @@ function RF:LayoutMetrics()
     -- strip, backdrop) viene disegnata OLTRE il bordo destro. Cosi' la zona
     -- buff e' COMPLETAMENTE CLICK-THROUGH, a matrice aperta o chiusa.
     -- Layout per row: [flask][food] ... [HP bar = barWidth] ... [up to 4 CDs]
-    local leftArea = 4 + 2 * iconSize + 4
     local cdReserve = 4 * iconSize + 3 * 2 + 4
-    local rowWidth = leftArea + barWidth + cdReserve + 4
+    local rowWidth = barWidth + cdReserve + 4
     local W = rowWidth + abw + gap
     local rowHeight = math.max(barHeight, iconSize) + 4
     return {
@@ -542,9 +541,6 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
         tfs:SetTextColor(1, 1, 1)
         tbar.nameText = tfs
         row.targetBar = tbar
-    else
-        row.flaskIcon = self:MakeConsumableIcon(row, "flask")
-        row.foodIcon = self:MakeConsumableIcon(row, "food")
     end
 
     -- HP bar (name + % inside), fill = HP%, color = class color.
@@ -799,21 +795,17 @@ function RF:LayoutSlotGeometry(slot, m)
     local iconSize = m.iconSize
     if slot.flaskIcon then
         slot.flaskIcon:ClearAllPoints()
-        slot.flaskIcon:SetSize(iconSize, iconSize)
-        slot.flaskIcon:SetPoint("TOPLEFT", slot, "TOPLEFT", 2, 0)
+        slot.flaskIcon:Hide()
     end
     if slot.foodIcon then
         slot.foodIcon:ClearAllPoints()
-        slot.foodIcon:SetSize(iconSize, iconSize)
-        slot.foodIcon:SetPoint("TOPLEFT", slot, "TOPLEFT", 2 + iconSize + 2, 0)
+        slot.foodIcon:Hide()
     end
     if slot.bar then
-        local leftX = 4 + 2 * iconSize + 4
         slot.bar:ClearAllPoints()
         slot.bar:SetSize(m.barWidth, m.barHeight)
-        slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", leftX, 0)
-        -- Tag MT/OT: ATTACCATO al bordo sinistro della barra (non fluttuante
-        -- nello spazio consumabili).
+        slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, 0)
+        -- Tag MT/OT: ATTACCATO a sinistra della barra
         if slot.tankTag then
             slot.tankTag:ClearAllPoints()
             slot.tankTag:SetPoint("RIGHT", slot.bar, "LEFT", -3, 0)
@@ -821,7 +813,7 @@ function RF:LayoutSlotGeometry(slot, m)
         -- Barra TARGET dove prima c'erano i CD (solo tank).
         if slot.targetBar then
             slot.targetBar:ClearAllPoints()
-            slot.targetBar:SetSize(m.rowWidth - leftX - m.barWidth - 4, m.barHeight)
+            slot.targetBar:SetSize(m.rowWidth - m.barWidth - 4, m.barHeight)
             slot.targetBar:SetPoint("TOPLEFT", slot.bar, "TOPRIGHT", 4, 0)
             local tex = self.db and self.db.appearance and self.db.appearance.barTexture
                 or "Interface\\TargetingFrame\\UI-StatusBar"
@@ -1765,14 +1757,16 @@ function RF:_FinishDrag()
     local hbtn = self:_BuffHeaderAtCursor()
     if hbtn and hbtn._col and src.member and src.member.name then
         local col = hbtn._col
-        self._rfDragSource = nil
-        src._manualDrag = nil
-        src._pendingRowClick = nil
-        if src._scripts and src._scripts.OnUpdate then src:SetScript("OnUpdate", nil) end
-        self._dropActive = nil
-        self:RefreshDropTargets()
-        self:NewBuffAssignDrag(col, src.member.name)
-        return
+        if col.kind ~= "durability" and col.key ~= "flask" and col.key ~= "wellfed" then
+            self._rfDragSource = nil
+            src._manualDrag = nil
+            src._pendingRowClick = nil
+            if src._scripts and src._scripts.OnUpdate then src:SetScript("OnUpdate", nil) end
+            self._dropActive = nil
+            self:RefreshDropTargets()
+            self:NewBuffAssignDrag(col, src.member.name)
+            return
+        end
     end
     -- Bersaglio calcolato PRIMA di azzerare la sorgente (l'hit-test conta
     -- sulla geometria, non sulla visibilita' delle righe).
@@ -2464,6 +2458,9 @@ function RF:_MatrixHeaderBtn(c)
         btn:SetScript("OnClick", function(s, button)
             if not s._col then return end
             if button == "RightButton" then
+                if s._col and (s._col.kind == "durability" or s._col.key == "flask" or s._col.key == "wellfed") then
+                    return
+                end
                 -- Destro: toglie l'assegnazione (se c'e').
                 if RF:GetBuffAssign(s._col) then
                     RF:SetBuffAssign(s._col, nil)
@@ -2567,8 +2564,9 @@ end
 
 -- Questo membro PUO' ricevere la categoria?
 function RF:_BuffCoverable(col, ctx, group)
-    -- Le colonne di servizio (durability) non hanno fornitori: valgono per tutti.
-    if col.kind == "durability" then return true end
+    -- Le colonne di servizio (durability) e i consumabili personali (flask/food)
+    -- non hanno fornitori raid: valgono sempre per tutti.
+    if col.kind == "durability" or col.key == "flask" or col.key == "wellfed" then return true end
     if ctx.hasRaidProvider then return true end
     if group and ctx.partyProvider[group] then return true end
     return false
@@ -2829,8 +2827,9 @@ end
 -- Fornitori PRESENTI in raid per quella categoria, in ordine di roster.
 function RF:BuffProviders(col)
     local out = {}
-    if col and col.kind == "durability" then return out end
-    if not (col and col.classes and #col.classes > 0) then return out end
+    if not col then return out end
+    if col.kind == "durability" or col.key == "flask" or col.key == "wellfed" then return out end
+    if not (col.classes and #col.classes > 0) then return out end
     local groups = self:GetGroupedRoster()
     for g = 1, #groups do
         for s = 1, #groups[g] do
@@ -2888,32 +2887,39 @@ function RF:ShowBuffCatTip(col, anchorBtn)
         local txt, r, g, b = self:_BuffStatusText(self:BuffCoverage(col))
         if txt then GameTooltip:AddLine(txt, r or 0.8, g or 0.8, b or 0.8) end
     end
-    local assigned = self:GetBuffAssign(col)
-    if GameTooltip.AddLine then
-        if assigned then
-            GameTooltip:AddLine(string.format(L["Assigned to: %s"], assigned), 0.2, 1, 0.4)
-        else
-            -- Categoria libera: non solo lo stato, ma anche COME si assegna.
-            GameTooltip:AddLine(L["Not assigned - Drop a player on the icon to assign the buff"], 0.7, 0.7, 0.7)
+    local isConsumableOrDur = (col.kind == "durability" or col.key == "flask" or col.key == "wellfed")
+    if not isConsumableOrDur then
+        local assigned = self:GetBuffAssign(col)
+        if GameTooltip.AddLine then
+            if assigned then
+                GameTooltip:AddLine(string.format(L["Assigned to: %s"], assigned), 0.2, 1, 0.4)
+            else
+                -- Categoria libera: non solo lo stato, ma anche COME si assegna.
+                GameTooltip:AddLine(L["Not assigned - Drop a player on the icon to assign the buff"], 0.7, 0.7, 0.7)
+            end
         end
-    end
-    local provs = self:BuffProviders(col)
-    if GameTooltip.AddLine then
-        if #provs > 0 then
-            GameTooltip:AddLine(string.format(L["Providers (%d):"], #provs), 0.9, 0.9, 0.9)
-        else
-            GameTooltip:AddLine(L["No provider available"], 0.7, 0.7, 0.7)
+        local provs = self:BuffProviders(col)
+        if GameTooltip.AddLine then
+            if #provs > 0 then
+                GameTooltip:AddLine(string.format(L["Providers (%d):"], #provs), 0.9, 0.9, 0.9)
+            else
+                GameTooltip:AddLine(L["No provider available"], 0.7, 0.7, 0.7)
+            end
+            for i = 1, math.min(#provs, RF_TIP_ROWS) do
+                local p = provs[i]
+                GameTooltip:AddLine(string.format("   %s (%s): %s",
+                    tostring(p.member.name or "?"), tostring(p.member.class or "?"), tostring(p.buff)),
+                    0.8, 0.8, 0.8)
+            end
+            if #provs > RF_TIP_ROWS then
+                GameTooltip:AddLine(string.format(L["... and %d more"], #provs - RF_TIP_ROWS), 0.7, 0.7, 0.7)
+            end
+            GameTooltip:AddLine(L["Left-click: buff check. Right-click: clear assignment."], 0.5, 0.5, 0.5)
         end
-        for i = 1, math.min(#provs, RF_TIP_ROWS) do
-            local p = provs[i]
-            GameTooltip:AddLine(string.format("   %s (%s): %s",
-                tostring(p.member.name or "?"), tostring(p.member.class or "?"), tostring(p.buff)),
-                0.8, 0.8, 0.8)
+    else
+        if GameTooltip.AddLine then
+            GameTooltip:AddLine(L["Left-click: buff check."], 0.5, 0.5, 0.5)
         end
-        if #provs > RF_TIP_ROWS then
-            GameTooltip:AddLine(string.format(L["... and %d more"], #provs - RF_TIP_ROWS), 0.7, 0.7, 0.7)
-        end
-        GameTooltip:AddLine(L["Left-click: buff check. Right-click: clear assignment."], 0.5, 0.5, 0.5)
     end
     GameTooltip:Show()
 end
@@ -3050,6 +3056,10 @@ function RF:WarnBuffCategory(col)
         else
             msg = string.format(L["Buff check: %s - OK on everyone"], label)
         end
+    elseif col.key == "flask" or col.key == "wellfed" then
+        -- Flask e Food: alert pulito dei soli missing
+        local who = table.concat(st.missing, ", ")
+        msg = string.format("Buff Check: Missing %s | Missing: %s", label, who)
     else
         -- FORMATO CHIESTO DAL RAID LEADER, una sola riga in raid:
         --   assegnata     -> "Buff Check: Missing <nome buff> | <assegnato> Provide for: <nomi>"
@@ -3142,6 +3152,20 @@ function RF:_MatrixCell(slot, c)
     return tex
 end
 
+function RF:_MatrixCellText(slot, c)
+    slot._buffCellTexts = slot._buffCellTexts or {}
+    local fs = slot._buffCellTexts[c]
+    if not fs then
+        fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local fontFile = (self.db and self.db.appearance and self.db.appearance.font) or RLSuite.utils:GetUIFont()
+        local flags = (self.db and self.db.appearance and self.db.appearance.fontOutline == false) and "" or "OUTLINE"
+        fs:SetFont(fontFile, 10, flags)
+        fs:SetJustifyH("CENTER")
+        slot._buffCellTexts[c] = fs
+    end
+    return fs
+end
+
 function RF:_LayoutMatrixRow(slot, m, y, mCols)
     -- Backdrop UNO PER RIGA (non tutta la finestra): striscia grigia
     -- semi-trasparente dietro le icone di QUESTO player, tra il bordo destro
@@ -3160,13 +3184,18 @@ function RF:_LayoutMatrixRow(slot, m, y, mCols)
     bg:Show()
     for c = 1, #mCols do
         local tex = self:_MatrixCell(slot, c)
+        local extraGap = self:_BuffColOffset(c, m.iconSpacing)
+        local posX = m.rowWidth + 4 + (c - 1) * m.cellW + extraGap + (m.cellW - m.iconSize) / 2
+        local posY = y - (m.rowHeight - m.iconSize) / 2
         if tex then
-            local extraGap = self:_BuffColOffset(c, m.iconSpacing)
             tex:ClearAllPoints()
             tex:SetSize(m.iconSize, m.iconSize)
-            tex:SetPoint("TOPLEFT", self.content, "TOPLEFT",
-                m.rowWidth + 4 + (c - 1) * m.cellW + extraGap + (m.cellW - m.iconSize) / 2,
-                y - (m.rowHeight - m.iconSize) / 2)
+            tex:SetPoint("TOPLEFT", self.content, "TOPLEFT", posX, posY)
+        end
+        local fs = self:_MatrixCellText(slot, c)
+        if fs then
+            fs:ClearAllPoints()
+            fs:SetPoint("CENTER", self.content, "TOPLEFT", posX + m.iconSize / 2, posY - m.iconSize / 2)
         end
     end
 end
@@ -3205,18 +3234,34 @@ function RF:RefreshBuffMatrix()
     for _, slot in ipairs(self.slots or {}) do
         for c = 1, #(slot._buffCells or {}) do
             local tex = slot._buffCells[c]
+            local fs = slot._buffCellTexts and slot._buffCellTexts[c]
             local icon, _, tr, tg, tb, has
-            if on and slot:IsShown() and slot.member and cols and cols[c] then
-                icon, _, tr, tg, tb, has = self:_BuffCellIconFor(slot.member, cols[c], slot.group)
+            local col = cols and cols[c]
+            if on and slot:IsShown() and slot.member and col then
+                icon, _, tr, tg, tb, has = self:_BuffCellIconFor(slot.member, col, slot.group)
             end
-            if icon then
-                tex:SetTexture(icon)
-                -- Tinta per cella (usata dalla durability per stato); le
-                -- categorie di buff restano bianche come prima.
-                tex:SetVertexColor(tr or 1, tg or 1, tb or 1)
-                tex:Show()
+            if col and col.kind == "durability" then
+                if tex then tex:Hide() end
+                if not fs then fs = self:_MatrixCellText(slot, c) end
+                if on and slot:IsShown() and slot.member then
+                    local st = self:MemberDurability(slot.member, slot.group)
+                    local txt = self:_DurCellText(st)
+                    local dr, dg, db = self:_DurColor(st)
+                    fs:SetText(txt)
+                    fs:SetTextColor(dr, dg, db, 1)
+                    fs:Show()
+                else
+                    if fs then fs:Hide() end
+                end
             else
-                tex:Hide()
+                if fs then fs:Hide() end
+                if icon then
+                    tex:SetTexture(icon)
+                    tex:SetVertexColor(tr or 1, tg or 1, tb or 1)
+                    tex:Show()
+                else
+                    tex:Hide()
+                end
             end
             if aggs and aggs[c] and slot.member and cols and cols[c] and slot:IsShown() then
                 if has == nil then has = (icon ~= nil) end
@@ -3484,6 +3529,13 @@ function RF:_DurText(st)
         return string.format(L["%d%% durability"], st.pct), 0.2, 1, 0.2
     end
     return L["no broken items"], 0.2, 1, 0.2
+end
+
+function RF:_DurCellText(st)
+    if not st or st.state == "unknown" then return "-" end
+    if st.broken and st.broken > 0 then return "BROKEN" end
+    if st.pct then return string.format("%d%%", math.floor(st.pct)) end
+    return "100%"
 end
 
 -- Icona della cella per un MEMBER: fake in debug -> set simulato (per

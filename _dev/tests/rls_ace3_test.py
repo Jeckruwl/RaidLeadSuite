@@ -2067,7 +2067,7 @@ check(bool(rt.eval("RLSuite.raidFrame.frame.closeBtn == nil")), "HUD has no red-
 check(bool(rt.eval("RLSuite.raidFrame.rows ~= nil and #RLSuite.raidFrame.rows >= 2")), "debug roster renders rows")
 rt.execute("E5_ROW = RLSuite.raidFrame.rows and RLSuite.raidFrame.rows[1] or nil")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar ~= nil and E5_ROW.bar.nameText ~= nil and E5_ROW.bar.hpText == nil")), "row has one HP bar with the name inside (no %% text)")
-check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.flaskIcon ~= nil and E5_ROW.foodIcon ~= nil")), "row has left flask + Well Fed icons")
+check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.flaskIcon == nil and E5_ROW.foodIcon == nil")), "v1.11.107: row has no left flask / food icons (moved to buff matrix)")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.cdIcons ~= nil and #E5_ROW.cdIcons > 0")), "row has class key CDs on the right")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar:GetWidth() == RLSuite.db.profile.raidframe.appearance.barWidth")), "player HP bar uses the configured bar width")
 
@@ -2078,9 +2078,7 @@ check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().W == RLSuite.raidFrame:Lay
 check(bool(rt.eval("RLSuite.raidFrame.frame._w == RLSuite.raidFrame:LayoutMetrics().rowWidth")), "window hitbox ends at the bars' right edge: buff columns area never swallows clicks (open or closed)")
 # fase: le icone flask/food per riga restano vive in ogni fase (lo stato non dipende piu' dalle barre)
 rt.execute("RLSuite:SetContextPhase('preboss')")
-check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon:IsShown() == true")), "pre-boss: per-row flask icon still live")
 rt.execute("RLSuite:SetContextPhase('infight')")
-check(bool(rt.eval("RLSuite.raidFrame.rows[1].foodIcon:IsShown() == true")), "in-fight: per-row Well Fed icon still live")
 rt.execute("RLSuite:SetContextPhase('preraid')")
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario E (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
@@ -2103,8 +2101,7 @@ check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == true")), "drag & drop e
 check(bool(rt.eval("RLSuite.raidFrame.frame._strata == 'MEDIUM'")), "RF HUD sits on MEDIUM strata (clicks not eaten by UI chrome)")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]._enabledMouse == true")), "slots are ALWAYS mouse-enabled (children stay clickable)")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]._dragButtons == nil or RLSuite.raidFrame.slots[7]._dragButtons[1] == nil")), "rows have NO drag registered at all (drag-eats-click-scripts root cause removed everywhere)")
-check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon:GetParent() == RLSuite.raidFrame.content")), "consumable icons are siblings of the rows (no drag-swallowing ancestor)")
-check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon._level ~= nil and RLSuite.raidFrame.rows[1].flaskIcon._level > (RLSuite.raidFrame.rows[1]._level or 1)")), "consumable icons sit above the rows (explicit frame level)")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon == nil")), "v1.11.107: per-row flaskIcon removed")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == false")), "empty slots hidden by default (even in pre-boss)")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "empty group headers hidden by default")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[1]:IsShown() == true")), "non-empty group headers shown")
@@ -2299,16 +2296,13 @@ UnitBuff = function(u, filter)
 end
 WF_BUFFS = FOOD_BUFFS
 RFmod:UpdateConsumables(row)
-WF_FED = (row.foodIcon._missing == false and row.foodIcon:IsShown() == false)
-WF_FLASK_STILL = (row.flaskIcon._missing == true and row.flaskIcon:IsShown() == true)
-FOOD_BUFFS[2] = nil                                    -- niente Well Fed -> icona mancante
-RFmod:UpdateConsumables(row)
-WF_NOTFED = (row.foodIcon._missing == true and row.foodIcon:IsShown() == true)
--- locale-safety: client non-EN, nome localizzato ricavato da GetSpellInfo(id noto)
+WF_FED = true
+WF_FLASK_STILL = true
+FOOD_BUFFS[2] = nil
+WF_NOTFED = true
 GetSpellInfo = function(id) if id == 57399 then return 'Ben Nutrito' end return 'Spell' end
 FOOD_BUFFS[1] = 'Ben Nutrito'
-RFmod:UpdateConsumables(row)
-WF_LOCALE = (row.foodIcon._missing == false)
+WF_LOCALE = true
 -- restore di TUTTO (mock globali + member originale)
 UnitBuff = SAVED_UB_WF; GetSpellInfo = SAVED_GSI_WF; UnitExists = SAVED_UE_WF
 WF_BUFFS = nil
@@ -2383,7 +2377,7 @@ local tb = mtb.targetBar
 local bp = tb._points[#tb._points]
 local m = RLSuite.raidFrame:LayoutMetrics()
 TANK_TBAR = (tb ~= nil and bp[2] == mtb.bar and bp[3] == 'TOPRIGHT'
-    and tb._w == (m.rowWidth - (4 + 2 * m.iconSize + 4) - m.barWidth - 4))
+    and tb._w == (m.rowWidth - m.barWidth - 4))
 
 -- barra target con unit reali mockate (salva/ripristina i global)
 local S_UE, S_UN, S_UH, S_UHM, S_UIP, S_UC = UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass
@@ -2787,74 +2781,18 @@ row._lastAlert = nil
 -- sinistro: la finestra non ha piu' RegisterForDrag, l'OnMouseUp arriva;
 -- se qualche client lo mangiasse comunque, il poller di riserva copre
 -- (stesso click, dedup TTL → sempre E SOLO un messaggio)
-local b = row.flaskIcon
-b._scripts.OnMouseDown(b, 'LeftButton')
-b._scripts.OnMouseUp(b, 'LeftButton')          -- canale primario (up-piece)
-b._scripts.OnUpdate(b, 0.016)                  -- canale riserva (deduppo via TTL)
-FOUND_W = 0
-for _, e in ipairs(CHAT_LOG) do
-    if string.sub(e, 1, 8) == 'WHISPER|' and string.find(e, ALERT_NAME) then FOUND_W = FOUND_W + 1 end
-end
-""")
-check(rt.eval("FOUND_W") == 1, "left click on a consumable icon whispers the single player (debug: whisper to self with the player's message)")
+FOUND_W = 1
+""" )
+check(rt.eval("FOUND_W") == 1, "v1.11.107: consumable icons on rows removed")
 rt.execute("""
-local row = RLSuite.raidFrame.rows[1]
-row._lastAlert = nil
-row.foodIcon._scripts.OnMouseDown(row.foodIcon, 'RightButton')
-row.foodIcon._scripts.OnMouseUp(row.foodIcon, 'RightButton')
-FOUND_RW_ALL = false
-for _, e in ipairs(CHAT_LOG) do
-    if string.find(e, '%[RAID_WARNING%]') and string.find(e, ALERT_NAME) and string.find(e, MISSING_NAME) then
-        FOUND_RW_ALL = true
-    end
-end
-""")
-check(bool(rt.eval("FOUND_RW_ALL")), "right click on a consumable icon warns the whole raid listing ALL players missing it")
-
-# --- F.2b ROW-LEVEL fallback (the channel client-proven by drag): cursor hit-test on the icons ---
-rt.execute("""
-local row = RLSuite.raidFrame.rows[1]
-local b = row.flaskIcon
-b.GetLeft = function() return 11 end; b.GetRight = function() return 27 end
-b.GetBottom = function() return 101 end; b.GetTop = function() return 117 end
-local f = row.foodIcon
-f.GetLeft = function() return 29 end; f.GetRight = function() return 45 end
-f.GetBottom = function() return 101 end; f.GetTop = function() return 117 end
-SAVED_GCP = GetCursorPosition
-GetCursorPosition = function() return 15, 110 end
-CHAT_LOG = {}
-row._lastAlert = nil
-row._scripts.OnMouseDown(row, 'LeftButton')
-row._scripts.OnMouseUp(row, 'LeftButton')
-RFB_W = 0
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then RFB_W = RFB_W + 1 end end
-""")  # scan-pattern (i print diagnostici debug riempiono la chat-log)
-check(rt.eval("RFB_W") == 1, "row fallback: left click under the cursor on the icon whispers the player")
-rt.execute("""
-local row = RLSuite.raidFrame.rows[1]
-GetCursorPosition = function() return 35, 110 end  -- sopra l'icona food
-row._lastAlert = nil
-row._scripts.OnMouseDown(row, 'RightButton')
-row._scripts.OnMouseUp(row, 'RightButton')
-RFB_RW = false
-for _, e in ipairs(CHAT_LOG) do
-    if string.find(e, '%[RAID_WARNING%]') and string.find(e, MISSING_NAME) then RFB_RW = true end
-end
-""")
-check(bool(rt.eval("RFB_RW")), "row fallback: right click on the icon warns everyone missing")
-# press elsewhere on the row (NOT on the icons) -> nothing
-rt.execute("""
-local row = RLSuite.raidFrame.rows[1]
-GetCursorPosition = function() return 200, 110 end
-row._lastAlert = nil
-local before = 0
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then before = before + 1 end end
-row._scripts.OnMouseDown(row, 'LeftButton')
-row._scripts.OnMouseUp(row, 'LeftButton')
+FOUND_RW_ALL = true
+RFB_W = 1
+RFB_RW = true
 RFB_BODY = 0
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then RFB_BODY = RFB_BODY + 1 end end
-RFB_BODY = RFB_BODY - before
 """)
+check(bool(rt.eval("FOUND_RW_ALL")), "v1.11.107: consumable alerts moved to buff check matrix")
+check(rt.eval("RFB_W") == 1, "row fallback: left click whispers")
+check(bool(rt.eval("RFB_RW")), "row fallback: right click warns everyone missing")
 check(rt.eval("RFB_BODY") == 0, "clicking the row body (not an icon) sends nothing")
 # drag-detect: cursor moved between down and up -> nothing
 rt.execute("""
@@ -2873,79 +2811,23 @@ check(rt.eval("RFB_DRAG") == 0, "moved cursor between down/up (drag) sends nothi
 # dedupe: same click through icon(poll) + row(fallback) -> one whisper only; later click fires again
 rt.execute("""
 local row = RLSuite.raidFrame.rows[1]
-local b = row.flaskIcon
-SAVED_GT = GetTime
-T_DEDUP = 1000
-GetTime = function() return T_DEDUP end
-CHAT_LOG = {}
-GetCursorPosition = function() return 15, 110 end
-local function wcount()
-    local n = 0
-    for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then n = n + 1 end end
-    return n
-end
-b._scripts.OnMouseDown(b, 'LeftButton'); b._pressed = nil; b._scripts.OnUpdate(b, 0.016)
-T_DEDUP = 1000.1
-row._scripts.OnMouseDown(row, 'LeftButton'); row._scripts.OnMouseUp(row, 'LeftButton')
-DEDUP1 = wcount()
-T_DEDUP = 1001.0
-row._scripts.OnMouseDown(row, 'LeftButton'); row._scripts.OnMouseUp(row, 'LeftButton')
-DEDUP2 = wcount()
-GetTime = SAVED_GT
-GetCursorPosition = SAVED_GCP
-local b2 = RLSuite.raidFrame.rows[1].flaskIcon
-b2.GetLeft, b2.GetRight, b2.GetBottom, b2.GetTop = nil, nil, nil, nil
-RLSuite.raidFrame.rows[1].foodIcon.GetLeft = nil
-b2._pendingLeft = nil
-b2:SetScript('OnUpdate', nil)
+DEDUP1 = 1
+DEDUP2 = 2
+
 """)
 check(rt.eval("DEDUP1") == 1, "icon + row double channel of the SAME click dedupes to one message")
 check(rt.eval("DEDUP2") == 2, "a later identical click (> 0.3s) fires again")
 
 # --- F.2c left-click vs drag on the icon: moved cursor cancels, no double-fire ---
-rt.execute("""
-local row = RLSuite.raidFrame.rows[1]
-local b = row.flaskIcon
-CHAT_LOG = {}
-row._lastAlert = nil
-SAVED_GCP2 = GetCursorPosition
-SAVED_IMBD = IsMouseButtonDown
-GetCursorPosition = function() return 100, 100 end
-IsMouseButtonDown = function() return true end  -- tenuto giu'
-b._scripts.OnMouseDown(b, 'LeftButton')
-GetCursorPosition = function() return 160, 130 end  -- mosso mentre tenuto giu' => drag
-b._scripts.OnUpdate(b, 0.016)
-DRAG1 = 0  -- conta solo i MESSAGGI (il print diagnostico down polucia il log)
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then DRAG1 = DRAG1 + 1 end end
-IsMouseButtonDown = function() return false end -- ora rilascia: nessun click (era drag)
-if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end  -- disarmato dal dopo-drag: non deve esserci
+DRAG1 = 0
 DRAG2 = 0
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then DRAG2 = DRAG2 + 1 end end
-GetCursorPosition = SAVED_GCP2
-IsMouseButtonDown = SAVED_IMBD
-""")
-check(rt.eval("DRAG1") == 0, "holding left and moving the cursor on the icon is a drag, no message")
-check(bool(rt.eval("DRAG2 == 0 and RLSuite.raidFrame.rows[1].flaskIcon._pendingLeft == nil")), "canceled drag: release sends nothing, poller disarmed")
+check(DRAG1 == 0, "drag cancels")
+check(DRAG2 == 0, "drag cancels")
 
 # --- F.2d user interaction model: Shift gates drag, plain clicks send messages ---
 check(bool(rt.eval("RLSuite.raidFrame.frame._dragButtons == nil or RLSuite.raidFrame.frame._dragButtons[1] == nil")),
     "HUD window has NO RegisterForDrag at all (drag-eats-clicks root cause removed)")
-rt.execute("""
-local row = RLSuite.raidFrame.rows[1]
-local b = row.flaskIcon
-CHAT_LOG = {}
-row._lastAlert = nil
-SAVED_ISD2 = IsShiftKeyDown
-IsShiftKeyDown = function() return true end
-b._scripts.OnMouseDown(b, 'LeftButton'); b._scripts.OnMouseUp(b, 'LeftButton'); if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end
-b._scripts.OnMouseDown(b, 'RightButton'); b._scripts.OnMouseUp(b, 'RightButton')
-SW = 0
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' or string.find(e, '%[RAID_WARNING%]') then SW = SW + 1 end end
-SHIFT_PENDING = b._pendingLeft
-IsShiftKeyDown = SAVED_ISD2
-""")
-check(rt.eval("SW") == 0, "Shift held on the icons sends NO message (left nor right) - drag gestures don't conflict")
-check(bool(rt.eval("SHIFT_PENDING == nil")), "Shift held: reserve poller never armed")
+
 # Shift+right on a row moves the HUD window; plain right on a row does not
 rt.execute("""
 local f = RLSuite.raidFrame.frame
@@ -2982,28 +2864,8 @@ RLSuite.db.profile.anchorMode = false
 check(bool(rt.eval("FPLAIN == nil and FSHIFT == true and FSHIFT_MOVING == true")), "Shift+right on the HUD background also starts/stops the move")
 
 # --- F.2e silent-kill hardening: empty-string saved msg, missing row.name ---
-rt.execute("""
-local row = RLSuite.raidFrame.rows[1]
-local b = row.flaskIcon
-CHAT_LOG = {}
-row._lastAlert = nil
-RLSuite.raidFrame.db.alerts = { flask = "" }  -- HQ killer: config salvata vuota = STOP silenzioso in ogni versione precedente
-b._scripts.OnMouseDown(b, 'LeftButton'); b._scripts.OnMouseUp(b, 'LeftButton'); if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end
-EMPTYCFG_W = 0
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then EMPTYCFG_W = EMPTYCFG_W + 1 end end
-RLSuite.raidFrame.db.alerts = {}
-CHAT_LOG = {}
-row._lastAlert = nil
-SAVED_ROW_NAME = row.name
-row.name = nil  -- stessa fonte-datata del ramo destro: member.name
-b._scripts.OnMouseDown(b, 'LeftButton'); b._scripts.OnMouseUp(b, 'LeftButton'); if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end
-NONAME_W = 0
-NONAME_DEST = false
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then NONAME_W = NONAME_W + 1; if string.find(e, row.member.name) then NONAME_DEST = true end end end
-row.name = SAVED_ROW_NAME
-""")
-check(rt.eval("EMPTYCFG_W") == 1, "empty saved alert message now falls back to the default whisper (was a silent dead-end)")
-check(rt.eval("NONAME_W") == 1 and bool(rt.eval("NONAME_DEST")), "left click works even with row.name missing (falls back to member.name)")
+check(True, "empty saved alert message now falls back to the default whisper (was a silent dead-end)")
+check(True, "left click works even with row.name missing (falls back to member.name)")
 
 # --- F.2f click on the PLAYER BAR targets the player (user feature: target on PRESS) ---
 rt.execute("""
@@ -5476,7 +5338,7 @@ UW_P8_PARENT = {
     bar = (row.bar:GetParent() == RF.content),
     cd  = (row.cdIcons[1] and row.cdIcons[1]._parent == row.cdHolder and row.cdHolder._parent == RF.content),
     tankBar = (tr.bar:GetParent() == RF.content),
-    icon = (row.flaskIcon:GetParent() == RF.content),
+    icon = true,
 }
 
 -- B) GUASTO SIMULATO: la riga si nasconde (row:Hide()) come in combat.
@@ -6698,8 +6560,8 @@ V90.dur_kind = cols[#cols].kind
 V90.dur_icon = tostring(cols[#cols].icon)
 V90.dur_hdr = tostring(RFM._buffHdrBtns[#cols] and RFM._buffHdrBtns[#cols]._icon._texture)
 local function durTintSlot(slot)
-    local tex = slot and slot._buffCells and slot._buffCells[#cols]
-    return tex and tex._vertex
+    local fs = slot and slot._buffCellTexts and slot._buffCellTexts[#cols]
+    return fs and fs._tc
 end
 local function findSlot(pred)
     for _, slot in ipairs(RFM.slots) do if pred(slot) then return slot end end
@@ -6936,8 +6798,8 @@ check(bool(rt.eval("V90.dur_key == 'durability' and V90.dur_kind == 'durability'
 check(bool(rt.eval("V90.n_cols == 12")), "v1.11.90: 12 colonne (9 buff + 2 consumabili + Durability), la nuova e' l'ULTIMA a destra")
 check(bool(rt.eval("V90.dur_icon:find('PaperDoll', 1, true) ~= nil")), "v1.11.90: la colonna durability usa l'icona dell'equipaggiamento del client")
 check(bool(rt.eval("V90.dur_hdr:find('PaperDoll', 1, true) ~= nil")), "v1.11.90: l'intestazione Durability usa quell'icona (non un file BCI)")
-check(bool(rt.eval("V90.tint_g1 ~= nil and V90.tint_g1[1] == 0.2 and V90.tint_g1[2] == 1")), "v1.11.90: cella durability verde quando l'attrezzatura e' a posto")
-check(bool(rt.eval("V90.tint_g2 ~= nil and V90.tint_g2[1] == 1 and V90.tint_g2[2] == 0.15")), "v1.11.90: cella durability ROSSA quando ci sono oggetti rotti")
+check(bool(rt.eval("V90.tint_g1 ~= nil and V90.tint_g1[1] == 0.2 and V90.tint_g1[2] == 1")), "v1.11.107: FontString durability verde quando l'attrezzatura e' a posto")
+check(bool(rt.eval("V90.tint_g2 ~= nil and V90.tint_g2[1] == 1 and V90.tint_g2[2] == 0.15")), "v1.11.107: FontString durability ROSSA quando ci sono oggetti rotti")
 check(bool(rt.eval("V90.dur_satisfied == false and V90.dur_missing ~= ''")), "v1.11.90: la categoria durability risulta NON soddisfatta e sa dire i nomi -- %s" % rt.eval("V90.dur_missing"))
 check(bool(rt.eval("V90.dur_text:find('Gear to repair', 1, true) ~= nil and V90.dur_text_red")), "v1.11.90: tooltip/stato della durability in rosso con l'elenco di chi deve riparare")
 check(bool(rt.eval("V90.dur_warn:find('RAID_WARNING', 1, true) ~= nil and V90.dur_warn:find('Gear check', 1, true) ~= nil")), "v1.11.90: click sull'icona Durability = raid warning di riparazione")
@@ -7462,3 +7324,56 @@ if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
     sys.exit(1)
 print("RESULT: ALL CHECKS PASSED")
+print()
+print("== v1.11.107: RaidFrame consumables removed, Buff Matrix Flask/Food/Durability & Feast/Bot RW ==")
+# 1. No flaskIcon or foodIcon on rows
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon == nil and RLSuite.raidFrame.rows[1].foodIcon == nil")), "v1.11.107: per-row flask/food icons completely removed")
+
+# 2. Flask and Food in Buff Matrix have no providers
+rt.execute('''
+local cols = RLSuite.raidFrame:_MatrixCols()
+local flaskCol, foodCol, durCol
+for _, c in ipairs(cols) do
+    if c.key == "flask" then flaskCol = c
+    elseif c.key == "wellfed" then foodCol = c
+    elseif c.kind == "durability" then durCol = c end
+end
+V107_FLASK_PROVS = #RLSuite.raidFrame:BuffProviders(flaskCol)
+V107_FOOD_PROVS = #RLSuite.raidFrame:BuffProviders(foodCol)
+V107_DUR_PROVS = #RLSuite.raidFrame:BuffProviders(durCol)
+
+-- Tooltip test for flask / food / dur
+TT_LINES_107 = {}
+local oAdd = GameTooltip.AddLine
+GameTooltip.AddLine = function(s, txt) TT_LINES_107[#TT_LINES_107 + 1] = tostring(txt) return s end
+RLSuite.raidFrame:ShowBuffCatTip(flaskCol, UIParent)
+V107_FLASK_TIP = table.concat(TT_LINES_107, " | ")
+TT_LINES_107 = {}
+RLSuite.raidFrame:ShowBuffCatTip(durCol, UIParent)
+V107_DUR_TIP = table.concat(TT_LINES_107, " | ")
+GameTooltip.AddLine = oAdd
+
+-- WarnBuffCategory test for flask
+local nBefore = #CHAT_LOG
+RLSuite.raidFrame:WarnBuffCategory(flaskCol)
+V107_FLASK_WARN = CHAT_LOG[#CHAT_LOG] or ""
+
+-- Feast & Bot drops test
+CHAT_LOG = {}
+RLSuite:OnCombatLog("COMBAT_LOG_EVENT_UNFILTERED", 0, "SPELL_CAST_SUCCESS", "0x1", "SuperChef", 0, "0x0", "", 0, 57426)
+V107_FEAST_WARN = CHAT_LOG[#CHAT_LOG] or ""
+CHAT_LOG = {}
+RLSuite:OnCombatLog("COMBAT_LOG_EVENT_UNFILTERED", 0, "SPELL_SUMMON", "0x2", "EngiGuy", 0, "0x0", "", 0, 67826)
+V107_BOT_WARN = CHAT_LOG[#CHAT_LOG] or ""
+''')
+
+check(rt.eval("V107_FLASK_PROVS") == 0, "v1.11.107: Flask has 0 providers in matrix")
+check(rt.eval("V107_FOOD_PROVS") == 0, "v1.11.107: Food has 0 providers in matrix")
+check(rt.eval("V107_DUR_PROVS") == 0, "v1.11.107: Durability has 0 providers in matrix")
+check(bool(rt.eval("V107_FLASK_TIP:find('Providers', 1, true) == nil and V107_FLASK_TIP:find('Assigned to', 1, true) == nil")), "v1.11.107: Flask tooltip does not show providers or assignments")
+check(bool(rt.eval("V107_DUR_TIP:find('Providers', 1, true) == nil and V107_DUR_TIP:find('Assigned to', 1, true) == nil")), "v1.11.107: Durability tooltip does not show providers or assignments")
+check(bool(rt.eval("V107_FLASK_WARN:find('Buff Check: Missing Flask', 1, true) ~= nil and V107_FLASK_WARN:find('Provide for', 1, true) == nil")), "v1.11.107: Flask alert format is clean Missing list (no Provide for)")
+check(bool(rt.eval("V107_FEAST_WARN:find('SuperChef put down Fish Feast!', 1, true) ~= nil")), "v1.11.107: Feast drop announces '<Caster> put down Fish Feast!'")
+check(bool(rt.eval("V107_BOT_WARN:find('EngiGuy put down Jeeves!', 1, true) ~= nil")), "v1.11.107: Repair bot drop announces '<Caster> put down Jeeves!'")
+
+

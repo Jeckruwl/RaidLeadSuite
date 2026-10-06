@@ -63,7 +63,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.106"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.107"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -275,6 +275,7 @@ function RLSuite:OnEnable()
     -- Cambio di target = cambio boss per le macro in-fight: la barra passa
     -- al set del boss che stai affrontando (target, poi boss1..4).
     self:RegisterEvent("PLAYER_TARGET_CHANGED", "OnTargetChanged")
+    self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", "OnCombatLog")
     self:InitModules()
     self:EnsureMinimapIcon()
 end
@@ -293,6 +294,40 @@ end
 -- ============================================================
 -- AceEvent-3.0 handlers (previously a single raw event frame)
 -- ============================================================
+-- Utility drop alerts (Feasts & Repair Bots)
+local RF_DROP_SPELLS = {
+    [57301] = "Fish Feast",
+    [57426] = "Fish Feast",
+    [57424] = "Great Feast",
+    [57428] = "Great Feast",
+    [58466] = "Bountiful Feast",
+    [67826] = "Jeeves",
+    [22700] = "Field Repair Bot 74A",
+    [44389] = "Field Repair Bot 110G",
+    [54711] = "Scrap-E",
+    [54710] = "MOLL-E",
+}
+
+function RLSuite:OnCombatLog(event, ...)
+    local _, subEvent, _, sourceName, _, _, _, _, spellId = ...
+    if (subEvent == "SPELL_CAST_SUCCESS" or subEvent == "SPELL_SUMMON") and spellId then
+        local dropName = RF_DROP_SPELLS[spellId]
+        if dropName then
+            local now = (GetTime and GetTime()) or 0
+            self._lastDropAlerts = self._lastDropAlerts or {}
+            local key = tostring(spellId) .. "|" .. tostring(sourceName)
+            if not self._lastDropAlerts[key] or (now - self._lastDropAlerts[key]) > 2 then
+                self._lastDropAlerts[key] = now
+                local caster = (sourceName and sourceName ~= "") and sourceName or "Someone"
+                local msg = string.format("%s put down %s!", caster, dropName)
+                if self.utils and self.utils.SendChat then
+                    self.utils:SendChat(msg, "RAID_WARNING")
+                end
+            end
+        end
+    end
+end
+
 function RLSuite:OnRaidRosterUpdate()
     self:UpdateRaidContext()
 end

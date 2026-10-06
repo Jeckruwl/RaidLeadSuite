@@ -16,6 +16,21 @@ che non si vedono in `git log`.
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.104**.
 
+## 1.11.107 — RaidFrame consumables removed, Buff Matrix clean Flask/Food/Durability & Feast/Bot Raid Warnings
+
+Changelog:
+1. **Raid Frame HP Bars**: Rimosse completamente le icone `flaskIcon` e `foodIcon` a sinistra delle barre HP del RaidFrame. Layout riallineato: le barre HP iniziano a sinistra e la larghezza di riga e target bar sono adattate.
+2. **Buff Check Matrix - Flask & Food**:
+   - Provider, assegnazioni e availability rimossi/disattivati (Flask e Food non hanno fornitori raid).
+   - Left-click sull'icona header: invia un alert pulito di soli player mancanti (`Buff Check: Missing <label> | Missing: <nomi>`).
+   - Tooltip header: mostra solo quanti e quali player mancano (senza provider ne assegnazioni).
+3. **Buff Check Matrix - Durability**:
+   - Icona della cella sostituita con FontString percentuale/stato (`100%`, `45%`, `BROKEN`, `-`), colorata in verde/giallo/rosso.
+   - Tooltip colonna pulito da provider e assegnazioni.
+4. **Feast & Repair Bot Alerts**:
+   - Riconoscimento al lancio/summon di Fish Feast, Great Feast, Bountiful Feast, Jeeves, Field Repair Bot 74A/110G, Scrap-E e MOLL-E.
+   - Annuncio immediato in RAID_WARNING: `"<Caster> put down <Object>!"`.
+
 ## COME L'UTENTE PRENDE GLI AGGIORNAMENTI (DECISIONE, 25/09)
 
 Niente hook, niente script: la post-merge hook e' stata **SCARTATA** dall'utente
