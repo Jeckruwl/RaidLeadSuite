@@ -1632,8 +1632,11 @@ function RLSuite:EnsureDebugPanel()
     f:SetFrameStrata("HIGH")
     f:SetMovable(false)
     f:EnableMouse(true)
+    local tb = self.mainWindow and self.mainWindow.titleBar
     local bar = self.mainWindow and self.mainWindow.frame
-    if bar then
+    if tb then
+        f:SetPoint("TOPLEFT", tb, "TOPRIGHT", 8, 0)
+    elseif bar then
         f:SetPoint("TOPLEFT", bar, "TOPRIGHT", 8, 0)
     else
         f:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
@@ -1680,7 +1683,8 @@ function RLSuite:SyncDebugPanel()
     self:EnsureDebugPanel()
     if not self.debugPanel then return end
     local bar = self.mainWindow and self.mainWindow.frame
-    if bar and bar:IsShown() then
+    local tb = self.mainWindow and self.mainWindow.titleBar
+    if (bar and bar:IsShown()) or (tb and tb:IsShown()) then
         self.debugPanel:Show()
     else
         self.debugPanel:Hide()
