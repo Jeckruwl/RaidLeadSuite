@@ -367,6 +367,13 @@ end
 -- riproviamo qui e, se serve, con un timer (vedi EnsureMinimapIcon).
 function RLSuite:OnPlayerEnteringWorld()
     self:EnsureMinimapIcon()
+    self:UpdateRaidContext()
+    if self.raidFrame and self.raidFrame.UpdateVisibility then
+        self.raidFrame:UpdateVisibility()
+    end
+    if self.mainWindow and self.mainWindow.SyncVisibilityWithRaidFrame then
+        self.mainWindow:SyncVisibilityWithRaidFrame()
+    end
 end
 
 function RLSuite:OnDisable()

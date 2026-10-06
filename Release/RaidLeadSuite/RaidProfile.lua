@@ -557,8 +557,12 @@ function MW:ApplyLayout()
         self.phaseText:ClearAllPoints()
         self.phaseText:SetPoint("LEFT", self.phaseBtn, "RIGHT", PHASE_GAP, 0)
         -- Il nome della fase ha un posto RISERVATO nel calcolo della
-        -- larghezza (phaseNameW): qui si mostra sempre, senza salti.
-        self.phaseText:Show()
+        -- larghezza (phaseNameW): qui si mostra sempre se la titleBar e' mostrata.
+        if self.titleBar and self.titleBar:IsShown() then
+            self.phaseText:Show()
+        else
+            self.phaseText:Hide()
+        end
     end
     if self.raidControlBtn and self.titleBar then
         self.raidControlBtn:ClearAllPoints()
@@ -571,6 +575,7 @@ function MW:ApplyLayout()
 
     RLSuite.utils:SkinFrame(self.frame)
     self:UpdatePhaseButtons()
+    self:SyncVisibilityWithRaidFrame()
 end
 
 function MW:SkinInner()

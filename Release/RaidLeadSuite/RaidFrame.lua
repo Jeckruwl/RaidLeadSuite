@@ -145,6 +145,7 @@ function RF:Init()
     self:RegisterEvents()
     self:ApplyLayout()
     self:UpdatePhase()
+    self:UpdateVisibility()
     -- Version fingerprint (solo debug): cosi' verifichi SUBITO quale codice
     -- sta girando nel client, senza fraintendimenti di pull stale.
     rfDbg("RaidFrame %s click-module attivo (secure overlay + press-target)", tostring(RLSuite.version))
