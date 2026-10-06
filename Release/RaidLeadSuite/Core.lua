@@ -83,7 +83,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.108"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.109"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -904,6 +904,7 @@ end
 -- food); feasts apply one of these.
 RLSuite.buffData = {
     flask = {
+        -- WotLK flasks
         53755, -- Flask of the Frost Wyrm
         53760, -- Flask of Endless Rage
         54212, -- Flask of Pure Mojo
@@ -911,8 +912,33 @@ RLSuite.buffData = {
         67016, -- Flask of the North (Spell Power)
         67017, -- Flask of the North (Attack Power)
         67018, -- Flask of the North (Strength)
+        -- TBC flasks
+        28518, -- Flask of Fortification
+        28519, -- Flask of Mighty Restoration
+        28520, -- Flask of Relentless Assault
+        28521, -- Flask of Blinding Light
+        28540, -- Flask of Pure Death
+        42735, -- Flask of Chromatic Wonder
+        41608, -- Shattrath Flask of Relentless Assault
+        41609, -- Shattrath Flask of Fortification
+        41610, -- Shattrath Flask of Mighty Restoration
+        41611, -- Shattrath Flask of Supreme Power
+        46837, -- Shattrath Flask of Pure Death
+        46839, -- Shattrath Flask of Blinding Light
+        40567, -- Unstable Flask of the Bandit
+        40568, -- Unstable Flask of the Beast
+        40572, -- Unstable Flask of the Elder
+        40573, -- Unstable Flask of the Physician
+        40575, -- Unstable Flask of the Soldier
+        40576, -- Unstable Flask of the Sorcerer
+        -- Classic flasks
+        17626, -- Flask of the Titans
+        17627, -- Flask of Distilled Wisdom
+        17628, -- Flask of Supreme Power
+        17629, -- Flask of Chromatic Resistance
     },
     food = {
+        -- WotLK food
         57079, -- Well Fed (60 AP, 40 Stam)
         57097, -- Well Fed (35 SP, 40 Stam)
         57111, -- Well Fed (60 AP, 30 Stam)
@@ -925,6 +951,18 @@ RLSuite.buffData = {
         65412, -- Well Fed
         65414, -- Well Fed
         66623, -- Well Fed
+        -- TBC food
+        33254, -- Well Fed (20 Stam, 20 Spirit)
+        33256, -- Well Fed (20 Str, 20 Spirit)
+        33257, -- Well Fed (30 Stam, 20 Spirit - Spicy Crawdad/Fisherman Feast)
+        33259, -- Well Fed (40 AP, 20 Spirit)
+        33261, -- Well Fed (20 Agi, 20 Spirit)
+        33263, -- Well Fed (23 SP, 20 Spirit)
+        33265, -- Well Fed (20 Stam, 10 MP5 - Blackened Sporefish)
+        33268, -- Well Fed (44 Healing, 20 Spirit)
+        35272, -- Well Fed (20 Stam, 20 Spirit)
+        43764, -- Well Fed (20 Hit, 20 Spirit)
+        43722, -- Enlightened (20 Spell Crit, 20 Spirit - Skullfish Soup)
     },
     buffs = {
         48469, -- Mark of the Wild
@@ -1029,8 +1067,14 @@ RLSuite.raidBuffColumns = {
     { key = "hp",          label = "HP",      fullName = "Health (HP)", icon = "Interface\\Icons\\Ability_Warrior_RallyingCry",
       classes = { "WARRIOR", "WARLOCK" }, spells = { 47440, 27267, 47982 } },
     { key = "flask",       label = "Flask",   fullName = "Flask", icon = "Interface\\Icons\\INV_Alchemy_EndlessFlask_05",
-      classes = {}, spells = { 53755, 53760, 54212, 53758, 67016, 67017, 67018 } },
-    { key = "wellfed",     label = "Food",    fullName = "Food", icon = "Interface\\Icons\\Spell_Misc_Food",
+      classes = {}, spells = {
+        53755, 53760, 54212, 53758, 67016, 67017, 67018,
+        28518, 28519, 28520, 28521, 28540, 42735,
+        41608, 41609, 41610, 41611, 46837, 46839,
+        40567, 40568, 40572, 40573, 40575, 40576,
+        17626, 17627, 17628, 17629,
+      } },
+    { key = "wellfed",     label = "Well Fed", fullName = "Well Fed", icon = "Interface\\Icons\\Spell_Misc_Food",
       classes = {}, byNameSpell = 57399 },
     -- DURABILITY: colonna di SERVIZIO del Raid Frame, non un buff. Sta nella
     -- stessa matrice (ultima a destra) e usa l'icona dell'equipaggiamento del

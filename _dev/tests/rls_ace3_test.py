@@ -2365,7 +2365,7 @@ rt.execute("""
 RLSuite.raidFrame:ApplyLayout()
 local mtb = RLSuite.raidFrame.tankSlots[1]
 local tp = mtb.tankTag._points[#mtb.tankTag._points]
-TANK_TAG_OK = (tp[1] == 'RIGHT' and tp[2] == mtb.bar and tp[3] == 'LEFT' and tp[4] == -3)
+TANK_TAG_OK = (tp[1] == 'LEFT' and tp[2] == mtb and tp[3] == 'LEFT' and tp[4] == 0)
 TANK_NOCD = true
 for ti = 1, 2 do
     for j = 1, 4 do
@@ -2399,7 +2399,7 @@ mtb.fake = true
 UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass = S_UE, S_UN, S_UH, S_UHM, S_UIP, S_UC
 RLSuite.raidFrame:UpdateTankTargets()
 """)
-check(bool(rt.eval("TANK_TAG_OK")), "MT/OT tag attached to the bar's LEFT edge (not floating in the left space)")
+check(bool(rt.eval("TANK_TAG_OK")), "MT/OT tag attached inside the left space at the roleIcon position")
 check(bool(rt.eval("TANK_NOCD")), "tank bars never show player CDs on the right")
 check(bool(rt.eval("TANK_TBAR")), "tank bars have a TARGET bar where the CDs were (size = former CD zone)")
 check(bool(rt.eval("TANK_TBAR_NAME")) and bool(rt.eval("TANK_TBAR_VAL")), "tank target bar shows current target name + HP% from real units")
@@ -6840,12 +6840,12 @@ check(bool(rt.eval("V90.drag_assigned == 'Lightwall' and V90.drag_cleared == tru
 check(bool(rt.eval("V90.no_group_move == true")), "v1.11.97: e il giocatore NON viene spostato di gruppo")
 check(bool(rt.eval("V90.right_cleared == true")), "v1.11.90: click destro sull'icona = assegnazione rimossa")
 check(bool(rt.eval("V90.warn_lines == 1")), "v1.11.99: click sull'icona = UNA sola riga (niente piu' il whisper all'assegnato) -- %s" % rt.eval("tostring(V90.warn_raid)"))
-check(bool(rt.eval("V90.warn_raid:find('Buff Check: Missing Wisdom', 1, true) ~= nil and V90.warn_raid:find('Lightwall Provide for:', 1, true) ~= nil")), "v1.11.99: formato assegnato: 'Buff Check: Missing <nome buff> | <assegnato> Provide for: <nomi>' -- %s" % rt.eval("tostring(V90.warn_raid)"))
+check(bool(rt.eval("V90.warn_raid:find('Missing Wisdom', 1, true) ~= nil and V90.warn_raid:find('Buff Check', 1, true) == nil and V90.warn_raid:find('Lightwall Provide for:', 1, true) ~= nil")), "v1.11.99: formato assegnato: 'Buff Check: Missing <nome buff> | <assegnato> Provide for: <nomi>' -- %s" % rt.eval("tostring(V90.warn_raid)"))
 check(bool(rt.eval("V90.warn_raid:find('||', 1, true) ~= nil")), "v1.11.99: la pipe del separatore arriva in chat doppia (un '|' letterale in chat si scrive cosi': in gioco si legge singolo)")
 check(bool(rt.eval("V90.warn_missing_names ~= '' and V90.warn_raid:find(V90.warn_missing_names, 1, true) ~= nil")), "v1.11.99: in coda ci sono i NOMI di chi non l'ha -- %s" % rt.eval("tostring(V90.warn_missing_names)"))
-check(bool(rt.eval("V90.warn_raid ~= '' and V90.warn_raid:find('Buff Check', 1, true) ~= nil")), "v1.11.90: l'avviso in raid resta (una riga sola, il whisper non c'e' piu') -- %s" % rt.eval("tostring(V90.warn_raid)"))
+check(bool(rt.eval("V90.warn_raid ~= '' and V90.warn_raid:find('Missing Wisdom', 1, true) ~= nil")), "v1.11.90: l'avviso in raid resta (una riga sola, il whisper non c'e' piu') -- %s" % rt.eval("tostring(V90.warn_raid)"))
 check(bool(rt.eval("V90.warn_lines_none == 1")), "v1.11.99: anche senza assegnazione una sola riga")
-check(bool(rt.eval("V90.warn_raid_none:find('Buff Check: Missing MP5', 1, true) ~= nil and V90.warn_raid_none:find('Provide for:', 1, true) ~= nil")), "v1.11.99: formato non assegnato: 'Buff Check: Missing <categoria> | Provide for: <nomi>' -- %s" % rt.eval("tostring(V90.warn_raid_none)"))
+check(bool(rt.eval("V90.warn_raid_none:find('Missing MP5', 1, true) ~= nil and V90.warn_raid_none:find('Buff Check', 1, true) == nil and V90.warn_raid_none:find('Provide for:', 1, true) ~= nil")), "v1.11.99: formato non assegnato: 'Buff Check: Missing <categoria> | Provide for: <nomi>' -- %s" % rt.eval("tostring(V90.warn_raid_none)"))
 
 
 print("\n== v1.11.100/1.11.102: tooltip della categoria SOTTO l'icona e sfondo PIENO (opacita' 100%) ==")
@@ -7369,7 +7369,7 @@ check(rt.eval("V107_FOOD_PROVS") == 0, "v1.11.107: Food has 0 providers in matri
 check(rt.eval("V107_DUR_PROVS") == 0, "v1.11.107: Durability has 0 providers in matrix")
 check(bool(rt.eval("V107_FLASK_TIP:find('Providers', 1, true) == nil and V107_FLASK_TIP:find('Assigned to', 1, true) == nil")), "v1.11.107: Flask tooltip does not show providers or assignments")
 check(bool(rt.eval("V107_DUR_TIP:find('Providers', 1, true) == nil and V107_DUR_TIP:find('Assigned to', 1, true) == nil")), "v1.11.107: Durability tooltip does not show providers or assignments")
-check(bool(rt.eval("V107_FLASK_WARN:find('Buff Check: Missing Flask', 1, true) ~= nil and V107_FLASK_WARN:find('Provide for', 1, true) == nil")), "v1.11.107: Flask alert format is clean Missing list (no Provide for)")
+check(bool(rt.eval("V107_FLASK_WARN:find('Missing Flask', 1, true) ~= nil and V107_FLASK_WARN:find('Buff Check', 1, true) == nil and V107_FLASK_WARN:find('Provide for', 1, true) == nil")), "v1.11.107: Flask alert format is clean Missing list (no Provide for)")
 check(bool(rt.eval("V107_FEAST_WARN:find('SuperChef put down Fish Feast!', 1, true) ~= nil")), "v1.11.107: Feast drop announces '<Caster> put down Fish Feast!'")
 check(bool(rt.eval("V107_BOT_WARN:find('EngiGuy put down Jeeves!', 1, true) ~= nil")), "v1.11.107: Repair bot drop announces '<Caster> put down Jeeves!'")
 
@@ -7433,6 +7433,74 @@ check(bool(rt.eval("V108_HAS_ROLE_ICON")), "v1.11.108: Row has roleIcon slot to 
 check(rt.eval("V108_FADED_ALPHA") == 0.30, "v1.11.108: Distant/unconnected/invisible unit correctly fades to distanceAlpha")
 check(rt.eval("V108_NAME_ALPHA") == 0.30, "v1.11.108: Player name text correctly fades along with bar")
 check(bool(rt.eval("V108_HAS_DROPDOWN and V108_HAS_TOOLTIP")), "v1.11.108: Player dropdown menu and tooltip functions exist and are hooked")
+
+
+print()
+print("== v1.11.109: Role icons filter, MT/OT tag position, Durability real pct / OK, Alert format without Buff Check & TBC foods/flasks ==")
+rt.execute("""
+local RF = RLSuite.raidFrame
+local m = RF:LayoutMetrics()
+
+-- 1. Test role icon: roles like 'maintank' or 'dps' do NOT show roleIcon, only leader/assist/ML
+local fakeRow = { unit = "raid1", roleIcon = { SetTexture = function(s, t) s._t = t end, Show = function(s) s._s = true end, Hide = function(s) s._s = false end }, member = { role = "maintank", rank = 0, isML = false } }
+RF:UpdateRoleIcon(fakeRow)
+V109_TANK_ROLE_ICON_SHOWN = (fakeRow.roleIcon._s == true)
+
+-- 2. Test MT/OT tankTag position in LayoutSlotGeometry
+local mtSlot = RF.tankSlots[1]
+RF:LayoutSlotGeometry(mtSlot, m)
+V109_MT_BAR_POINT, _, _, V109_MT_BAR_X = mtSlot.bar:GetPoint()
+V109_MT_TAG_POINT, _, _, V109_MT_TAG_X = mtSlot.tankTag:GetPoint()
+
+-- 3. Test Durability: cell text displays pct if known, OK if unknown, BROKEN if broken
+local durStPct = { state = "ok", pct = 74, broken = 0 }
+local durStUnknown = { state = "ok", pct = nil, broken = 0 }
+V109_DUR_TXT_74 = RF:_DurCellText(durStPct)
+V109_DUR_TXT_OK = RF:_DurCellText(durStUnknown)
+
+-- 4. Test WarnBuffCategory formats
+local warnSent = nil
+local origSendChat = RLSuite.utils.SendChat
+RLSuite.utils.SendChat = function(s, msg, ch) warnSent = msg end
+
+-- Flask warn
+local flaskCol = { key = "flask", label = "Flask" }
+RF:WarnBuffCategory(flaskCol)
+V109_FLASK_MSG = warnSent
+
+-- Well Fed warn
+local foodCol = { key = "wellfed", label = "Well Fed" }
+RF:WarnBuffCategory(foodCol)
+V109_FOOD_MSG = warnSent
+
+-- General buff warn
+local statsCol = { key = "stats", label = "%stat", classes = { "PALADIN" } }
+RF:WarnBuffCategory(statsCol)
+V109_STATS_MSG = warnSent
+
+RLSuite.utils.SendChat = origSendChat
+
+-- 5. Test TBC flasks and foods present in Core
+V109_HAS_TBC_FLASK = false
+for _, id in ipairs(RLSuite.buffData.flask) do
+    if id == 28518 or id == 28520 then V109_HAS_TBC_FLASK = true break end
+end
+
+V109_HAS_TBC_FOOD = false
+for _, id in ipairs(RLSuite.buffData.food) do
+    if id == 33257 or id == 43764 then V109_HAS_TBC_FOOD = true break end
+end
+""")
+
+check(not bool(rt.eval("V109_TANK_ROLE_ICON_SHOWN")), "v1.11.109: Tank/DPS/Heal role does not display role icon (leader/assist/ML only)")
+check(rt.eval("V109_MT_BAR_X") == rt.eval("RLSuite.raidFrame:LayoutMetrics().roleReserve"), "v1.11.109: MT bar aligned to roleReserve")
+check(rt.eval("V109_MT_TAG_X") == 0, "v1.11.109: MT tankTag placed at roleIcon position (LEFT 0)")
+check(rt.eval("V109_DUR_TXT_74") == "74%", "v1.11.109: Durability cell shows real percentage when known (74%)")
+check(rt.eval("V109_DUR_TXT_OK") == "OK", "v1.11.109: Durability cell shows OK instead of fake 100% when exact pct is not readable")
+check(bool(rt.eval("V109_FLASK_MSG:find('Buff Check', 1, true) == nil and V109_FLASK_MSG:find('Missing Flask |', 1, true) ~= nil and V109_FLASK_MSG:find('Missing:', 1, true) == nil")), "v1.11.109: Flask warning has no 'Buff Check:' and no 'Missing:' before player names")
+check(bool(rt.eval("V109_FOOD_MSG:find('Well Fed') ~= nil and V109_FOOD_MSG:find('Missing Well Fed |', 1, true) ~= nil")), "v1.11.109: Food warning uses 'Well Fed' and no 'Buff Check:'")
+check(bool(rt.eval("V109_STATS_MSG:find('Buff Check', 1, true) == nil and V109_STATS_MSG:find('Missing %stat', 1, true) ~= nil")), "v1.11.109: All buff warnings have 'Buff Check:' removed")
+check(bool(rt.eval("V109_HAS_TBC_FLASK and V109_HAS_TBC_FOOD")), "v1.11.109: TBC flasks and foods added to buffData")
 
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

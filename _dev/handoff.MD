@@ -17,6 +17,30 @@ Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `
 target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.104**.
 
 
+
+## 1.11.109 — Role icons filter, MT/OT tag alignment, Durability real % / OK, Buff Warnings cleanup & TBC consumables
+
+1. **Role Icons Filter**: rimosse le icone di ruolo di combattimento (tank, assist/mainassist, dps, heal). L'icona singola a sinistra della barra mostra SOLO lo status di gruppo: Leader, Assistant, Master Looter.
+2. **Posizione MT / OT Tag**: il tag dorato MT/OT nelle barre dei Tank è ora posizionato all'interno dello slot nello stesso identico spazio della roleIcon (a sinistra della barra HP), agganciato al frame e perfettamente allineato con le barre sottostanti.
+3. **Durability reale / 'OK'**: risolto il problema della percentuale fittizia. Il controllo sul player usa  mostrando la percentuale reale calcolata (). Per gli altri membri del raid (dove WoW 3.3.5 espone solo ), la cella mostra  invece del falso  quando non ci sono pezzi rotti, oppure  se rotti.
+4. **Buff Warnings Cleanup**:
+   - Rimosso il prefisso 'Buff Check: ' da tutti gli alert di buff in chat.
+   - Per Food e Flask: rimosso il 'Missing: ' che precedeva la lista dei nomi dei giocatori (es. ).
+   - Sostituito 'Food' con 'Well Fed' sia nei warning che come etichetta della colonna.
+   - Aggiunti tutti i Flask TBC (Fortification, Mighty Restoration, Relentless Assault, Blinding Light, Pure Death, Chromatic Wonder, Shattrath Flasks, Unstable Flasks, Classic flasks) e cibi Well Fed TBC (Spicy Crawdad, Fisherman's Feast, Blackened Sporefish, Skullfish Soup, ecc.).
+
+
+## 1.11.109 — Role icons filter, MT/OT tag alignment, Durability real % / OK, Buff Warnings cleanup & TBC consumables
+
+1. **Role Icons Filter**: rimosse le icone di ruolo di combattimento (tank, assist/mainassist, dps, heal). L icona singola a sinistra della barra mostra SOLO lo status di gruppo: Leader, Assistant, Master Looter.
+2. **Posizione MT / OT Tag**: il tag dorato MT/OT nelle barre dei Tank e ora posizionato all interno dello slot nello stesso identico spazio della roleIcon (a sinistra della barra HP), agganciato al frame e perfettamente allineato con le barre sottostanti.
+3. **Durability reale / OK**: risolto il problema della percentuale fittizia. Il controllo sul player usa UnitIsUnit(unit, player) mostrando la percentuale reale calcolata (es. 74%). Per gli altri membri del raid (dove WoW 3.3.5 espone solo GetInventoryItemBroken), la cella mostra OK invece del falso 100% quando non ci sono pezzi rotti, oppure BROKEN se rotti.
+4. **Buff Warnings Cleanup**:
+   - Rimosso il prefisso Buff Check: da tutti gli alert di buff in chat.
+   - Per Food e Flask: rimosso il Missing: che precedeva la lista dei nomi dei giocatori (es. Missing Well Fed | Nick1, Nick2).
+   - Sostituito Food con Well Fed sia nei warning che come etichetta della colonna.
+   - Aggiunti tutti i Flask TBC (Fortification, Mighty Restoration, Relentless Assault, Blinding Light, Pure Death, Chromatic Wonder, Shattrath Flasks, Unstable Flasks, Classic flasks) e cibi Well Fed TBC (Spicy Crawdad, Fisherman Feast, Blackened Sporefish, Skullfish Soup, ecc.).
+
 ## 1.11.108 — RaidFrame headers, button size, role icon, distance fade & player dropdown/tooltip
 
 1. **Group Headers**: visualizzati per esteso ("Group 1".."Group 6") con opzione toggle "Show group headers" nel Config.

@@ -890,15 +890,13 @@ function RF:LayoutSlotGeometry(slot, m)
     if slot.bar then
         slot.bar:ClearAllPoints()
         slot.bar:SetSize(m.barWidth, m.barHeight)
-        if slot.isTank then
-            slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, 0)
-        else
-            slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", roleReserve, 0)
-        end
-        -- Tag MT/OT: ATTACCATO a sinistra della barra
+        slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", roleReserve, 0)
+        -- Tag MT/OT: Nello stesso identico posto delle icone di ruolo (a sinistra della barra)
         if slot.tankTag then
             slot.tankTag:ClearAllPoints()
-            slot.tankTag:SetPoint("RIGHT", slot.bar, "LEFT", -3, 0)
+            slot.tankTag:SetSize(roleReserve, m.barHeight)
+            slot.tankTag:SetPoint("LEFT", slot, "LEFT", 0, 0)
+            slot.tankTag:SetJustifyH("CENTER")
         end
         -- Barra TARGET dove prima c'erano i CD (solo tank).
         if slot.targetBar then
@@ -1412,10 +1410,6 @@ function RF:UpdateRoleIcon(row)
         icon = RF_ROLE_ICONS.assist
     elseif isML then
         icon = RF_ROLE_ICONS.ml
-    elseif role == "maintank" or role == "MAINTANK" then
-        icon = RF_ROLE_ICONS.tank
-    elseif role == "mainassist" or role == "MAINASSIST" then
-        icon = RF_ROLE_ICONS.mainassist
     end
 
     if icon then
@@ -3204,41 +3198,39 @@ function RF:WarnBuffCategory(col)
             msg = string.format(L["Gear check: repair needed for %s"], table.concat(st.missing, ", "))
         end
     elseif st.available == false then
-        msg = string.format(L["Buff check: %s - not available in this composition"], label)
+        msg = string.format(L["%s - not available in this composition"], label)
     elseif #st.missing == 0 then
         -- Nessuno da citare: resta il riassunto (categoria disponibile e ok).
         if st.scope == "single" then
-            msg = string.format(L["Buff check: %s - %d/%d"], label, st.count, st.expected)
+            msg = string.format(L["%s - %d/%d"], label, st.count, st.expected)
             if #st.missingProviders > 0 then
                 msg = msg .. string.format(L[" - mages missing: %s"],
                     table.concat(st.missingProviders, ", "))
             end
         elseif st.scope == "capped" then
-            msg = string.format(L["Buff check: %s - %d/%d"], label, st.count, st.expected)
+            msg = string.format(L["%s - %d/%d"], label, st.count, st.expected)
         else
-            msg = string.format(L["Buff check: %s - OK on everyone"], label)
+            msg = string.format(L["%s - OK on everyone"], label)
         end
     elseif col.key == "flask" or col.key == "wellfed" then
-        -- Flask e Food: alert pulito dei soli missing
+        -- Flask e Well Fed: alert pulito dei soli missing (senza "Missing: " prima dei nomi)
         local who = table.concat(st.missing, ", ")
-        msg = string.format("Buff Check: Missing %s | Missing: %s", label, who)
+        local warnName = (col.key == "wellfed") and "Well Fed" or label
+        msg = string.format("Missing %s | %s", warnName, who)
     else
-        -- FORMATO CHIESTO DAL RAID LEADER, una sola riga in raid:
-        --   assegnata     -> "Buff Check: Missing <nome buff> | <assegnato> Provide for: <nomi>"
-        --   non assegnata -> "Buff Check: Missing <categoria> | Provide for: <nomi>"
-        -- Se la categoria e' assegnata si scrive il NOME DEL BUFF di chi deve
-        -- farlo ("Kings" per %stat di un paladino), non la sigla; se il nome
-        -- per quella classe non e' noto resta la sigla della categoria.
+        -- FORMATO CHIESTO DAL RAID LEADER, una sola riga in raid (senza "Buff check: "):
+        --   assegnata     -> "Missing <nome buff> | <assegnato> Provide for: <nomi>"
+        --   non assegnata -> "Missing <categoria> | Provide for: <nomi>"
         local who = table.concat(st.missing, ", ")
         local assign = self:GetBuffAssign(col)
         local title = label
         if assign and assign ~= "" then
             local short = self:_BuffAssignShort(col, assign)
             if short then title = short end
-            msg = string.format(L["Buff Check: Missing %s | %s Provide for: %s"],
+            msg = string.format(L["Missing %s | %s Provide for: %s"],
                 title, assign, who)
         else
-            msg = string.format(L["Buff Check: Missing %s | Provide for: %s"], title, who)
+            msg = string.format(L["Missing %s | Provide for: %s"], title, who)
         end
         -- Focus Magic: si tiene ANCHE il conteggio e il nome del mago che non
         -- l'ha ancora data (informazione chiesta a suo tempo, resta in coda).
@@ -3649,7 +3641,7 @@ function RF:MemberDurability(member, group)
         else
             known = false
         end
-        if unit == "player" and GetInventoryItemDurability then
+        if (unit == "player" or (UnitIsUnit and UnitIsUnit(unit, "player"))) and GetInventoryItemDurability then
             for i = 1, #RF_DUR_SLOTS do
                 local cur, max = GetInventoryItemDurability(RF_DUR_SLOTS[i])
                 if cur and max and max > 0 then
@@ -3707,7 +3699,7 @@ function RF:_DurCellText(st)
     if not st or st.state == "unknown" then return "-" end
     if st.broken and st.broken > 0 then return "BROKEN" end
     if st.pct then return string.format("%d%%", math.floor(st.pct)) end
-    return "100%"
+    return "OK"
 end
 
 -- Icona della cella per un MEMBER: fake in debug -> set simulato (per
