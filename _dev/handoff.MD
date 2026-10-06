@@ -14,7 +14,7 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.103**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.104**.
 
 ## COME L'UTENTE PRENDE GLI AGGIORNAMENTI (DECISIONE, 25/09)
 
@@ -41,6 +41,26 @@ scompattato in `Interface/AddOns`, quindi va generato a OGNI versione insieme a
 rsync ne' branch alternativi: tutto rifiutato. Se un giorno vuole che il solo
 `git pull` basti anche per il gioco, l'unica strada e' spostare l'addon in
 radice alla repo: chiedere prima.
+
+## 1.11.104 — CombatLog: fight volatili di sessione (soluzione definitiva ai SavedVariables da 900k righe)
+
+Causa del crash con `<eof>` a riga 878647 dei SavedVariables: il modulo CombatLog
+salvava fino a 15 pull con 3000 eventi CLEU completi nel profilo AceDB, esplodendo
+in un file su disco da quasi 900.000 righe che corrompeva il salvataggio al logout.
+
+Fix:
+- `CL.fights`: tabella **volatile di sessione**. I pull registrati, le analisi, i tab
+  e i grafici rimangono interamente funzionanti e consultabili durante tutta la
+  sessione di gioco.
+- `CL:DB()`: wrap trasparente che instrada `cl.db.fights` su `CL.fights`, tenendo
+  `raw.fights = nil` nei SavedVariables.
+- `CL:OnPlayerLogout()`: su `PLAYER_LOGOUT`, `combatlog.fights` viene esplicitamente
+  svuotato dal profilo SavedVariables prima che AceDB serializzi su disco.
+- Il file WTF su disco rimane snello (pochi KB) e non può più esplodere né corrompersi.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1251 PASS** (3 nuovi check: cl.db.fights attivo durante la sessione, profile.combatlog.fights nil al logout, fight preservati in memoria).
 
 ## 1.11.103 — Groupmaking: spam channels in INGLESE puro, eliminati Trade/LFG/World, aggiunti Guild e Yell
 

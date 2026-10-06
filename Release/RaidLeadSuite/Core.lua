@@ -63,7 +63,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.103"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.104"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -193,7 +193,6 @@ local defaults = {
                 cast = true, interrupt = true, dispel = true, energize = true,
             },
             options = { showSpellIds = false, disableBuffs = false },
-            fights = {},
         },
         appearance = {
             theme = "default",

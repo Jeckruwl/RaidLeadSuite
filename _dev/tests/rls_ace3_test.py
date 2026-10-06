@@ -8709,6 +8709,27 @@ check(bool(rt.eval("V103.no_trade and V103.no_lfg and V103.no_world")), "v1.11.1
 check(bool(rt.eval("V103.chat1 ~= nil and V103.chat1:find('GUILD|', 1, true) == 1")), "v1.11.103: Canale Guild invia su GUILD")
 check(bool(rt.eval("V103.chat2 ~= nil and V103.chat2:find('YELL|', 1, true) == 1")), "v1.11.103: Canale Yell invia su YELL")
 
+# ============================================================
+# v1.11.104: CombatLog session-only fights (no disk explosion)
+# ============================================================
+print("== v1.11.104: CombatLog volatile session fights (WTF SavedVariables clean) ==")
+rt.execute("""
+V104 = {}
+local cl = RLSuite.combatLog
+-- 1. Verifica che durante la sessione i fights funzionino
+cl.db.fights = { { name = "Lord Marrowgar", duration = 120 } }
+V104.in_session = (#cl.db.fights == 1 and cl.fights == cl.db.fights)
+
+-- 2. Al logout, fights e' nil nel profilo grezzo SavedVariables
+cl:OnPlayerLogout()
+V104.logout_profile_fights = (RLSuite.db.profile.combatlog.fights == nil)
+-- Ma in memoria nella sessione rimangono accessibili
+V104.session_still_has = (#cl.fights == 1 and #cl.db.fights == 1)
+""")
+check(bool(rt.eval("V104.in_session == true")), "v1.11.104: durante la sessione cl.db.fights e' attivo e punta a cl.fights")
+check(bool(rt.eval("V104.logout_profile_fights == true")), "v1.11.104: al logout fights e' nil nel profilo salvato su disco")
+check(bool(rt.eval("V104.session_still_has == true")), "v1.11.104: i fight della sessione restano integri in memoria")
+
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

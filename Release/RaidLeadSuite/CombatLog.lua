@@ -222,18 +222,54 @@ function CL:ShortNum(n)
 end
 
 -- ------------------------------------------------------------------
--- DB
+-- DB & Session Fights
 -- ------------------------------------------------------------------
+-- I fight e gli eventi grezzi vivono ESCLUSIVAMENTE in memoria durante la sessione
+-- di gioco (CL.fights), senza essere salvati nei SavedVariables su disco.
+-- Questo evita che il file di salvataggio raggiunga centinaia di migliaia di righe
+-- corrompendosi al logout/crash del client.
+CL.fights = CL.fights or {}
+
 function CL:DB()
     if RLSuite.db and RLSuite.db.profile.combatlog then
-        self.db = RLSuite.db.profile.combatlog
+        local raw = RLSuite.db.profile.combatlog
+        -- Wrap con metatable per intercettare l'accesso a `fights`:
+        -- qualsiasi lettura/scrittura di `self.db.fights` o `cl.db.fights`
+        -- opera sulla tabella volatile in memoria `CL.fights`, senza mai
+        -- toccare `raw.fights` nei SavedVariables.
+        if not self._dbProxy or self._dbRaw ~= raw then
+            self._dbRaw = raw
+            self._dbProxy = setmetatable({}, {
+                __index = function(_, k)
+                    if k == "fights" then return CL.fights end
+                    return raw[k]
+                end,
+                __newindex = function(_, k, v)
+                    if k == "fights" then
+                        if type(v) == "table" then
+                            -- Svuota e ripopola per mantenere l'identita'
+                            for idx in pairs(CL.fights) do CL.fights[idx] = nil end
+                            for idx, item in ipairs(v) do CL.fights[idx] = item end
+                            for key, val in pairs(v) do CL.fights[key] = val end
+                        else
+                            CL.fights = {}
+                        end
+                        raw.fights = nil
+                        return
+                    end
+                    raw[k] = v
+                end,
+            })
+        end
+        raw.fights = nil -- mai nel profilo SavedVariables
+        self.db = self._dbProxy
     end
-    if self.db and not self.db.fights then self.db.fights = {} end
     return self.db
 end
 
 function CL:Init()
     self:DB()
+    self:RegisterEvent("PLAYER_LOGOUT", "OnPlayerLogout")
     self.selFight = nil       -- fight attualmente visualizzato
     self.selTab = "damage"
     self.selSource = nil      -- sorgente selezionata (click nella lista sx)
@@ -265,6 +301,15 @@ function CL:Init()
     -- c'era nessun controllo di stato: un evento perso lasciava il log muto
     -- per tutta la sessione.
     self.watchTimer = self:ScheduleRepeatingTimer("WatchTick", 1)
+end
+
+function CL:OnPlayerLogout()
+    -- Prima che AceDB scriva i SavedVariables su disco, stacchiamo i fights
+    -- dal profilo salvato. In questo modo il file WTF su disco rimane
+    -- leggero (pochi KB invece di decine di MB) e non si corrompe mai.
+    if RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.combatlog then
+        RLSuite.db.profile.combatlog.fights = nil
+    end
 end
 
 function CL:Toggle()
