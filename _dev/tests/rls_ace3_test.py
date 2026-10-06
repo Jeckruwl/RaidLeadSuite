@@ -2418,7 +2418,7 @@ check(bool(rt.eval("(function() local b = RLSuite.raidFrame.buffPanelBtn; local 
 check(bool(rt.eval("RLSuite.raidFrame.buffPanel == nil")), "no floating side panel: the buff matrix is PART of the raid frame")
 check(bool(rt.eval("_G.RLS_MC_N == nil or true")) and bool(rt.eval(
     "(function() local n = 0 local d = 0 for _, c in ipairs(RLSuite.raidFrame:_MatrixCols()) do n = n + 1 if c.kind == 'durability' then d = d + 1 end end "
-    "return (n == 10 and d == 1) end)()")), "10 visible columns: the 9 core raid-buff categories (flask/food excluded) + the Durability service column")
+    "return (n == 12 and d == 1) end)()")), "12 visible columns: the 9 core raid-buff categories + 2 consumables + Durability")
 rt.execute("""
 local function colHas(key, id)
     for _, c in ipairs(RLSuite.raidBuffColumns) do
@@ -2467,13 +2467,13 @@ BP_ON = (RLSuite.raidFrame.buffMatrixOn == true)
 local cols = RLSuite.raidFrame:_MatrixCols()
 BP_PRIO1 = (cols[1].key == 'stats')
 NC = #cols
-BP_PRIOLAST = (cols[NC].key == 'durability') and (cols[NC - 1].key == 'hp')
+BP_PRIOLAST = (cols[NC].key == 'durability') and (cols[NC - 1].key == 'wellfed')
 BP_HDR1 = (RLSuite.raidFrame._buffHdrBtns[1]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true
     and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture ~= nil
     and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BUFFCATICONS', 1, true) ~= nil
     and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BCI_0.tga', 1, true) ~= nil)
-BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[NC - 1]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[NC - 1]._icon._texture ~= nil
-    and RLSuite.raidFrame._buffHdrBtns[NC - 1]._icon._texture:find('BCI_' .. (NC - 2) .. '.tga', 1, true) ~= nil)
+BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[9]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[9]._icon._texture ~= nil
+    and RLSuite.raidFrame._buffHdrBtns[9]._icon._texture:find('BCI_8.tga', 1, true) ~= nil)
 BP_HDRDUR = (RLSuite.raidFrame._buffHdrBtns[NC]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture ~= nil
     and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture:find('PaperDoll', 1, true) ~= nil)
 BP_HDR_ICONSZ = (RLSuite.raidFrame._buffHdrBtns[1]._icon._w == (RLSuite.raidFrame:LayoutMetrics().iconSize + RLSuite.raidFrame:LayoutMetrics().iconSpacing)
@@ -2489,7 +2489,7 @@ local hbg = RLSuite.raidFrame._buffHdrBg
 BP_HDR_BG = (hbg ~= nil and hbg:IsShown() == true and hbg._texRGBA ~= nil
     and math.abs(hbg._texRGBA[1] - 0.5) < 0.001 and math.abs(hbg._texRGBA[2] - 0.5) < 0.001
     and math.abs(hbg._texRGBA[3] - 0.5) < 0.001 and math.abs(hbg._texRGBA[4] - 0.35) < 0.001
-    and hbg._w == (NC * RLSuite.raidFrame:LayoutMetrics().cellW + 6))
+    and hbg._w == (NC * RLSuite.raidFrame:LayoutMetrics().cellW + RLSuite.raidFrame:_BuffColOffset(NC, RLSuite.raidFrame:LayoutMetrics().iconSpacing) + 6))
 BP_HDR_OUT = true
 for c = 1, NC do
     local b = RLSuite.raidFrame._buffHdrBtns[c]
@@ -2526,7 +2526,7 @@ RB_FAKE = (BP_FSLOT._matrixBg ~= nil and BP_FSLOT._matrixBg:IsShown() == true)
 RB_GEOM = false
 if BP_PSLOT._matrixBg then
     local p = BP_PSLOT._matrixBg._points[1]
-    RB_GEOM = (p ~= nil and p[2] == RLSuite.raidFrame.content and p[4] == m.rowWidth + 2 and BP_PSLOT._matrixBg._w == NC * 24 + 6 and BP_PSLOT._matrixBg._h == m.rowHeight - 2)
+    RB_GEOM = (p ~= nil and p[2] == RLSuite.raidFrame.content and p[4] == m.rowWidth + 2 and BP_PSLOT._matrixBg._w == (NC * 24 + RLSuite.raidFrame:_BuffColOffset(NC, m.iconSpacing) + 6) and BP_PSLOT._matrixBg._h == m.rowHeight - 2)
 end
 RB_RGB0 = BP_PSLOT._matrixBg and BP_PSLOT._matrixBg._texRGBA
 """)
@@ -6933,7 +6933,7 @@ UnitInRange = nil
 
 check(bool(rt.eval("V90.cd_font == 10")), "v1.11.90: i timer dei cooldown usano font 10 (prima 8): si leggono")
 check(bool(rt.eval("V90.dur_key == 'durability' and V90.dur_kind == 'durability'")), "v1.11.90: la colonna Durability e' una colonna di servizio della matrice (kind = durability)")
-check(bool(rt.eval("V90.n_cols == 10")), "v1.11.90: 10 colonne (9 categorie + Durability), la nuova e' l'ULTIMA a destra")
+check(bool(rt.eval("V90.n_cols == 12")), "v1.11.90: 12 colonne (9 buff + 2 consumabili + Durability), la nuova e' l'ULTIMA a destra")
 check(bool(rt.eval("V90.dur_icon:find('PaperDoll', 1, true) ~= nil")), "v1.11.90: la colonna durability usa l'icona dell'equipaggiamento del client")
 check(bool(rt.eval("V90.dur_hdr:find('PaperDoll', 1, true) ~= nil")), "v1.11.90: l'intestazione Durability usa quell'icona (non un file BCI)")
 check(bool(rt.eval("V90.tint_g1 ~= nil and V90.tint_g1[1] == 0.2 and V90.tint_g1[2] == 1")), "v1.11.90: cella durability verde quando l'attrezzatura e' a posto")

@@ -100,7 +100,7 @@ local RF_MATRIX_HDR_H = 80 -- DEPRECATA (era la strip dei testi a 45°): ora l'a
 -- a sinistra): benedizioni/stats e stamina prima, utility e % danno dopo.
 local RF_BP_PRIORITY = {
     stats = 1, stamina = 2, wild = 3, intellect = 4, spirit = 5, shadow = 6,
-    mp5 = 7, atkpower = 8, hp = 9, durability = 10,
+    mp5 = 7, atkpower = 8, hp = 9, flask = 10, wellfed = 11, durability = 12,
 }
 local RF_BP_BTN_W = 72
 
@@ -2280,12 +2280,14 @@ function RF:ApplyLayout()
             -- Icone di intestazione + sfondo della strip: DENTRO la zona
             -- riservata (non spostano niente quando si accendono).
             if matrixOn and mCols then
+                local totalColsW = (#mCols * m.cellW) + self:_BuffColOffset(#mCols, m.iconSpacing) + 6
                 for c = 1, #mCols do
                     local btn = self._buffHdrBtns and self._buffHdrBtns[c]
                     if btn then
+                        local extraGap = self:_BuffColOffset(c, m.iconSpacing)
                         btn:ClearAllPoints()
                         btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
-                            m.rowWidth + 4 + (c - 1) * m.cellW, stripTop)
+                            m.rowWidth + 4 + (c - 1) * m.cellW + extraGap, stripTop)
                         btn:SetSize(m.cellW, stripH)
                     end
                 end
@@ -2300,7 +2302,7 @@ function RF:ApplyLayout()
                 bg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
                 bg:ClearAllPoints()
                 bg:SetPoint("TOPLEFT", self.frame, "TOPLEFT", m.rowWidth + 2, stripTop)
-                bg:SetSize(#mCols * m.cellW + 6, stripH)
+                bg:SetSize(totalColsW, stripH)
                 bg:Show()
             elseif self._buffHdrBg then
                 self._buffHdrBg:Hide()
@@ -2375,9 +2377,7 @@ function RF:_MatrixCols()
     if self._matrixColsCache then return self._matrixColsCache end
     local out = {}
     for _, col in ipairs(RLSuite.raidBuffColumns or {}) do
-        if col.key ~= "flask" and col.key ~= "wellfed" then
-            out[#out + 1] = col
-        end
+        out[#out + 1] = col
     end
     -- I buff PIU' IMPORTANTI sono i primi a sinistra (RF_BP_PRIORITY).
     table.sort(out, function(a, b)
@@ -2401,8 +2401,18 @@ end
 -- Icona di intestazione di una colonna: le categorie di buff usano i tga
 -- caricati dall'utente (BCI_<c-1>.tga, indici INVARIATI perche' la durability
 -- sta in fondo), le colonne di servizio usano la loro icona di gioco.
+function RF:_BuffColOffset(c, iconSpacing)
+    local gap = iconSpacing or 8
+    local extra = 0
+    if c >= 10 then extra = extra + gap end
+    if c >= 12 then extra = extra + gap end
+    return extra
+end
+
 function RF:_BuffHeaderIconPath(col, c)
-    if col and col.kind == "durability" then return col.icon end
+    if col and (col.kind == "durability" or col.key == "flask" or col.key == "wellfed") then
+        return col.icon
+    end
     return self:_BuffCatIconPath(c)
 end
 
@@ -3142,18 +3152,20 @@ function RF:_LayoutMatrixRow(slot, m, y, mCols)
         slot._matrixBg = bg
     end
     local bc = (self.db and self.db.appearance and self.db.appearance.matrixBackdrop) or {}
+    local totalColsW = (#mCols * m.cellW) + self:_BuffColOffset(#mCols, m.iconSpacing) + 6
     bg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
     bg:ClearAllPoints()
     bg:SetPoint("TOPLEFT", self.content, "TOPLEFT", m.rowWidth + 2, y - 1)
-    bg:SetSize(#mCols * m.cellW + 6, m.rowHeight - 2)
+    bg:SetSize(totalColsW, m.rowHeight - 2)
     bg:Show()
     for c = 1, #mCols do
         local tex = self:_MatrixCell(slot, c)
         if tex then
+            local extraGap = self:_BuffColOffset(c, m.iconSpacing)
             tex:ClearAllPoints()
             tex:SetSize(m.iconSize, m.iconSize)
             tex:SetPoint("TOPLEFT", self.content, "TOPLEFT",
-                m.rowWidth + 4 + (c - 1) * m.cellW + (m.cellW - m.iconSize) / 2,
+                m.rowWidth + 4 + (c - 1) * m.cellW + extraGap + (m.cellW - m.iconSize) / 2,
                 y - (m.rowHeight - m.iconSize) / 2)
         end
     end

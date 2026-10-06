@@ -3717,3 +3717,13 @@ aggiornati (MT/OT sotto Raid Frame, bordi 16/16/18) · fix 1.4.4 nel blocco bord
   - Aggiunto toggle per le ancore ("Toggle Anchors") nella pagina Config dedicata a Raid Frame.
   - Buff Check: mappatura esplicita dei nomi reali delle spell per provider di tutte le classi (`RF_PROVIDER_BUFFS`), tooltip con nome categoria esteso.
   - Pulizia colonne matrice Buff: mantenute le sole 9 colonne buff essenziali + 1 colonna durability (rimossi combat totems/auras a distanza e ridimensionata la finestra).
+
+
+- **RaidFrame - Raggruppamento e Spacing colonne BuffCheck**:
+  - Spostate le colonne Food e Flask nella matrice del Buff Check prima di Durability.
+  - Tre gruppi distinti di colonne:
+    1. BUFF (tutti e 9 i buff core: Stats, Stamina, Gift, Int, Spirit, Shadow, MP5, ATK, HP)
+    2. CONSUMABILI (Flask, Food)
+    3. DURABILITY (Durability)
+  - Aggiunto lo spacing extra (iconSpacing) unicamente tra un gruppo e l'altro (_BuffColOffset), mantenendo compatto l'interno di ciascun gruppo.
+  - Adattato sia il posizionamento delle icone header/celle sia la larghezza totale dei backdrop di riga e della strip.
