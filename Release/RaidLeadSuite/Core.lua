@@ -63,7 +63,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.102"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.103"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -123,7 +123,7 @@ local defaults = {
             aim = "",
             otherReq = "",
             comp = {},
-            spamChannels = {"General", "Trade"},
+            spamChannels = {"General"},
             spamChannelNums = {},
             spamInterval = 60,
             showSpecsInMessage = false,

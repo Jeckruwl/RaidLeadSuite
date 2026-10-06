@@ -155,28 +155,29 @@ do
 
     L["Open the trade with the winner first, then click the item icon."] = true
 
+    -- Groupmaking spam channels
+    L["Spam channels"] = true
+    L["Channel #"] = true
+    L["Explicit channel number; leave empty (or 0) to auto-detect by name."] = true
+    L["General"] = true
+    L["Guild"] = true
+    L["Yell"] = true
+    L["global"] = true
+
+    -- Debug strings
+    L["Debug: loot history cleared."] = true
+    L["Test MS"] = true
+    L["Debug mode is OFF."] = true
+    L["Debug: raid filled with %d fake players."] = true
+    L["Debug: loot spawned from %s."] = true
+    L["Log Test"] = true
+    L["Debug: combat log filled with %d fights."] = true
+    L["Debug: %d fake whispers sent."] = true
+    L["Debug: %d fake MS whispers sent."] = true
+    L["Ask MS changes first (MS Manager), then click Test MS."] = true
+    L["Start the spammer first, then Whisp test sends the fake whispers."] = true
+
     -- CombatLog
-    L["Spam channels"] = "Canali spam"
-    L["Channel #"] = "N° canale"
-    L["Explicit channel number; leave empty (or 0) to auto-detect by name."] = "Numero canale esplicito; lascia vuoto (o 0) per rilevarlo dal nome."
-L["General"] = "Generale"
-L["Trade"] = "Commercio"
-L["LookingForGroup"] = "Ricerca Gruppo"
-L["World"] = "Mondo"
-L["global"] = "globale"
-
-L["Debug: loot history cleared."] = "Debug: storico loot svuotato."
-L["Test MS"] = "Test MS"
-L["Debug mode is OFF."] = "Modalita' debug OFF."
-L["Debug: raid filled with %d fake players."] = "Debug: raid riempito con %d giocatori fittizi."
-L["Debug: loot spawned from %s."] = "Debug: loot generato da %s."
-L["Log Test"] = "Test log"
-L["Debug: combat log filled with %d fights."] = "Debug: combat log riempito con %d pull."
-L["Debug: %d fake whispers sent."] = "Debug: %d whisper fittizi inviati."
-L["Debug: %d fake MS whispers sent."] = "Debug: %d whisper MS fittizi inviati."
-L["Ask MS changes first (MS Manager), then click Test MS."] = "Chiedi prima gli MS change (MS Manager), poi clicca Test MS."
-L["Start the spammer first, then Whisp test sends the fake whispers."] = "Avvia prima lo spammer, poi Whisper di test invia i whisper fittizi."
-
     L["Combat log"] = true
     -- Riga di stato del pannello Log (v1.11.70)
     L["Recording"] = true

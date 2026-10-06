@@ -14,7 +14,7 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.102**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.103**.
 
 ## COME L'UTENTE PRENDE GLI AGGIORNAMENTI (DECISIONE, 25/09)
 
@@ -41,6 +41,20 @@ scompattato in `Interface/AddOns`, quindi va generato a OGNI versione insieme a
 rsync ne' branch alternativi: tutto rifiutato. Se un giorno vuole che il solo
 `git pull` basti anche per il gioco, l'unica strada e' spostare l'addon in
 radice alla repo: chiedere prima.
+
+## 1.11.103 — Groupmaking: spam channels in INGLESE puro, eliminati Trade/LFG/World, aggiunti Guild e Yell
+
+Richiesta del raid leader:
+1. Zero italiano nell'addon: qualsiasi stringa residua in italiano è stata eliminata da `Locale.lua`. Tutto inglese (`true` in AceLocale).
+2. Canali spam eliminati: `Trade` (Commercio), `LookingForGroup` (Ricerca Gruppo), `World` (Mondo).
+3. Canali spam aggiunti: `Guild` (/guild) e `Yell` (/yell).
+4. Canali spam disponibili ora in Config -> Groupmaking: `General`, `Guild`, `Yell`, `global`.
+   - `Guild` e `Yell` inviano direttamente con `SendChatMessage(msg, "GUILD")` e `SendChatMessage(msg, "YELL")`.
+   - `General` e `global` restano canali numerati con supporto per `Channel #` opzionale.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1248 PASS** (8 nuovi check: risoluzione inglese Locale, presenza toggle General/Guild/Yell/global, assenza Trade/LFG/World, invio su GUILD e YELL).
 
 Conseguenza da rispettare: nel checkout l'addon e' una **sottocartella**
 (`Release/RaidLeadSuite/`), quindi un clone dentro `Interface/AddOns/` NON e'

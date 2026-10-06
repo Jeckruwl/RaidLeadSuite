@@ -391,27 +391,34 @@ function CFG:BuildOptionsTable()
     local groupmaking = {
         spamDesc = { type = "description", name = L["Spam channels"] .. ":", order = 1, fontSize = "medium" },
     }
-    -- Ogni canale: checkbox + campo numero canale affiancato. Numero 0 o
-    -- vuoto = risoluzione automatica da GetChannelName(nome); un numero
-    -- esplicito > 0 ha la precedenza sul nome.
-    local _gmChans = { "General", "Trade", "LookingForGroup", "World", "global" }
+    -- Canali standard WoW (Guild, Yell) e numerati (General, global).
+    -- Per i canali numerati: numero 0 o vuoto = risoluzione automatica da GetChannelName;
+    -- un numero esplicito > 0 ha la precedenza.
+    -- Per Guild e Yell il campo numero non serve perche' non sono canali custom numerati.
+    local _gmChans = { "General", "Guild", "Yell", "global" }
     for i, ch in ipairs(_gmChans) do
         local tgl = toggle(L[ch], nil, 1 + i, gmSpamGet(ch), gmSpamSet(ch))
-        tgl.width = "half"
-        groupmaking["spam_" .. ch] = tgl
-        groupmaking["spamNum_" .. ch] = numinput(L["Channel #"], L["Explicit channel number; leave empty (or 0) to auto-detect by name."], 1 + i + 0.01,
-            (function(c) return function()
-                local d = RLSuite.groupmaking and RLSuite.groupmaking.db
-                local n = d and d.spamChannelNums and tonumber(d.spamChannelNums[c])
-                return (n and n > 0) and tostring(n) or ""
-            end end)(ch),
-            (function(c) return function(_, v)
-                local d = RLSuite.groupmaking and RLSuite.groupmaking.db
-                if not d then return end
-                d.spamChannelNums = d.spamChannelNums or {}
-                local n = tonumber(v)
-                d.spamChannelNums[c] = (n and n > 0) and n or nil
-            end end)(ch))
+        local isNumbered = (ch ~= "Guild" and ch ~= "Yell")
+        if isNumbered then
+            tgl.width = "half"
+            groupmaking["spam_" .. ch] = tgl
+            groupmaking["spamNum_" .. ch] = numinput(L["Channel #"], L["Explicit channel number; leave empty (or 0) to auto-detect by name."], 1 + i + 0.01,
+                (function(c) return function()
+                    local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+                    local n = d and d.spamChannelNums and tonumber(d.spamChannelNums[c])
+                    return (n and n > 0) and tostring(n) or ""
+                end end)(ch),
+                (function(c) return function(_, v)
+                    local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+                    if not d then return end
+                    d.spamChannelNums = d.spamChannelNums or {}
+                    local n = tonumber(v)
+                    d.spamChannelNums[c] = (n and n > 0) and n or nil
+                end end)(ch))
+        else
+            tgl.width = "normal"
+            groupmaking["spam_" .. ch] = tgl
+        end
     end
 
     -- --- Macros / Bar Layout -------------------------------------

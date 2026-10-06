@@ -8661,6 +8661,54 @@ check(bool(rt.eval("V98.assigned_scaled == 'Drakbot'")), "v1.11.98: rilasciando 
 check(bool(rt.eval("V98.hit_margin == true and V98.assigned_margin == 'Drakbot'")), "v1.11.98: un rilascio a 5 px dal bordo icona vale lo stesso (margine di 8 px)")
 check(bool(rt.eval("V98.hit_far == true and V98.assigned_far == 'nil'")), "v1.11.98: lontano dalle icone non si assegna niente (comportamento invariato)")
 check(bool(rt.eval("V98.hit_scale1 == true")), "v1.11.98: con la scala a 1 (client normale) l'hit-test resta identico")
+
+# ============================================================
+# v1.11.103: Groupmaking spam channels in English, no Italian, /guild and /yell added
+# ============================================================
+print("== v1.11.103: Groupmaking spam channels: General, Guild, Yell, global (English only) ==")
+rt.execute("""
+V103 = {}
+-- 1. Verifica che in Locale non ci sia alcuna stringa tradotta in italiano per i canali
+local loc = RLSuite.L
+V103.general = loc["General"]
+V103.guild = loc["Guild"]
+V103.yell = loc["Yell"]
+V103.global_chan = loc["global"]
+
+-- 2. Config options tree for Groupmaking
+local opt = RLSuite.config:BuildOptionsTable()
+local gmArgs = opt.args.groupmaking.args
+V103.has_general = (gmArgs.spam_General ~= nil)
+V103.has_guild = (gmArgs.spam_Guild ~= nil)
+V103.has_yell = (gmArgs.spam_Yell ~= nil)
+V103.has_global = (gmArgs.spam_global ~= nil)
+V103.no_trade = (gmArgs.spam_Trade == nil)
+V103.no_lfg = (gmArgs.spam_LookingForGroup == nil)
+V103.no_world = (gmArgs.spam_World == nil)
+
+-- 3. Guild e Yell spammati tramite i canali di sistema di WoW
+CHAT_LOG = {}
+CHAT_DEST = {}
+local saved_debug = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = false
+
+RLSuite.groupmaking.db.spamChannels = {"Guild", "Yell"}
+RLSuite.groupmaking:DoSpam()
+
+V103.chat1 = CHAT_LOG[1]
+V103.chat2 = CHAT_LOG[2]
+
+RLSuite.db.profile.debug = saved_debug
+""")
+check(rt.eval("V103.general") == "General", "v1.11.103: 'General' in Locale risolve in inglese (General, non Generale)")
+check(rt.eval("V103.guild") == "Guild", "v1.11.103: 'Guild' in Locale risolve in inglese (Guild)")
+check(rt.eval("V103.yell") == "Yell", "v1.11.103: 'Yell' in Locale risolve in inglese (Yell)")
+check(rt.eval("V103.global_chan") == "global", "v1.11.103: 'global' in Locale risolve in inglese (global, non globale)")
+check(bool(rt.eval("V103.has_general and V103.has_guild and V103.has_yell and V103.has_global")), "v1.11.103: Config contiene i toggle per General, Guild, Yell, global")
+check(bool(rt.eval("V103.no_trade and V103.no_lfg and V103.no_world")), "v1.11.103: Trade, LookingForGroup e World sono stati rimossi da Config")
+check(bool(rt.eval("V103.chat1 ~= nil and V103.chat1:find('GUILD|', 1, true) == 1")), "v1.11.103: Canale Guild invia su GUILD")
+check(bool(rt.eval("V103.chat2 ~= nil and V103.chat2:find('YELL|', 1, true) == 1")), "v1.11.103: Canale Yell invia su YELL")
+
 print()
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
