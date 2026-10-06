@@ -238,6 +238,7 @@ end
 
 function RF:RegisterEvents()
     self:RegisterEvent("RAID_ROSTER_UPDATE", function() RF:Rebuild() end)
+    self:RegisterEvent("PARTY_MEMBERS_CHANGED", function() RF:Rebuild() end)
     self:RegisterEvent("UNIT_HEALTH", "OnUnitEvent")
     self:RegisterEvent("UNIT_MANA", "OnUnitEvent")
     self:RegisterEvent("UNIT_AURA", "OnUnitEvent")

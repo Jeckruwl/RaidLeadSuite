@@ -344,6 +344,7 @@ end
 
 function RLSuite:OnEnable()
     self:RegisterEvent("RAID_ROSTER_UPDATE", "OnRaidRosterUpdate")
+    self:RegisterEvent("PARTY_MEMBERS_CHANGED", "OnRaidRosterUpdate")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnPlayerRegenEnabled")
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnPlayerRegenDisabled")
     self:RegisterEvent("CHAT_MSG_WHISPER", "OnWhisper")
@@ -411,6 +412,12 @@ end
 
 function RLSuite:OnRaidRosterUpdate()
     self:UpdateRaidContext()
+    if self.raidFrame and self.raidFrame.Rebuild then
+        self.raidFrame:Rebuild()
+    end
+    if self.mainWindow and self.mainWindow.SyncVisibilityWithRaidFrame then
+        self.mainWindow:SyncVisibilityWithRaidFrame()
+    end
     if self.RequestRaidDurability then
         self:RequestRaidDurability()
     end

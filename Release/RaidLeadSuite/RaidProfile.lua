@@ -36,8 +36,7 @@ end
 
 function MW:SyncVisibilityWithRaidFrame()
     local rf = RLSuite.raidFrame
-    local isDebug = RLSuite.DebugMode and RLSuite:DebugMode()
-    local show = (rf and rf.frame and rf.frame:IsShown()) or isDebug
+    local show = rf and rf.frame and rf.frame:IsShown()
     if self.titleBar then
         if show then
             self.titleBar:Show()
@@ -47,7 +46,7 @@ function MW:SyncVisibilityWithRaidFrame()
         end
     end
     if self._updateArrowDir then self:_updateArrowDir() end
-    if isDebug and RLSuite.SyncDebugPanel then
+    if RLSuite.SyncDebugPanel then
         RLSuite:SyncDebugPanel()
     end
 end
