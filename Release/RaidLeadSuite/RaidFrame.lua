@@ -2954,7 +2954,7 @@ end
 local RF_BUFF_SHORT = {
     stats        = { PALADIN = "Kings" },
     mp5          = { PALADIN = "Wisdom", SHAMAN = "Mana Spring" },
-    atkpower     = { PALADIN = "Might", WARRIOR = "Battle Shout" },
+    atkpower     = { PALADIN = "Might", WARRIOR = "Battle Shout", HUNTER = "Trueshot" },
     hp           = { WARRIOR = "Commanding Shout", WARLOCK = "Blood Pact" },
     spirit       = { PRIEST = "Divine Spirit", WARLOCK = "Fel Intel" },
     stamina      = { PRIEST = "Fortitude" },
@@ -2995,6 +2995,21 @@ function RF:_BuffAssignShort(col, assign)
         if p.member and p.member.name == assign then
             return self:BuffShortName(col, p.member.class)
         end
+    end
+    -- Fallback: controlla la classe dell'assegnato nel roster
+    local groups = self:GetGroupedRoster()
+    for g = 1, #groups do
+        for s = 1, #groups[g] do
+            local m = groups[g][s]
+            if m and m.name == assign and m.class then
+                local short = self:BuffShortName(col, m.class)
+                if short then return short end
+            end
+        end
+    end
+    -- Fallback: categoria mono-classe
+    if col.classes and #col.classes == 1 then
+        return self:BuffShortName(col, col.classes[1])
     end
     return nil
 end
