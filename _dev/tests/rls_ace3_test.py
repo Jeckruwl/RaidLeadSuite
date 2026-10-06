@@ -2377,7 +2377,7 @@ local tb = mtb.targetBar
 local bp = tb._points[#tb._points]
 local m = RLSuite.raidFrame:LayoutMetrics()
 TANK_TBAR = (tb ~= nil and bp[2] == mtb.bar and bp[3] == 'TOPRIGHT'
-    and (tb._w == (m.cdReserve - 4) or tb._w == (m.rowWidth - m.barWidth - 4)))
+    and (tb._w == m.cdReserve or tb._w == (m.rowWidth - m.barWidth - 4)))
 
 -- barra target con unit reali mockate (salva/ripristina i global)
 local S_UE, S_UN, S_UH, S_UHM, S_UIP, S_UC = UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass
