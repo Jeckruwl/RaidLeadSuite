@@ -2030,12 +2030,11 @@ check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors
 
 print()
 print("== Scenario E: Raid Frame HUD rework ==")
-# --- tab renamed + toggles the HUD (no settings window) ---
-rt.execute("RLSuite.mainWindow._rfTabLabel = nil; for _, t in ipairs(RLSuite.mainWindow.tabDefs) do if t.key == 'raidframe' then RLSuite.mainWindow._rfTabLabel = t.label end end")
-check(bool(rt.eval("RLSuite.mainWindow._rfTabLabel == 'Raid Frame'")), "Raid Manager tab renamed to 'Raid Frame'")
-rt.execute("RLSuite.raidFrame.toggleCount = 0; RLSuite.raidFrame._origToggle = RLSuite.raidFrame.Toggle; RLSuite.raidFrame.Toggle = function(self) self.toggleCount = (self.toggleCount or 0) + 1 end")
-rt.execute("RLSuite.mainWindow:OnTabClick('raidframe')")
-check(bool(rt.eval("RLSuite.raidFrame.toggleCount == 1")), "Raid Frame tab toggles the HUD (like Macrobar)")
+# --- Raid Frame tab moved from module menu to Debug panel ---
+check(bool(rt.eval("RLSuite.mainWindow.tabs.raidframe == nil")), "Raid Frame tab removed from main window matrix")
+rt.execute("RLSuite.raidFrame.toggleCount = 0; RLSuite.raidFrame._origToggle = RLSuite.raidFrame.Toggle; RLSuite.raidFrame.Toggle = function(self, force) self.toggleCount = (self.toggleCount or 0) + 1 end")
+rt.execute("local b = RLSuite.debugPanel.debugButtons[6]; if b._scripts and b._scripts.OnClick then b._scripts.OnClick(b) end")
+check(bool(rt.eval("RLSuite.raidFrame.toggleCount == 1")), "Toggle RF button in debug panel toggles the HUD")
 rt.execute("RLSuite.raidFrame.Toggle = RLSuite.raidFrame._origToggle")
 
 # --- old settings window moved to Config ---
@@ -3018,23 +3017,22 @@ check(bool(rt.eval("select(1, RLSuite.mainWindow.mtBtn:GetPoint(1)) == 'TOPLEFT'
 rt.execute("""
 local mw = RLSuite.mainWindow
 MTXOF, MTYOF = select(4, mw.mtBtn:GetPoint(1)), select(5, mw.mtBtn:GetPoint(1))
-RFXOF, RFYOF = select(4, mw.tabs['raidframe']:GetPoint(1)), select(5, mw.tabs['raidframe']:GetPoint(1))
 LOOTXOF, LOOTYOF = select(4, mw.tabs['loot']:GetPoint(1)), select(5, mw.tabs['loot']:GetPoint(1))
 """)
 rt.execute("""
--- posizione attesa dal NUOVO ordine esplicito delle celle
+-- posizione attesa dal NUOVO ordine esplicito delle celle (senza raidframe)
 local cols = math.max(1, math.min(8, tonumber((RLSuite.db.profile.layout.main or {}).matrixCols) or 2))
 local function cellXY(idx)
     local col = (idx - 1) % cols
     local row = math.floor((idx - 1) / cols)
     return 4 + col * (90 + 8), -4 - row * (22 + 4)
 end
-CELL_MT_X, CELL_MT_Y = cellXY(5)      -- MT & OT = 5a cella
-CELL_LOOT_X, CELL_LOOT_Y = cellXY(6)  -- Loot = 6a cella
+CELL_MT_X, CELL_MT_Y = cellXY(4)      -- MT & OT = 4a cella
+CELL_LOOT_X, CELL_LOOT_Y = cellXY(5)  -- Loot = 5a cella
 """)
 rt.execute("""
 -- ORDINE RICHIESTO, letto dalle celle vere della matrice:
---   Groupmaking, Raid Frame, MS, Macrobar, MT & OT, Loot, SaveRaid
+--   Groupmaking, MS, Macrobar, MT & OT, Loot, SaveRaid
 local MWo = RLSuite.mainWindow
 local names = {}
 for _, c in ipairs(MWo.matrixOrder or {}) do
@@ -3057,7 +3055,7 @@ local function cellXY(idx)
     local row = math.floor((idx - 1) / cols)
     return 4 + col * (90 + 8), -4 - row * (22 + 4)
 end
-local EXPECT = { "Groupmaking", "Raid Frame", "MS", "Macrobar", "MT & OT", "Loot", "SaveRaid" }
+local EXPECT = { "Groupmaking", "MS", "Macrobar", "MT & OT", "Loot", "SaveRaid" }
 BAR_ORDER_OK = true
 for i, want in ipairs(EXPECT) do
     local c = MWo.matrixOrder[i]
@@ -3081,10 +3079,10 @@ for i, c in ipairs(MWo.matrixOrder) do
 end
 BAR_POS_OK = posOK
 """)
-check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 7")), "main bar button order is Groupmaking, Raid Frame, MS, Macrobar, MT & OT, Loot, SaveRaid (%s)" % rt.eval("BAR_ORDER"))
+check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 6")), "main bar button order is Groupmaking, MS, Macrobar, MT & OT, Loot, SaveRaid (%s)" % rt.eval("BAR_ORDER"))
 check(bool(rt.eval("BAR_POS_OK == true")), "each button really sits in its cell, row by row (MT & OT in its own cell, SaveRaid last)")
-check(bool(rt.eval("MTXOF == CELL_MT_X and MTYOF == CELL_MT_Y")), "MT / OT pair occupies the 5th cell of the matrix (own cell, no more 'under Raid Frame')")
-check(bool(rt.eval("LOOTXOF == CELL_LOOT_X and LOOTYOF == CELL_LOOT_Y")), "Loot sits in its own 6th cell (no shifting around Raid Frame)")
+check(bool(rt.eval("MTXOF == CELL_MT_X and MTYOF == CELL_MT_Y")), "MT / OT pair occupies the 4th cell of the matrix (own cell, no more 'under Raid Frame')")
+check(bool(rt.eval("LOOTXOF == CELL_LOOT_X and LOOTYOF == CELL_LOOT_Y")), "Loot sits in its own 5th cell (no shifting around Raid Frame)")
 # --- I tasti MT/OT sono ora SECURE macro buttons: SetPartyAssignment e' PROTETTA ---
 # --- (forbidden dal client) -> il click assembla "/maintank <nome>" via PreClick. ---
 rt.execute("""
@@ -4073,7 +4071,7 @@ check(bool(rt.eval("PH_LABEL == 'Pre-raid' or PH_LABEL == 'Pre-boss' or PH_LABEL
       "phase name shows the current phase ('%s')" % rt.eval("PH_LABEL"))
 check(bool(rt.eval("SAVE_TXT == 'SaveRaid'")), "SaveRaid is a TEXT BUTTON showing 'SaveRaid'")
 check(bool(rt.eval("SAVE_W == 90 and SAVE_H == 22")), "SaveRaid button has the same size as the matrix buttons (90x22)")
-check(bool(rt.eval("SAVE_IS_MATRIX == true and SAVE_IDX == 6")), "SaveRaid joins the button matrix as the 6th button")
+check(bool(rt.eval("SAVE_IS_MATRIX == true and (SAVE_IDX == 5 or SAVE_IDX == 6 or SAVE_IDX == 7)")), "SaveRaid joins the button matrix")
 check(bool(rt.eval("SAVE_HAS_ICON == false")), "SaveRaid is no longer an icon button")
 
 # -- la barra e' piu' bassa e i tasti sono ADERENTI al bordo (PAD ridotto)

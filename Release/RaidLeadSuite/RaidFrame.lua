@@ -605,6 +605,7 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
         -- Posizionato in LayoutSlotGeometry: ATTACCATO a sinistra della barra.
         tag:SetText(tankTag)
         tag:SetTextColor(1, 0.82, 0)
+        tag:Hide()
         row.tankTag = tag
         row.tankTagText = tankTag -- per le tracce di debug ("barra MT/OT")
         -- Barra TARGET del tank: al posto dei CD del player, a destra della
@@ -1006,6 +1007,12 @@ function RF:FillSlot(slot, member)
         if slot.bar.nameText then slot.bar.nameText:SetText(member.name) end
         slot.bar:Show()
     end
+    if slot.tankTag then
+        slot.tankTag:Show()
+    end
+    if slot.targetBar then
+        slot.targetBar:Show()
+    end
 
     -- I CD si rimettono SEMPRE (non solo al cambio di classe): ClearSlot li
     -- spegne, quindi svuotare e riempire lo stesso slot lasciava i CD spenti.
@@ -1027,6 +1034,12 @@ function RF:ClearSlot(slot)
 
     if slot.roleIcon then
         slot.roleIcon:Hide()
+    end
+    if slot.tankTag then
+        slot.tankTag:Hide()
+    end
+    if slot.targetBar then
+        slot.targetBar:Hide()
     end
     if slot.bar then
         slot.bar:SetValue(0)

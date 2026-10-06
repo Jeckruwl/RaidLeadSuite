@@ -73,19 +73,7 @@ function MW:OnTabClick(key)
         self:RefreshTabHighlights()
         return
     end
-    -- Il tasto Raid Frame: in modalita' normale informa che la visibilita' e' automatica.
-    -- In debug mode permette il toggle per i test.
-    if key == "raidframe" then
-        if RLSuite:DebugMode() then
-            if RLSuite.raidFrame and RLSuite.raidFrame.Toggle then
-                RLSuite.raidFrame:Toggle(true)
-            end
-        else
-            RLSuite.utils:Print(RLSuite.L["Raid Frame is automatic: it shows in raid and hides outside."])
-        end
-        self:RefreshTabHighlights()
-        return
-    end
+
     if self:IsTabOpen(key) then
         self:CloseOneTab(key)
         return
@@ -270,7 +258,6 @@ function MW:CreateFrame()
     -- quest'ordine e la griglia li dispone riga per riga (vedi matrixOrder).
     self.tabDefs = {
         { key = "group",     label = "Groupmaking" },
-        { key = "raidframe", label = "Raid Frame" },
         { key = "ms",        label = "MS" },
         { key = "macro",     label = "Macrobar" },
         { key = "loot",      label = "Loot" },
@@ -454,7 +441,6 @@ function MW:CreateFrame()
     -- nessun caso particolare).
     self.matrixOrder = {
         { btn = self.tabs["group"] },
-        { btn = self.tabs["raidframe"] },
         { btn = self.tabs["ms"] },
         { btn = self.tabs["macro"] },
         { role = true },                    -- MT & OT nella stessa cella
