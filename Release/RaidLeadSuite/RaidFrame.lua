@@ -901,7 +901,8 @@ function RF:LayoutSlotGeometry(slot, m)
         -- Barra TARGET dove prima c'erano i CD (solo tank).
         if slot.targetBar then
             slot.targetBar:ClearAllPoints()
-            slot.targetBar:SetSize(m.rowWidth - m.barWidth - 4, m.barHeight)
+            local targetBarW = (m.cdReserve and m.cdReserve > 4) and (m.cdReserve - 4) or (m.rowWidth - roleReserve - m.barWidth - 4)
+            slot.targetBar:SetSize(targetBarW, m.barHeight)
             slot.targetBar:SetPoint("TOPLEFT", slot.bar, "TOPRIGHT", 4, 0)
             local tex = self.db and self.db.appearance and self.db.appearance.barTexture
                 or "Interface\\TargetingFrame\\UI-StatusBar"
