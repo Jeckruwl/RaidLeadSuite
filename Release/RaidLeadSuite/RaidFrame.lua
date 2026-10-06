@@ -100,11 +100,7 @@ local RF_MATRIX_HDR_H = 80 -- DEPRECATA (era la strip dei testi a 45°): ora l'a
 -- a sinistra): benedizioni/stats e stamina prima, utility e % danno dopo.
 local RF_BP_PRIORITY = {
     stats = 1, stamina = 2, wild = 3, intellect = 4, spirit = 5, shadow = 6,
-    armor = 7, mp5 = 8, atkpower = 9, apIncrease = 10, hp = 11, strAgi = 12,
-    spellPower = 13, spellHaste = 14, meleeHaste = 15, meleeCrit = 16,
-    spellCrit = 17, focusMagic = 18, damage = 19, haste = 20,
-    dmgReduction = 21, healReceived = 22, physReduction = 23, replen = 24,
-    retAura = 25,
+    mp5 = 7, atkpower = 8, hp = 9, durability = 10,
 }
 local RF_BP_BTN_W = 72
 
@@ -2702,40 +2698,6 @@ function RF:SetBuffAssign(col, name)
     return true
 end
 
--- "<nome player>: <nome buff>". Il nome del buff e' quello vero di gioco
--- (GetSpellInfo) quando la categoria ha UNA sola classe fornitrice: cosi' non
--- si attribuisce a un mago la spell di un paladino. Altrimenti la sigla della
--- categoria (es. MP5).
-function RF:_BuffProviderBuffName(col, member)
-    local list = col.spells or {}
-    if #list > 0 and col.classes and #col.classes == 1 and GetSpellInfo then
-        local n = GetSpellInfo(list[1])
-        if n then return n end
-    end
-    if col.classes and #col.classes > 1 and GetSpellInfo and col.spellNames then
-        local n = col.spellNames[member and member.class]
-        if n then return n end
-    end
-    return col.label or col.key or "?"
-end
-
--- Fornitori PRESENTI in raid per quella categoria, in ordine di roster.
-function RF:BuffProviders(col)
-    local out = {}
-    if col and col.kind == "durability" then return out end
-    if not (col and col.classes and #col.classes > 0) then return out end
-    local groups = self:GetGroupedRoster()
-    for g = 1, #groups do
-        for s = 1, #groups[g] do
-            local m = groups[g][s]
-            if m and self:_BuffClassProvides(col, m.class) then
-                out[#out + 1] = { member = m, group = g, buff = self:_BuffProviderBuffName(col, m) }
-            end
-        end
-    end
-    return out
-end
-
 -- ============================================================
 -- NOME DEL BUFF NEGLI AVVISI
 -- Quando la categoria e' ASSEGNATA, l'avviso in raid non scrive la sigla
@@ -2809,14 +2771,46 @@ local RF_HDR_DROP_MARGIN = 8
 -- categoria: vedi _BuffHeaderAtCursor + _FinishDrag.
 -- ============================================================
 -- Nome del buff che quella classe deve fare per la categoria (per il testo).
+local RF_PROVIDER_BUFFS = {
+    stats        = { PALADIN = "Greater Blessing of Kings" },
+    stamina      = { PRIEST = "Power Word: Fortitude" },
+    wild         = { DRUID = "Gift of the Wild" },
+    intellect    = { MAGE = "Arcane Intellect", WARLOCK = "Fel Intelligence" },
+    spirit       = { PRIEST = "Divine Spirit", WARLOCK = "Fel Intelligence" },
+    shadow       = { PRIEST = "Shadow Protection" },
+    mp5          = { PALADIN = "Greater Blessing of Wisdom", SHAMAN = "Mana Spring Totem" },
+    atkpower     = { PALADIN = "Greater Blessing of Might", WARRIOR = "Battle Shout", HUNTER = "Trueshot Aura" },
+    hp           = { WARRIOR = "Commanding Shout", WARLOCK = "Blood Pact" },
+    armor        = { PALADIN = "Devotion Aura", DRUID = "Mark of the Wild" },
+    strAgi       = { DEATHKNIGHT = "Horn of Winter", SHAMAN = "Strength of Earth Totem" },
+    focusMagic   = { MAGE = "Focus Magic" },
+    haste        = { DRUID = "Improved Moonkin Form", PALADIN = "Swift Retribution" },
+    spellCrit    = { DRUID = "Moonkin Aura", SHAMAN = "Elemental Oath" },
+    retAura      = { PALADIN = "Retribution Aura" },
+    meleeCrit    = { DRUID = "Leader of the Pack", WARRIOR = "Rampage" },
+    meleeHaste   = { SHAMAN = "Windfury Totem", DEATHKNIGHT = "Improved Icy Talons" },
+    spellPower   = { WARLOCK = "Demonic Pact", SHAMAN = "Totem of Wrath" },
+    damage       = { HUNTER = "Ferocious Inspiration", PALADIN = "Sanctified Retribution", MAGE = "Arcane Empowerment" },
+    apIncrease   = { HUNTER = "Trueshot Aura", SHAMAN = "Unleashed Rage", DEATHKNIGHT = "Abomination's Might" },
+    dmgReduction = { PALADIN = "Blessing of Sanctuary", PRIEST = "Renewed Hope" },
+    healReceived = { DRUID = "Tree of Life" },
+    physReduction= { SHAMAN = "Ancestral Healing", PRIEST = "Inspiration" },
+    replen       = { MAGE = "Enduring Winter", HUNTER = "Hunting Party", WARLOCK = "Improved Soul Leech", PALADIN = "Judgements of the Wise", PRIEST = "Vampiric Touch" },
+    spellHaste   = { SHAMAN = "Wrath of Air Totem" },
+}
+
 function RF:_BuffProviderBuffName(col, member)
+    local cls = member and member.class
+    if col and col.key and cls and RF_PROVIDER_BUFFS[col.key] and RF_PROVIDER_BUFFS[col.key][cls] then
+        return RF_PROVIDER_BUFFS[col.key][cls]
+    end
     local list = col and col.spells or {}
     if #list > 0 and col.classes and #col.classes == 1 and GetSpellInfo then
         local n = GetSpellInfo(list[1])
         if n then return n end
     end
     if col.classes and #col.classes > 1 and GetSpellInfo and col.spellNames then
-        local n = col.spellNames[member and member.class]
+        local n = col.spellNames[cls]
         if n then return n end
     end
     return (col and (col.label or col.key)) or "?"
@@ -2872,8 +2866,13 @@ function RF:ShowBuffCatTip(col, anchorBtn)
     GameTooltip:SetPoint("TOP", anchor, "BOTTOM", 0, RF_TIP_DROP_Y)
     RF_StyleBuffCatTip()
     if GameTooltip.ClearLines then GameTooltip:ClearLines() end
+    local catFullName = col.fullName or col.label or col.key or "?"
     if GameTooltip.AddLine then
-        GameTooltip:AddLine(col.label or col.key or "?", 1, 0.82, 0)
+        if col.label and col.fullName and col.label ~= col.fullName then
+            GameTooltip:AddLine(string.format("%s (%s)", col.fullName, col.label), 1, 0.82, 0)
+        else
+            GameTooltip:AddLine(catFullName, 1, 0.82, 0)
+        end
     end
     if GameTooltip.AddLine and self._BuffStatusText then
         local txt, r, g, b = self:_BuffStatusText(self:BuffCoverage(col))
@@ -3105,6 +3104,11 @@ function RF:ApplyDistanceFade(row)
     if row._fadeAlpha ~= alpha then
         row._fadeAlpha = alpha
         if row.SetAlpha then row:SetAlpha(alpha) end
+        if row.bar and row.bar.SetAlpha then row.bar:SetAlpha(alpha) end
+        if row.flaskIcon and row.flaskIcon.SetAlpha then row.flaskIcon:SetAlpha(alpha) end
+        if row.foodIcon and row.foodIcon.SetAlpha then row.foodIcon:SetAlpha(alpha) end
+        if row.cdHolder and row.cdHolder.SetAlpha then row.cdHolder:SetAlpha(alpha) end
+        if row.tankTag and row.tankTag.SetAlpha then row.tankTag:SetAlpha(alpha) end
     end
 end
 

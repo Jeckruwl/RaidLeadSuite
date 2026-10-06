@@ -91,8 +91,6 @@ function MB:EndShiftDrag()
 end
 
 function MB:BeginShiftDrag()
-    local p = self:PhaseSettings()
-    if p and p.locked and not (RLSuite.db and RLSuite.db.profile.anchorMode) then return end
     if not self.frame then return end
     self._shiftDrag = true
     self.frame:StartMoving()
@@ -249,7 +247,7 @@ MB.phaseList = { "preraid", "preboss", "infight" }
 function MB:PhaseDefaults()
     return {
         enabled = true,
-        locked = true,
+        locked = false,
         scale = 1,
         point = "CENTER",
         relPoint = "CENTER",

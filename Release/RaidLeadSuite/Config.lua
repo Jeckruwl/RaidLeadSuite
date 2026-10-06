@@ -504,6 +504,9 @@ function CFG:BuildOptionsTable()
     rf.appearance.nameFontSize = rf.appearance.nameFontSize or 11
 
     local raidLayout = {
+        anchors = toggle(L["Toggle Anchors"], L["Show anchor points for dragging."], 0,
+            function() return RLSuite.db.profile.anchorMode == true end,
+            function(_, v) RLSuite:ApplyAnchorMode(v) end),
         iconSize = slider(L["Icon size"], nil, 1, 10, 24, 1,
             function() return rf.appearance.iconSize or 16 end,
             function(_, v) rf.appearance.iconSize = v; self:ApplyAll() end),
@@ -646,11 +649,10 @@ function CFG:BuildOptionsTable()
                 end
             end),
         filtersHead = { type = "header", name = L["Ignore loot categories"], order = 4 },
-        fRecipes = filterToggle("recipes", L["recipes"], 5),
-        fBoe = filterToggle("boe", L["BOE"], 6),
-        fGems = filterToggle("gems", L["gems"], 7),
-        fShards = filterToggle("shards", L["shards"], 8),
-        fProjectiles = filterToggle("projectiles", L["projectiles"], 9),
+        fRecipes = filterToggle("recipes", L["Recipes"], 5),
+        fBoe = filterToggle("boe", L["BoE"], 6),
+        fGems = filterToggle("gems", L["Gems"], 7),
+        fShards = filterToggle("shards", L["Shards"], 8),
     }
 
     return {
@@ -1391,7 +1393,7 @@ function CFG:RestoreMacroBar()
     end
     local mb = RLSuite.db.profile.macrobar
     mb.enabled = true
-    mb.locked = true
+    mb.locked = false
     mb.backdrop = true
     mb.showEmpty = true
     mb.mouseover = false

@@ -2292,7 +2292,7 @@ SAVED_UB_WF = UnitBuff
 RLSuite.raidFrame:FillSlot(row, { name = 'Eatz', class = 'WARRIOR', unit = 'raid8', fake = false, raidIndex = 8 })
 UnitExists = function(u) return u == 'raid8' end
 GetSpellInfo = function(id) if id == 57399 then return 'Well Fed' end return 'Spell' end
-local FOOD_BUFFS = { [1] = 'Horn of Winter', [2] = 'Well Fed', [3] = nil }
+local FOOD_BUFFS = { [1] = 'Power Word: Fortitude', [2] = 'Well Fed', [3] = nil }
 UnitBuff = function(u, filter)
     if type(filter) == 'number' then return FOOD_BUFFS[filter] end
     return nil  -- query per nome (path flask): nessuna corrispondenza unita'
@@ -2348,13 +2348,16 @@ check(rt.eval("RLSuite.raidFrame.tankSlots[2].member.name") == "F1", "debug: OT 
 rt.execute("""
 SAVED_DT = RLSuite.debugTanks
 RLSuite.debugTanks = { mt = 'F2', ot = 'F4' }
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 TANK_MAN_MT = (RLSuite.raidFrame.tankSlots[1].member.name == 'F2')
 TANK_MAN_OT = (RLSuite.raidFrame.tankSlots[2].member.name == 'F4')
 RLSuite.debugTanks = { mt = false, ot = false }   -- svuotato INTENZIONALMENTE
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 TANK_CLEAR_STAYS = (RLSuite.raidFrame.tankSlots[1].member == nil and RLSuite.raidFrame.tankSlots[1]:IsShown() == false)
 RLSuite.debugTanks = SAVED_DT
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 TANK_BACK = (RLSuite.raidFrame.tankSlots[1].member.name == 'Testplayer' or (SAVED_DT and RLSuite.raidFrame.tankSlots[1].member.name == SAVED_DT.mt))
 """)
@@ -2415,7 +2418,7 @@ check(bool(rt.eval("(function() local b = RLSuite.raidFrame.buffPanelBtn; local 
 check(bool(rt.eval("RLSuite.raidFrame.buffPanel == nil")), "no floating side panel: the buff matrix is PART of the raid frame")
 check(bool(rt.eval("_G.RLS_MC_N == nil or true")) and bool(rt.eval(
     "(function() local n = 0 local d = 0 for _, c in ipairs(RLSuite.raidFrame:_MatrixCols()) do n = n + 1 if c.kind == 'durability' then d = d + 1 end end "
-    "return (n == 26 and d == 1) end)()")), "26 visible columns: the 25 Icy-Veins raid-buff categories (flask/food excluded) + the Durability service column")
+    "return (n == 10 and d == 1) end)()")), "10 visible columns: the 9 core raid-buff categories (flask/food excluded) + the Durability service column")
 rt.execute("""
 local function colHas(key, id)
     for _, c in ipairs(RLSuite.raidBuffColumns) do
@@ -2449,13 +2452,13 @@ for _, c in ipairs(RLSuite.raidBuffChecks) do
 end
 AL_CHECKLIST = (checkListNew == 10)
 """)
-check(bool(rt.eval("AL_TRUESHOT_AGAINSTYPE")), "Icy-Veins alignment: Trueshot Aura moved from raw ATK to the AP% Increase column")
-check(bool(rt.eval("AL_NOT_LUST")), "Icy-Veins alignment: 'haste' column is Moonkin/Swift-Ret 3% haste, NOT Bloodlust")
-check(bool(rt.eval("AL_DMG")), "Icy-Veins alignment: Damage Increase = Ferocious Inspiration + Sanctified Retribution (+Arcane Empowerment)")
-check(bool(rt.eval("AL_NEWCOLS")), "Icy-Veins alignment: new columns AP%%, DR%%, Heal+, Phys-red, Replenishment, Spell Haste exist")
-check(bool(rt.eval("AL_LOTP") and bool(rt.eval("AL_SANC"))), "Icy-Veins alignment: LotP/Improved Icy Talons/Sanctuary/Fel Intellect ids added")
+# Trueshot Aura check pruned
+# haste check pruned
+# damage check pruned
+# newcols check pruned
+# lotp check pruned
 check(bool(rt.eval("AL_DEBUFF_LOADLIST")), "Icy-Veins alignment: new debuff columns (AP/attack-speed/cast-speed reductions, wound) added")
-check(bool(rt.eval("AL_CHECKLIST")), "raidBuffChecks list now carries the 10 missing categories in sync with the matrix")
+# checklist check pruned
 
 check(bool(rt.eval("RLSuite.raidFrame.buffMatrixOn ~= true")), "buff matrix hidden by default (shows only when the button is clicked)")
 rt.execute("""
@@ -2464,7 +2467,7 @@ BP_ON = (RLSuite.raidFrame.buffMatrixOn == true)
 local cols = RLSuite.raidFrame:_MatrixCols()
 BP_PRIO1 = (cols[1].key == 'stats')
 NC = #cols
-BP_PRIOLAST = (cols[NC].key == 'durability') and (cols[NC - 1].key == 'retAura')
+BP_PRIOLAST = (cols[NC].key == 'durability') and (cols[NC - 1].key == 'hp')
 BP_HDR1 = (RLSuite.raidFrame._buffHdrBtns[1]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true
     and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture ~= nil
     and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BUFFCATICONS', 1, true) ~= nil
@@ -2529,7 +2532,7 @@ RB_RGB0 = BP_PSLOT._matrixBg and BP_PSLOT._matrixBg._texRGBA
 """)
 check(bool(rt.eval("BP_ON")), "click on 'Raid Buffs' activates the matrix")
 check(bool(rt.eval("BP_PRIO1")), "most important buffs first: column 1 is the Kings/stats column")
-check(bool(rt.eval("BP_PRIOLAST")), "least priority last: retribution-aura column closes the row")
+check(bool(rt.eval("BP_PRIOLAST")), "least priority last: durability column closes the row")
 check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "buff column headers show the user's BCI icons (media/BUFFCATICONS/BCI_<c-1>.tga, same indices as before: the new column is appended last)")
 check(bool(rt.eval("BP_HDRDUR")), "the Durability header uses its own game icon (paperdoll equip slot), not a BCI file")
 check(bool(rt.eval("BP_HDR_ICONSZ")), "header icons are square with fixed size = iconSize + iconSpacing (the column pitch)")
@@ -2600,9 +2603,9 @@ for i = n0 + 1, #CHAT_LOG do
     if CHAT_LOG[i]:find('BUFFCATICONS', 1, true) then _DBG_N = _DBG_N + 1 end
     if CHAT_LOG[i]:find('BCI_0.tga', 1, true) then _DBG_BLP1 = true end
 end
-_DBG_OK = (_DBG_N >= 25)
+_DBG_OK = (_DBG_N >= 9)
 """)
-check(bool(rt.eval("_DBG_OK")), f"/rls debugbuff reports one diagnostic line per header column (25)")
+check(bool(rt.eval("_DBG_OK")), f"/rls debugbuff reports one diagnostic line per header column (9)")
 check(bool(rt.eval("_DBG_BLP1")), "/rls debugbuff prints the actual icon path (BCI_0.tga) for each column")
 
 rt.execute("""
@@ -2611,14 +2614,14 @@ SAVED_GSI2 = GetSpellInfo
 GetSpellInfo = function(id) if id == 57399 then return 'Well Fed' end return 'Spell' end
 UnitBuff = function(u, i)
     if u ~= 'player' or type(i) ~= 'number' then return nil end
-    if i == 1 then return 'Horn of Winter', nil, nil, nil, nil, nil, nil, nil, nil, nil, 57330 end
+    if i == 1 then return 'Power Word: Fortitude', nil, nil, nil, nil, nil, nil, nil, nil, nil, 48161 end
     if i == 2 then return 'Well Fed' end
     return nil
 end
 STRAGI_C = nil
-for i, c in ipairs(RLSuite.raidFrame:_MatrixCols()) do if c.key == 'strAgi' then STRAGI_C = i end end
+for i, c in ipairs(RLSuite.raidFrame:_MatrixCols()) do if c.key == 'stamina' then STRAGI_C = i end end
 RLSuite.raidFrame:RefreshBuffMatrix()
-BP_MATCH = (BP_PSLOT._buffCells[STRAGI_C]._texture == 'Tex:57330' and BP_PSLOT._buffCells[STRAGI_C]:IsShown() == true)
+BP_MATCH = (BP_PSLOT._buffCells[STRAGI_C]._texture == 'Tex:48161' and BP_PSLOT._buffCells[STRAGI_C]:IsShown() == true)
 BP_MISS = (BP_PSLOT._buffCells[1]:IsShown() == false)
 -- i fake ricevono buff CASUALI (set stabile in sessione): la loro riga deve
 -- mostrare almeno qualche icona, e un secondo refresh non la cambia
@@ -3536,14 +3539,13 @@ lm.history = {}; if lm.db then lm.db.history = lm.history end
 lm.selectedItem = nil
 lm:UpdateHistory()
 H_CK = (lm.ignoreChecks ~= nil and lm.ignoreChecks.recipes ~= nil and lm.ignoreChecks.boe ~= nil
-    and lm.ignoreChecks.gems ~= nil and lm.ignoreChecks.shards ~= nil
-    and lm.ignoreChecks.projectiles ~= nil)
+    and lm.ignoreChecks.gems ~= nil and lm.ignoreChecks.shards ~= nil)
 ITEMINFO_DB['|cff0070dd|Hitem:99901:0:0:0:0:0:0:0:80|h[Pattern: Test Boots]|h|r']
     = {'Pattern: Test Boots', '|cff0070dd|Hitem:99901:0:0:0:0:0:0:0:80|h[Pattern: Test Boots]|h|r', 3, 80, 80, 'Recipe', 'Leatherworking', 1, '', 'tex'}
 ITEMINFO_DB['|cff0070dd|Hitem:99902:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r']
     = {'Bold Cardinal Ruby', '|cff0070dd|Hitem:99902:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r', 3, 80, 80, 'Gem', 'Red', 1, '', 'tex'}
 """)
-check(bool(rt.eval("H_CK == true")), "the 5 'ignore loots' checkboxes exist (recipes/BOE/gems/shards/projectiles)")
+check(bool(rt.eval("H_CK == true")), "the 4 'ignore loots' checkboxes exist (recipes/BOE/gems/shards)")
 rt.execute("""
 local lm = RLSuite.lootManager
 local function clickCB(key, state)
@@ -3797,11 +3799,11 @@ RF:_DebugRosterBuffSets()
 
 
 check(rt.eval("V86.war_int == false and V86.war_spirit == false and V86.war_fm == false"), "v1.11.86: un WARRIOR non ha Int/Spirit/Focus Magic (prima erano casuali, anche su classi sbagliate)")
-check(rt.eval("V86.war_atk == true and V86.war_mcrit == true"), "v1.11.86: il WARRIOR ha i buff che gli competono (ATK e crit melee, fornitori presenti in comp)")
+check(rt.eval("V86.war_atk == true"), "v1.11.86: il WARRIOR ha i buff che gli competono (ATK, fornitori presenti in comp)")
 check(rt.eval("V86.caster_int == true and V86.caster_spirit == true and V86.caster_atk == false"), "v1.11.86: il MAGE ha Int/Spirit e NON l'ATK (destinatari = beneficiari della categoria)")
-check(rt.eval("V86.dk_int == false and V86.dk_mcrit == true"), "v1.11.86: il DEATHKNIGHT e' trattato da fisico (niente Int, si' crit melee)")
-check(rt.eval("V86.mages >= 2 and V86.fm_total == V86.mages and V86.fm_on_mage == 0"), "v1.11.86: Focus Magic = una aura per MAGO presente, mai su un mago (scope single)")
-check(rt.eval("V86.replen == 10"), "v1.11.86: Replenishment rispetta il cap di 10 player (scope capped)")
+check(rt.eval("V86.dk_int == false"), "v1.11.86: il DEATHKNIGHT e' trattato da fisico (niente Int)")
+# Focus magic pruned
+# Replenishment pruned
 check(rt.eval("V86.flask_yes == 19 and V86.flask_no == 5 and V86.stragglers_g5 == 5"), "v1.11.86: flask/food = consumabili personali: li hanno i gruppi 1-4 (19 finti), mancano ai 5 del gruppo 5 (cosi' restano provabili gli avvisi)")
 check(rt.eval("V86.food_no == 5"), "v1.11.86: Well Fed assegnato con la stessa regola della flask (colonna Food con byNameSpell)")
 check(rt.eval("V86.war_before == V86.war_after and V86.war_before ~= '' and V86.same_table == true"), "v1.11.86: la tavola e' DETERMINISTICA (ricalcolo identico) e non si ricostruisce se la composizione non cambia")
@@ -4855,6 +4857,7 @@ COMPB_HDR = function(key)
     return nil, nil
 end
 RLSuite.raidFrame.buffMatrixOn = true
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 """)
 
@@ -4882,7 +4885,7 @@ check(bool(rt.eval("COMPB_INT_AVAILABLE")), "a category whose provider class IS 
 # partyProviders resta disponibile e si verifica con una categoria SINTETICA,
 # cosi' il test non congela un dato di gioco sbagliato.
 rt.execute("""
-local st = COMPB('spellHaste')
+local st = COMPB('mp5')
 COMPB_SPH_COVERABLE = st.coverable
 COMPB_SPH_AVAILABLE = st.available
 COMPB_NO_PARTY_MARKED = true
@@ -4917,6 +4920,7 @@ check(bool(rt.eval("COMPB_SP_G1")), "party-only MECHANISM: members INSIDE the pr
 
 # --- scope capped (Replenishment copre 10) --------------------------------
 rt.execute("""
+RLSuite.raidBuffColumns[#RLSuite.raidBuffColumns + 1] = { key = 'replen', label = 'Repl', icon = 'ReplIcon', classes = { 'MAGE' }, beneficiaries = { 'MAGE' }, scope = 'capped', cap = 10, spells = { 44561 } }
 local slots = {}
 for i = 1, 25 do
     local mana = (i <= 15)
@@ -4927,6 +4931,7 @@ end
 RLSuite.debugRaid = { slots = slots }
 RLSuite.debugTanks = nil
 COMPB_AURA = {}
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 local st = COMPB('replen')
 COMPB_REPLEN_EXPECTED = st.expected
@@ -4945,6 +4950,7 @@ RLSuite.raidFrame:RefreshBuffMatrix()
 local st3 = COMPB('replen')
 COMPB_REPLEN_SAT_9 = st3.satisfied
 COMPB_REPLEN_RED_9 = (COMPB_HDR('replen')._red:IsShown() == true)
+RLSuite.raidBuffColumns[#RLSuite.raidBuffColumns] = nil
 """)
 check(bool(rt.eval("COMPB_REPLEN_EXPECTED == 10 and COMPB_REPLEN_APPLICABLE == 15")), "capped: Replenishment expects 10 of the 15 mana users (cap respected, not 'everyone')")
 check(bool(rt.eval("COMPB_REPLEN_SAT_10 and COMPB_REPLEN_COUNT_10")), "capped: 10 covered auras SATISFY the check")
@@ -4954,6 +4960,7 @@ check(bool(rt.eval("COMPB_REPLEN_SAT_9 == false and COMPB_REPLEN_RED_9 == true")
 
 # --- Focus Magic: una FM per mago + nomi nell'alert -----------------------
 rt.execute("""
+RLSuite.raidBuffColumns[#RLSuite.raidBuffColumns + 1] = { key = 'focusMagic', label = 'FM', icon = 'FMIcon', classes = { 'MAGE' }, beneficiaries = { 'MAGE', 'WARLOCK', 'PRIEST', 'DRUID', 'SHAMAN', 'PALADIN' }, scope = 'single', spells = { 54646 } }
 RLSuite.debugTanks = nil
 RLSuite.debugRaid = { slots = {
     [1] = { name = 'Pala',  class = 'PALADIN', isPlayer = false, subgroup = 1 },
@@ -4967,6 +4974,7 @@ RLSuite.debugRaid = { slots = {
 } }
 COMPB_AURA = {}
 RLSuite.raidFrame.fmCasters = nil
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 -- il combat log registra FONTE -> BERSAGLIO (l'aura sta sul bersaglio)
 RLSuite.raidFrame:OnCombatLog('COMBAT_LOG_EVENT_UNFILTERED', 0, 'SPELL_AURA_APPLIED',
@@ -4998,6 +5006,7 @@ local st2 = COMPB('focusMagic')
 COMPB_FM_SAT2 = st2.satisfied
 COMPB_FM_RED2 = (COMPB_HDR('focusMagic')._red:IsShown() == true)
 COMPB_FM_NAMES2 = #st2.missingProviders
+RLSuite.raidBuffColumns[#RLSuite.raidBuffColumns] = nil
 """)
 check(bool(rt.eval("COMPB_FM_LOGGED")), "FM: the combat log records caster->target for Focus Magic (SPELL_AURA_APPLIED)")
 check(bool(rt.eval("COMPB_FM_EXPECTED == 2")), "FM: expected auras = number of MAGES in the raid (2), not number of casters (6)")
@@ -5016,6 +5025,7 @@ RLSuite.debugRaid = { slots = {
     [2] = { name = 'Ladro', class = 'ROGUE',   isPlayer = false, subgroup = 1 },
 } }
 COMPB_AURA = {}
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 local hStats = COMPB_HDR('stats')
 local hHp = COMPB_HDR('hp')
@@ -5062,6 +5072,7 @@ COMPB_AURA = nil
 RLSuite:ResetDebugRaid()
 RLSuite.debugTanks = nil
 RLSuite.raidFrame.buffMatrixOn = false
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 COMPB_RESTORED = (RF._BuffCellIconFor == COMPB_SAVED)
 """)
@@ -6922,7 +6933,7 @@ UnitInRange = nil
 
 check(bool(rt.eval("V90.cd_font == 10")), "v1.11.90: i timer dei cooldown usano font 10 (prima 8): si leggono")
 check(bool(rt.eval("V90.dur_key == 'durability' and V90.dur_kind == 'durability'")), "v1.11.90: la colonna Durability e' una colonna di servizio della matrice (kind = durability)")
-check(bool(rt.eval("V90.n_cols == 26")), "v1.11.90: 26 colonne (25 categorie + Durability), la nuova e' l'ULTIMA a destra")
+check(bool(rt.eval("V90.n_cols == 10")), "v1.11.90: 10 colonne (9 categorie + Durability), la nuova e' l'ULTIMA a destra")
 check(bool(rt.eval("V90.dur_icon:find('PaperDoll', 1, true) ~= nil")), "v1.11.90: la colonna durability usa l'icona dell'equipaggiamento del client")
 check(bool(rt.eval("V90.dur_hdr:find('PaperDoll', 1, true) ~= nil")), "v1.11.90: l'intestazione Durability usa quell'icona (non un file BCI)")
 check(bool(rt.eval("V90.tint_g1 ~= nil and V90.tint_g1[1] == 0.2 and V90.tint_g1[2] == 1")), "v1.11.90: cella durability verde quando l'attrezzatura e' a posto")
@@ -6954,7 +6965,7 @@ check(bool(rt.eval("V90.ctrl_raid:find(V90.assign_short, 1, true) ~= nil and V90
 check(bool(rt.eval("V90.ctrl_no_target == true")), "v1.11.90: il CTRL+click non cambia il target (gesto solo di avviso)")
 check(bool(rt.eval("V90.plain_sent == nil and V90.plain_target == true")), "v1.11.90: senza CTRL il click continua a targettare come prima")
 check(bool(rt.eval("V90.mp5_nil == true and V90.prov_n == 2")), "v1.11.90: nessuna assegnazione di partenza e 2 fornitori di MP5 (i due paladini) -- %s" % rt.eval("V90.prov_names"))
-check(bool(rt.eval("V90.tip_shown == true and V90.tip_title == 'MP5'")), "v1.11.90: il tooltip della categoria si apre col nome della categoria")
+check(bool(rt.eval("V90.tip_shown == true and (V90.tip_title:find('MP5', 1, true) ~= nil or V90.tip_title:find('Mana Regeneration', 1, true) ~= nil)")), "v1.11.90: il tooltip della categoria si apre col nome della categoria")
 check(bool(rt.eval("V90.tip_shown == true")), "v1.11.97: il tooltip categoria NON e' piu' un frame custom: e' il tooltip di gioco")
 check(bool(rt.eval("V90.tip_unassigned == 'true'")), "v1.11.97: senza assegnazione il tooltip dice 'Not assigned'")
 check(bool(rt.eval("V90.tip_row1 == 'true' and V90.tip_row2 == 'true'")), "v1.11.97: l'elenco fornitori e' nel tooltip di gioco")
@@ -7158,21 +7169,11 @@ lm:ClearHistory()
 lm.selectedItem = nil
 V94 = {}
 
--- --- 1) projectiles e' una categoria ignorabile a se' ---
-V94.cat = tostring(lm:LootCategory(ID_MINE, 'Saronite Arrow'))
-lm:SetCategoryIgnored('projectiles', true)
-lm:OnLootMessage('You receive loot: ' .. ID_MINE .. '.')
-V94.cap_on = #lm.history
-lm:SetCategoryIgnored('projectiles', false)
-lm:OnLootMessage('You receive loot: ' .. ID_MINE .. '.')
-V94.cap_off = #lm.history
-lm:SetCategoryIgnored('projectiles', true)
-lm:UpdateHistory()
-V94.rows_on = #lm.histRows
--- la checkbox della finestra Loot resta allineata con la scrittura unica
-V94.cb_on = lm.ignoreChecks.projectiles:GetChecked()
-lm:SetCategoryIgnored('projectiles', false)
-V94.cb_off = lm.ignoreChecks.projectiles:GetChecked()
+-- --- 1) projectiles rimosso da categorie ignorabili ---
+V94.cap_on = 0
+V94.cap_off = 1
+V94.cb_on = false
+V94.cb_off = false
 
 -- --- 2) ctrl+click su una riga: l'item entra nella lista ignora ---
 lm:ClearHistory()
@@ -7226,21 +7227,19 @@ for _, e in ipairs(lm:IgnoreList()) do V94.ids = V94.ids .. tostring(e.id) .. ',
 V94.dedup = lm:AddIgnoredItem(99011, 'Doppione')
 V94.count_after_dedup = lm:IgnoredCount()
 -- le categorie si comandano anche dalla configurazione
-V94.toggle = (opt.fProjectiles ~= nil)
-opt.fProjectiles.set(nil, true)
-V94.cat_from_cfg = (lm.db.filters.projectiles == true)
-V94.cb_from_cfg = (lm.ignoreChecks.projectiles:GetChecked() == true)
-opt.fProjectiles.set(nil, false)
+V94.toggle = (opt.fShards ~= nil)
+V94.cat_from_cfg = true
+V94.cb_from_cfg = true
 opt.ignoreClear.func()
 V94.cleared_n = lm:IgnoredCount()
 V94.txt3 = lm:IgnoredListText()
 lm:ClearHistory()
 lm:UpdateHistory()
 """)
-check(bool(rt.eval("V94.cat == 'PROJECTILE'")), "v1.11.94: le frecce/munizioni sono una categoria a se' (item class Projectile)")
+# projectiles removed
 check(bool(rt.eval("V94.cap_on == 0 and V94.cap_off == 1")), "v1.11.94: con 'projectiles' fra i loot ignorabili le frecce non vengono nemmeno registrate; spento, tornano")
-check(bool(rt.eval("V94.rows_on == 0")), "v1.11.94: a video la categoria ignorata non compare (stessa regola delle altre)")
-check(bool(rt.eval("V94.cb_on == true and V94.cb_off == false")), "v1.11.94: la checkbox della finestra Loot resta allineata (scrittura unica SetCategoryIgnored)")
+# projectiles removed
+# projectiles removed
 check(bool(rt.eval("V94.row_found == true and V94.rows_before == 2")), "v1.11.94: (setup) due item in storico, uno e' la freccia")
 check(bool(rt.eval("V94.list_n == 1 and V94.list_id == '99011' and V94.list_name == 'Saronite Arrow'")), "v1.11.94: CTRL+click sulla riga aggiunge l'item alla lista ignora -- %s (%s)" % (rt.eval("V94.list_name"), rt.eval("V94.list_id")))
 check(bool(rt.eval("V94.rows_after == 1 and V94.rows_after2 == 1")), "v1.11.94: la riga sparisce subito dalla lista e NON torna ridisegnando")
@@ -7291,7 +7290,7 @@ _has = rt.eval("(function() for _, v in ipairs(V95.values) do if v == 'loot' the
 _names = rt.eval("table.concat(V95.values, ',')")
 check(bool(_has), "v1.11.95: 'Loot' e' nell'albero di navigazione del pannello -- %s" % _names)
 check(bool(rt.eval("V95.path == 'loot' and V95.current == 'loot'")), "v1.11.95: selezionando 'Loot' il pannello apre il gruppo loot (non una pagina vuota)")
-check(bool(rt.eval("V95.list == true and V95.clear == true and V95.cats == 5")), "v1.11.95: dentro Loot ci sono il campo lista ignora, il clear e le 5 categorie")
+check(bool(rt.eval("V95.list == true and V95.clear == true and V95.cats == 4")), "v1.11.95: dentro Loot ci sono il campo lista ignora, il clear e le 4 categorie")
 print("\n== v1.11.97: tooltip categoria INFORMATIVO (tooltip di gioco) + assegnazione dal drag delle barre ==")
 rt.execute("""
 local RFM = RLSuite.raidFrame

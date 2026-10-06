@@ -3700,3 +3700,20 @@ aggiornati (MT/OT sotto Raid Frame, bordi 16/16/18) · fix 1.4.4 nel blocco bord
    nessun codice di produzione le legge, le referenziano solo i test. Da
    rimuovere o da ricollegare alla ability bar verticale (che oggi usa
    `raidBuffColumns`).
+
+## v1.11.106 - Loot fixes & filters, MacroBar drag, RaidFrame fade & clean Buff Check
+
+- **LootManager**:
+  - Risolto pickup per il trade verso i player tramite `PickupContainerItem(bag, slot)` (invece di `PickupItem`).
+  - Filtro modalità di loot: ignorati gli eventi `CHAT_MSG_LOOT` se `GetLootMethod() == "group"`.
+  - Rimossa categoria `projectiles` dai filtri ignore.
+  - Filtro `shards` reso dinamico: ignora qualsiasi item non-armatura con "shard" o "Shards" nel nome.
+  - Checkbox dei filtri ignore con iniziali maiuscole (`Recipes`, `Boe`, `Gems`, `Shards`).
+- **MacroBar**:
+  - Shift-click per trascinare la barra reso sempre attivo indipendentemente dallo stato di `locked`.
+  - Impostato default di `locked` a `false`.
+- **RaidFrame**:
+  - Distance Fade fixato: l'alpha per la distanza viene propagato esplicitamente alla statusbar della vita e a tutti gli elementi visivi dello slot (`bar`, icone flask/food, tag tank, cdHolder).
+  - Aggiunto toggle per le ancore ("Toggle Anchors") nella pagina Config dedicata a Raid Frame.
+  - Buff Check: mappatura esplicita dei nomi reali delle spell per provider di tutte le classi (`RF_PROVIDER_BUFFS`), tooltip con nome categoria esteso.
+  - Pulizia colonne matrice Buff: mantenute le sole 9 colonne buff essenziali + 1 colonna durability (rimossi combat totems/auras a distanza e ridimensionata la finestra).
