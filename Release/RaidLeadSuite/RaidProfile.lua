@@ -17,6 +17,7 @@ local PHASE_GAP = 6        -- distacco fra icona e nome della fase
 function MW:Init()
     self:CreateFrame()
     self:RegisterAllWindows()
+    self:SyncVisibilityWithRaidFrame()
 end
 
 function MW:Toggle()

@@ -2253,6 +2253,9 @@ function RLSuite:UpdateRaidContext()
         self.context = "preboss"
     end
     self:UpdatePhaseUI()
+    if self.mainWindow and self.mainWindow.SyncVisibilityWithRaidFrame then
+        self.mainWindow:SyncVisibilityWithRaidFrame()
+    end
 end
 
 -- Forza la fase dell'addon (preraid / preboss / infight) dai bottoni
