@@ -1187,7 +1187,11 @@ function RLSuite:ChatCommand(input)
             self.groupmaking:OpenWhisplist()
         end
     elseif msg == "raidframe" or msg == "rf" then
-        if self.raidFrame then self.raidFrame:Toggle() end
+        if self:DebugMode() then
+            if self.raidFrame then self.raidFrame:Toggle(true) end
+        else
+            self.utils:Print(L["Raid Frame is automatic: it shows in raid and hides outside."])
+        end
     elseif msg == "ms" then
         if self.mainWindow then self.mainWindow:ShowTab("ms") end
     elseif msg == "loot" then
@@ -1562,6 +1566,11 @@ function RLSuite:DebugPanelDefs()
             end
         end },
         { text = L["Test MS"], i = 4, fn = function() RLSuite:DebugTestMS() end },
+        { text = L["Toggle RF"], i = 5, fn = function()
+            if RLSuite.raidFrame and RLSuite.raidFrame.Toggle then
+                RLSuite.raidFrame:Toggle(true)
+            end
+        end },
     }
 end
 

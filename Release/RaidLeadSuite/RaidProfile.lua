@@ -73,11 +73,15 @@ function MW:OnTabClick(key)
         self:RefreshTabHighlights()
         return
     end
-    -- Il tasto Raid Frame mostra/nasconde l'HUD del raid (stessa logica
-    -- del Macrobar): le impostazioni stanno in Config -> Raid Frame.
+    -- Il tasto Raid Frame: in modalita' normale informa che la visibilita' e' automatica.
+    -- In debug mode permette il toggle per i test.
     if key == "raidframe" then
-        if RLSuite.raidFrame and RLSuite.raidFrame.Toggle then
-            RLSuite.raidFrame:Toggle()
+        if RLSuite:DebugMode() then
+            if RLSuite.raidFrame and RLSuite.raidFrame.Toggle then
+                RLSuite.raidFrame:Toggle(true)
+            end
+        else
+            RLSuite.utils:Print(RLSuite.L["Raid Frame is automatic: it shows in raid and hides outside."])
         end
         self:RefreshTabHighlights()
         return

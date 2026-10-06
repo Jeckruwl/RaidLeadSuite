@@ -150,8 +150,14 @@ function RF:Init()
     rfDbg("RaidFrame %s click-module attivo (secure overlay + press-target)", tostring(RLSuite.version))
 end
 
-function RF:Toggle()
+function RF:Toggle(force)
     if not self.frame then return end
+    if not force and not (RLSuite.DebugMode and RLSuite:DebugMode()) then
+        if RLSuite.utils and RLSuite.utils.Print then
+            RLSuite.utils:Print(L["Raid Frame visibility is managed automatically."])
+        end
+        return
+    end
     if self.frame:IsShown() then
         self.frame:Hide()
     else
@@ -1296,6 +1302,31 @@ function RF:Rebuild()
     self:UpdateDragState()
     -- Header e blocchi vuoti: gestiti insieme (blocchi solo durante il drag).
     self:RefreshDropTargets()
+
+    -- Visibilita' automatica nativa: si mostra in raid e si nasconde fuori (salvo debug / anchor)
+    self:UpdateVisibility()
+end
+
+function RF:UpdateVisibility()
+    if not self.frame then return end
+    if RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.anchorMode == true then
+        if not self.frame:IsShown() then self.frame:Show() end
+        return
+    end
+    local inRaid = (RLSuite.InRaid and RLSuite:InRaid()) or (GetNumRaidMembers and GetNumRaidMembers() > 0)
+    if inRaid then
+        if self.db and self.db.enabled ~= false then
+            if not self.frame:IsShown() then
+                self.frame:Show()
+            end
+        end
+    else
+        if not (RLSuite.DebugMode and RLSuite:DebugMode()) then
+            if self.frame:IsShown() then
+                self.frame:Hide()
+            end
+        end
+    end
 end
 
 -- ------------------------------------------------------------------
