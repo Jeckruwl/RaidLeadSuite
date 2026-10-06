@@ -20,38 +20,34 @@ function MW:Init()
 end
 
 function MW:Toggle()
-    -- La BARRA e' una finestra vera: Toggle apre/chiude la BARRRA (e con lei
-    -- il pannello). Il pannello si apre/chiude anche SOLO con la freccia
-    -- sulla barra; la barra resta come finestra autonoma.
+    -- Visibilita' della raid control bar vincolata al Raid Frame.
+    -- Toggle comanda l'apertura/chiusura del pannello matrice tasti sotto la barra.
     if not self.frame then return end
-    if self.titleBar and self.titleBar:IsShown() then
+    if self.frame:IsShown() then
         self.frame:Hide()
-        self.titleBar:Hide()
     else
-        if self.titleBar then self.titleBar:Show() end
         self.frame:Show()
-        -- /rls mostra anche l'HUD MacroBar (se abilitata e non gia' visibile)
-        self:ShowMacrobarHud()
     end
+    if self._updateArrowDir then self:_updateArrowDir() end
+    if RLSuite.SyncDebugPanel then RLSuite:SyncDebugPanel() end
 end
 
--- Mostra la HUD MacroBar insieme alla barra (usata da /rls).
-function MW:ShowMacrobarHud()
-    local mb = RLSuite.macrobar
-    if not mb or not mb.frame then return end
-    if RLSuite.db.profile.macrobar and RLSuite.db.profile.macrobar.enabled == false then return end
-    local pset = mb.PhaseSettings and mb:PhaseSettings()
-    if pset and pset.enabled == false then return end
-    if not mb.frame:IsShown() then
-        mb.frame:Show()
-        if mb.ApplyLayout then mb:ApplyLayout() end
+function MW:SyncVisibilityWithRaidFrame()
+    local rf = RLSuite.raidFrame
+    local show = rf and rf.frame and rf.frame:IsShown()
+    if self.titleBar then
+        if show then
+            self.titleBar:Show()
+        else
+            self.titleBar:Hide()
+            if self.frame then self.frame:Hide() end
+        end
     end
-    self:RefreshTabHighlights()
+    if self._updateArrowDir then self:_updateArrowDir() end
 end
 
 function MW:ShowTab(key)
     if key == "config" then
-        -- Config is now a self-contained Ace3 window, not a tab pane.
         if RLSuite.config and RLSuite.config.Toggle then
             RLSuite.config:Toggle()
         end
@@ -59,7 +55,6 @@ function MW:ShowTab(key)
     end
     if not self.frame then return end
     self.frame:Show()
-    if self.titleBar then self.titleBar:Show() end
     self:SelectTab(key)
 end
 
@@ -185,33 +180,17 @@ function MW:CreateFrame()
     -- Niente piu' la scritta "RLS": al suo posto (creati piu' sotto) l'icona
     -- di fase e il nome della fase, cosi' la barretta dice qualcosa di utile.
 
-    -- X bianca + freccia dai TGA dell'utente in media/, DIMEZZATE (11px).
-    local crashBtn = CreateFrame("Button", nil, tb)
-    crashBtn:SetSize(11, 11)
-    crashBtn:SetPoint("RIGHT", tb, "RIGHT", -4, 0)
-    RLSuite.utils:ApplyIcon(crashBtn, "media\\close.tga")
-    crashBtn:SetScript("OnClick", function()
-        -- La X chiude SOLO la main window (barra+pannello): le finestre
-        -- dei moduli restano aperte (anche in fight).
-        f:Hide()
-        tb:Hide()
-    end)
-    tb.closeBtn = crashBtn
-
-    -- La VECCHIA FRECCIA e' diventata un PULSANTE "Raid Control": apre e
-    -- chiude il pannello dei tasti sotto la barretta (stesso comportamento di
-    -- prima: in ogni momento, anche in fight, mai altre finestre).
+    -- Pulsante "Raid Control": apre e chiude il pannello dei tasti sotto la barretta.
     local rcBtn = CreateFrame("Button", "RLSuiteRaidControlBtn", tb, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(rcBtn)
-    rcBtn:SetHeight(20)   -- cresciuto con la barretta (era 16)
+    rcBtn:SetHeight(20)
     rcBtn:SetText("Raid Control")
-    -- larghezza = testo + margini (mai piu' stretta del testo)
     local probe = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     probe:SetText("Raid Control")
     local textW = (probe.GetStringWidth and probe:GetStringWidth()) or 84
     probe:Hide()
     rcBtn:SetWidth(math.max(78, (textW or 84) + 16))
-    rcBtn:SetPoint("RIGHT", crashBtn, "LEFT", -6, 0)
+    rcBtn:SetPoint("RIGHT", tb, "RIGHT", -4, 0)
     rcBtn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_BOTTOM")
         GameTooltip:SetText("Raid Control")
@@ -441,9 +420,9 @@ function MW:CreateFrame()
     -- nessun caso particolare).
     self.matrixOrder = {
         { btn = self.tabs["group"] },
-        { btn = self.tabs["ms"] },
         { btn = self.tabs["macro"] },
         { role = true },                    -- MT & OT nella stessa cella
+        { btn = self.tabs["ms"] },
         { btn = self.tabs["loot"] },
         { btn = self.saveRaidBtn },
     }
@@ -492,54 +471,36 @@ function MW:ApplyLayout()
     -- La vecchia RIGA DI ICONE in alto non esiste piu': l'icona di fase sta
     -- nella barretta del titolo e "SaveRaid" e' tornato un pulsante della
     -- matrice. Quindi la barra e' PIU' BASSA di tutta quella riga.
-    local bw, bh, gapX, gapY = 90, 22, 8, 4
-    -- PAD ridotto: i tasti stanno ADERENTI al bordo esterno della barra.
+    local bw, bh, gapX, gapY = 74, 22, 6, 4
     local PAD = 4
 
     local matrixW = cols * bw + (cols - 1) * gapX
     local matrixH = rows * bh + (rows - 1) * gapY
 
-    -- LARGHEZZA FISSA DELLA BARRETTA = SOMMA DEI SUOI ELEMENTI:
-    --   [icona di fase][nome della fase] ... [Raid Control][X]
-    -- Niente piu' barretta "stirata" sulla larghezza della matrice: la
-    -- barretta e' larga ESATTAMENTE quanto i suoi pezzi (il nome della fase ha
-    -- il posto riservato del nome piu' lungo, quindi la larghezza non cambia
-    -- mai al cambio fase) e sta ancorata a sinistra sopra il pannello.
     local tbPad, tbGap = 4, 4
     local phaseIconW = PHASE_ICON
     local phaseNameW = self._phaseLabelW or 58
     local rcBtnRef = self.raidControlBtn or (self.titleBar and self.titleBar.raidControlBtn)
     local rcW = (rcBtnRef and rcBtnRef:GetWidth()) or 96
-    local closeW = 11
-    local titleW = tbPad + phaseIconW + tbGap + phaseNameW + tbGap + rcW + tbGap + closeW + tbPad
+    local titleW = tbPad + phaseIconW + tbGap + phaseNameW + tbGap + rcW + tbPad
     self._titleRowW = titleW
 
-    -- Pannello: larghezza = matrice dei tasti (somma delle colonne). Se la
-    -- barretta e' piu' larga della matrice (poche colonne) il pannello prende
-    -- la larghezza della barretta: cosi' niente sporge dal bordo.
-    local contentW = math.max(matrixW, titleW)
-
+    local contentW = matrixW
     local h = 2 * PAD + matrixH
     local w = 2 * PAD + contentW
 
     self.frame:SetSize(w, h)
     self.frame:SetScale(L.scale or 1)
 
-    -- ANCORAGGIO FISSO: la BARRETTA (barra in alto) sta sul bordo ALTO dello
-    -- schermo a una distanza dal lato SINISTRO pari alla larghezza del Raid
-    -- Frame (food/flask + barra player + CD, senza i buff): parte subito a
-    -- destra del Raid Frame.
     if self.titleBar then
         self.titleBar:ClearAllPoints()
         self.titleBar:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth(), 0)
     end
-    -- LA MATRICE DEI PULSANTI SI APRE A DESTRA DELLA BARRETTA: il pannello e'
-    -- ancorato al suo bordo destro, sommita' allineate (dx 4 di distacco).
     self.frame:ClearAllPoints()
     if self.titleBar then
-        self.frame:SetPoint("TOPLEFT", self.titleBar, "TOPRIGHT", 4, 0)
+        self.frame:SetPoint("TOPLEFT", self.titleBar, "BOTTOMLEFT", 0, -2)
     else
-        self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth(), 0)
+        self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth(), -TITLE_BAR_H - 2)
     end
 
     -- Bottoni matrice: colonne x righe configurabili dalla Config.
@@ -593,14 +554,9 @@ function MW:ApplyLayout()
         -- larghezza (phaseNameW): qui si mostra sempre, senza salti.
         self.phaseText:Show()
     end
-    -- "Raid Control" e X incolonnati a destra della barretta.
-    if self.titleBar and self.titleBar.closeBtn then
-        self.titleBar.closeBtn:ClearAllPoints()
-        self.titleBar.closeBtn:SetPoint("RIGHT", self.titleBar, "RIGHT", -tbPad, 0)
-    end
-    if self.raidControlBtn and self.titleBar and self.titleBar.closeBtn then
+    if self.raidControlBtn and self.titleBar then
         self.raidControlBtn:ClearAllPoints()
-        self.raidControlBtn:SetPoint("RIGHT", self.titleBar.closeBtn, "LEFT", -tbGap, 0)
+        self.raidControlBtn:SetPoint("RIGHT", self.titleBar, "RIGHT", -tbPad, 0)
     end
     if self.closeBtn then
         self.closeBtn:ClearAllPoints()

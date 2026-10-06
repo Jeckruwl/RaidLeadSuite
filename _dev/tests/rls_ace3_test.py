@@ -730,9 +730,8 @@ fire(rt, "AceEvent30Frame", "RAID_ROSTER_UPDATE")
 check(g.RLSuite.context == "preraid", "RAID_ROSTER_UPDATE dispatch sets context 'preraid' (got %r)" % g.RLSuite.context)
 
 # slash command dispatch -> ChatCommand
-rt.execute("RLSuite.mainWindow.toggleCount = 0; RLSuite.mainWindow.Toggle = function(self) self.toggleCount = self.toggleCount + 1 end")
-rt.execute("SlashCmdList['ACECONSOLE_RLS']('')")
-check(g.RLSuite.mainWindow.toggleCount == 1, "/rls (empty) toggles the main window")
+rt.execute("local saved = RLSuite.config.Toggle; RLSuite.config.Toggle = function() RLSuite.config._spyRls = (RLSuite.config._spyRls or 0) + 1 end; SlashCmdList['ACECONSOLE_RLS'](''); RLSuite.config.Toggle = saved")
+check(bool(rt.eval("RLSuite.config._spyRls == 1")), "/rls (empty) opens Config")
 
 # minimap icon: faction texture + left/right click + drag + config icon gone
 check(bool(rt.eval("RLSuite.minimapIcon ~= nil")), "minimap icon created at login")
@@ -740,9 +739,8 @@ check(bool(rt.eval("RLSuite:IsHorde() == false")), "Alliance player -> IsHorde()
 check(bool(rt.eval("RLSuite.minimapIcon.icon ~= nil")), "minimap icon has a texture")
 check(bool(rt.eval("RLSuite.minimapIcon.icon._texture == 'Interface\\\\AddOns\\\\RaidLeadSuite\\\\media\\\\allianceicon.blp'")), "minimap icon uses allianceicon.blp for an Alliance player")
 check(bool(rt.eval("RLSuite.mainWindow.configBtn == nil")), "config gear icon removed from the main bar")
-rt.execute("RLSuite.mainWindow.toggleCount = 0")
-rt.execute("local b = RLSuite.minimapIcon; if b._scripts.OnClick then b._scripts.OnClick(b, 'LeftButton') end")
-check(g.RLSuite.mainWindow.toggleCount == 1, "minimap left click toggles the main bar")
+rt.execute("local saved = RLSuite.config.Toggle; RLSuite.config.Toggle = function() RLSuite.config._spyMinimap = (RLSuite.config._spyMinimap or 0) + 1 end; local b = RLSuite.minimapIcon; if b._scripts.OnClick then b._scripts.OnClick(b, 'LeftButton') end; RLSuite.config.Toggle = saved")
+check(bool(rt.eval("RLSuite.config._spyMinimap == 1")), "minimap left click opens Config")
 rt.execute("local saved = RLSuite.config.Toggle; RLSuite.config.Toggle = function() RLSuite.config._spy = (RLSuite.config._spy or 0) + 1 end; local b = RLSuite.minimapIcon; if b._scripts.OnClick then b._scripts.OnClick(b, 'RightButton') end; RLSuite.config.Toggle = saved")
 check(bool(rt.eval("RLSuite.config._spy == 1")), "minimap right click opens Config")
 rt.execute("local b = RLSuite.minimapIcon; if b._scripts.OnDragStart then b._scripts.OnDragStart(b) end")
@@ -3011,7 +3009,7 @@ rt.execute("RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixRows.s
 
 # --- G.2 MT / OT: two small buttons sharing ONE matrix cell ---
 check(bool(rt.eval("RLSuite.mainWindow.mtBtn ~= nil and RLSuite.mainWindow.otBtn ~= nil")), "MT / OT buttons exist on the main bar")
-check(bool(rt.eval("RLSuite.mainWindow.mtBtn:GetWidth() == 43 and RLSuite.mainWindow.otBtn:GetWidth() == 43")), "MT and OT are half-width ((90-4)/2 = 43px)")
+check(bool(rt.eval("RLSuite.mainWindow.mtBtn:GetWidth() == 35 and RLSuite.mainWindow.otBtn:GetWidth() == 35")), "MT and OT are half-width ((74-4)/2 = 35px)")
 check(bool(rt.eval("RLSuite.mainWindow.mtBtn:GetHeight() == 22 and RLSuite.mainWindow.otBtn:GetHeight() == 22")), "MT / OT keep the matrix button height (22px)")
 check(bool(rt.eval("select(1, RLSuite.mainWindow.mtBtn:GetPoint(1)) == 'TOPLEFT' and select(1, RLSuite.mainWindow.otBtn:GetPoint(1)) == 'TOPLEFT'")), "MT / OT positioned inside the matrix")
 rt.execute("""
@@ -3025,9 +3023,9 @@ local cols = math.max(1, math.min(8, tonumber((RLSuite.db.profile.layout.main or
 local function cellXY(idx)
     local col = (idx - 1) % cols
     local row = math.floor((idx - 1) / cols)
-    return 4 + col * (90 + 8), -4 - row * (22 + 4)
+    return 4 + col * (74 + 6), -4 - row * (22 + 4)
 end
-CELL_MT_X, CELL_MT_Y = cellXY(4)      -- MT & OT = 4a cella
+CELL_MT_X, CELL_MT_Y = cellXY(3)      -- MT & OT = 3a cella
 CELL_LOOT_X, CELL_LOOT_Y = cellXY(5)  -- Loot = 5a cella
 """)
 rt.execute("""
@@ -3053,9 +3051,9 @@ local cols = math.max(1, math.min(8, tonumber((RLSuite.db.profile.layout.main or
 local function cellXY(idx)
     local col = (idx - 1) % cols
     local row = math.floor((idx - 1) / cols)
-    return 4 + col * (90 + 8), -4 - row * (22 + 4)
+    return 4 + col * (74 + 6), -4 - row * (22 + 4)
 end
-local EXPECT = { "Pugger", "MS", "Macrobar", "MT & OT", "Loot", "SaveRaid" }
+local EXPECT = { "Pugger", "Macrobar", "MT & OT", "MS", "Loot", "SaveRaid" }
 BAR_ORDER_OK = true
 for i, want in ipairs(EXPECT) do
     local c = MWo.matrixOrder[i]
@@ -3079,9 +3077,9 @@ for i, c in ipairs(MWo.matrixOrder) do
 end
 BAR_POS_OK = posOK
 """)
-check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 6")), "main bar button order is Pugger, MS, Macrobar, MT & OT, Loot, SaveRaid (%s)" % rt.eval("BAR_ORDER"))
+check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 6")), "main bar button order is Pugger, Macrobar, MT & OT, MS, Loot, SaveRaid (%s)" % rt.eval("BAR_ORDER"))
 check(bool(rt.eval("BAR_POS_OK == true")), "each button really sits in its cell, row by row (MT & OT in its own cell, SaveRaid last)")
-check(bool(rt.eval("MTXOF == CELL_MT_X and MTYOF == CELL_MT_Y")), "MT / OT pair occupies the 4th cell of the matrix (own cell, no more 'under Raid Frame')")
+check(bool(rt.eval("MTXOF == CELL_MT_X and MTYOF == CELL_MT_Y")), "MT / OT pair occupies the 3rd cell of the matrix")
 check(bool(rt.eval("LOOTXOF == CELL_LOOT_X and LOOTYOF == CELL_LOOT_Y")), "Loot sits in its own 5th cell (no shifting around Raid Frame)")
 # --- I tasti MT/OT sono ora SECURE macro buttons: SetPartyAssignment e' PROTETTA ---
 # --- (forbidden dal client) -> il click assembla "/maintank <nome>" via PreClick. ---
@@ -3781,7 +3779,7 @@ end
 local function cellXY(idx)
     local col = (idx - 1) % cols
     local row = math.floor((idx - 1) / cols)
-    return 4 + col * (90 + 8), -4 - row * (22 + 4)
+    return 4 + col * (74 + 6), -4 - row * (22 + 4)
 end
 DBG_GAP = { n = gaps, idx = gapIdx or -1, cells = #(f.cells or {}),
             nameBefore = (gapIdx and f.cells[gapIdx - 1] and f.cells[gapIdx - 1].def and f.cells[gapIdx - 1].def.text) or "?",
@@ -4014,9 +4012,8 @@ rt.execute("""
     PB = RLSuite.mainWindow.phaseBtn
     PT = RLSuite.mainWindow.phaseText
     RC = TB.raidControlBtn
-    CLB = TB.closeBtn
     SUM_W = 4 + PB:GetWidth() + 4 + RLSuite.mainWindow._phaseLabelW + 4
-        + RC:GetWidth() + 4 + CLB:GetWidth() + 4
+        + RC:GetWidth() + 4
 """)
 check(bool(rt.eval("TB_P1[1] == 'TOPLEFT' and TB_P1[3] == 'TOPLEFT' and TB_P1[2] == UIParent")),
       "title bar is the anchor: TOPLEFT of the screen at x = Raid Frame width (%s)" % rt.eval("TB_P1[4]"))
@@ -4028,7 +4025,7 @@ check(bool(rt.eval("TB.title ~= nil and tostring(TB.title:GetText()):find('RLS')
       "no more 'RLS' text in the title bar")
 check(bool(rt.eval("TB.raidControlBtn ~= nil and TB.arrowBtn == TB.raidControlBtn")), "'Raid Control' button replaced the arrow (arrowBtn kept as alias)")
 check(bool(rt.eval("tostring(TB.raidControlBtn:GetText()) == 'Raid Control'")), "the button says 'Raid Control'")
-check(bool(rt.eval("TB.closeBtn ~= nil and TB.closeBtn.icon ~= nil and tostring(TB.closeBtn.icon._texture):find('close.tga', 1, true) ~= nil")), "close.tga button present on the right (ARTWORK texture, renders)")
+check(bool(rt.eval("RLSuite.mainWindow.titleBar.closeBtn == nil")), "no close button in raid control bar")
 
 # -- v1.11.56: icona di fase DENTRO la barretta + SaveRaid tornato pulsante --
 rt.execute("""
@@ -4059,8 +4056,7 @@ rt.execute("""
     -- barretta piu' larga (con l'icona da 16 sarebbe 6 px piu' stretta)
     local MWp = RLSuite.mainWindow
     local rcW = MWp.titleBar.raidControlBtn:GetWidth()
-    local clW = MWp.titleBar.closeBtn:GetWidth()
-    GROWTH_OLD = 4 + 16 + 4 + MWp._phaseLabelW + 4 + rcW + 4 + clW + 4
+    GROWTH_OLD = 4 + 16 + 4 + MWp._phaseLabelW + 4 + rcW + 4
     BAR_GROWTH = MWp.titleBar:GetWidth() - GROWTH_OLD
     PHASE_GAP_PX = select(4, MWp.phaseText:GetPoint(1))
 """)
@@ -4070,7 +4066,7 @@ check(bool(rt.eval("PT_LEFT == true")), "phase name is anchored to the RIGHT of 
 check(bool(rt.eval("PH_LABEL == 'Pre-raid' or PH_LABEL == 'Pre-boss' or PH_LABEL == 'In-fight'")),
       "phase name shows the current phase ('%s')" % rt.eval("PH_LABEL"))
 check(bool(rt.eval("SAVE_TXT == 'SaveRaid'")), "SaveRaid is a TEXT BUTTON showing 'SaveRaid'")
-check(bool(rt.eval("SAVE_W == 90 and SAVE_H == 22")), "SaveRaid button has the same size as the matrix buttons (90x22)")
+check(bool(rt.eval("SAVE_W == 74 and SAVE_H == 22")), "SaveRaid button has the same size as the matrix buttons (74x22)")
 check(bool(rt.eval("SAVE_IS_MATRIX == true and (SAVE_IDX == 5 or SAVE_IDX == 6 or SAVE_IDX == 7)")), "SaveRaid joins the button matrix")
 check(bool(rt.eval("SAVE_HAS_ICON == false")), "SaveRaid is no longer an icon button")
 
@@ -4094,7 +4090,7 @@ rt.execute("""
     local last = MW.matrixButtons[cols]
     local rEdge = (last._points[1][4] or 0) + (last._w or 0)
     RIGHT_GAP = BAR_W - rEdge
-    MATRIX_MW = cols * 90 + (cols - 1) * 8
+    MATRIX_MW = cols * 74 + (cols - 1) * 6
 """)
 check(bool(rt.eval("BAR_H == EXPECT_H")),
       "main bar height = padding + matrix only (icon row removed): %d px" % rt.eval("BAR_H"))
@@ -4131,8 +4127,8 @@ rt.execute("""
 """)
 check(bool(rt.eval("NARROW_TEXT == true and NARROW_BTN == true")),
       "narrow bar: phase icon AND phase name stay (the name has a reserved slot)")
-check(bool(rt.eval("NARROW_W == WIDE_W")),
-      "fixed width: with 1 or 2 matrix columns the bar keeps the same width (title row dominates)")
+check(bool(rt.eval("NARROW_W < WIDE_W")),
+      "panel width follows matrix columns: 1 column is narrower than 2 columns")
 
 # -- v1.11.57: ancoraggio fisso + larghezza = somma degli elementi --------
 rt.execute("""
@@ -4150,8 +4146,8 @@ rt.execute("""
     local cols = #(RLSuite.raidFrame._buffHdrBtns or {})
     BUFFS_W = cols * RF_M.cellW
 """)
-check(bool(rt.eval("ANCH_P == 'TOPLEFT' and ANCH_RELP == 'TOPRIGHT'")),
-      "button matrix panel opens at the RIGHT of the title bar (%s -> %s)" % (rt.eval("ANCH_P"), rt.eval("ANCH_RELP")))
+check(bool(rt.eval("ANCH_P == 'TOPLEFT' and ANCH_RELP == 'BOTTOMLEFT'")),
+      "button matrix panel opens BELOW the title bar (%s -> %s)" % (rt.eval("ANCH_P"), rt.eval("ANCH_RELP")))
 rt.execute("""
     local tp1, tpParent, tp3, tx, ty = RLSuite.mainWindow.titleBar:GetPoint(1)
     TB_ANCH_P, TB_ANCH_REL, TB_ANCH_X, TB_ANCH_Y = tp1, tp3, tx, ty
@@ -4159,9 +4155,9 @@ rt.execute("""
 """)
 check(bool(rt.eval("TB_ANCH_P == 'TOPLEFT' and TB_ANCH_PARENT == 'UIParent' and TB_ANCH_REL == 'TOPLEFT'")),
       "the title bar (the anchor) is at the TOP-LEFT of the screen: distance from the LEFT side")
-check(bool(rt.eval("ANCH_Y == 0 and TB_ANCH_Y == 0")),
-      "title bar and panel are both flush with the top edge (tops aligned, dy 0)")
-check(bool(rt.eval("ANCH_X == 4")), "panel starts 4px right of the title bar (no overlap)")
+check(bool(rt.eval("TB_ANCH_Y == 0")),
+      "title bar touches top edge")
+check(bool(rt.eval("ANCH_X == 0")), "panel left is aligned with title bar left")
 check(bool(rt.eval("RFW == RF_LIVE_W and RF_LIVE_W == RF_M.W * RF_SCALE")),
       "right offset = Raid Frame width (%d px at scale %s)" % (rt.eval("RF_M.W * RF_SCALE"), rt.eval("RF_SCALE")))
 check(bool(rt.eval("TB_ANCH_X == RFW")), "the offset IS the Raid Frame width, on the LEFT side (no other constant)")
@@ -4215,8 +4211,8 @@ rt.execute("""
     local MWc = RLSuite.mainWindow
     WFORM_OK = true
     for c, w in pairs(W_BY_COLS) do
-        local matrixW = c * 90 + (c - 1) * 8
-        local expect = 2 * 4 + math.max(matrixW, MWc._titleRowW)
+        local matrixW = c * 74 + (c - 1) * 6
+        local expect = 2 * 4 + matrixW
         if w ~= expect then WFORM_OK = false end
     end
 """)
@@ -4245,13 +4241,12 @@ rt.execute("""
     local MW = RLSuite.mainWindow
     local layout = RLSuite.db.profile.layout.main or {}
     local cols = tonumber(layout.matrixCols) or 2
-    local matrixW = cols * 90 + (cols - 1) * 8
-    local rcW = MW.titleBar.raidControlBtn:GetWidth()
-    local titleW = MW._titleRowW
-    EXPECT_W = 2 * 4 + math.max(matrixW, titleW)
+    local matrixW = cols * 74 + (cols - 1) * 6
+    EXPECT_W = 2 * 4 + matrixW
     BAR_W = MW.frame._w
-    RC_W = rcW
-    RC_TEXT_W = MW.titleBar.raidControlBtn:GetStringWidth()
+    local rcRef = MW.titleBar.raidControlBtn
+    RC_W = rcRef and rcRef:GetWidth() or 0
+    RC_TEXT_W = (rcRef and rcRef.GetStringWidth and rcRef:GetStringWidth()) or 84
     PHASE_RESERVE = MW._phaseLabelW
 """)
 check(bool(rt.eval("BAR_W == EXPECT_W")),
@@ -4274,13 +4269,13 @@ rt.execute("""
     -- la barretta resta larga quanto i suoi elementi
     TITLE_W2 = MW.titleBar:GetWidth()
     TITLE_SUM = 4 + MW.phaseBtn:GetWidth() + 4 + MW._phaseLabelW + 4
-        + MW.titleBar.raidControlBtn:GetWidth() + 4 + MW.titleBar.closeBtn:GetWidth() + 4
+        + MW.titleBar.raidControlBtn:GetWidth() + 4
 """)
 check(bool(rt.eval("PANEL_TO_TITLE == true and PANEL_POINTS == 1")),
       "MAIN BAR panel is anchored to the title bar (%s)" % rt.eval("PANEL_ANCH"))
-check(bool(rt.eval("PANEL_ANCH:find('TOPRIGHT') ~= nil")),
-      "it opens at the RIGHT of the title bar (TOPLEFT -> TOPRIGHT)")
-check(bool(rt.eval("PANEL_TOP == 0 and TB_TOP == 0")), "panel and bar are top-aligned (both at y = 0)")
+check(bool(rt.eval("PANEL_ANCH:find('BOTTOMLEFT') ~= nil")),
+      "it opens BELOW the title bar (TOPLEFT -> BOTTOMLEFT)")
+check(bool(rt.eval("TB_TOP == 0")), "bar at top y = 0")
 check(bool(rt.eval("TITLE_W2 == TITLE_SUM")), "title bar still measures exactly its own elements")
 
 # -- la MACROBAR e' tornata come prima (nessun ancoraggio alla barretta) ---
@@ -4303,10 +4298,10 @@ rt.execute("""
     MW.titleBar.raidControlBtn._scripts.OnClick(MW.titleBar.raidControlBtn)
     RC_OPEN = MW.frame:IsShown()
     local p2 = MW.frame._points[1] or {}
-    RC_RIGHT = (p2[2] == MW.titleBar and (p2[4] or 0) == 4)
+    RC_BELOW = (p2[2] == MW.titleBar and (p2[4] or 0) == 0 and p2[3] == 'BOTTOMLEFT')
 """)
-check(bool(rt.eval("RC_OPEN == true and RC_RIGHT == true")),
-      "'Raid Control' opens the panel, and it appears right of the bar (dx 4)")
+check(bool(rt.eval("RC_OPEN == true and RC_BELOW == true")),
+      "'Raid Control' opens the panel, and it appears below the bar aligned left")
 
 # -- Barretta: "Raid Control" = solo pannello; close = tutto chiuso
 rt.execute("""
@@ -4318,15 +4313,11 @@ HL_HIDDEN = TB.raidControlBtn._highlight
 TB.raidControlBtn._scripts.OnClick(TB.raidControlBtn)
 A2 = f:IsShown()
 HL_SHOWN = TB.raidControlBtn._highlight
-f:Show(); TB:Show()
-TB.closeBtn._scripts.OnClick(TB.closeBtn)
-C_F = f:IsShown(); C_TB = TB:IsShown()
 """)
 check(bool(rt.eval("A1 == false and A1TB == true")), "Raid Control: hides ONLY the panel under the bar (bar stays)")
 check(bool(rt.eval("A2 == true")), "Raid Control: shows the panel back under the bar")
 check(bool(rt.eval("HL_SHOWN == true and HL_HIDDEN == false")),
       "Raid Control is highlighted only while the panel is open")
-check(bool(rt.eval("C_F == false and C_TB == false")), "close.blp: closes the main bar (panel + title bar)")
 
 # -- Toggle tab riallinea anche la barretta
 rt.execute("RLSuite.mainWindow:ShowTab('group')")
@@ -4565,8 +4556,7 @@ check(bool(rt.eval("TB23_NO_DRAG == true")),
 
 # -- v1.11.30/56: X a 11x11 e pulsante "Raid Control" al posto della freccia
 rt.execute("""
-TB30C = RLSuite.mainWindow.titleBar.closeBtn
-TB30A = RLSuite.mainWindow.titleBar.arrowBtn
+TB30A = RLSuite.mainWindow.titleBar.raidControlBtn
 MFW30 = RLSuite.mainWindow.frame
 MFW30:Hide(); RLSuite.mainWindow._updateArrowDir()
 HL_CLOSED30 = TB30A._highlight
@@ -4576,7 +4566,7 @@ MFW30:Hide(); RLSuite.mainWindow._updateArrowDir()
 TB30_H = TB30A._h
 TB30_TEXT = TB30A:GetText()
 """)
-check(bool(rt.eval("TB30C._w == 11 and TB30C._h == 11")), "title bar close icon HALVED (11x11)")
+check(bool(rt.eval("RLSuite.mainWindow.titleBar.closeBtn == nil")), "title bar close icon removed")
 check(bool(rt.eval("TB30_TEXT == 'Raid Control' and TB30_H == 20")),
       "the panel toggle is a 20px 'Raid Control' text button (grown with the bar)")
 check(bool(rt.eval("HL_CLOSED30 == false and HL_OPEN30 == true")),

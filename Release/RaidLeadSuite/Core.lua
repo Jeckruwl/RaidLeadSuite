@@ -1225,7 +1225,7 @@ function RLSuite:ChatCommand(input)
     elseif msg == "config" then
         if self.config then self.config:Toggle() end
     elseif msg == "" then
-        if self.mainWindow then self.mainWindow:Toggle() end
+        if self.config then self.config:Toggle() end
     else
         self.utils:Print(L["Unknown command. Type /rls help for the list."])
         self:PrintHelp()
@@ -1915,14 +1915,8 @@ function RLSuite:CreateMinimapIcon()
     btn:RegisterForDrag("LeftButton")
 
     btn:SetScript("OnClick", function(self2, button)
-        if button == "RightButton" then
-            if RLSuite.config and RLSuite.config.Toggle then
-                RLSuite.config:Toggle()
-            end
-        else
-            if RLSuite.mainWindow and RLSuite.mainWindow.Toggle then
-                RLSuite.mainWindow:Toggle()
-            end
+        if RLSuite.config and RLSuite.config.Toggle then
+            RLSuite.config:Toggle()
         end
     end)
 
@@ -1946,8 +1940,7 @@ function RLSuite:CreateMinimapIcon()
         if not GameTooltip then return end
         GameTooltip:SetOwner(self2, "ANCHOR_LEFT")
         GameTooltip:SetText("RLSuite")
-        GameTooltip:AddLine(L["Left click: open RLS"], 1, 1, 1)
-        GameTooltip:AddLine(L["Right click: config"], 1, 1, 1)
+        GameTooltip:AddLine(L["Click: config"], 1, 1, 1)
         GameTooltip:AddLine(L["Shift + left drag: move"], 0.8, 0.8, 0.8)
         GameTooltip:Show()
     end)

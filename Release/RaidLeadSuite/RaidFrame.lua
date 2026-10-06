@@ -218,6 +218,17 @@ function RF:CreateFrame()
     f:Hide()
     self.frame = f
 
+    f:HookScript("OnShow", function()
+        if RLSuite.mainWindow and RLSuite.mainWindow.SyncVisibilityWithRaidFrame then
+            RLSuite.mainWindow:SyncVisibilityWithRaidFrame()
+        end
+    end)
+    f:HookScript("OnHide", function()
+        if RLSuite.mainWindow and RLSuite.mainWindow.SyncVisibilityWithRaidFrame then
+            RLSuite.mainWindow:SyncVisibilityWithRaidFrame()
+        end
+    end)
+
     -- Groups + slots (G1..G6) live in this container.
     self.content = CreateFrame("Frame", nil, f)
     self.content:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
@@ -1318,6 +1329,9 @@ function RF:Rebuild()
 
     -- Visibilita' automatica nativa: si mostra in raid e si nasconde fuori (salvo debug / anchor)
     self:UpdateVisibility()
+    if RLSuite.mainWindow and RLSuite.mainWindow.SyncVisibilityWithRaidFrame then
+        RLSuite.mainWindow:SyncVisibilityWithRaidFrame()
+    end
 end
 
 function RF:UpdateVisibility()
@@ -2416,6 +2430,13 @@ function RF:ApplyLayout()
     -- BLOCCO TANKS (SOPRA G1): header + barre MT/OT (sempre 2, piene o
     -- vuote). SPAZIO RISERVATO SEMPRE: la griglia non si muove quando il
     -- roster appare/sparisce (prima il blocco c'era solo con un roster).
+    local tankBlockHeight = m.groupHeaderH + 2 * (m.rowHeight + m.rowSpacing)
+    local mwHeight = (26) + (2 * 4 + 3 * 22 + 2 * 4) -- altezza control bar (26) + matrice pulsanti (82)
+    local tankToStripSpacing = 0
+    if mwHeight > tankBlockHeight then
+        tankToStripSpacing = mwHeight - tankBlockHeight
+    end
+
     if self.tankHeader then
         self.tankHeader:ClearAllPoints()
         self.tankHeader:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
@@ -2432,6 +2453,8 @@ function RF:ApplyLayout()
                 if ti == 2 then otSlot = t end -- OT = seconda barra tank
             end
         end
+        y = y - tankToStripSpacing
+
         -- Bottone "Raid Buffs": sotto le barre target dei tank, allineato
         -- come l'header G1: bordo INFERIORE = fondo della zona strip, bordo
         -- DESTRO = fine barra. (Show/Hide li decide RebuildTanks.)
@@ -2453,6 +2476,7 @@ function RF:ApplyLayout()
         end
     elseif self.buffPanelBtn then
         self.buffPanelBtn:Hide()
+        y = y - tankToStripSpacing
     end
     -- ZONA STRIP tra Tanks e G1: SEMPRE riservata (cellW+4 = dimensione delle
     -- icone d'intestazione), a matrice accesa o spenta, con o senza roster.
