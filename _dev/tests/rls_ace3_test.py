@@ -7320,10 +7320,7 @@ check(bool(rt.eval("RLSuite.mainWindow.tabs.log == nil")), "v1.11.105: 'log' tab
 check(bool(rt.eval("RLSuite.mainWindow:PaneForTab('log') == nil")), "v1.11.105: PaneForTab('log') is nil")
 check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 5")), "v1.11.105: debug panel has exactly 5 buttons (Log Test removed)")
 
-if fails:
-    print("RESULT: %d FAILURES: %s" % (len(fails), fails))
-    sys.exit(1)
-print("RESULT: ALL CHECKS PASSED")
+
 print()
 print("== v1.11.107: RaidFrame consumables removed, Buff Matrix Flask/Food/Durability & Feast/Bot RW ==")
 # 1. No flaskIcon or foodIcon on rows
@@ -7377,3 +7374,8 @@ check(bool(rt.eval("V107_FEAST_WARN:find('SuperChef put down Fish Feast!', 1, tr
 check(bool(rt.eval("V107_BOT_WARN:find('EngiGuy put down Jeeves!', 1, true) ~= nil")), "v1.11.107: Repair bot drop announces '<Caster> put down Jeeves!'")
 
 
+
+if fails:
+    print("RESULT: %d FAILURES: %s" % (len(fails), fails))
+    sys.exit(1)
+print("RESULT: ALL CHECKS PASSED")
