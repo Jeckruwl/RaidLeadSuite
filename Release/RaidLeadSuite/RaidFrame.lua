@@ -2688,6 +2688,9 @@ function RF:_MatrixHeaderBtn(c)
         btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         btn:SetScript("OnClick", function(s, button)
             if not s._col then return end
+            if s._col and s._col.kind == "durability" and RLSuite.RequestRaidDurability then
+                RLSuite:RequestRaidDurability()
+            end
             if button == "RightButton" then
                 if s._col and (s._col.kind == "durability" or s._col.key == "flask" or s._col.key == "wellfed") then
                     return
@@ -3724,6 +3727,8 @@ function RF:MemberDurability(member, group)
                     if not pct or p < pct then pct = p end
                 end
             end
+        elseif member.name and RLSuite.durabilityData and RLSuite.durabilityData[member.name] then
+            pct = RLSuite.durabilityData[member.name]
         end
     end
 
@@ -3750,10 +3755,14 @@ function RF:_DurCellOk(st)
 end
 
 function RF:_DurColor(st)
-    if not st or st.state == "unknown" then return 0.55, 0.55, 0.55 end
-    if st.state == "broken" then return 1, 0.15, 0.15 end
-    if st.state == "low" then return 1, 0.75, 0.15 end
-    return 0.2, 1, 0.2
+    if not st or not st.pct then return 0.55, 0.55, 0.55 end
+    if st.pct >= 80 then
+        return 0.2, 1, 0.2       -- 80-100% verde
+    elseif st.pct >= 60 then
+        return 1, 0.65, 0.15      -- 60-80% arancione
+    else
+        return 1, 0.2, 0.2        -- <60% rosso
+    end
 end
 
 function RF:_DurText(st)
@@ -3771,10 +3780,8 @@ function RF:_DurText(st)
 end
 
 function RF:_DurCellText(st)
-    if not st or st.state == "unknown" then return "-" end
-    if st.broken and st.broken > 0 then return "BROKEN" end
-    if st.pct then return string.format("%d%%", math.floor(st.pct)) end
-    return "OK"
+    if not st or not st.pct then return "-" end
+    return string.format("%d%%", math.floor(st.pct))
 end
 
 -- Icona della cella per un MEMBER: fake in debug -> set simulato (per

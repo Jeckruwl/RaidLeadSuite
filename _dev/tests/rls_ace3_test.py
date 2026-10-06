@@ -7484,7 +7484,7 @@ check(not bool(rt.eval("V109_TANK_ROLE_ICON_SHOWN")), "v1.11.109: Tank/DPS/Heal 
 check(rt.eval("V109_MT_BAR_X") == rt.eval("RLSuite.raidFrame:LayoutMetrics().roleReserve"), "v1.11.109: MT bar aligned to roleReserve")
 check(rt.eval("V109_MT_TAG_X") == 0, "v1.11.109: MT tankTag placed at roleIcon position (LEFT 0)")
 check(rt.eval("V109_DUR_TXT_74") == "74%", "v1.11.109: Durability cell shows real percentage when known (74%)")
-check(rt.eval("V109_DUR_TXT_OK") == "OK", "v1.11.109: Durability cell shows OK instead of fake 100% when exact pct is not readable")
+check(rt.eval("V109_DUR_TXT_OK") == "-", "v1.11.109: Durability cell shows - instead of fake 100% when exact pct is not readable")
 check(bool(rt.eval("V109_FLASK_MSG:find('Buff Check', 1, true) == nil and V109_FLASK_MSG:find('Missing Flask |', 1, true) ~= nil and V109_FLASK_MSG:find('Missing:', 1, true) == nil")), "v1.11.109: Flask warning has no 'Buff Check:' and no 'Missing:' before player names")
 check(bool(rt.eval("V109_FOOD_MSG:find('Well Fed') ~= nil and V109_FOOD_MSG:find('Missing Well Fed |', 1, true) ~= nil")), "v1.11.109: Food warning uses 'Well Fed' and no 'Buff Check:'")
 check(bool(rt.eval("V109_STATS_MSG:find('Buff Check', 1, true) == nil and V109_STATS_MSG:find('Missing %stat', 1, true) ~= nil")), "v1.11.109: All buff warnings have 'Buff Check:' removed")

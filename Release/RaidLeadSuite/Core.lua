@@ -235,7 +235,7 @@ local defaults = {
 -- RLSuite gains RegisterEvent / RegisterChatCommand. AceDB-3.0 is not
 -- embeddable: it is called directly (AceDB:New) inside OnInitialize.
 -- ============================================================
-RLSuite = AceAddon:NewAddon(RLSuite, "RLSuite", "AceEvent-3.0", "AceConsole-3.0")
+RLSuite = AceAddon:NewAddon(RLSuite, "RLSuite", "AceEvent-3.0", "AceConsole-3.0", "AceComm-3.0")
 LibStub("AceTimer-3.0"):Embed(RLSuite)
 
 -- One-time migration of the pre-Ace3 flat saved table (RLSuiteDB.* at the
@@ -283,6 +283,65 @@ function RLSuite:OnInitialize()
     end
 end
 
+
+-- ------------------------------------------------------------------
+-- Durability Addon Communication via AceComm-3.0
+-- ------------------------------------------------------------------
+RLSuite.durabilityData = RLSuite.durabilityData or {}
+
+function RLSuite:GetPlayerLocalDurability()
+    if not GetInventoryItemDurability then return nil end
+    local minPct = nil
+    for slot = 1, 19 do
+        local cur, max = GetInventoryItemDurability(slot)
+        if cur and max and max > 0 then
+            local p = (cur / max) * 100
+            if not minPct or p < minPct then minPct = p end
+        end
+    end
+    return minPct
+end
+
+function RLSuite:RequestRaidDurability()
+    local num = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local dist = (num > 0) and "RAID" or "PARTY"
+    if dist == "PARTY" and (GetNumPartyMembers and GetNumPartyMembers() == 0) then
+        dist = nil
+    end
+    -- Invia anche risposta per se stesso localmente
+    local myPct = self:GetPlayerLocalDurability()
+    local myName = UnitName and UnitName("player")
+    if myName and myPct then
+        self.durabilityData[myName] = math.floor(myPct)
+    end
+    if dist then
+        self:SendCommMessage("RLSDUR", "REQ", dist)
+    end
+end
+
+function RLSuite:OnCommReceived(prefix, message, distribution, sender)
+    if prefix ~= "RLSDUR" or not message or not sender then return end
+    -- Normalizza sender rimuovendo eventuale realm
+    local senderName = strsplit("-", sender)
+    if message == "REQ" then
+        local myPct = self:GetPlayerLocalDurability()
+        if myPct then
+            local val = tostring(math.floor(myPct))
+            local num = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+            local dist = (num > 0) and "RAID" or "PARTY"
+            self:SendCommMessage("RLSDUR", "RESP:" .. val, dist)
+        end
+    elseif message:sub(1, 5) == "RESP:" then
+        local val = tonumber(message:sub(6))
+        if val then
+            self.durabilityData[senderName] = math.floor(val)
+            if self.raidFrame and self.raidFrame.RefreshBuffMatrix then
+                self.raidFrame:RefreshBuffMatrix()
+            end
+        end
+    end
+end
+
 function RLSuite:OnEnable()
     self:RegisterEvent("RAID_ROSTER_UPDATE", "OnRaidRosterUpdate")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnPlayerRegenEnabled")
@@ -297,6 +356,7 @@ function RLSuite:OnEnable()
     -- al set del boss che stai affrontando (target, poi boss1..4).
     self:RegisterEvent("PLAYER_TARGET_CHANGED", "OnTargetChanged")
     self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", "OnCombatLog")
+    self:RegisterComm("RLSDUR", "OnCommReceived")
     self:InitModules()
     self:EnsureMinimapIcon()
 end
@@ -351,6 +411,9 @@ end
 
 function RLSuite:OnRaidRosterUpdate()
     self:UpdateRaidContext()
+    if self.RequestRaidDurability then
+        self:RequestRaidDurability()
+    end
 end
 
 function RLSuite:OnPlayerRegenEnabled()
