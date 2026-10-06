@@ -2431,7 +2431,13 @@ function RF:ApplyLayout()
     -- vuote). SPAZIO RISERVATO SEMPRE: la griglia non si muove quando il
     -- roster appare/sparisce (prima il blocco c'era solo con un roster).
     local tankBlockHeight = m.groupHeaderH + 2 * (m.rowHeight + m.rowSpacing)
-    local mwHeight = (26) + (2 * 4 + 3 * 22 + 2 * 4) -- altezza control bar (26) + matrice pulsanti (82)
+    local mwHeight = 0
+    local mw = RLSuite.mainWindow
+    if mw and mw.frame and mw.frame:IsShown() then
+        local tbH = (mw.titleBar and mw.titleBar:GetHeight()) or 26
+        local mfH = mw.frame:GetHeight() or 0
+        mwHeight = tbH + 2 + mfH
+    end
     local tankToStripSpacing = 0
     if mwHeight > tankBlockHeight then
         tankToStripSpacing = mwHeight - tankBlockHeight

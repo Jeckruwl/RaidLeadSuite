@@ -30,6 +30,8 @@ function MW:Toggle()
     end
     if self._updateArrowDir then self:_updateArrowDir() end
     if RLSuite.SyncDebugPanel then RLSuite:SyncDebugPanel() end
+    local rf = RLSuite.raidFrame
+    if rf and rf.ApplyLayout then rf:ApplyLayout() end
 end
 
 function MW:SyncVisibilityWithRaidFrame()
