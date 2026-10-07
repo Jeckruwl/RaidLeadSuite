@@ -14,7 +14,13 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.114**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.115**.
+
+## 1.11.115 — Raid Control bar senza dialog border
+
+La title bar `RLSuiteMainTitleBar` è ora marcata `_noOuterBorder = true` prima
+dello skin: resta il riempimento della barra, ma il bordo Blizzard
+`UI-Tooltip-Border` è completamente trasparente, come nella matrice pulsanti.
 
 ## 1.11.114 — Overlay offline 20% + pannello debug indipendente
 

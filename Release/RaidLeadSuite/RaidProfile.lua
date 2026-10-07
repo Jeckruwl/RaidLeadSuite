@@ -194,7 +194,9 @@ function MW:CreateFrame()
     -- SOLO skin: la barretta NON si trascina piu' (niente drag, niente
     -- posizione salvata). La barra e' ANCORATA al bordo alto dello schermo e
     -- la sua posizione la calcola ApplyLayout: un drag la farebbe solo
-    -- "staccare" dal posto in cui deve stare.
+    -- "staccare" dal posto in cui deve stare. Niente Tooltip/Dialog border
+    -- Blizzard: stesso trattamento borderless della matrice pulsanti.
+    tb._noOuterBorder = true
     RLSuite.utils:SkinFrame(tb)
 
     -- La barretta resta cliccabile (i suoi bottoni) ma NON trascinabile: la
