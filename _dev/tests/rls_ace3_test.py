@@ -3884,9 +3884,9 @@ local preP = lm.preMsgText._points[1] or {}
 LM_LAYOUT_117 = {
     checksWithLabel = (il[5] ~= nil and ic[5] ~= nil and math.abs(ic[5] - il[5]) <= 6 and ic[4] > il[4]),
     noNumberColumn = (lm.histHeads.num == nil and lm:HistMetrics(420).itemX == 30),
-    compactTop = (histLabelP[5] == -72 and histHeaderP[5] == -94),
+    compactTop = (histLabelP[5] == -64 and histHeaderP[5] == -86),
     compactBottom = (lm.histBox:GetHeight() == 220 and selP[2] == lm.histBox
-        and preP[5] == -380 and ms[2] == lm.frame and ms[4] == 8),
+        and preP[5] == -372 and ms[2] == lm.frame and ms[4] == 8),
     oneButtonRow = (rr[2] == lm.rollOtherBtn and lm.announceMSBtn._points[1][2] == lm.rerollBtn),
     buttonSpan = (lm.rollMSBtn:GetWidth() + lm.rollOSBtn:GetWidth() + lm.rollOtherBtn:GetWidth()
         + lm.rerollBtn:GetWidth() + lm.announceMSBtn:GetWidth() + 24),
@@ -3914,11 +3914,11 @@ check(bool(rt.eval("LM_LAYOUT_117.bottomOrder")), "v1.11.129: bottom controls fo
 rt.execute("""
 local lm = RLSuite.lootManager
 lm:SetPreMessage('short MS change')
-LM_FIXED_BASE = (lm.frame:GetWidth() == 460 and lm.frame:GetHeight() == 436 and lm.frame._rlsGrip ~= true)
+LM_FIXED_BASE = (lm.frame:GetWidth() == 460 and lm.frame:GetHeight() == 428 and lm.frame._rlsGrip ~= true)
 lm:SetPreMessage(string.rep('very long MS change ', 40))
-LM_WRAP_GROWS = (lm.frame:GetWidth() == 460 and lm.frame:GetHeight() > 436 and lm.preMsgText:GetHeight() > 14)
+LM_WRAP_GROWS = (lm.frame:GetWidth() == 460 and lm.frame:GetHeight() > 428 and lm.preMsgText:GetHeight() > 14)
 lm:SetPreMessage('')
-LM_WRAP_RESETS = (lm.frame:GetHeight() == 436)
+LM_WRAP_RESETS = (lm.frame:GetHeight() == 428)
 """)
 check(bool(rt.eval("LM_FIXED_BASE and LM_WRAP_GROWS and LM_WRAP_RESETS")), "v1.11.129: Loot Manager is fixed-width/non-resizable and only MS wrap increases height")
 rt.execute("""

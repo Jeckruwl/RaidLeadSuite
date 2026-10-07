@@ -15,7 +15,7 @@ local LM_ROW_GAP = 2      -- spazio tra una riga e l'altra
 local LM_ROW_MIN_H = 26   -- altezza minima (una sola riga di testo)
 local LM_FIXED_WIDTH = 460
 local LM_TABLE_HEIGHT = 220 -- viewport esatto: cinque righe da max due linee
-local LM_BASE_HEIGHT = 436  -- elementi fissi + tabella + una riga MS Changes
+local LM_BASE_HEIGHT = 428  -- elementi fissi + tabella + una riga MS Changes
 
 -- Non-overlapping roll/reroll countdowns (AceTimer named timers):
 -- restarting a roll cancels the previous timer instead of stacking a
@@ -107,7 +107,7 @@ function LM:CreateFrame()
 
     -- Il testo MS Changes vive nel blocco basso, subito prima dei comandi.
     self.preMsgText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.preMsgText:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -304)
+    self.preMsgText:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -372)
     self.preMsgText:SetWidth(LM_FIXED_WIDTH - 16)
     self.preMsgText:SetHeight(14)
     self.preMsgText:SetWordWrap(true)
@@ -116,7 +116,7 @@ function LM:CreateFrame()
     self.preMsgText:SetText("")
 
     local histLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    histLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -64)
+    histLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -64)
     histLabel:SetText("Loot History")
     self.histLabel = histLabel
 
@@ -127,7 +127,7 @@ function LM:CreateFrame()
     self.rarityFilter = (self.db and self.db.rarityFilter) or "all"
     self.rarityDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteLootRarityDD", 130, 20)
     self.rarityDropdown:ClearAllPoints()
-    self.rarityDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -66)
+    self.rarityDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -58)
     -- L'etichetta è legata al controllo, non a una seconda riga autonoma.
     filterFS:SetPoint("RIGHT", self.rarityDropdown, "LEFT", -8, 0)
     RLSuite.utils:SetupDropdown(self.rarityDropdown, {
@@ -147,7 +147,7 @@ function LM:CreateFrame()
     -- Checkbox "ignore loots": escludono intere categorie sia in cattura
     -- (mai registrate) sia a video (le righe gia' in storico spariscono).
     local ignoreLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    ignoreLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -50)
+    ignoreLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -42)
     ignoreLabel:SetText("ignore loots:")
     self.ignoreLabel = ignoreLabel
     self.ignoreChecks = {}
@@ -157,11 +157,16 @@ function LM:CreateFrame()
         { key = "gems",        label = "Gems" },
         { key = "shards",      label = "Shards" },
     }
-    local ix = 82
+    local previousIgnoreLabel
     for _, def in ipairs(ignoreDefs) do
         local cb = CreateFrame("CheckButton", "RLSuiteLootIgnore_" .. def.key, f, "UICheckButtonTemplate")
         cb:SetSize(20, 20)
-        cb:SetPoint("TOPLEFT", f, "TOPLEFT", ix, -44)
+        if previousIgnoreLabel then
+            cb:SetPoint("LEFT", previousIgnoreLabel, "RIGHT", 12, 0)
+        else
+            -- Spazio esplicito fra il titolo "ignore loots:" e la prima checkbox.
+            cb:SetPoint("LEFT", ignoreLabel, "RIGHT", 10, 0)
+        end
         cb:SetChecked(self.db and self.db.filters and self.db.filters[def.key] and true or false)
         cb:SetScript("OnClick", function(btn)
             -- Un solo punto di scrittura: cosi' le stesse voci restano
@@ -172,7 +177,7 @@ function LM:CreateFrame()
         lbl:SetPoint("LEFT", cb, "RIGHT", 2, 0)
         lbl:SetText(def.label)
         self.ignoreChecks[def.key] = cb
-        ix = ix + 20 + (#def.label * 7) + 14
+        previousIgnoreLabel = lbl
     end
 
     -- Header sotto il titolo ignore e la sua riga di checkbox.

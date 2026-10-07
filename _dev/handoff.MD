@@ -14,7 +14,15 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.130**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.131**.
+
+## 1.11.131 — Spazio fra ignore loots e checkbox
+
+Rimosso lo spazio verticale aggiunto sotto il titolo nella 1.11.130: tutto il
+blocco contenuti è tornato 8px più in alto e l'altezza base è 428px. Lo spazio
+richiesto è ora nel punto corretto: la prima checkbox è ancorata 10px a destra
+di `ignore loots:`, mentre le checkbox successive sono separate di 12px dalle
+rispettive etichette precedenti.
 
 ## 1.11.130 — Cinque righe reali, pulsanti a filo, più spazio sotto titolo
 
