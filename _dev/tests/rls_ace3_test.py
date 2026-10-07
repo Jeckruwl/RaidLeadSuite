@@ -3867,9 +3867,25 @@ check(bool(rt.eval("LL_N2 > 0")), "the Fill Loot button is the ONLY thing spawni
 
 # --- Loot Manager: min width includes the MS announce button# --- Loot Manager: min width includes the MS announce button; window fixed like the equip panel ---
 rt.execute("LM_MINW = RLSuite.windowMins.loot()")
-check(bool(rt.eval("LM_MINW >= 506")), "loot min width fits all roll buttons incl. Announce Changes (no clipping)")
-rt.execute("RLSuite.mainWindow:ShowTab('loot')")
+check(bool(rt.eval("LM_MINW == 460")), "v1.11.117: loot minimum width recalculated for two command rows and history columns")
+rt.execute("""
+RLSuite.mainWindow:ShowTab('loot')
+local lm = RLSuite.lootManager
+local il = lm.ignoreLabel._points[1] or {}
+local ic = lm.ignoreChecks.recipes._points[1] or {}
+local ms = lm.rollMSBtn._points[1] or {}
+local rr = lm.rerollBtn._points[1] or {}
+LM_LAYOUT_117 = {
+    checksBelow = (il[5] ~= nil and ic[5] ~= nil and ic[5] < il[5]),
+    rerollBelow = (ms[5] ~= nil and rr[5] ~= nil and rr[5] < ms[5]),
+    announceBelow = (lm.announceMSBtn._points[1][2] == lm.rerollBtn),
+    timer = lm:TradeRemaining({ time = time() - 3661 }),
+}
+""")
 check(bool(rt.eval("RLSuite.lootManager.frame._scripts['OnDragStart'] == nil")), "loot window is NOT draggable anymore (behaves like the native equip panel)")
+check(bool(rt.eval("LM_LAYOUT_117.checksBelow")), "v1.11.117: ignore category checkboxes are below the 'ignore loots' label")
+check(bool(rt.eval("LM_LAYOUT_117.rerollBelow and LM_LAYOUT_117.announceBelow")), "v1.11.117: Reroll and Announce Changes are below Roll MS/OS/FFA")
+check(bool(rt.eval("LM_LAYOUT_117.timer == '1h 1m'")), "v1.11.117: trade timer uses Xh Ym with no seconds")
 check(bool(rt.eval("""(function() local p = RLSuite.lootManager.frame._points[1] return p ~= nil and p[1] == 'TOPLEFT' and p[2] == UIParent and p[4] == 420 and p[5] == -116 end)()""")), "v1.11.116: loot window is permanently parked right of the TradeFrame area (TOPLEFT 420,-116)")
 check(bool(rt.eval("RLSuite.groupmaking.mainFrame._scripts['OnDragStart'] ~= nil")), "other windows keep their draggable behavior (groupmaking untouched)")
 rt.execute("RLSuite.lootManager.frame:Hide(); RLSuite.mainWindow.currentTab = nil")

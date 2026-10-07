@@ -672,10 +672,11 @@ function MW:RegisterAllWindows()
         return 350, 280
     end
     RLSuite.windowMins.loot = function()
-        -- larghezza minima = spazio reale dei bottoni di roll
-        -- (16 + Roll MS/OS/FFA/Reroll 4x80 + Announce Changes 124 + margini):
-        -- sotto i 506 il tasto MS "Announce Changes" sborda fuori finestra.
-        return 510, 340
+        -- Due righe di comandi: la più larga è Roll MS/OS/FFA (284px con
+        -- margini). Il vero minimo viene ora dalle colonne dello storico:
+        -- 452px netti; 460 lascia un piccolo margine di sicurezza.
+        -- Altezza aumentata per la seconda riga comandi e la riga checkbox.
+        return 460, 390
     end
 
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.

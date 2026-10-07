@@ -14,7 +14,16 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.116**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.117**.
+
+## 1.11.117 — Loot Manager: filtri e comandi su due righe, timer senza secondi
+
+Le checkbox Recipes/BoE/Gems/Shards sono ora nella riga sotto `ignore loots:`.
+I comandi sono su due righe: Roll MS/OS/FFA sopra, Reroll e Announce Changes
+sotto. La selezione item e il listato sono stati rialzati per non sovrapporsi.
+`TradeRemaining` mostra solo `Xh Ym` (es. `1h 12m`), senza secondi. Minimo della
+finestra ricalcolato a **460x390**: la larghezza è determinata dalle colonne
+dello storico, non più dai cinque pulsanti sulla stessa riga.
 
 ## 1.11.116 — Loot Manager sempre già a destra
 

@@ -136,8 +136,9 @@ function LM:CreateFrame()
     -- Checkbox "ignore loots": escludono intere categorie sia in cattura
     -- (mai registrate) sia a video (le righe gia' in storico spariscono).
     local ignoreLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    ignoreLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -78)
+    ignoreLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -76)
     ignoreLabel:SetText("ignore loots:")
+    self.ignoreLabel = ignoreLabel
     self.ignoreChecks = {}
     local ignoreDefs = {
         { key = "recipes",     label = "Recipes" },
@@ -145,11 +146,11 @@ function LM:CreateFrame()
         { key = "gems",        label = "Gems" },
         { key = "shards",      label = "Shards" },
     }
-    local ix = 90
+    local ix = 16
     for _, def in ipairs(ignoreDefs) do
         local cb = CreateFrame("CheckButton", "RLSuiteLootIgnore_" .. def.key, f, "UICheckButtonTemplate")
         cb:SetSize(20, 20)
-        cb:SetPoint("TOPLEFT", f, "TOPLEFT", ix, -72)
+        cb:SetPoint("TOPLEFT", f, "TOPLEFT", ix, -88)
         cb:SetChecked(self.db and self.db.filters and self.db.filters[def.key] and true or false)
         cb:SetScript("OnClick", function(btn)
             -- Un solo punto di scrittura: cosi' le stesse voci restano
@@ -163,17 +164,17 @@ function LM:CreateFrame()
         ix = ix + 20 + (#def.label * 7) + 14
     end
 
-    -- Header spostato sotto la riga delle checkbox (-74 -> -100).
+    -- Header sotto il titolo ignore e la sua riga di checkbox.
     local header = CreateFrame("Frame", nil, f)
-    header:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -100)
-    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -100)
+    header:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -116)
+    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -116)
     header:SetHeight(18)
     self.histHeader = header
     self:PaintHeader(header)
 
     self.histBox = CreateFrame("Frame", nil, f)
     self.histBox:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -2)
-    self.histBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 78)
+    self.histBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 106)
     self:SkinBox(self.histBox)
 
     self.histScroll = CreateFrame("ScrollFrame", "RLSuiteLootHistory", self.histBox, "UIPanelScrollFrameTemplate")
@@ -192,8 +193,8 @@ function LM:CreateFrame()
     end)
 
     self.selBox = CreateFrame("Frame", nil, f)
-    self.selBox:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 40)
-    self.selBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 40)
+    self.selBox:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 68)
+    self.selBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 68)
     self.selBox:SetHeight(34)
     self:SkinBox(self.selBox)
 
@@ -213,7 +214,7 @@ function LM:CreateFrame()
     self.rollMSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rollMSBtn)
     self.rollMSBtn:SetSize(80, 24)
-    self.rollMSBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 10)
+    self.rollMSBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 38)
     self.rollMSBtn:SetText("Roll MS")
     self.rollMSBtn:SetScript("OnClick", function() self:StartRoll("MS") end)
 
@@ -234,7 +235,7 @@ function LM:CreateFrame()
     self.rerollBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rerollBtn)
     self.rerollBtn:SetSize(80, 24)
-    self.rerollBtn:SetPoint("LEFT", self.rollOtherBtn, "RIGHT", 6, 0)
+    self.rerollBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 10)
     self.rerollBtn:SetText("Reroll")
     self.rerollBtn:Disable()
     self.rerollBtn:SetScript("OnClick", function() self:DoReroll() end)
@@ -785,11 +786,7 @@ function LM:TradeRemaining(entry)
     if left <= 0 then return "Expired" end
     local h = math.floor(left / 3600)
     local m = math.floor((left % 3600) / 60)
-    local s = left % 60
-    if h > 0 then
-        return string.format("%d:%02d:%02d", h, m, s)
-    end
-    return string.format("%d:%02d", m, s)
+    return string.format("%dh %dm", h, m)
 end
 
 function LM:UpdateHistory()
