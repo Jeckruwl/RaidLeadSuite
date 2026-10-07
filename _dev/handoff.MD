@@ -14,7 +14,16 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.118**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.119**.
+
+## 1.11.119 — Loot Manager: rarity con storico e pulsanti su una riga
+
+`Rarity threshold` è stato spostato sulla stessa riga di `Loot History`, così
+non interferisce più con le checkbox. I cinque pulsanti sono di nuovo su una
+sola riga; i primi quattro misurano 70px, `Announce MSCh` 124px, e con quattro
+spazi da 6px occupano esattamente i 428px interni della larghezza minima 460px.
+Il testo del pulsante è stato abbreviato da `Announce Changes` a
+`Announce MSCh`. Altezza minima ricalcolata a 350px.
 
 ## 1.11.118 — Loot Manager: ordine visivo corretto
 

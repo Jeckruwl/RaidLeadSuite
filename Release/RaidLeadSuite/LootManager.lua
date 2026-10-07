@@ -103,8 +103,8 @@ function LM:CreateFrame()
 
     -- Il testo MS Changes vive nel blocco basso, subito prima dei comandi.
     self.preMsgText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.preMsgText:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 72)
-    self.preMsgText:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 72)
+    self.preMsgText:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 42)
+    self.preMsgText:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 42)
     self.preMsgText:SetJustifyH("LEFT")
     self.preMsgText:SetText("")
 
@@ -114,13 +114,14 @@ function LM:CreateFrame()
     self.histLabel = histLabel
 
     local filterFS = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    filterFS:SetPoint("TOPRIGHT", f, "TOPRIGHT", -152, -44)
+    filterFS:SetPoint("TOPRIGHT", f, "TOPRIGHT", -152, -84)
     filterFS:SetText("Rarity threshold")
+    self.filterFS = filterFS
 
     self.rarityFilter = (self.db and self.db.rarityFilter) or "all"
     self.rarityDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteLootRarityDD", 130, 20)
     self.rarityDropdown:ClearAllPoints()
-    self.rarityDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -40)
+    self.rarityDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -80)
     RLSuite.utils:SetupDropdown(self.rarityDropdown, {
         { text = "All", value = "all" },
         { text = "Poor", value = 0 },
@@ -215,29 +216,29 @@ function LM:CreateFrame()
 
     self.rollMSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rollMSBtn)
-    self.rollMSBtn:SetSize(80, 24)
-    self.rollMSBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 38)
+    self.rollMSBtn:SetSize(70, 24)
+    self.rollMSBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 10)
     self.rollMSBtn:SetText("Roll MS")
     self.rollMSBtn:SetScript("OnClick", function() self:StartRoll("MS") end)
 
     self.rollOSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rollOSBtn)
-    self.rollOSBtn:SetSize(80, 24)
+    self.rollOSBtn:SetSize(70, 24)
     self.rollOSBtn:SetPoint("LEFT", self.rollMSBtn, "RIGHT", 6, 0)
     self.rollOSBtn:SetText("Roll OS")
     self.rollOSBtn:SetScript("OnClick", function() self:StartRoll("OS") end)
 
     self.rollOtherBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rollOtherBtn)
-    self.rollOtherBtn:SetSize(80, 24)
+    self.rollOtherBtn:SetSize(70, 24)
     self.rollOtherBtn:SetPoint("LEFT", self.rollOSBtn, "RIGHT", 6, 0)
     self.rollOtherBtn:SetText("Roll FFA")
     self.rollOtherBtn:SetScript("OnClick", function() self:StartRoll("FFA") end)
 
     self.rerollBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rerollBtn)
-    self.rerollBtn:SetSize(80, 24)
-    self.rerollBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 10)
+    self.rerollBtn:SetSize(70, 24)
+    self.rerollBtn:SetPoint("LEFT", self.rollOtherBtn, "RIGHT", 6, 0)
     self.rerollBtn:SetText("Reroll")
     self.rerollBtn:Disable()
     self.rerollBtn:SetScript("OnClick", function() self:DoReroll() end)
@@ -248,7 +249,7 @@ function LM:CreateFrame()
     RLSuite.utils:SkinButton(self.announceMSBtn)
     self.announceMSBtn:SetSize(124, 24)
     self.announceMSBtn:SetPoint("LEFT", self.rerollBtn, "RIGHT", 6, 0)
-    self.announceMSBtn:SetText("Announce Changes")
+    self.announceMSBtn:SetText("Announce MSCh")
     self.announceMSBtn:SetScript("OnClick", function()
         RLSuite.msManager:GenerateMessage()
     end)

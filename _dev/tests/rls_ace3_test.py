@@ -3882,19 +3882,25 @@ local selP = lm.selBox._points[1] or {}
 local preP = lm.preMsgText._points[1] or {}
 LM_LAYOUT_117 = {
     checksBelow = (il[5] ~= nil and ic[5] ~= nil and ic[5] < il[5]),
-    rerollBelow = (ms[5] ~= nil and rr[5] ~= nil and rr[5] < ms[5]),
-    announceBelow = (lm.announceMSBtn._points[1][2] == lm.rerollBtn),
+    oneButtonRow = (rr[2] == lm.rollOtherBtn and lm.announceMSBtn._points[1][2] == lm.rerollBtn),
+    buttonSpan = (lm.rollMSBtn:GetWidth() + lm.rollOSBtn:GetWidth() + lm.rollOtherBtn:GetWidth()
+        + lm.rerollBtn:GetWidth() + lm.announceMSBtn:GetWidth() + 24),
+    announceText = lm.announceMSBtn:GetText(),
+    rarityWithHistory = math.abs((lm.filterFS._points[1][5] or 0) - (histLabelP[5] or 0)) <= 2,
     timer = lm:TradeRemaining({ time = time() - 3661 }),
     topOrder = (titleP[5] > il[5] and il[5] > histLabelP[5] and histLabelP[5] > histHeaderP[5]),
-    bottomOrder = (selP[5] > preP[5] and preP[5] > ms[5] and ms[5] > rr[5]),
+    bottomOrder = (selP[5] > preP[5] and preP[5] > ms[5]),
 }
 """)
 check(bool(rt.eval("RLSuite.lootManager.frame._scripts['OnDragStart'] == nil")), "loot window is NOT draggable anymore (behaves like the native equip panel)")
 check(bool(rt.eval("LM_LAYOUT_117.checksBelow")), "v1.11.117: ignore category checkboxes are below the 'ignore loots' label")
-check(bool(rt.eval("LM_LAYOUT_117.rerollBelow and LM_LAYOUT_117.announceBelow")), "v1.11.117: Reroll and Announce Changes are below Roll MS/OS/FFA")
+check(bool(rt.eval("LM_LAYOUT_117.oneButtonRow")), "v1.11.119: all five Loot Manager buttons are on one row")
+check(bool(rt.eval("LM_LAYOUT_117.buttonSpan == LM_MINW - 32")), "v1.11.119: button row exactly fills the minimum inner width")
+check(bool(rt.eval("LM_LAYOUT_117.announceText == 'Announce MSCh'")), "v1.11.119: announce button uses the shortened label")
+check(bool(rt.eval("LM_LAYOUT_117.rarityWithHistory")), "v1.11.119: Rarity threshold shares the Loot History row")
 check(bool(rt.eval("LM_LAYOUT_117.timer == '1h 1m'")), "v1.11.117: trade timer uses Xh Ym with no seconds")
-check(bool(rt.eval("LM_LAYOUT_117.topOrder")), "v1.11.118: top order is title, ignore/rarity, Loot History, table")
-check(bool(rt.eval("LM_LAYOUT_117.bottomOrder")), "v1.11.118: bottom order is selected item, MS changes text, roll row, reroll/announce row")
+check(bool(rt.eval("LM_LAYOUT_117.topOrder")), "v1.11.119: top order is title, ignore controls, Loot History/rarity, table")
+check(bool(rt.eval("LM_LAYOUT_117.bottomOrder")), "v1.11.119: bottom order is selected item, MS changes text, single button row")
 check(bool(rt.eval("""(function() local p = RLSuite.lootManager.frame._points[1] return p ~= nil and p[1] == 'TOPLEFT' and p[2] == UIParent and p[4] == 420 and p[5] == -116 end)()""")), "v1.11.116: loot window is permanently parked right of the TradeFrame area (TOPLEFT 420,-116)")
 check(bool(rt.eval("RLSuite.groupmaking.mainFrame._scripts['OnDragStart'] ~= nil")), "other windows keep their draggable behavior (groupmaking untouched)")
 rt.execute("RLSuite.lootManager.frame:Hide(); RLSuite.mainWindow.currentTab = nil")

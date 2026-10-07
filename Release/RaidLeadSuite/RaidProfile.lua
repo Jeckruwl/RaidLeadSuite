@@ -672,11 +672,10 @@ function MW:RegisterAllWindows()
         return 350, 280
     end
     RLSuite.windowMins.loot = function()
-        -- Due righe di comandi: la più larga è Roll MS/OS/FFA (284px con
-        -- margini). Il vero minimo viene ora dalle colonne dello storico:
-        -- 452px netti; 460 lascia un piccolo margine di sicurezza.
-        -- Altezza aumentata per la seconda riga comandi e la riga checkbox.
-        return 460, 390
+        -- A 460px, la larghezza interna fra i margini da 16px è 428px:
+        -- esattamente la fila completa (4x70 + 124 + 4 spazi da 6).
+        -- Le colonne dello storico richiedono almeno 452px complessivi.
+        return 460, 350
     end
 
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
