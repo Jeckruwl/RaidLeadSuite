@@ -317,13 +317,21 @@ end
 
 function LM:HistMetrics(w)
     w = tonumber(w) or 420
-    local timeW, assignedW, typeW, gap, padR = 64, 72, 48, 6, 8
+    local timeW, gap, padR = 64, 6, 8
+    -- Type e Assigned occupano solo la larghezza reale dell'intestazione
+    -- (+2px di sicurezza). I fallback valgono prima della creazione header.
+    local typeW = math.max(28, tonumber(self.histTypeW) or 28)
+    local assignedW = math.max(50, tonumber(self.histAssignedW) or 50)
     local itemX = 30
     local assignedX = w - padR - timeW - gap - assignedW
     local typeX = assignedX - gap - typeW
     local inner = typeX - itemX - gap
     if inner < 120 then inner = 120 end
-    local itemW = math.floor(inner * 0.58)
+    -- Item conserva la larghezza del layout precedente (Type=48,
+    -- Assigned=72): tutto lo spazio recuperato va esclusivamente a Boss.
+    local reclaimed = (48 - typeW) + (72 - assignedW)
+    local legacyInner = math.max(120, inner - reclaimed)
+    local itemW = math.floor(legacyInner * 0.58)
     local bossW = inner - itemW
     local bossX = itemX + itemW + gap
     return {
@@ -346,8 +354,12 @@ function LM:PaintHeader(header)
     end
     add("item", "Item")
     add("boss", "Boss")
-    add("type", "Type")
-    add("assigned", "Assigned")
+    local typeFS = add("type", "Type")
+    local assignedFS = add("assigned", "Assigned")
+    -- Misura il font effettivo: niente valori larghi arbitrari e nessun
+    -- clipping dell'intestazione con scale/font differenti.
+    self.histTypeW = math.ceil(typeFS:GetStringWidth() or 0) + 2
+    self.histAssignedW = math.ceil(assignedFS:GetStringWidth() or 0) + 2
     local tfs = add("time", "Time left")
     tfs:SetJustifyH("RIGHT")
     self:LayoutHeader()

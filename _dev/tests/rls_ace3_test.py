@@ -3881,9 +3881,16 @@ local histHeaderP = lm.histHeader._points[1] or {}
 local selP = lm.selBox._points[1] or {}
 local histBottomP = lm.histBox._points[2] or {}
 local preP = lm.preMsgText._points[1] or {}
+local histM = lm:HistMetrics(420)
+local reclaimedW = (48 - histM.typeW) + (72 - histM.assignedW)
+local legacyInnerW = (histM.itemW + histM.bossW) - reclaimedW
 LM_LAYOUT_117 = {
     checksWithLabel = (ic[1] == 'LEFT' and ic[2] == lm.ignoreLabel and ic[3] == 'RIGHT' and ic[4] == 10),
-    noNumberColumn = (lm.histHeads.num == nil and lm:HistMetrics(420).itemX == 30),
+    noNumberColumn = (lm.histHeads.num == nil and histM.itemX == 30),
+    tightColumns = (histM.typeW == math.max(28, math.ceil(lm.histHeads.type:GetStringWidth()) + 2)
+        and histM.assignedW == math.max(50, math.ceil(lm.histHeads.assigned:GetStringWidth()) + 2)),
+    bossGetsReclaimed = (histM.itemW == math.floor(math.max(120, legacyInnerW) * 0.58)
+        and reclaimedW > 0 and histM.bossW > histM.itemW * 0.5),
     compactTop = (histLabelP[5] == -64 and histHeaderP[5] == -86),
     compactBottom = (lm.histBox:GetHeight() == 220 and selP[2] == lm.histBox
         and preP[2] == lm.selBox and preP[5] == -8 and ms[2] == lm.frame and ms[4] == 8),
@@ -3903,6 +3910,7 @@ LM_LAYOUT_117 = {
 check(bool(rt.eval("RLSuite.lootManager.frame._scripts['OnDragStart'] == nil")), "loot window is NOT draggable anymore (behaves like the native equip panel)")
 check(bool(rt.eval("LM_LAYOUT_117.checksWithLabel")), "v1.11.120: ignore category checkboxes share the 'ignore loots' row")
 check(bool(rt.eval("LM_LAYOUT_117.noNumberColumn")), "v1.11.121: Loot History has no # column and Item reclaims its space")
+check(bool(rt.eval("LM_LAYOUT_117.tightColumns and LM_LAYOUT_117.bossGetsReclaimed")), "v1.11.133: Type/Assigned fit their headers and all reclaimed width goes to Boss")
 check(bool(rt.eval("LM_LAYOUT_117.compactTop and LM_LAYOUT_117.compactBottom")), "v1.11.122: no stale vertical gaps remain after checkbox/button reflow")
 check(bool(rt.eval("LM_LAYOUT_117.oneButtonRow")), "v1.11.119: all five Loot Manager buttons are on one row")
 check(bool(rt.eval("LM_LAYOUT_117.buttonSpan == LM_MINW - 16")), "v1.11.129: button row fills the reduced 8px side insets")

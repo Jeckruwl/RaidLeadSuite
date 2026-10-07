@@ -14,7 +14,15 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.132**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.133**.
+
+## 1.11.133 — Colonne Type/Assigned minime, spazio a Boss
+
+Le larghezze Type e Assigned sono ora misurate dalle rispettive intestazioni
+con 2px di sicurezza (fallback 28/50px), evitando sia spreco sia clipping.
+Item conserva esattamente la larghezza precedente: tutto lo spazio recuperato
+da Type e Assigned viene assegnato esclusivamente alla colonna Boss. Larghezza
+della tabella e della finestra invariate.
 
 ## 1.11.132 — MS Changes su OnShow e pulsanti realmente a filo
 
