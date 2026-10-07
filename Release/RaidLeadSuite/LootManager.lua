@@ -1073,9 +1073,9 @@ function LM:RollLabel(reroll)
 end
 
 function LM:RollCountdownWarning(_, seconds)
-    -- I richiami intermedi devono restare essenziali: niente tipo roll,
-    -- niente item link, solo i secondi rimanenti.
-    RLSuite.utils:SendChat("rolling ends in " .. tostring(seconds) .. "s", "RAID_WARNING")
+    -- A 7s una sola frase esplicativa; poi countdown numerico puro.
+    local msg = seconds == 7 and "rolling ends in 7s" or tostring(seconds)
+    RLSuite.utils:SendChat(msg, "RAID_WARNING")
 end
 
 function LM:StartRoll(rollType)
@@ -1154,8 +1154,8 @@ function LM:RollTick()
         return
     end
     if self.rollRemaining == 7 or self.rollRemaining == 5
-        or self.rollRemaining == 3 or self.rollRemaining == 2
-        or self.rollRemaining == 1 then
+        or self.rollRemaining == 4 or self.rollRemaining == 3
+        or self.rollRemaining == 2 or self.rollRemaining == 1 then
         self:RollCountdownWarning(false, self.rollRemaining)
     end
 end
@@ -1303,8 +1303,8 @@ function LM:RerollTick()
         return
     end
     if self.rerollRemaining == 7 or self.rerollRemaining == 5
-        or self.rerollRemaining == 3 or self.rerollRemaining == 2
-        or self.rerollRemaining == 1 then
+        or self.rerollRemaining == 4 or self.rerollRemaining == 3
+        or self.rerollRemaining == 2 or self.rerollRemaining == 1 then
         self:RollCountdownWarning(true, self.rerollRemaining)
     end
 end

@@ -3318,7 +3318,7 @@ for _, e in ipairs(CHAT_LOG or {}) do
 end
 ROLL_TIMER_15 = (lm.currentRoll.timer == 15 and lm.rollRemaining == 15)
 CHAT_LOG = {}
-for _, before in ipairs({8, 6, 4, 3, 2}) do
+for _, before in ipairs({8, 6, 5, 4, 3, 2}) do
     lm.rollRemaining = before
     lm:RollTick()
 end
@@ -3326,14 +3326,15 @@ ROLL_WARNINGS = table.concat(CHAT_LOG, '\n')
 """)
 check(bool(rt.eval("FOUND_RW and ROLL_START_CLEAN and ROLL_TIMER_15")), "v1.11.134: roll starts in RW with item link/15s and never prepends MS changes")
 check(bool(rt.eval("""(function()
-    local s = ROLL_WARNINGS or ''
-    for _, n in ipairs({7, 5, 3, 2, 1}) do
-        if not string.find(s, 'RAID_WARNING', 1, true)
-            or not string.find(s, 'rolling ends in ' .. tostring(n) .. 's', 1, true) then return false end
+    local s = (ROLL_WARNINGS or '') .. '\n'
+    if not string.find(s, '[RAID_WARNING] rolling ends in 7s\n', 1, true) then return false end
+    for _, n in ipairs({5, 4, 3, 2, 1}) do
+        if not string.find(s, '[RAID_WARNING] ' .. tostring(n) .. '\n', 1, true) then return false end
     end
     return not string.find(s, '[Rolled Item]', 1, true)
         and not string.find(s, 'ROLL MS', 1, true)
-end)()""")), "v1.11.137: roll countdown RW contains only 'rolling ends in Xs' at 7/5/3/2/1")
+        and not string.find(s, 'rolling ends in 5s', 1, true)
+end)()""")), "v1.11.138: roll countdown is 'rolling ends in 7s', then bare 5/4/3/2/1")
 rt.execute("""
 local lm = RLSuite.lootManager
 lm.currentRoll.rolls = { {name = 'Winnerbot', roll = 99} }  -- deterministic winner (no ties)
@@ -4028,11 +4029,13 @@ check(bool(rt.eval("""(function()
         and not string.find(s, 'Only:', 1, true)
 end)()""")), "v1.11.136: reroll message is names, REROLL, linked item, You have 15s")
 check(bool(rt.eval("""(function()
-    for _, n in ipairs({7, 5, 3, 2, 1}) do
-        if not string.find(RR_MESSAGES or '', 'rolling ends in ' .. tostring(n) .. 's', 1, true) then return false end
+    local s = (RR_MESSAGES or '') .. '\n'
+    if not string.find(s, '[RAID_WARNING] rolling ends in 7s\n', 1, true) then return false end
+    for _, n in ipairs({5, 4, 3, 2, 1}) do
+        if not string.find(s, '[RAID_WARNING] ' .. tostring(n) .. '\n', 1, true) then return false end
     end
     return true
-end)()""")), "v1.11.137: reroll countdown uses 'rolling ends in Xs' at 7/5/3/2/1")
+end)()""")), "v1.11.138: reroll countdown is 'rolling ends in 7s', then bare 5/4/3/2/1")
 check(bool(rt.eval("RR_DONE_ITEM")), "debug reroll resolves the tie and assigns the item to one of the tied fakes")
 # --- Debug panel: Clear loot ---
 rt.execute("""

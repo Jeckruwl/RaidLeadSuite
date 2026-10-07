@@ -14,7 +14,13 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.137**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.138**.
+
+## 1.11.138 — Countdown: frase a 7, poi numeri puri
+
+A 7 secondi il RAID_WARNING è `rolling ends in 7s`. I warning successivi sono
+esclusivamente `5`, `4`, `3`, `2`, `1`, senza suffisso `s`. Applicato sia al
+roll sia al reroll.
 
 ## 1.11.137 — Countdown roll essenziale
 
