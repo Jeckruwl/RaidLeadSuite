@@ -181,6 +181,17 @@ function MW:CreateFrame()
     tb:EnableMouse(true)
     tb:Hide()
     self.titleBar = tb
+
+    -- HARD SAFETY GUARD: Se per qualunque motivo esterno o chiamata di layout
+    -- qualcuno chiama :Show() sulla barretta mentre il Raid Frame NON è visibile,
+    -- intercettiamo OnShow e la richiudiamo all'istante.
+    tb:SetScript("OnShow", function(this)
+        local rf = RLSuite.raidFrame
+        local rfShown = rf and rf.frame and rf.frame:IsShown()
+        if not rfShown then
+            this:Hide()
+        end
+    end)
     -- SOLO skin: la barretta NON si trascina piu' (niente drag, niente
     -- posizione salvata). La barra e' ANCORATA al bordo alto dello schermo e
     -- la sua posizione la calcola ApplyLayout: un drag la farebbe solo
@@ -567,7 +578,9 @@ function MW:ApplyLayout()
         self.phaseText:SetPoint("LEFT", self.phaseBtn, "RIGHT", PHASE_GAP, 0)
         -- Il nome della fase ha un posto RISERVATO nel calcolo della
         -- larghezza (phaseNameW): qui si mostra sempre se la titleBar e' mostrata.
-        if self.titleBar and self.titleBar:IsShown() then
+        local rf = RLSuite.raidFrame
+        local rfShown = rf and rf.frame and rf.frame:IsShown()
+        if self.titleBar and self.titleBar:IsShown() and rfShown then
             self.phaseText:Show()
         else
             self.phaseText:Hide()
