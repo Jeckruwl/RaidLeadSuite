@@ -13,6 +13,7 @@ local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end 
 local LM_ROW_TOP = 6      -- spazio sopra/sotto il testo dentro la riga
 local LM_ROW_GAP = 2      -- spazio tra una riga e l'altra
 local LM_ROW_MIN_H = 26   -- altezza minima (una sola riga di testo)
+local LM_ROLL_DURATION = 15
 local LM_FIXED_WIDTH = 460
 local LM_TABLE_HEIGHT = 220 -- viewport esatto: cinque righe da max due linee
 local LM_BASE_HEIGHT = 428  -- elementi fissi + tabella + una riga MS Changes
@@ -1059,6 +1060,24 @@ function LM:RefreshHistoryHighlight()
     end
 end
 
+function LM:RollItemText(item)
+    if not item then return "Unknown" end
+    return item.itemLink or item.itemName or "Unknown"
+end
+
+function LM:RollLabel(reroll)
+    if reroll then return "REROLL" end
+    local rollType = self.currentRoll and self.currentRoll.type or "MS"
+    if rollType == "FFA" or rollType == "OTHER" then return "ROLL FFA" end
+    return "ROLL " .. tostring(rollType or "MS")
+end
+
+function LM:RollCountdownWarning(reroll, seconds)
+    local item = self.currentRoll and self.currentRoll.item
+    RLSuite.utils:SendChat(self:RollLabel(reroll) .. " " .. self:RollItemText(item)
+        .. " " .. tostring(seconds) .. "s remaining", "RAID_WARNING")
+end
+
 function LM:StartRoll(rollType)
     if not self.selectedItem then
         RLSuite.utils:Print(L["Select an item from the history first!"])
@@ -1072,20 +1091,17 @@ function LM:StartRoll(rollType)
         -- seen[NomeGiocatore] = primo roll: chi rolla due volte viene ignorato
         -- (vale SOLO il primo roll, come chiesto dal raid leader).
         seen = {},
-        timer = self.db.rollDuration or 10,
+        timer = LM_ROLL_DURATION,
         active = true,
     }
 
-    local typeNames = { MS = "MS", OS = "OS", FFA = "Free For All", OTHER = "Free For All" }
-    local msg = "Roll " .. (typeNames[rollType] or rollType or "MS") .. " for " .. (self.selectedItem.itemName or "Unknown")
-    if self.preMessage and self.preMessage ~= "" then
-        msg = self.preMessage .. " " .. msg
-    end
-    -- I messaggi dei tasti di roll vanno in RAID WARNING
-    -- (Utils:SendChat torna a RAID se non leader/assistant).
+    -- MS Changes resta un'informazione separata nel pannello e viene
+    -- annunciata SOLO dal suo pulsante: i tasti Roll non la premettono più.
+    local msg = self:RollLabel(false) .. " " .. self:RollItemText(self.selectedItem)
+        .. " You have " .. LM_ROLL_DURATION .. "s"
     RLSuite.utils:SendChat(msg, "RAID_WARNING")
-    -- barra-timer in DBM/BigWigs se installati (durata del roll)
-    RLSuite.utils:StartDbmTimer(self.db.rollDuration or 10, "Roll " .. (self.selectedItem.itemName or "Unknown"),
+    -- barra-timer in DBM/BigWigs se installati (durata fissa del roll)
+    RLSuite.utils:StartDbmTimer(LM_ROLL_DURATION, self:RollLabel(false) .. " " .. self:RollItemText(self.selectedItem),
         self.selectedItem.itemTexture)
 
     if RLSuite.DebugMode and RLSuite:DebugMode() then
@@ -1137,8 +1153,10 @@ function LM:RollTick()
         self:AnnounceWinner()
         return
     end
-    if self.rollRemaining <= 3 then
-        RLSuite.utils:SendChat("Roll ending in " .. self.rollRemaining .. "...", "RAID")
+    if self.rollRemaining == 7 or self.rollRemaining == 5
+        or self.rollRemaining == 3 or self.rollRemaining == 2
+        or self.rollRemaining == 1 then
+        self:RollCountdownWarning(false, self.rollRemaining)
     end
 end
 
@@ -1194,7 +1212,7 @@ function LM:AnnounceWinner()
     self.currentRoll.active = false
 
     if #self.currentRoll.rolls == 0 then
-        RLSuite.utils:SendChat("No rolls received for " .. (self.currentRoll.item.itemName or "Unknown"), "RAID")
+        RLSuite.utils:SendChat("No rolls received for " .. self:RollItemText(self.currentRoll.item), "RAID_WARNING")
         self:ResetButtons()
         self:UnregisterEvent("CHAT_MSG_SYSTEM")
         return
@@ -1217,9 +1235,11 @@ function LM:AnnounceWinner()
         if self.rerollBtn then self.rerollBtn:Enable() end
         local names = {}
         for _, w in ipairs(winners) do table.insert(names, w.name or "?") end
-        RLSuite.utils:SendChat("Tie! Reroll between: " .. table.concat(names, ", "), "RAID")
+        RLSuite.utils:SendChat("Tie for " .. self:RollItemText(self.currentRoll.item)
+            .. "! Reroll between: " .. table.concat(names, ", "), "RAID_WARNING")
     else
-        RLSuite.utils:SendChat((winner.name or "?") .. " wins " .. (self.currentRoll.item.itemName or "Unknown") .. " with " .. (winner.roll or 0) .. "! Please trade.", "RAID")
+        RLSuite.utils:SendChat((winner.name or "?") .. " wins " .. self:RollItemText(self.currentRoll.item)
+            .. " with " .. (winner.roll or 0) .. "! Please trade.", "RAID_WARNING")
         self.currentRoll.item.assignedTo = winner.name
         self:ShowTradeWindow(self.currentRoll.item)
         -- La riga "selected item" torna vuota: con la finestra pickup aperta
@@ -1236,12 +1256,11 @@ function LM:DoReroll()
     if not self.currentRoll or not self.currentRoll.rerollWinners then return end
 
     local winners = self.currentRoll.rerollWinners
-    local names = {}
-    for _, w in ipairs(winners) do table.insert(names, w.name or "?") end
 
-    RLSuite.utils:SendChat("Reroll! Only " .. table.concat(names, ", ") .. " can roll for " .. (self.currentRoll.item.itemName or "Unknown"), "RAID_WARNING")
-    -- barra-timer in DBM/BigWigs se installati (durata del reroll)
-    RLSuite.utils:StartDbmTimer(self.db.rerollDuration or 5, "Reroll " .. (self.currentRoll.item.itemName or "Unknown"),
+    RLSuite.utils:SendChat("REROLL " .. self:RollItemText(self.currentRoll.item)
+        .. " You have " .. LM_ROLL_DURATION .. "s", "RAID_WARNING")
+    -- barra-timer in DBM/BigWigs: stessa durata fissa del roll iniziale.
+    RLSuite.utils:StartDbmTimer(LM_ROLL_DURATION, "REROLL " .. self:RollItemText(self.currentRoll.item),
         self.currentRoll.item.itemTexture)
 
     self.currentRoll.rolls = {}
@@ -1264,7 +1283,7 @@ function LM:DoReroll()
 
     -- Non-overlapping: cancel any previous reroll/roll countdown.
     self:CancelRollTimers()
-    self.rerollRemaining = self.db.rerollDuration or 5
+    self.rerollRemaining = LM_ROLL_DURATION
     self.rerollTimer = self:ScheduleRepeatingTimer("RerollTick", 1)
 end
 
@@ -1276,6 +1295,12 @@ function LM:RerollTick()
             self.rerollTimer = nil
         end
         self:ProcessReroll()
+        return
+    end
+    if self.rerollRemaining == 7 or self.rerollRemaining == 5
+        or self.rerollRemaining == 3 or self.rerollRemaining == 2
+        or self.rerollRemaining == 1 then
+        self:RollCountdownWarning(true, self.rerollRemaining)
     end
 end
 
@@ -1294,13 +1319,15 @@ function LM:ProcessReroll()
     end
 
     if #validRolls == 0 then
-        RLSuite.utils:SendChat("No valid rerolls!", "RAID")
+        RLSuite.utils:SendChat("No valid rerolls for " .. self:RollItemText(self.currentRoll.item) .. "!", "RAID_WARNING")
         return
     end
 
     table.sort(validRolls, function(a, b) return a.roll > b.roll end)
     local winner = validRolls[1]
-    RLSuite.utils:SendChat((winner.name or "?") .. " wins the reroll for " .. (self.currentRoll.item.itemName or "Unknown") .. " with " .. (winner.roll or 0) .. "! Please trade.", "RAID")
+    RLSuite.utils:SendChat((winner.name or "?") .. " wins the reroll for "
+        .. self:RollItemText(self.currentRoll.item) .. " with " .. (winner.roll or 0)
+        .. "! Please trade.", "RAID_WARNING")
     self.currentRoll.item.assignedTo = winner.name
     self:ShowTradeWindow(self.currentRoll.item)
     self:ClearSelection()

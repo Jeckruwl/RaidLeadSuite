@@ -3308,11 +3308,32 @@ lm:StartRoll('MS')
 """)
 rt.execute("""
 FOUND_RW = false
+ROLL_START_CLEAN = false
 for _, e in ipairs(CHAT_LOG or {}) do
-    if string.find(e, '%[RAID_WARNING%]') and string.find(e, 'Roll MS for Rolled Item') then FOUND_RW = true end
+    if string.find(e, '%[RAID_WARNING%]') and string.find(e, 'ROLL MS', 1, true)
+        and string.find(e, '[Rolled Item]', 1, true) and string.find(e, 'You have 15s', 1, true) then
+        FOUND_RW = true
+        ROLL_START_CLEAN = not string.find(e, 'MS CHANGES:', 1, true)
+    end
 end
+ROLL_TIMER_15 = (lm.currentRoll.timer == 15 and lm.rollRemaining == 15)
+CHAT_LOG = {}
+for _, before in ipairs({8, 6, 4, 3, 2}) do
+    lm.rollRemaining = before
+    lm:RollTick()
+end
+ROLL_WARNINGS = table.concat(CHAT_LOG, '\n')
 """)
-check(bool(rt.eval("FOUND_RW")), "clicking a roll key sends the announce as RAID WARNING (debug echo: [RAID_WARNING])")
+check(bool(rt.eval("FOUND_RW and ROLL_START_CLEAN and ROLL_TIMER_15")), "v1.11.134: roll starts in RW with item link/15s and never prepends MS changes")
+check(bool(rt.eval("""(function()
+    local s = ROLL_WARNINGS or ''
+    for _, n in ipairs({7, 5, 3, 2, 1}) do
+        if not string.find(s, 'RAID_WARNING', 1, true)
+            or not string.find(s, tostring(n) .. 's remaining', 1, true)
+            or not string.find(s, '[Rolled Item]', 1, true) then return false end
+    end
+    return true
+end)()""")), "v1.11.134: roll countdown warns in RW with item link at 7/5/3/2/1")
 rt.execute("""
 local lm = RLSuite.lootManager
 lm.currentRoll.rolls = { {name = 'Winnerbot', roll = 99} }  -- deterministic winner (no ties)
@@ -3984,9 +4005,12 @@ lm.currentRoll.rolls[2] = {name="Healbot", roll=42}
 lm.currentRoll.rolls[3] = {name="Dpsbot", roll=7}
 for tick = 1, 30 do if lm.rollTimer then lm:RollTick() end end
 RR_ENABLED = lm.rerollBtn:IsEnabled()
+CHAT_LOG = {}
 lm:DoReroll()
+RR_TIMER15 = (lm.rerollRemaining == 15)
 RR_ROLLS = #lm.currentRoll.rolls
 for tick = 1, 30 do if lm.rerollTimer then lm:RerollTick() end end
+RR_MESSAGES = table.concat(CHAT_LOG, '\n')
 RR_DONE_ITEM = (lm.history[#lm.history].assignedTo == "Tankbot" or lm.history[#lm.history].assignedTo == "Healbot")
 lm:ClearHistory()
 RLSuite.lootManager.frame:Hide()
@@ -3994,6 +4018,13 @@ RLSuite.mainWindow.currentTab = nil
 RLSuite.db.profile.debug = false
 """)
 check(bool(rt.eval("RR_ENABLED == true")), "a TIE keeps the Reroll button enabled (was disabled by the trailing ResetButtons)")
+check(bool(rt.eval("RR_TIMER15 and string.find(RR_MESSAGES, 'REROLL', 1, true) and string.find(RR_MESSAGES, 'You have 15s', 1, true)")), "v1.11.134: reroll starts at 15s in RW with linked item")
+check(bool(rt.eval("""(function()
+    for _, n in ipairs({7, 5, 3, 2, 1}) do
+        if not string.find(RR_MESSAGES or '', tostring(n) .. 's remaining', 1, true) then return false end
+    end
+    return true
+end)()""")), "v1.11.134: reroll countdown warns at 7/5/3/2/1")
 check(bool(rt.eval("RR_DONE_ITEM")), "debug reroll resolves the tie and assigns the item to one of the tied fakes")
 # --- Debug panel: Clear loot ---
 rt.execute("""

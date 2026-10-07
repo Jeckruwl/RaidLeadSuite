@@ -14,7 +14,16 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.133**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.134**.
+
+## 1.11.134 — Roll separati da MS Changes, 15s e warning completi
+
+Rimosso il prepend di `preMessage` da StartRoll: era la causa per cui ogni tasto
+Roll ripeteva le MS Changes. Ora solo Announce MSCh le invia. Roll MS/OS/FFA e
+Reroll durano sempre 15s, partono in RAID_WARNING con label, itemLink e
+`You have 15s`, quindi avvisano in RAID_WARNING a 7/5/3/2/1 secondi includendo
+sempre il link. Anche esiti, pareggi e assenza roll/reroll sono RAID_WARNING e
+usano il link item. Announce MSCh passa anch'esso in RAID_WARNING.
 
 ## 1.11.133 — Colonne Type/Assigned minime, spazio a Boss
 

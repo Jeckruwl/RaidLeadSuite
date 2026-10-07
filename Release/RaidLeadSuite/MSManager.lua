@@ -284,6 +284,6 @@ function MSM:GenerateMessage()
         return
     end
     self:RefreshLootPreMessage()
-    RLSuite.utils:SendChat(msg, "RAID")
+    RLSuite.utils:SendChat(msg, "RAID_WARNING")
     RLSuite.utils:Print("Announce Changes: " .. msg)
 end

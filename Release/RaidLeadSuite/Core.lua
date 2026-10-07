@@ -83,7 +83,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.133"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.134"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -197,8 +197,8 @@ local defaults = {
         mschanges = {},
         loot = {
             history = {},
-            rollDuration = 10,
-            rerollDuration = 5,
+            rollDuration = 15,
+            rerollDuration = 15,
             rarityFilter = "all",
             tradeWindow = 7200,
             filters = { recipes = false, boe = false, gems = false, shards = false,
