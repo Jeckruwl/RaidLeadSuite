@@ -14,7 +14,14 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.122**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.123**.
+
+## 1.11.123 — Loot Manager: MS changes aggiornate all'apertura
+
+Ogni apertura del Loot Manager costruisce automaticamente il testo MS CHANGES
+dai dati correnti, senza inviare messaggi in raid. Il pulsante Announce MSCh
+continua invece ad aggiornare il testo e ad annunciarlo. Se non esistono changes,
+il testo precedente viene pulito.
 
 ## 1.11.122 — Loot Manager: eliminati gli spazi verticali residui
 

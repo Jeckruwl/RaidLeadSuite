@@ -262,19 +262,28 @@ function MSM:OnListenExpire()
     self:StopListening(true)
 end
 
-function MSM:GenerateMessage()
-    if #self.db == 0 then
-        RLSuite.utils:Print(L["No MS changes recorded."])
-        return
-    end
+function MSM:GetChangesMessage()
+    if not self.db or #self.db == 0 then return "" end
     local parts = {}
     for _, entry in ipairs(self.db) do
         table.insert(parts, (entry.name or "?") .. ": " .. (entry.spec or "?"))
     end
-    local msg = "MS CHANGES: " .. table.concat(parts, " | ")
+    return "MS CHANGES: " .. table.concat(parts, " | ")
+end
+
+function MSM:RefreshLootPreMessage()
     if RLSuite.lootManager and RLSuite.lootManager.SetPreMessage then
-        RLSuite.lootManager:SetPreMessage(msg)
+        RLSuite.lootManager:SetPreMessage(self:GetChangesMessage())
     end
+end
+
+function MSM:GenerateMessage()
+    local msg = self:GetChangesMessage()
+    if msg == "" then
+        RLSuite.utils:Print(L["No MS changes recorded."])
+        return
+    end
+    self:RefreshLootPreMessage()
     RLSuite.utils:SendChat(msg, "RAID")
     RLSuite.utils:Print("Announce Changes: " .. msg)
 end

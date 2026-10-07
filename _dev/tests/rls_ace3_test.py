@@ -3906,6 +3906,17 @@ check(bool(rt.eval("LM_LAYOUT_117.rarityWithHistory")), "v1.11.119: Rarity thres
 check(bool(rt.eval("LM_LAYOUT_117.timer == '1h 1m'")), "v1.11.117: trade timer uses Xh Ym with no seconds")
 check(bool(rt.eval("LM_LAYOUT_117.topOrder")), "v1.11.119: top order is title, ignore controls, Loot History/rarity, table")
 check(bool(rt.eval("LM_LAYOUT_117.bottomOrder")), "v1.11.119: bottom order is selected item, MS changes text, single button row")
+rt.execute("""
+local oldDb = RLSuite.msManager.db
+RLSuite.msManager.db = { { name = 'AutoMS', spec = 'Frost' } }
+RLSuite.lootManager:SetPreMessage('')
+local chatN = #CHAT_LOG
+RLSuite.mainWindow:ShowTab('loot')
+LM_OPEN_REFRESH = (RLSuite.lootManager.preMessage == 'MS CHANGES: AutoMS: Frost')
+LM_OPEN_SILENT = (#CHAT_LOG == chatN)
+RLSuite.msManager.db = oldDb
+""")
+check(bool(rt.eval("LM_OPEN_REFRESH and LM_OPEN_SILENT")), "v1.11.123: opening Loot Manager refreshes MS changes without announcing them")
 check(bool(rt.eval("""(function() local p = RLSuite.lootManager.frame._points[1] return p ~= nil and p[1] == 'TOPLEFT' and p[2] == UIParent and p[4] == 420 and p[5] == -116 end)()""")), "v1.11.116: loot window is permanently parked right of the TradeFrame area (TOPLEFT 420,-116)")
 check(bool(rt.eval("RLSuite.groupmaking.mainFrame._scripts['OnDragStart'] ~= nil")), "other windows keep their draggable behavior (groupmaking untouched)")
 rt.execute("RLSuite.lootManager.frame:Hide(); RLSuite.mainWindow.currentTab = nil")

@@ -775,6 +775,11 @@ function MW:SelectTab(key)
         if shn > 0 and ph > shn then ph = shn if L.height and L.height > shn then L.height = shn end end
         pane:SetSize(pw, ph)
         if key == "loot" then
+            -- Ogni apertura rilegge le MS changes correnti senza annunciarle:
+            -- il testo non deve dipendere da un precedente click sul bottone.
+            if RLSuite.msManager and RLSuite.msManager.RefreshLootPreMessage then
+                RLSuite.msManager:RefreshLootPreMessage()
+            end
             -- finestra tipo equip: posizione fissa nativa (in alto a
             -- sinistra; a DESTRA del trade quando e' aperto), decisa da
             -- LM:AnchorDefault; ignora posizioni salvate storiche.
