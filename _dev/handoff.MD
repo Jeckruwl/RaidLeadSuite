@@ -14,9 +14,15 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.104**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.110**.
 
+## 1.11.110 — Gear Check: repair sotto l'80%
 
+La soglia di alert della durability (`RF_DUR_ALERT_PCT`) passa da 20 a **80**.
+Il Gear Check richiede quindi il repair quando la percentuale nota e' inferiore
+all'80%; all'80% esatto lo stato resta OK. La soglia degli alert e' ora coerente
+con i colori gia' usati dalla cella (80-100% verde, 60-79% arancione, sotto 60%
+rosso). Test di confine aggiunti: 79% = `low`/repair, 80% = `ok`.
 
 ## 1.11.109 — Role icons filter, MT/OT tag alignment, Durability real % / OK, Buff Warnings cleanup & TBC consumables
 

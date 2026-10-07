@@ -80,7 +80,7 @@ local RF_CD_FONT = 10
 -- rotto" (GetInventoryItemBroken); la percentuale esatta si legge solo sul
 -- proprio personaggio (GetInventoryItemDurability).
 local RF_DUR_SLOTS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 }
-local RF_DUR_ALERT_PCT = 20      -- sotto questa % conta come "da riparare"
+local RF_DUR_ALERT_PCT = 80      -- sotto questa % conta come "da riparare"
 local RF_DUR_REFRESH = 4         -- ricalcolo ogni N passate da 0,5s (2s)
 local RF_FAR_YARDS = 999         -- oltre le 40 yard UnitInRange non da' numeri
 -- Tolleranza del gesto di trascinamento (px): prendere una barra a 5-6 px di

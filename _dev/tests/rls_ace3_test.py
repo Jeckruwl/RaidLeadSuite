@@ -6583,19 +6583,21 @@ local hbDur = RFM._buffHdrBtns[#cols]
 hbDur._scripts.OnClick(hbDur, "LeftButton")
 V90.dur_warn = CHAT_LOG[#CHAT_LOG]
 
--- --- durability del PROPRIO pg: % letta, sotto soglia = "low" ---
-GetInventoryItemDurability = function(slot) return 12, 100 end
+-- --- durability del PROPRIO pg: repair sotto 80%; 80% esatto resta OK ---
+GetInventoryItemDurability = function(slot) return 79, 100 end
 RFM._durCache = nil
 RFM._durStamp = (RFM._durStamp or 0) + 1
 local meSt = RFM:MemberDurability({ name = "Testplayer", unit = "player" })
 V90.me_state = meSt.state
 V90.me_pct = meSt.pct
 V90.me_ok = RFM:_DurCellOk(meSt)
-GetInventoryItemDurability = function() return 100, 100 end
+GetInventoryItemDurability = function() return 80, 100 end
 RFM._durCache = nil
 RFM._durStamp = (RFM._durStamp or 0) + 1
 local meSt2 = RFM:MemberDurability({ name = "Testplayer", unit = "player" })
 V90.me_state2 = meSt2.state
+V90.me_pct2 = meSt2.pct
+V90.me_ok2 = RFM:_DurCellOk(meSt2)
 GetInventoryItemDurability = nil
 GetInventoryItemBroken = nil
 GetInventoryItemLink = nil
@@ -6792,8 +6794,8 @@ check(bool(rt.eval("V90.dur_satisfied == false and V90.dur_missing ~= ''")), "v1
 check(bool(rt.eval("V90.dur_text:find('Gear to repair', 1, true) ~= nil and V90.dur_text_red")), "v1.11.90: tooltip/stato della durability in rosso con l'elenco di chi deve riparare")
 check(bool(rt.eval("V90.dur_warn:find('RAID_WARNING', 1, true) ~= nil and V90.dur_warn:find('Gear check', 1, true) ~= nil")), "v1.11.90: click sull'icona Durability = raid warning di riparazione")
 check(bool(rt.eval("V90.dur_providers == 0")), "v1.11.90: la durability non ha fornitori (nessuna assegnazione possibile)")
-check(bool(rt.eval("V90.me_state == 'low' and V90.me_pct == 12 and V90.me_ok == false")), "v1.11.90: la durability del PROPRIO pg legge la percentuale (12%% = sotto soglia)")
-check(bool(rt.eval("V90.me_state2 == 'ok'")), "v1.11.90: con il 100%% di durability lo stato torna ok")
+check(bool(rt.eval("V90.me_state == 'low' and V90.me_pct == 79 and V90.me_ok == false")), "v1.11.110: sotto l'80%% il Gear Check richiede il repair (79%% = low)")
+check(bool(rt.eval("V90.me_state2 == 'ok' and V90.me_pct2 == 80 and V90.me_ok2 == true")), "v1.11.110: all'80%% esatto il Gear Check resta OK")
 check(bool(rt.eval("V90.y_near == 12 and V90.y_far == 34 and V90.y_offgrid == 999 and V90.y_player == 0")), "v1.11.90: distanza in yard (UnitInRange): vicino/lontano/fuori portata/proprio pg")
 check(bool(rt.eval("V90.fade_near == 1 and V90.fade_far == 0.35")), "v1.11.90: fade per distanza: entro la soglia barra piena, oltre la soglia trasparente al livello scelto")
 check(bool(rt.eval("V90.fade_off == 1")), "v1.11.90: con il fade spento (soglia 0) la barra torna piena")
