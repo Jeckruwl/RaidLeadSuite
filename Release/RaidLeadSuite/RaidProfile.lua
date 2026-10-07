@@ -148,7 +148,8 @@ function MW:DefaultCascadeOffset(ignoreKey)
 end
 
 function MW:CreateFrame()
-    local f = CreateFrame("Frame", "RLSuiteMainWindow", UIParent)
+    local parentFrame = (RLSuite.raidFrame and RLSuite.raidFrame.frame) or UIParent
+    local f = CreateFrame("Frame", "RLSuiteMainWindow", parentFrame)
     f:SetSize(240, 150)
     f:SetFrameStrata("HIGH")
     -- NIENTE drag: la barra e' ANCORATA (bordo alto dello schermo, a una
@@ -165,11 +166,9 @@ function MW:CreateFrame()
 
     -- === Barretta titolo (26px) SOPRA la main bar =============
     -- Eredita la larghezza della main bar (anchor a tutti e due gli
-    -- angoli). A sinistra: ICONA DI FASE + nome della fase (niente piu'
-    -- il testo "RLS": l'icona di fase dice gia' a che punto sei, e il
-    -- clic la fa avanzare). A destra: arrowup.tga (mostra/nasconde il
-    -- pannello sotto alla barretta) e close.tga (chiude la main bar).
-    local tb = CreateFrame("Frame", "RLSuiteMainTitleBar", UIParent)
+    -- angoli). Figlia di parentFrame (Raid Frame) così se il Raid Frame
+    -- è nascosto, il motore di WoW nasconde automaticamente la barra!
+    local tb = CreateFrame("Frame", "RLSuiteMainTitleBar", parentFrame)
     -- ALTEZZA ALZATA (era 20px): la barretta di Raid Control aveva i tasti
     -- schiacciati sul bordo. Icona di fase e X restano centrate, il tasto
     -- "Raid Control" cresce con lei.
