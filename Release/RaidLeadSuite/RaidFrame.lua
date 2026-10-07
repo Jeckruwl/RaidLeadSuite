@@ -245,6 +245,9 @@ function RF:RegisterEvents()
     self:RegisterEvent("UNIT_AURA", "OnUnitEvent")
     self:RegisterEvent("UNIT_TARGET", function() RF:UpdateTankTargets() end)
     self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", "OnCombatLog")
+    self:RegisterEvent("READY_CHECK", "OnReadyCheckStarted")
+    self:RegisterEvent("READY_CHECK_CONFIRM", "OnReadyCheckConfirm")
+    self:RegisterEvent("READY_CHECK_FINISHED", "OnReadyCheckFinished")
     -- refresh periodico (prima un frame OnUpdate con accumulo a 0.5s)
     self:ScheduleRepeatingTimer("UpdateAll", 0.5)
 end
@@ -611,6 +614,25 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
     roleIcon:Hide()
     row.roleIcon = roleIcon
 
+    -- Stato OFFLINE sopra la barra HP: il fondo rosso resta volutamente
+    -- leggibile mentre la barra sottostante subisce il normale fade offline.
+    local offlineOverlay = CreateFrame("Frame", nil, self.content)
+    offlineOverlay:SetFrameLevel((self.content.GetFrameLevel and self.content:GetFrameLevel() or 1) + 23)
+    offlineOverlay:EnableMouse(false)
+    local offlineBg = offlineOverlay:CreateTexture(nil, "BACKGROUND")
+    offlineBg:SetAllPoints(offlineOverlay)
+    offlineBg:SetTexture("Interface\\Buttons\\WHITE8x8")
+    offlineBg:SetVertexColor(0.75, 0.02, 0.02, 0.48)
+    offlineOverlay.bg = offlineBg
+    local offlineText = offlineOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    offlineText:SetPoint("CENTER", offlineOverlay, "CENTER", 0, 0)
+    offlineText:SetText("OFFLINE")
+    offlineText:SetTextColor(1, 1, 1, 1)
+    offlineText:SetJustifyH("CENTER")
+    offlineOverlay:Hide()
+    row.offlineOverlay = offlineOverlay
+    row.offlineText = offlineText
+
     -- Le barre TANK al posto della roleIcon hanno il tag MT/OT dorato.
     if row.isTank then
         -- Anche il tag MT/OT fuori dalla riga (stessa regola della barra).
@@ -911,6 +933,18 @@ function RF:LayoutSlotGeometry(slot, m)
         slot.bar:ClearAllPoints()
         slot.bar:SetSize(m.barWidth, m.barHeight)
         slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", roleReserve, 0)
+        if slot.offlineOverlay then
+            slot.offlineOverlay:ClearAllPoints()
+            slot.offlineOverlay:SetAllPoints(slot.bar)
+        end
+        if slot.offlineText then
+            slot.offlineText:ClearAllPoints()
+            slot.offlineText:SetPoint("CENTER", slot.offlineOverlay, "CENTER", 0, 0)
+            local app = self.db and self.db.appearance or {}
+            local fontFile = app.font or RLSuite.utils:GetUIFont()
+            local flags = (app.fontOutline == false) and "" or "OUTLINE"
+            slot.offlineText:SetFont(fontFile, m.nameFontSize, flags)
+        end
         -- Tag MT/OT: Nello stesso identico posto delle icone di ruolo (a sinistra della barra)
         if slot.tankTag then
             slot.tankTag:ClearAllPoints()
@@ -1048,6 +1082,8 @@ function RF:ClearSlot(slot)
     if slot.roleIcon then
         slot.roleIcon:Hide()
     end
+    if slot.offlineOverlay then slot.offlineOverlay:Hide() end
+    if slot.offlineText then slot.offlineText:Hide() end
     if slot.tankTag then
         slot.tankTag:Hide()
     end
@@ -1431,9 +1467,46 @@ local RF_ROLE_ICONS = {
     leader = "Interface\\GroupFrame\\UI-Group-LeaderIcon",
     assist = "Interface\\GroupFrame\\UI-Group-AssistantIcon",
     ml = "Interface\\GroupFrame\\UI-Group-MasterLooter",
-    tank = "Interface\\GroupFrame\\UI-Group-MainTankIcon",
-    mainassist = "Interface\\GroupFrame\\UI-Group-MainAssistIcon",
+    offline = "Interface\\Buttons\\UI-GroupLoot-Pass-Up",
+    ready = "Interface\\RaidFrame\\ReadyCheck-Ready",
+    notready = "Interface\\RaidFrame\\ReadyCheck-NotReady",
+    waiting = "Interface\\RaidFrame\\ReadyCheck-Waiting",
 }
+
+function RF:ReadyStatus(unit)
+    if not self.readyCheckActive then return nil end
+    if unit and GetReadyCheckStatus then
+        local status = GetReadyCheckStatus(unit)
+        if status == "ready" or status == "notready" or status == "waiting" then
+            return status
+        end
+    end
+    return (unit and self.readyCheckStatus and self.readyCheckStatus[unit]) or "waiting"
+end
+
+function RF:OnReadyCheckStarted()
+    self.readyCheckActive = true
+    self.readyCheckStatus = {}
+    self:UpdateAll()
+end
+
+function RF:OnReadyCheckConfirm(event, unit, isReady)
+    self.readyCheckStatus = self.readyCheckStatus or {}
+    if unit then self.readyCheckStatus[unit] = isReady and "ready" or "notready" end
+    self:UpdateAll()
+end
+
+function RF:OnReadyCheckFinished()
+    -- Come il frame Blizzard, lascia il risultato leggibile per qualche
+    -- secondo prima di ripristinare Leader/Assist/Master Looter.
+    if self._readyClearTimer then self:CancelTimer(self._readyClearTimer, true) end
+    self._readyClearTimer = self:ScheduleTimer(function()
+        RF.readyCheckActive = nil
+        RF.readyCheckStatus = nil
+        RF._readyClearTimer = nil
+        RF:UpdateAll()
+    end, 5)
+end
 
 function RF:UpdateRoleIcon(row)
     if not row or not row.roleIcon then return end
@@ -1464,13 +1537,29 @@ function RF:UpdateRoleIcon(row)
         end
     end
 
+    local offline = unit and not row.fake and UnitIsConnected and not UnitIsConnected(unit)
+    if row.offlineOverlay then
+        if offline then row.offlineOverlay:Show() else row.offlineOverlay:Hide() end
+    end
+    if row.offlineText then
+        if offline then row.offlineText:Show() else row.offlineText:Hide() end
+    end
+
+    -- Priorita': offline > risposta ready check > ruolo raid normale.
     local icon = nil
-    if rank == 2 then
-        icon = RF_ROLE_ICONS.leader
-    elseif rank == 1 then
-        icon = RF_ROLE_ICONS.assist
-    elseif isML then
-        icon = RF_ROLE_ICONS.ml
+    if offline then
+        icon = RF_ROLE_ICONS.offline
+    else
+        local ready = self:ReadyStatus(unit)
+        if ready then
+            icon = RF_ROLE_ICONS[ready]
+        elseif rank == 2 then
+            icon = RF_ROLE_ICONS.leader
+        elseif rank == 1 then
+            icon = RF_ROLE_ICONS.assist
+        elseif isML then
+            icon = RF_ROLE_ICONS.ml
+        end
     end
 
     if icon then

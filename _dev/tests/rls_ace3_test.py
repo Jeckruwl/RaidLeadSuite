@@ -7491,6 +7491,42 @@ check(bool(rt.eval("V109_FOOD_MSG:find('Well Fed') ~= nil and V109_FOOD_MSG:find
 check(bool(rt.eval("V109_STATS_MSG:find('Buff Check', 1, true) == nil and V109_STATS_MSG:find('Missing %stat', 1, true) ~= nil")), "v1.11.109: All buff warnings have 'Buff Check:' removed")
 check(bool(rt.eval("V109_HAS_TBC_FLASK and V109_HAS_TBC_FOOD")), "v1.11.109: TBC flasks and foods added to buffData")
 
+# v1.11.112 — ready-check icons and offline overlay
+rt.execute("""
+local RFM = RLSuite.raidFrame
+local row = RFM.rows[1]
+V112 = {}
+if row then
+    row.fake = false
+    row.unit = "raid1"
+    local oldExists, oldConnected, oldReady = UnitExists, UnitIsConnected, GetReadyCheckStatus
+    UnitExists = function() return true end
+    UnitIsConnected = function() return true end
+    RFM.readyCheckActive = true
+    GetReadyCheckStatus = function() return "waiting" end
+    RFM:UpdateRoleIcon(row)
+    V112.waiting = tostring(row.roleIcon._texture)
+    GetReadyCheckStatus = function() return "notready" end
+    RFM:UpdateRoleIcon(row)
+    V112.notready = tostring(row.roleIcon._texture)
+    GetReadyCheckStatus = function() return "ready" end
+    RFM:UpdateRoleIcon(row)
+    V112.ready = tostring(row.roleIcon._texture)
+    UnitIsConnected = function() return false end
+    RFM:UpdateRoleIcon(row)
+    V112.offline = tostring(row.roleIcon._texture)
+    V112.overlay = row.offlineOverlay:IsShown()
+    V112.text = row.offlineText:IsShown() and row.offlineText._text == "OFFLINE"
+    RFM.readyCheckActive = nil
+    RFM.readyCheckStatus = nil
+    UnitExists, UnitIsConnected, GetReadyCheckStatus = oldExists, oldConnected, oldReady
+end
+""")
+check(bool(rt.eval("V112.waiting:find('ReadyCheck%-Waiting') ~= nil")), "v1.11.112: ready check waiting = yellow question mark")
+check(bool(rt.eval("V112.notready:find('ReadyCheck%-NotReady') ~= nil")), "v1.11.112: ready check no = red X")
+check(bool(rt.eval("V112.ready:find('ReadyCheck%-Ready') ~= nil")), "v1.11.112: ready check yes = green check")
+check(bool(rt.eval("V112.offline:find('UI%-GroupLoot%-Pass%-Up') ~= nil and V112.overlay and V112.text")), "v1.11.112: offline = red pass icon plus red OFFLINE overlay")
+
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
     sys.exit(1)

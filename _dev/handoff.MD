@@ -14,7 +14,17 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.111**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.112**.
+
+## 1.11.112 — Ready Check nelle role icon + stato OFFLINE
+
+Durante un ready check lo slot della role icon mostra la risposta Blizzard:
+`ReadyCheck-Waiting` (punto interrogativo giallo), `ReadyCheck-NotReady` (X rossa)
+o `ReadyCheck-Ready` (spunta verde). Alla fine i risultati restano per 5 secondi,
+poi tornano Leader/Assistant/Master Looter. Un player offline ha priorita' su
+tutto: icona `UI-GroupLoot-Pass-Up` e overlay rosso trasparente sulla barra HP
+con scritta bianca `OFFLINE`. L'overlay non riceve un secondo fade: resta
+leggibile sopra la barra gia' attenuata dal normale fade offline.
 
 ## 1.11.111 — Fade solo fuori dall'area visibile (~100 yard)
 
