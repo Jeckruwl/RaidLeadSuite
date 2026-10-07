@@ -14,7 +14,18 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.110**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.111**.
+
+## 1.11.111 — Fade solo fuori dall'area visibile (~100 yard)
+
+Il client 3.3.5 non espone la zona degli altri membri e `UnitInRange` copre solo
+il range ristretto delle spell (circa 40 yard), quindi non permette ne' "stessa
+zona" ne' una misura reale a 100 yard. Il fade ora usa esclusivamente
+`UnitIsVisible`: barra piena finche' il client vede l'unita', fade quando non la
+vede piu' (indicativamente oltre ~100 yard, altra area/istanza o offline).
+Rimosse dalla Config le soglie 10/15/20/25/30/35/40: restano solo `Off` e
+`Out of sight (~100 yards)`. Qualunque vecchio valore non-zero nei SavedVariables
+abilita automaticamente il nuovo modo. `UnitInRange` non influenza piu' il fade.
 
 ## 1.11.110 — Gear Check: repair sotto l'80%
 

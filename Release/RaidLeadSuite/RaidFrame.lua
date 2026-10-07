@@ -82,7 +82,7 @@ local RF_CD_FONT = 10
 local RF_DUR_SLOTS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 }
 local RF_DUR_ALERT_PCT = 80      -- sotto questa % conta come "da riparare"
 local RF_DUR_REFRESH = 4         -- ricalcolo ogni N passate da 0,5s (2s)
-local RF_FAR_YARDS = 999         -- oltre le 40 yard UnitInRange non da' numeri
+local RF_OUT_OF_SIGHT = 999       -- sentinella: unita' non visibile al client
 -- Tolleranza del gesto di trascinamento (px): prendere una barra a 5-6 px di
 -- distanza deve FUNZIONARE. Con le righe da ~20 px un click "a filo" finiva
 -- nel vuoto e il gesto non faceva niente: da fuori sembrava che quel player
@@ -3344,38 +3344,38 @@ function RF:WarnBuffCategory(col)
 end
 
 -- ============================================================
--- FADE PER DISTANZA (barre giocatore)
--- In 3.3.5 l'unica lettura numerica della distanza e' UnitInRange(unit)
--- (party/raid): restituisce inRange, inYards (0-40). Oltre le 40 yard il
--- numero non c'e' piu' -> RF_FAR_YARDS, cioe' "lontanissimo".
--- Soglia e trasparenza si scelgono in Configurazione -> Raid Frame.
+-- FADE DI VISIBILITA' (barre giocatore)
+-- Il client 3.3.5 non espone ne' la zona di un'altra unit ne' una distanza
+-- affidabile oltre i 40 yard. UnitInRange quindi non va usato qui: farebbe
+-- sparire compagni ancora vicini e nella stessa area. UnitIsVisible e' il
+-- controllo nativo piu' vicino al comportamento richiesto: resta vero finche'
+-- il client mantiene l'unita' visibile (circa 100 yard) e diventa falso quando
+-- e' fuori dall'area visibile/istanza. Non e' una misura numerica esatta.
 -- ============================================================
 function RF:UnitDistanceYards(unit)
     if not unit then return nil end
     if unit == "player" then return 0 end
     if UnitIsConnected and not UnitIsConnected(unit) then
-        return RF_FAR_YARDS
+        return RF_OUT_OF_SIGHT
     end
-    if UnitIsVisible and not UnitIsVisible(unit) then
-        return RF_FAR_YARDS
+    if UnitIsVisible then
+        return UnitIsVisible(unit) and 0 or RF_OUT_OF_SIGHT
     end
-    if UnitInRange then
-        local inRange, yards = UnitInRange(unit)
-        if yards then return yards end
-        if inRange == 1 or inRange == true then return 0 end
-        if inRange == 0 or inRange == false or inRange == nil then return RF_FAR_YARDS end
-    end
+    -- Su client senza UnitIsVisible non inventiamo una distanza usando
+    -- UnitInRange (che misura solo il range ristretto delle spell).
     return nil
 end
 
 function RF:ApplyDistanceFade(row)
     if not row then return end
     local app = (self.db and self.db.appearance) or {}
-    local thr = tonumber(app.distanceFade) or 0
+    -- Compatibilita' coi profili esistenti: qualunque vecchia soglia non-zero
+    -- abilita il nuovo unico controllo "fuori area visibile (~100 yd)".
+    local enabled = (tonumber(app.distanceFade) or 0) > 0
     local alpha = 1
-    if thr > 0 then
+    if enabled then
         local d = self:UnitDistanceYards(row.unit)
-        if d and d > thr then alpha = tonumber(app.distanceAlpha) or 0.40 end
+        if d == RF_OUT_OF_SIGHT then alpha = tonumber(app.distanceAlpha) or 0.40 end
     end
     if row._fadeAlpha ~= alpha then
         row._fadeAlpha = alpha

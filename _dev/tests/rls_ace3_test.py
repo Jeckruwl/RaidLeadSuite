@@ -6602,18 +6602,17 @@ GetInventoryItemDurability = nil
 GetInventoryItemBroken = nil
 GetInventoryItemLink = nil
 
--- --- fade per distanza ---
-UnitInRange = function(unit)
-    if unit == "raid3" then return true, 12 end
-    if unit == "raid4" then return true, 34 end
-    return false, nil
+-- --- fade solo fuori dall'area visibile (~100 yd), non al range spell ---
+UnitInRange = function() return false, nil end -- non deve piu' influire
+UnitIsVisible = function(unit)
+    return unit == "raid3"
 end
 V90.y_near = RFM:UnitDistanceYards("raid3")
 V90.y_far = RFM:UnitDistanceYards("raid4")
 V90.y_offgrid = RFM:UnitDistanceYards("raid5")
 V90.y_player = RFM:UnitDistanceYards("player")
 local app = RLSuite.db.profile.raidframe.appearance
-app.distanceFade = 25
+app.distanceFade = 25 -- vecchio SavedVariable non-zero: migra al nuovo modo
 app.distanceAlpha = 0.35
 local rNear, rFar = nil, nil
 for _, r in ipairs(RFM.rows) do
@@ -6796,9 +6795,9 @@ check(bool(rt.eval("V90.dur_warn:find('RAID_WARNING', 1, true) ~= nil and V90.du
 check(bool(rt.eval("V90.dur_providers == 0")), "v1.11.90: la durability non ha fornitori (nessuna assegnazione possibile)")
 check(bool(rt.eval("V90.me_state == 'low' and V90.me_pct == 79 and V90.me_ok == false")), "v1.11.110: sotto l'80%% il Gear Check richiede il repair (79%% = low)")
 check(bool(rt.eval("V90.me_state2 == 'ok' and V90.me_pct2 == 80 and V90.me_ok2 == true")), "v1.11.110: all'80%% esatto il Gear Check resta OK")
-check(bool(rt.eval("V90.y_near == 12 and V90.y_far == 34 and V90.y_offgrid == 999 and V90.y_player == 0")), "v1.11.90: distanza in yard (UnitInRange): vicino/lontano/fuori portata/proprio pg")
-check(bool(rt.eval("V90.fade_near == 1 and V90.fade_far == 0.35")), "v1.11.90: fade per distanza: entro la soglia barra piena, oltre la soglia trasparente al livello scelto")
-check(bool(rt.eval("V90.fade_off == 1")), "v1.11.90: con il fade spento (soglia 0) la barra torna piena")
+check(bool(rt.eval("V90.y_near == 0 and V90.y_far == 999 and V90.y_offgrid == 999 and V90.y_player == 0")), "v1.11.111: visibile/fuori area/proprio pg risolti con UnitIsVisible, non UnitInRange")
+check(bool(rt.eval("V90.fade_near == 1 and V90.fade_far == 0.35")), "v1.11.111: fade solo quando l'unita' non e' piu' visibile (~100 yd/fuori area)")
+check(bool(rt.eval("V90.fade_off == 1")), "v1.11.111: con il fade spento la barra torna piena")
 check(bool(rt.eval("V90.tanks_untouched == true")), "v1.11.90: le barre MT/OT non vengono toccate dal fade")
 check(bool(rt.eval("V90.miss_n > 1")), "v1.11.91: il caso di prova ha piu' di una categoria mancante (elenco non banale) -- %s" % rt.eval("tostring(V90.miss_n)"))
 check(bool(rt.eval("V90.ctrl_sent == nil")), "v1.11.91: l'avviso del giocatore NON e' piu' un whisper: va in raid (niente messaggio privato)")
