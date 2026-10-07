@@ -876,18 +876,19 @@ local PUGGER_TBC_RAIDS = {
     { text = "Sunwell Plateau", value = "Sunwell Plateau", achievement = 698 },
 }
 local PUGGER_CLASSIC_RAIDS = {
-    { text = "Molten Core", value = "Molten Core" },
-    { text = "Blackwing Lair", value = "Blackwing Lair" },
-    { text = "Zul'Gurub", value = "Zul'Gurub" },
-    { text = "Ruins of Ahn'Qiraj", value = "Ruins of Ahn'Qiraj" },
-    { text = "Temple of Ahn'Qiraj", value = "Temple of Ahn'Qiraj" },
+    { text = "Molten Core", value = "Molten Core", achievement = 686 },
+    { text = "Blackwing Lair", value = "Blackwing Lair", achievement = 685 },
+    { text = "Zul'Gurub", value = "Zul'Gurub", achievement = 688 },
+    { text = "Ruins of Ahn'Qiraj", value = "Ruins of Ahn'Qiraj", achievement = 689 },
+    { text = "Temple of Ahn'Qiraj", value = "Temple of Ahn'Qiraj", achievement = 687 },
 }
-local PUGGER_TBC_ACHIEVEMENTS = {}
+local PUGGER_LEGACY_ACHIEVEMENTS = {}
 for _, raid in ipairs(PUGGER_TBC_RAIDS) do
-    PUGGER_TBC_ACHIEVEMENTS[raid.value] = raid.achievement
+    PUGGER_LEGACY_ACHIEVEMENTS[raid.value] = raid.achievement
 end
-local PUGGER_CLASSIC = {}
-for _, raid in ipairs(PUGGER_CLASSIC_RAIDS) do PUGGER_CLASSIC[raid.value] = true end
+for _, raid in ipairs(PUGGER_CLASSIC_RAIDS) do
+    PUGGER_LEGACY_ACHIEVEMENTS[raid.value] = raid.achievement
+end
 
 function GM:PopulateRaidDropdown()
     local wotlk, all = {}, {}
@@ -941,11 +942,11 @@ end
 
 function GM:BuildSpamMessage()
     local raid = self.db.raid
-    local tbcAchievement = PUGGER_TBC_ACHIEVEMENTS[raid]
-    local isLegacy = tbcAchievement ~= nil or PUGGER_CLASSIC[raid]
+    local legacyAchievement = PUGGER_LEGACY_ACHIEVEMENTS[raid]
+    local isLegacy = legacyAchievement ~= nil
     local raidText
-    if tbcAchievement and GetAchievementLink then
-        raidText = GetAchievementLink(tbcAchievement)
+    if legacyAchievement and GetAchievementLink then
+        raidText = GetAchievementLink(legacyAchievement)
     end
     if not raidText or raidText == "" then
         raidText = isLegacy and (raid or "Raid") or self:RaidShortName()

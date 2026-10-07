@@ -7714,17 +7714,23 @@ V143_HOVER = root.submenu and root.submenu:IsShown()
 local oldAchievement = GetAchievementLink
 GetAchievementLink = function(id)
     if id == 694 then return '|Hachievement:694|h[Serpentshrine Cavern]|h' end
+    if id == 686 then return '|Hachievement:686|h[Molten Core]|h' end
 end
 gm.db.raid = 'Serpentshrine Cavern'
 local msg = gm:BuildSpamMessage()
 V143_TBC_ACHI = (string.find(msg, '|Hachievement:694|h[Serpentshrine Cavern]|h', 1, true) ~= nil
     and string.find(msg, 'Serpentshrine Cavern25', 1, true) == nil)
-V143_PUGGER_ONLY = (RLSuite.raidDB['Serpentshrine Cavern'] == nil)
+gm.db.raid = 'Molten Core'
+local classicMsg = gm:BuildSpamMessage()
+V144_CLASSIC_ACHI = (string.find(classicMsg, '|Hachievement:686|h[Molten Core]|h', 1, true) ~= nil
+    and string.find(classicMsg, 'Molten Core25', 1, true) == nil)
+V143_PUGGER_ONLY = (RLSuite.raidDB['Serpentshrine Cavern'] == nil and RLSuite.raidDB['Molten Core'] == nil)
 GetAchievementLink = oldAchievement
 RLSuite.utils:CloseDropdownMenu()
 """)
 check(bool(rt.eval("V143_GROUPS and V143_HOVER")), "v1.11.143: Pugger raid dropdown has WotLK/TBC/Classic mouseover submenus")
 check(bool(rt.eval("V143_TBC_ACHI and V143_PUGGER_ONLY")), "v1.11.143: TBC Pugger message uses raid achievement link without adding legacy raid globally")
+check(bool(rt.eval("V144_CLASSIC_ACHI")), "v1.11.144: Classic Pugger message also uses the raid achievement link")
 
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

@@ -14,7 +14,14 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.143**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.144**.
+
+## 1.11.144 — Achievement link anche per raid Classic
+
+Anche i raid Classic selezionati nel Pugger usano direttamente il relativo
+achievement link nel messaggio: BWL 685, MC 686, AQ40 687, ZG 688 e AQ20 689.
+Come per TBC, non vengono aggiunte difficoltà 10/25 o HC e i raid restano
+esclusivi del Pugger.
 
 ## 1.11.143 — Pugger raid dropdown per espansione
 
