@@ -14,7 +14,12 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.135**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.136**.
+
+## 1.11.136 — Formato reroll essenziale
+
+Il warning iniziale usa esclusivamente questo ordine: `Nome1, Nome2 REROLL
+[itemLink] You have 15s`. Rimossi `Only:` e qualsiasi altro testo accessorio.
 
 ## 1.11.135 — Reroll con nomi degli aventi diritto
 

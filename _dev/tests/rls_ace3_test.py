@@ -4018,7 +4018,15 @@ RLSuite.mainWindow.currentTab = nil
 RLSuite.db.profile.debug = false
 """)
 check(bool(rt.eval("RR_ENABLED == true")), "a TIE keeps the Reroll button enabled (was disabled by the trailing ResetButtons)")
-check(bool(rt.eval("RR_TIMER15 and string.find(RR_MESSAGES, 'REROLL', 1, true) and string.find(RR_MESSAGES, 'You have 15s', 1, true) and string.find(RR_MESSAGES, 'Tankbot', 1, true) and string.find(RR_MESSAGES, 'Healbot', 1, true)")), "v1.11.135: reroll starts at 15s in RW with linked item and eligible player names")
+check(bool(rt.eval("""(function()
+    local s = RR_MESSAGES or ''
+    local t = string.find(s, 'Tankbot', 1, true)
+    local h = string.find(s, 'Healbot', 1, true)
+    local r = string.find(s, ' REROLL ', 1, true)
+    return RR_TIMER15 and t and h and r and t < r and h < r
+        and string.find(s, 'You have 15s', 1, true)
+        and not string.find(s, 'Only:', 1, true)
+end)()""")), "v1.11.136: reroll message is names, REROLL, linked item, You have 15s")
 check(bool(rt.eval("""(function()
     for _, n in ipairs({7, 5, 3, 2, 1}) do
         if not string.find(RR_MESSAGES or '', tostring(n) .. 's remaining', 1, true) then return false end

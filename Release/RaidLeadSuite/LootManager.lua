@@ -1261,8 +1261,9 @@ function LM:DoReroll()
         names[#names + 1] = winner.name or "?"
     end
 
-    RLSuite.utils:SendChat("REROLL " .. self:RollItemText(self.currentRoll.item)
-        .. " You have " .. LM_ROLL_DURATION .. "s - Only: " .. table.concat(names, ", "), "RAID_WARNING")
+    RLSuite.utils:SendChat(table.concat(names, ", ") .. " REROLL "
+        .. self:RollItemText(self.currentRoll.item) .. " You have "
+        .. LM_ROLL_DURATION .. "s", "RAID_WARNING")
     -- barra-timer in DBM/BigWigs: stessa durata fissa del roll iniziale.
     RLSuite.utils:StartDbmTimer(LM_ROLL_DURATION, "REROLL " .. self:RollItemText(self.currentRoll.item),
         self.currentRoll.item.itemTexture)
