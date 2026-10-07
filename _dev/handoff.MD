@@ -14,7 +14,12 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.120**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.121**.
+
+## 1.11.121 — Loot Manager: rimossa colonna numero
+
+Rimossa la colonna `#` dall'intestazione e dalle righe di Loot History. Icona e
+colonna Item sono state spostate a sinistra per recuperare lo spazio liberato.
 
 ## 1.11.120 — Loot Manager: ignore loots su una riga
 

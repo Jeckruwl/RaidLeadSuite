@@ -288,7 +288,7 @@ end
 function LM:HistMetrics(w)
     w = tonumber(w) or 420
     local timeW, assignedW, typeW, gap, padR = 64, 72, 48, 6, 8
-    local itemX = 58
+    local itemX = 30
     local assignedX = w - padR - timeW - gap - assignedW
     local typeX = assignedX - gap - typeW
     local inner = typeX - itemX - gap
@@ -314,7 +314,6 @@ function LM:PaintHeader(header)
         self.histHeads[key] = fs
         return fs
     end
-    add("num", "#"):SetPoint("LEFT", header, "LEFT", 6, 0)
     add("item", "Item")
     add("boss", "Boss")
     add("type", "Type")
@@ -337,8 +336,6 @@ function LM:LayoutHeader()
     local insetL, insetR = 6, 26
     local m = self:HistMetrics(w - insetL - insetR)
     local h = self.histHeads
-    h.num:ClearAllPoints()
-    h.num:SetPoint("LEFT", header, "LEFT", insetL + 6, 0)
     h.item:ClearAllPoints()
     h.item:SetPoint("LEFT", header, "LEFT", insetL + m.itemX, 0)
     h.boss:ClearAllPoints()
@@ -838,14 +835,6 @@ function LM:UpdateHistory()
             row.entry = entry
             RLSuite.utils:SkinRow(row, self.selectedItem == entry)
 
-            local num = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            num:SetWidth(28)
-            num:SetJustifyH("LEFT")
-            num:SetText("#" .. (entry.id or 0))
-            if not lineH then
-                lineH = num:GetStringHeight() or 14
-            end
-
             local icon = row:CreateTexture(nil, "ARTWORK")
             icon:SetSize(18, 18)
             icon:SetTexture(entry.itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
@@ -857,6 +846,9 @@ function LM:UpdateHistory()
             name:SetJustifyH("LEFT")
             name:SetJustifyV("TOP")
             name:SetText(entry.itemName or "Unknown")
+            if not lineH then
+                lineH = name:GetStringHeight() or 14
+            end
             local q = self:EntryQuality(entry)
             if GetItemQualityColor and q and q >= 0 then
                 local r, g, b = GetItemQualityColor(q)
@@ -895,7 +887,6 @@ function LM:UpdateHistory()
             -- all'occhio.
             if entry.assignedTo then
                 local GR = 0.45
-                num:SetTextColor(GR, GR, GR, 1)
                 name:SetTextColor(GR, GR, GR, 1)
                 boss:SetTextColor(GR, GR, GR, 1)
                 itype:SetTextColor(GR, GR, GR, 1)
@@ -905,7 +896,6 @@ function LM:UpdateHistory()
             end
 
             -- riferimenti ai figli per il secondo passaggio (posizionamento)
-            row.num = num
             row.icon = icon
             row.name = name
             row.boss = boss
@@ -952,10 +942,9 @@ function LM:UpdateHistory()
         row:SetPoint("TOPRIGHT", self.histContent, "TOPRIGHT", 0, -y)
         RLSuite.utils:ClipScrollRow(self.histContent, row, y, rowH)
 
-        -- Riposiziona i figli (num, icon, name, boss, itype, remain,
-        -- assigned) allineandoli in alto, dentro la riga.
-        if row.num then row.num:SetPoint("TOPLEFT", row, "TOPLEFT", 6, -LM_ROW_TOP) end
-        if row.icon then row.icon:SetPoint("TOPLEFT", row, "TOPLEFT", 36, -LM_ROW_TOP) end
+        -- Riposiziona i figli (icon, name, boss, itype, remain, assigned)
+        -- allineandoli in alto, dentro la riga.
+        if row.icon then row.icon:SetPoint("TOPLEFT", row, "TOPLEFT", 6, -LM_ROW_TOP) end
         if row.name then
             row.name:SetPoint("TOPLEFT", row, "TOPLEFT", m.itemX, -LM_ROW_TOP)
             row.name:SetHeight((row._lines or 1) * lineH)
