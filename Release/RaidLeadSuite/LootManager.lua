@@ -101,24 +101,26 @@ function LM:CreateFrame()
     title:SetText("Loot Manager")
     self.titleFS = title
 
+    -- Il testo MS Changes vive nel blocco basso, subito prima dei comandi.
     self.preMsgText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.preMsgText:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -32)
-    self.preMsgText:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -32)
+    self.preMsgText:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 72)
+    self.preMsgText:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 72)
     self.preMsgText:SetJustifyH("LEFT")
     self.preMsgText:SetText("")
 
     local histLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    histLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -50)
+    histLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -82)
     histLabel:SetText("Loot History")
+    self.histLabel = histLabel
 
     local filterFS = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    filterFS:SetPoint("TOPRIGHT", f, "TOPRIGHT", -152, -54)
+    filterFS:SetPoint("TOPRIGHT", f, "TOPRIGHT", -152, -44)
     filterFS:SetText("Rarity threshold")
 
     self.rarityFilter = (self.db and self.db.rarityFilter) or "all"
     self.rarityDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteLootRarityDD", 130, 20)
     self.rarityDropdown:ClearAllPoints()
-    self.rarityDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -50)
+    self.rarityDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -40)
     RLSuite.utils:SetupDropdown(self.rarityDropdown, {
         { text = "All", value = "all" },
         { text = "Poor", value = 0 },
@@ -136,7 +138,7 @@ function LM:CreateFrame()
     -- Checkbox "ignore loots": escludono intere categorie sia in cattura
     -- (mai registrate) sia a video (le righe gia' in storico spariscono).
     local ignoreLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    ignoreLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -76)
+    ignoreLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -42)
     ignoreLabel:SetText("ignore loots:")
     self.ignoreLabel = ignoreLabel
     self.ignoreChecks = {}
@@ -150,7 +152,7 @@ function LM:CreateFrame()
     for _, def in ipairs(ignoreDefs) do
         local cb = CreateFrame("CheckButton", "RLSuiteLootIgnore_" .. def.key, f, "UICheckButtonTemplate")
         cb:SetSize(20, 20)
-        cb:SetPoint("TOPLEFT", f, "TOPLEFT", ix, -88)
+        cb:SetPoint("TOPLEFT", f, "TOPLEFT", ix, -54)
         cb:SetChecked(self.db and self.db.filters and self.db.filters[def.key] and true or false)
         cb:SetScript("OnClick", function(btn)
             -- Un solo punto di scrittura: cosi' le stesse voci restano
@@ -166,15 +168,15 @@ function LM:CreateFrame()
 
     -- Header sotto il titolo ignore e la sua riga di checkbox.
     local header = CreateFrame("Frame", nil, f)
-    header:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -116)
-    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -116)
+    header:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -104)
+    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -104)
     header:SetHeight(18)
     self.histHeader = header
     self:PaintHeader(header)
 
     self.histBox = CreateFrame("Frame", nil, f)
     self.histBox:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -2)
-    self.histBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 106)
+    self.histBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 134)
     self:SkinBox(self.histBox)
 
     self.histScroll = CreateFrame("ScrollFrame", "RLSuiteLootHistory", self.histBox, "UIPanelScrollFrameTemplate")
@@ -193,8 +195,8 @@ function LM:CreateFrame()
     end)
 
     self.selBox = CreateFrame("Frame", nil, f)
-    self.selBox:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 68)
-    self.selBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 68)
+    self.selBox:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 96)
+    self.selBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 96)
     self.selBox:SetHeight(34)
     self:SkinBox(self.selBox)
 

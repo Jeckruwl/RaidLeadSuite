@@ -14,7 +14,14 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.117**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.118**.
+
+## 1.11.118 — Loot Manager: ordine visivo corretto
+
+Layout verticale riordinato come richiesto: titolo; ignore loots + rarity
+threshold; Loot History; tabella; item selezionato; testo MS changes; prima
+riga Roll MS/OS/FFA; seconda riga Reroll/Announce Changes. `Loot History` non
+precede più i filtri e il testo MS non occupa più lo spazio sotto il titolo.
 
 ## 1.11.117 — Loot Manager: filtri e comandi su due righe, timer senza secondi
 
