@@ -864,19 +864,53 @@ end
 -- ============================================================
 -- DROPDOWN
 -- ============================================================
+local PUGGER_TBC_RAIDS = {
+    { text = "Karazhan", value = "Karazhan", achievement = 690 },
+    { text = "Zul'Aman", value = "Zul'Aman", achievement = 691 },
+    { text = "Gruul's Lair", value = "Gruul's Lair", achievement = 692 },
+    { text = "Magtheridon's Lair", value = "Magtheridon's Lair", achievement = 693 },
+    { text = "Serpentshrine Cavern", value = "Serpentshrine Cavern", achievement = 694 },
+    { text = "Battle for Mount Hyjal", value = "Battle for Mount Hyjal", achievement = 695 },
+    { text = "Tempest Keep", value = "Tempest Keep", achievement = 696 },
+    { text = "Black Temple", value = "Black Temple", achievement = 697 },
+    { text = "Sunwell Plateau", value = "Sunwell Plateau", achievement = 698 },
+}
+local PUGGER_CLASSIC_RAIDS = {
+    { text = "Molten Core", value = "Molten Core" },
+    { text = "Blackwing Lair", value = "Blackwing Lair" },
+    { text = "Zul'Gurub", value = "Zul'Gurub" },
+    { text = "Ruins of Ahn'Qiraj", value = "Ruins of Ahn'Qiraj" },
+    { text = "Temple of Ahn'Qiraj", value = "Temple of Ahn'Qiraj" },
+}
+local PUGGER_TBC_ACHIEVEMENTS = {}
+for _, raid in ipairs(PUGGER_TBC_RAIDS) do
+    PUGGER_TBC_ACHIEVEMENTS[raid.value] = raid.achievement
+end
+local PUGGER_CLASSIC = {}
+for _, raid in ipairs(PUGGER_CLASSIC_RAIDS) do PUGGER_CLASSIC[raid.value] = true end
+
 function GM:PopulateRaidDropdown()
-    local raids = {}
-    for name, _ in pairs(RLSuite.raidDB) do
-        table.insert(raids, name)
+    local wotlk, all = {}, {}
+    for name in pairs(RLSuite.raidDB) do
+        wotlk[#wotlk + 1] = { text = name, value = name }
+        all[name] = true
     end
-    table.sort(raids)
-    self.raidList = raids
+    table.sort(wotlk, function(a, b) return a.text < b.text end)
+    for _, raid in ipairs(PUGGER_TBC_RAIDS) do all[raid.value] = true end
+    for _, raid in ipairs(PUGGER_CLASSIC_RAIDS) do all[raid.value] = true end
+    self.raidList = all
+
+    local groups = {
+        { text = "WotLK Raids", children = wotlk },
+        { text = "TBC Raids", children = PUGGER_TBC_RAIDS },
+        { text = "Classic Raids", children = PUGGER_CLASSIC_RAIDS },
+    }
     local current = self.db.raid
-    if not current or current == "" or not RLSuite.raidDB[current] then
-        current = raids[1]
+    if not current or current == "" or not all[current] then
+        current = wotlk[1] and wotlk[1].value or "Icecrown Citadel"
         self.db.raid = current
     end
-    RLSuite.utils:SetupDropdown(self.raidDropdown, raids, current, function(value)
+    RLSuite.utils:SetupDropdown(self.raidDropdown, groups, current, function(value)
         self.db.raid = value
         self:UpdateMessagePreview()
         self:SaveComp()
@@ -906,10 +940,22 @@ function GM:RaidShortName(raid)
 end
 
 function GM:BuildSpamMessage()
-    local diff = self.db.difficulty or "10"
-    local msg = "LFM " .. self:RaidShortName() .. tostring(diff)
-    if self.db.hc then
-        msg = msg .. " HC"
+    local raid = self.db.raid
+    local tbcAchievement = PUGGER_TBC_ACHIEVEMENTS[raid]
+    local isLegacy = tbcAchievement ~= nil or PUGGER_CLASSIC[raid]
+    local raidText
+    if tbcAchievement and GetAchievementLink then
+        raidText = GetAchievementLink(tbcAchievement)
+    end
+    if not raidText or raidText == "" then
+        raidText = isLegacy and (raid or "Raid") or self:RaidShortName()
+    end
+
+    local msg = "LFM " .. raidText
+    if not isLegacy then
+        local diff = self.db.difficulty or "10"
+        msg = msg .. tostring(diff)
+        if self.db.hc then msg = msg .. " HC" end
     end
 
     -- "Lim" (campo Aim): nota libera inserita subito dopo la difficolta' e

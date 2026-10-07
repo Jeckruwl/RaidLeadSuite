@@ -14,7 +14,17 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.142**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.143**.
+
+## 1.11.143 — Pugger raid dropdown per espansione
+
+La dropdown Raid del solo Pugger ora mostra tre voci root con submenu mouseover:
+WotLK Raids, TBC Raids e Classic Raids. TBC include Karazhan, Zul'Aman, Gruul,
+Magtheridon, SSC, Mount Hyjal, Tempest Keep, Black Temple e Sunwell; Classic
+include MC, BWL, ZG, AQ20 e AQ40. Questi raid non sono aggiunti al raidDB né
+agli altri moduli. Se viene selezionato un raid TBC, il messaggio Pugger usa
+`GetAchievementLink` dell'achievement relativo al posto dell'abbreviazione e
+non aggiunge difficoltà 10/25 o HC.
 
 ## 1.11.142 — Link nei tre slot Pugger e minimap level fisso 3
 

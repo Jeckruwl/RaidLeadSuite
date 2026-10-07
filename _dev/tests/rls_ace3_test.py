@@ -7700,6 +7700,32 @@ end
 """)
 check(bool(rt.eval("V142_LINK_SLOTS")), "v1.11.142: Aim, Reserved and Other accept item, achievement and quest links")
 
+# v1.11.143 — expansion submenus in the Pugger-only raid dropdown
+rt.execute("""
+local gm = RLSuite.groupmaking
+local opts = gm.raidDropdown.options
+V143_GROUPS = (#opts == 3 and opts[1].text == 'WotLK Raids'
+    and opts[2].text == 'TBC Raids' and opts[3].text == 'Classic Raids'
+    and #opts[2].children >= 9 and #opts[3].children >= 5)
+RLSuite.utils:OpenDropdownMenu(gm.raidDropdown, opts)
+local root = gm.raidDropdown._rlsDropMenu
+root.optionButtons[2]._scripts.OnEnter(root.optionButtons[2])
+V143_HOVER = root.submenu and root.submenu:IsShown()
+local oldAchievement = GetAchievementLink
+GetAchievementLink = function(id)
+    if id == 694 then return '|Hachievement:694|h[Serpentshrine Cavern]|h' end
+end
+gm.db.raid = 'Serpentshrine Cavern'
+local msg = gm:BuildSpamMessage()
+V143_TBC_ACHI = (string.find(msg, '|Hachievement:694|h[Serpentshrine Cavern]|h', 1, true) ~= nil
+    and string.find(msg, 'Serpentshrine Cavern25', 1, true) == nil)
+V143_PUGGER_ONLY = (RLSuite.raidDB['Serpentshrine Cavern'] == nil)
+GetAchievementLink = oldAchievement
+RLSuite.utils:CloseDropdownMenu()
+""")
+check(bool(rt.eval("V143_GROUPS and V143_HOVER")), "v1.11.143: Pugger raid dropdown has WotLK/TBC/Classic mouseover submenus")
+check(bool(rt.eval("V143_TBC_ACHI and V143_PUGGER_ONLY")), "v1.11.143: TBC Pugger message uses raid achievement link without adding legacy raid globally")
+
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
     sys.exit(1)

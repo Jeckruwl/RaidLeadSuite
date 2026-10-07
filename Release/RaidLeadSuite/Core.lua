@@ -83,7 +83,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.142"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.143"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
