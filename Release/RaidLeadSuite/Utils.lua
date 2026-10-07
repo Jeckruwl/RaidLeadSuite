@@ -120,11 +120,14 @@ function Utils:FormatTime(seconds)
 end
 
 function Utils:FormatCD(seconds)
-    seconds = math.floor(seconds + 0.5)
+    seconds = math.max(0, tonumber(seconds) or 0)
+    -- Mai mostrare meno tempo di quello realmente rimasto. Sopra/sui 60s
+    -- i minuti sono arrotondati per eccesso (119s = 2m); sotto i 60s si
+    -- passa ai secondi, anch'essi arrotondati per eccesso.
     if seconds >= 60 then
-        return tostring(math.floor(seconds / 60)) .. "m"
+        return tostring(math.ceil(seconds / 60)) .. "m"
     end
-    return tostring(seconds)
+    return tostring(math.ceil(seconds))
 end
 
 -- Protegge SendChatMessage (3.3.5): una "|" non seguita da una sequenza di

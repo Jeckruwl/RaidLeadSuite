@@ -14,7 +14,13 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.139**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.140**.
+
+## 1.11.140 — Cooldown Raid Frame più grandi e arrotondati per eccesso
+
+Il font dei quattro cooldown passa da 10 a 11px. `FormatCD` non sottostima più
+il residuo: sopra/sui 60s usa `ceil(seconds/60)` (119s = 2m, 60s = 1m);
+sotto 60s passa ai secondi e usa `ceil(seconds)`.
 
 ## 1.11.139 — Ready Check corretto anche se avviato da altri
 

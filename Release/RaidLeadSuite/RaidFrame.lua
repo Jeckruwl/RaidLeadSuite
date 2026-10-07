@@ -74,7 +74,7 @@ local RF_PER_GROUP = 5
 local RF_MAX_CDS = 4
 -- Font dei timer dei cooldown nelle icone a destra della barra (era 8: si
 -- leggeva male). Il nome del player resta a nameFontSize, configurabile.
-local RF_CD_FONT = 10
+local RF_CD_FONT = 11
 -- DURABILITY: slot di equipaggiamento controllati (4 = camicia e 19 = tabard
 -- non hanno durability). Per gli ALTRI player il client espone solo "oggetto
 -- rotto" (GetInventoryItemBroken); la percentuale esatta si legge solo sul
