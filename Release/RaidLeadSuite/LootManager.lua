@@ -215,6 +215,12 @@ function LM:CreateFrame()
     self.selBox:SetHeight(34)
     self:SkinBox(self.selBox)
 
+    -- MS Changes è sempre subito sotto l'item selezionato; nessun offset
+    -- assoluto che possa separarlo dal riquadro quando cambia l'altezza.
+    self.preMsgText:ClearAllPoints()
+    self.preMsgText:SetPoint("TOPLEFT", self.selBox, "BOTTOMLEFT", 0, -8)
+    self.preMsgText:SetPoint("TOPRIGHT", self.selBox, "BOTTOMRIGHT", 0, -8)
+
     self.selectedItem = nil
     self.selectedItemIcon = self.selBox:CreateTexture(nil, "ARTWORK")
     self.selectedItemIcon:SetSize(24, 24)
@@ -231,7 +237,7 @@ function LM:CreateFrame()
     self.rollMSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rollMSBtn)
     self.rollMSBtn:SetSize(70, 24)
-    self.rollMSBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 10)
+    self.rollMSBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 8, 10)
     self.rollMSBtn:SetText("Roll MS")
     self.rollMSBtn:SetScript("OnClick", function() self:StartRoll("MS") end)
 
@@ -270,6 +276,16 @@ function LM:CreateFrame()
 
     f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+
+    -- Controllo MS Changes ad OGNI apertura, quando il frame è già visibile:
+    -- così GetStringHeight misura davvero il wrap e adegua subito l'altezza.
+    f:SetScript("OnShow", function()
+        if RLSuite.msManager and RLSuite.msManager.RefreshLootPreMessage then
+            RLSuite.msManager:RefreshLootPreMessage()
+        else
+            LM:ApplyDynamicHeight()
+        end
+    end)
 
     self:EnsureTicker()
 end

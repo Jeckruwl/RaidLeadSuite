@@ -3882,11 +3882,11 @@ local selP = lm.selBox._points[1] or {}
 local histBottomP = lm.histBox._points[2] or {}
 local preP = lm.preMsgText._points[1] or {}
 LM_LAYOUT_117 = {
-    checksWithLabel = (il[5] ~= nil and ic[5] ~= nil and math.abs(ic[5] - il[5]) <= 6 and ic[4] > il[4]),
+    checksWithLabel = (ic[1] == 'LEFT' and ic[2] == lm.ignoreLabel and ic[3] == 'RIGHT' and ic[4] == 10),
     noNumberColumn = (lm.histHeads.num == nil and lm:HistMetrics(420).itemX == 30),
     compactTop = (histLabelP[5] == -64 and histHeaderP[5] == -86),
     compactBottom = (lm.histBox:GetHeight() == 220 and selP[2] == lm.histBox
-        and preP[5] == -372 and ms[2] == lm.frame and ms[4] == 8),
+        and preP[2] == lm.selBox and preP[5] == -8 and ms[2] == lm.frame and ms[4] == 8),
     oneButtonRow = (rr[2] == lm.rollOtherBtn and lm.announceMSBtn._points[1][2] == lm.rerollBtn),
     buttonSpan = (lm.rollMSBtn:GetWidth() + lm.rollOSBtn:GetWidth() + lm.rollOtherBtn:GetWidth()
         + lm.rerollBtn:GetWidth() + lm.announceMSBtn:GetWidth() + 24),
@@ -3897,7 +3897,7 @@ LM_LAYOUT_117 = {
         and math.abs((lm.rarityDropdown._points[1][5] or 0) - (histLabelP[5] or 0)) <= 6),
     timer = lm:TradeRemaining({ time = time() - 3661 }),
     topOrder = (titleP[5] > il[5] and il[5] > histLabelP[5] and histLabelP[5] > histHeaderP[5]),
-    bottomOrder = (selP[2] == lm.histBox and preP[2] == lm.frame and ms[2] == lm.frame),
+    bottomOrder = (selP[2] == lm.histBox and preP[2] == lm.selBox and ms[2] == lm.frame),
 }
 """)
 check(bool(rt.eval("RLSuite.lootManager.frame._scripts['OnDragStart'] == nil")), "loot window is NOT draggable anymore (behaves like the native equip panel)")
@@ -3923,15 +3923,20 @@ LM_WRAP_RESETS = (lm.frame:GetHeight() == 428)
 check(bool(rt.eval("LM_FIXED_BASE and LM_WRAP_GROWS and LM_WRAP_RESETS")), "v1.11.129: Loot Manager is fixed-width/non-resizable and only MS wrap increases height")
 rt.execute("""
 local oldDb = RLSuite.msManager.db
-RLSuite.msManager.db = { { name = 'AutoMS', spec = 'Frost' } }
+RLSuite.msManager.db = {}
+for i = 1, 12 do
+    table.insert(RLSuite.msManager.db, { name = 'AutoMSLongName' .. i, spec = 'Very Long Frost Specialization' })
+end
 RLSuite.lootManager:SetPreMessage('')
+RLSuite.lootManager.frame:Hide()
 local chatN = #CHAT_LOG
 RLSuite.mainWindow:ShowTab('loot')
-LM_OPEN_REFRESH = (RLSuite.lootManager.preMessage == 'MS CHANGES: AutoMS: Frost')
+LM_OPEN_REFRESH = (string.find(RLSuite.lootManager.preMessage, 'MS CHANGES: AutoMSLongName1', 1, true) == 1)
+LM_OPEN_WRAP = (RLSuite.lootManager.preMsgText:GetHeight() > 14 and RLSuite.lootManager.frame:GetHeight() > 428)
 LM_OPEN_SILENT = (#CHAT_LOG == chatN)
 RLSuite.msManager.db = oldDb
 """)
-check(bool(rt.eval("LM_OPEN_REFRESH and LM_OPEN_SILENT")), "v1.11.123: opening Loot Manager refreshes MS changes without announcing them")
+check(bool(rt.eval("LM_OPEN_REFRESH and LM_OPEN_WRAP and LM_OPEN_SILENT")), "v1.11.132: opening Loot Manager refreshes, wraps, and grows MS changes without announcing")
 check(bool(rt.eval("""(function() local p = RLSuite.lootManager.frame._points[1] return p ~= nil and p[1] == 'TOPLEFT' and p[2] == UIParent and p[4] == 420 and p[5] == -116 end)()""")), "v1.11.116: loot window is permanently parked right of the TradeFrame area (TOPLEFT 420,-116)")
 check(bool(rt.eval("RLSuite.groupmaking.mainFrame._scripts['OnDragStart'] ~= nil")), "other windows keep their draggable behavior (groupmaking untouched)")
 rt.execute("RLSuite.lootManager.frame:Hide(); RLSuite.mainWindow.currentTab = nil")

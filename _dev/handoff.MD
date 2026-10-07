@@ -14,7 +14,15 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.131**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.132**.
+
+## 1.11.132 — MS Changes su OnShow e pulsanti realmente a filo
+
+Il FontString MS Changes è ancorato direttamente 8px sotto il riquadro selected
+item. Il controllo/word-wrap avviene nell'OnShow del Loot Manager, quindi a ogni
+apertura e con il frame già visibile: non dipende dal click Announce. Le righe
+aggiuntive aumentano subito l'altezza. La fila pulsanti è ancorata direttamente
+al frame a x=8 (corretto il residuo x=16 che causava il decentramento).
 
 ## 1.11.131 — Spazio fra ignore loots e checkbox
 
