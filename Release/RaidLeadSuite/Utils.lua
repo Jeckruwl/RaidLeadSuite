@@ -120,11 +120,14 @@ function Utils:FormatTime(seconds)
 end
 
 function Utils:FormatCD(seconds)
-    seconds = math.floor(seconds + 0.5)
+    seconds = math.max(0, tonumber(seconds) or 0)
+    -- Mai mostrare meno tempo di quello realmente rimasto. Sopra/sui 60s
+    -- i minuti sono arrotondati per eccesso (119s = 2m); sotto i 60s si
+    -- passa ai secondi, anch'essi arrotondati per eccesso.
     if seconds >= 60 then
-        return tostring(math.floor(seconds / 60)) .. "m"
+        return tostring(math.ceil(seconds / 60)) .. "m"
     end
-    return tostring(seconds)
+    return tostring(math.ceil(seconds))
 end
 
 -- Protegge SendChatMessage (3.3.5): una "|" non seguita da una sequenza di
@@ -1163,7 +1166,22 @@ function Utils:SetupDropdown(dd, options, currentValue, onSelect)
     local normalized = {}
     for _, o in ipairs(options or {}) do
         if type(o) == "table" then
-            table.insert(normalized, {text = o.text or tostring(o.value), value = o.value})
+            local children
+            if type(o.children) == "table" then
+                children = {}
+                for _, child in ipairs(o.children) do
+                    if type(child) == "table" then
+                        children[#children + 1] = {
+                            text = child.text or tostring(child.value), value = child.value,
+                        }
+                    else
+                        children[#children + 1] = { text = tostring(child), value = child }
+                    end
+                end
+            end
+            table.insert(normalized, {
+                text = o.text or tostring(o.value), value = o.value, children = children,
+            })
         else
             table.insert(normalized, {text = tostring(o), value = o})
         end
@@ -1177,6 +1195,13 @@ function Utils:SetupDropdown(dd, options, currentValue, onSelect)
             found = o
             break
         end
+        for _, child in ipairs(o.children or {}) do
+            if child.value == currentValue or child.text == currentValue then
+                found = child
+                break
+            end
+        end
+        if found then break end
     end
     if found then
         dd.value = found.value
@@ -1188,6 +1213,52 @@ function Utils:SetupDropdown(dd, options, currentValue, onSelect)
         dd.value = normalized[1].value
         dd.text:SetText(normalized[1].text)
     end
+end
+
+function Utils:OpenDropdownSubmenu(dd, parentMenu, anchor, options)
+    local menu = parentMenu.submenu or CreateFrame("Frame", nil, UIParent)
+    parentMenu.submenu = menu
+    menu:SetFrameStrata("TOOLTIP")
+    menu:SetFrameLevel(21)
+    menu:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 16, edgeSize = 8,
+        insets = {left=0, right=0, top=0, bottom=0}
+    })
+    menu:SetBackdropColor(0.05, 0.05, 0.07, 1)
+    local width = math.max(dd:GetWidth(), 180)
+    menu:SetSize(width, #options * 20 + 8)
+    menu:ClearAllPoints()
+    menu:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 2, 0)
+    menu.optionButtons = menu.optionButtons or {}
+    for i, opt in ipairs(options) do
+        local btn = menu.optionButtons[i]
+        if not btn then
+            btn = CreateFrame("Button", nil, menu)
+            menu.optionButtons[i] = btn
+            btn.txt = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            btn.txt:SetAllPoints(btn)
+            btn.txt:SetJustifyH("LEFT")
+            btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+        end
+        btn:SetSize(width - 8, 18)
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4 - (i - 1) * 20)
+        btn.txt:SetText(opt.text)
+        btn.optValue, btn.optText = opt.value, opt.text
+        btn.txt:SetTextColor(dd.value == opt.value and 1 or 1,
+            dd.value == opt.value and 0.82 or 1, dd.value == opt.value and 0 or 1)
+        btn:SetScript("OnClick", function()
+            dd.value = btn.optValue
+            dd.text:SetText(btn.optText)
+            Utils:CloseDropdownMenu()
+            if dd.onSelect then dd.onSelect(btn.optValue, btn.optText) end
+        end)
+        btn:Show()
+    end
+    for i = #options + 1, #menu.optionButtons do menu.optionButtons[i]:Hide() end
+    menu:Show()
 end
 
 -- Apre il menu di un dropdown. Separata dal toggle perche' il chiamante la
@@ -1238,6 +1309,7 @@ function Utils:OpenDropdownMenu(dd, options)
     -- e' l'unica difesa affidabile contro lo zombie full-screen invisibile
     -- che "copre tutta la finestra" e blocca ogni click (il bug fstack).
     menu:SetScript("OnHide", function()
+        if menu.submenu then menu.submenu:Hide() end
         if Utils.dropCatcher and Utils.dropCatcher:IsShown() then
             Utils.dropCatcher:Hide()
         end
@@ -1295,14 +1367,26 @@ function Utils:OpenDropdownMenu(dd, options)
         end
         btn.optValue = opt.value
         btn.optText = opt.text
-        btn.txt:SetText(opt.text)
+        btn.optChildren = opt.children
+        btn.txt:SetText(opt.text .. (opt.children and "  >" or ""))
         if dd.value == opt.value then
             btn.txt:SetTextColor(1, 0.82, 0)
         else
             btn.txt:SetTextColor(1, 1, 1)
         end
         -- il click legge SEMPRE l'opzione corrente del bottone (riusato)
+        btn:SetScript("OnEnter", function()
+            if btn.optChildren then
+                Utils:OpenDropdownSubmenu(dd, menu, btn, btn.optChildren)
+            elseif menu.submenu then
+                menu.submenu:Hide()
+            end
+        end)
         btn:SetScript("OnClick", function()
+            if btn.optChildren then
+                Utils:OpenDropdownSubmenu(dd, menu, btn, btn.optChildren)
+                return
+            end
             dd.value = btn.optValue
             dd.text:SetText(btn.optText)
             Utils:CloseDropdownMenu()

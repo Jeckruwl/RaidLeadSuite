@@ -14,9 +14,270 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.104**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.144**.
 
+## 1.11.144 — Achievement link anche per raid Classic
 
+Anche i raid Classic selezionati nel Pugger usano direttamente il relativo
+achievement link nel messaggio: BWL 685, MC 686, AQ40 687, ZG 688 e AQ20 689.
+Come per TBC, non vengono aggiunte difficoltà 10/25 o HC e i raid restano
+esclusivi del Pugger.
+
+## 1.11.143 — Pugger raid dropdown per espansione
+
+La dropdown Raid del solo Pugger ora mostra tre voci root con submenu mouseover:
+WotLK Raids, TBC Raids e Classic Raids. TBC include Karazhan, Zul'Aman, Gruul,
+Magtheridon, SSC, Mount Hyjal, Tempest Keep, Black Temple e Sunwell; Classic
+include MC, BWL, ZG, AQ20 e AQ40. Questi raid non sono aggiunti al raidDB né
+agli altri moduli. Se viene selezionato un raid TBC, il messaggio Pugger usa
+`GetAchievementLink` dell'achievement relativo al posto dell'abbreviazione e
+non aggiunge difficoltà 10/25 o HC.
+
+## 1.11.142 — Link nei tre slot Pugger e minimap level fisso 3
+
+Aim, Reserved items e Other requirements accettano tutti link di item,
+achievement e quest tramite shift-click; inserimento, salvataggio e preview
+usano lo stesso hook generico.
+
+Il minimap button usa frame level **3** fisso. Il setter dell'istanza forza 3
+anche se un chiamante tenta un altro valore; rimossi calcolo dal parent e timer
+periodico di frame-stack. OnShow e rescan ribadiscono soltanto il valore 3.
+
+## 1.11.141 — Media ElvUI/LibSharedMedia nel Raid Frame
+
+Le select Font e Bar texture includono dinamicamente font e statusbar registrati
+da LibSharedMedia e i media esposti da ElvUI, senza dipendenza obbligatoria.
+I valori salvati restano path reali e vengono applicati subito al Raid Frame;
+se ElvUI non è caricato restano disponibili le opzioni Blizzard preesistenti.
+
+## 1.11.140 — Cooldown Raid Frame più grandi e arrotondati per eccesso
+
+Il font dei quattro cooldown passa da 10 a 11px. `FormatCD` non sottostima più
+il residuo: sopra/sui 60s usa `ceil(seconds/60)` (119s = 2m, 60s = 1m);
+sotto 60s passa ai secondi e usa `ceil(seconds)`.
+
+## 1.11.139 — Ready Check corretto anche se avviato da altri
+
+READY_CHECK_CONFIRM viene ora memorizzato per unit token, GUID e nome. Questo
+collega correttamente l'evento ricevuto come `player` alla riga `raidN`. Una
+conferma evento ready/notready prevale inoltre su `GetReadyCheckStatus` ancora
+stale su `waiting`. Non richiede essere RL o assist: gli eventi sono ricevuti
+da tutti i membri del raid.
+
+## 1.11.138 — Countdown: frase a 7, poi numeri puri
+
+A 7 secondi il RAID_WARNING è `rolling ends in 7s`. I warning successivi sono
+esclusivamente `5`, `4`, `3`, `2`, `1`, senza suffisso `s`. Applicato sia al
+roll sia al reroll.
+
+## 1.11.137 — Countdown roll essenziale
+
+Gli avvisi RAID_WARNING a 7/5/3/2/1 secondi non mostrano più tipo di roll o
+item link. Il formato unico, sia per roll sia per reroll, è `rolling ends in
+Xs`.
+
+## 1.11.136 — Formato reroll essenziale
+
+Il warning iniziale usa esclusivamente questo ordine: `Nome1, Nome2 REROLL
+[itemLink] You have 15s`. Rimossi `Only:` e qualsiasi altro testo accessorio.
+
+## 1.11.135 — Reroll con nomi degli aventi diritto
+
+Il messaggio iniziale del reroll conserva formato, link item e timer 15s, e
+riporta nuovamente l'elenco dei soli giocatori autorizzati: `Only: Nome1,
+Nome2`. Il messaggio resta in RAID_WARNING.
+
+## 1.11.134 — Roll separati da MS Changes, 15s e warning completi
+
+Rimosso il prepend di `preMessage` da StartRoll: era la causa per cui ogni tasto
+Roll ripeteva le MS Changes. Ora solo Announce MSCh le invia. Roll MS/OS/FFA e
+Reroll durano sempre 15s, partono in RAID_WARNING con label, itemLink e
+`You have 15s`, quindi avvisano in RAID_WARNING a 7/5/3/2/1 secondi includendo
+sempre il link. Anche esiti, pareggi e assenza roll/reroll sono RAID_WARNING e
+usano il link item. Announce MSCh passa anch'esso in RAID_WARNING.
+
+## 1.11.133 — Colonne Type/Assigned minime, spazio a Boss
+
+Le larghezze Type e Assigned sono ora misurate dalle rispettive intestazioni
+con 2px di sicurezza (fallback 28/50px), evitando sia spreco sia clipping.
+Item conserva esattamente la larghezza precedente: tutto lo spazio recuperato
+da Type e Assigned viene assegnato esclusivamente alla colonna Boss. Larghezza
+della tabella e della finestra invariate.
+
+## 1.11.132 — MS Changes su OnShow e pulsanti realmente a filo
+
+Il FontString MS Changes è ancorato direttamente 8px sotto il riquadro selected
+item. Il controllo/word-wrap avviene nell'OnShow del Loot Manager, quindi a ogni
+apertura e con il frame già visibile: non dipende dal click Announce. Le righe
+aggiuntive aumentano subito l'altezza. La fila pulsanti è ancorata direttamente
+al frame a x=8 (corretto il residuo x=16 che causava il decentramento).
+
+## 1.11.131 — Spazio fra ignore loots e checkbox
+
+Rimosso lo spazio verticale aggiunto sotto il titolo nella 1.11.130: tutto il
+blocco contenuti è tornato 8px più in alto e l'altezza base è 428px. Lo spazio
+richiesto è ora nel punto corretto: la prima checkbox è ancorata 10px a destra
+di `ignore loots:`, mentre le checkbox successive sono separate di 12px dalle
+rispettive etichette precedenti.
+
+## 1.11.130 — Cinque righe reali, pulsanti a filo, più spazio sotto titolo
+
+La tabella è ora alta 220px: viewport esatto per cinque righe da massimo due
+linee (40px ciascuna), quattro gap da 2px e inset verticali da 6px. I nomi item
+sono limitati a due linee e l'altezza riga usa il font size reale. Altezza base
+finestra aggiornata a 436px; solo il wrap MS Changes aggiunge altezza.
+La fila pulsanti è ancorata direttamente al frame a x=8 (nessun offset ereditato
+dal FontString). L'intero blocco sotto il titolo è stato abbassato di 8px per
+dare respiro alla riga ignore loots, senza creare spazi intermedi.
+
+## 1.11.129 — Loot Manager fisso con altezza guidata dalle MS Changes
+
+Loot Manager non è più ridimensionabile e ignora dimensioni salvate: larghezza
+fissa **460px**. Gli inset laterali sono scesi da 16px a 8px; la fila pulsanti
+occupa esattamente i 444px interni. La tabella ha altezza fissa **152px**, pari
+al viewport di cinque righe standard, e tutti gli elementi fissi producono
+un'altezza base di **360px**. `MS CHANGES` usa word-wrap: una riga è compresa
+nella base e soltanto le righe aggiuntive aumentano l'altezza della finestra;
+riducendo il testo, l'altezza torna automaticamente a 360px.
+
+## 1.11.128 — Rarity threshold agganciata al dropdown
+
+L'etichetta `Rarity threshold` è ora ancorata direttamente al lato sinistro del
+dropdown, con lo stesso centro verticale: non può più finire su una seconda
+riga per differenze di font o scala UI. L'header tabella è stato contestualmente
+rialzato da -104 a -86, eliminando lo spazio verticale liberato.
+
+## 1.11.127 — Hotfix sintassi dopo riconciliazione shallow
+
+Ripristinato nuovamente il controllo qualità corretto dopo che la riconciliazione
+del checkout shallow aveva reintrodotto il vecchio `and and`. Verificato il
+contenuto finale post-merge con parser Lua prima del commit.
+
+## 1.11.126 — Loot Manager: compattazione completa e rarity allineata
+
+Compattazione resa coerente su entrambi i lati della tabella: Loot History e
+header sono stati rialzati, mentre il fondo della tabella è stato esteso fino a
+4px sopra l'item selezionato, eliminando lo spazio vuoto trasferito sotto il
+listato. `Rarity threshold` e il relativo dropdown sono entrambi allineati alla
+riga Loot History.
+
+## 1.11.125 — Hotfix carattere spurio a fine LootManager
+
+Rimosso un carattere `d` isolato dopo l'ultimo `end` di LootManager.lua, che
+causava `=` expected near `<eof>`. Verificata quindi la sintassi di **tutti** i
+file Lua dell'addon con `luaparser`: parsing completato senza errori.
+
+## 1.11.124 — Hotfix sintassi Loot Manager
+
+Corretto il controllo qualità item in LootManager: un refuso `and and` alla
+riga 853 impediva il caricamento dell'intero file Lua. Ripristinata la condizione
+corretta `GetItemQualityColor and q and q >= 0`.
+
+## 1.11.123 — Loot Manager: MS changes aggiornate all'apertura
+
+Ogni apertura del Loot Manager costruisce automaticamente il testo MS CHANGES
+dai dati correnti, senza inviare messaggi in raid. Il pulsante Announce MSCh
+continua invece ad aggiornare il testo e ad annunciarlo. Se non esistono changes,
+il testo precedente viene pulito.
+
+## 1.11.122 — Loot Manager: eliminati gli spazi verticali residui
+
+Compattata la parte alta dopo aver riportato le checkbox sulla riga del titolo:
+Loot History/rarity e l'intestazione tabella sono stati rialzati di 22px.
+Compattata la parte bassa dopo aver riportato i pulsanti su una sola riga:
+tabella e item selezionato sono stati abbassati di 30px. Rimossi quindi entrambi
+gli spazi vuoti lasciati dai layout intermedi.
+
+## 1.11.121 — Loot Manager: rimossa colonna numero
+
+Rimossa la colonna `#` dall'intestazione e dalle righe di Loot History. Icona e
+colonna Item sono state spostate a sinistra per recuperare lo spazio liberato.
+
+## 1.11.120 — Loot Manager: ignore loots su una riga
+
+Le checkbox Recipes/BoE/Gems/Shards sono state riportate sulla stessa riga del
+testo `ignore loots:`, lasciando invariata la riga separata Loot History/rarity.
+
+## 1.11.119 — Loot Manager: rarity con storico e pulsanti su una riga
+
+`Rarity threshold` è stato spostato sulla stessa riga di `Loot History`, così
+non interferisce più con le checkbox. I cinque pulsanti sono di nuovo su una
+sola riga; i primi quattro misurano 70px, `Announce MSCh` 124px, e con quattro
+spazi da 6px occupano esattamente i 428px interni della larghezza minima 460px.
+Il testo del pulsante è stato abbreviato da `Announce Changes` a
+`Announce MSCh`. Altezza minima ricalcolata a 350px.
+
+## 1.11.118 — Loot Manager: ordine visivo corretto
+
+Layout verticale riordinato come richiesto: titolo; ignore loots + rarity
+threshold; Loot History; tabella; item selezionato; testo MS changes; prima
+riga Roll MS/OS/FFA; seconda riga Reroll/Announce Changes. `Loot History` non
+precede più i filtri e il testo MS non occupa più lo spazio sotto il titolo.
+
+## 1.11.117 — Loot Manager: filtri e comandi su due righe, timer senza secondi
+
+Le checkbox Recipes/BoE/Gems/Shards sono ora nella riga sotto `ignore loots:`.
+I comandi sono su due righe: Roll MS/OS/FFA sopra, Reroll e Announce Changes
+sotto. La selezione item e il listato sono stati rialzati per non sovrapporsi.
+`TradeRemaining` mostra solo `Xh Ym` (es. `1h 12m`), senza secondi. Minimo della
+finestra ricalcolato a **460x390**: la larghezza è determinata dalle colonne
+dello storico, non più dai cinque pulsanti sulla stessa riga.
+
+## 1.11.116 — Loot Manager sempre già a destra
+
+Il Loot Manager usa sempre la posizione fissa `TOPLEFT UIParent, 420, -116`,
+cioè lo stesso posto che prima assumeva solo durante un trade. Rimossi gli hook
+`OnShow`/`OnHide` del TradeFrame: aprire o chiudere uno scambio non sposta più
+la finestra. `HookTradePanel` resta come alias no-op per compatibilità.
+
+## 1.11.115 — Raid Control bar senza dialog border
+
+La title bar `RLSuiteMainTitleBar` è ora marcata `_noOuterBorder = true` prima
+dello skin: resta il riempimento della barra, ma il bordo Blizzard
+`UI-Tooltip-Border` è completamente trasparente, come nella matrice pulsanti.
+
+## 1.11.114 — Overlay offline 20% + pannello debug indipendente
+
+L'overlay rosso OFFLINE usa alpha **0.20**. Il pannello RLS DEBUG non segue più
+la Raid Control bar né la sua matrice: con debug attivo resta visibile sempre.
+È ancorato al bordo superiore (`TOPLEFT` di UIParent, y=0) con offset x uguale
+a `larghezza effettiva Raid Frame + larghezza effettiva matrice pulsanti`.
+La posizione viene ricalcolata quando il layout cambia.
+
+## 1.11.113 — Overlay offline più leggero e testo a destra
+
+L'overlay rosso OFFLINE passa da alpha 0.48 a **0.32**. La scritta bianca
+`OFFLINE` non è più centrata: è allineata al bordo destro della barra HP con
+4 px di margine interno.
+
+## 1.11.112 — Ready Check nelle role icon + stato OFFLINE
+
+Durante un ready check lo slot della role icon mostra la risposta Blizzard:
+`ReadyCheck-Waiting` (punto interrogativo giallo), `ReadyCheck-NotReady` (X rossa)
+o `ReadyCheck-Ready` (spunta verde). Alla fine i risultati restano per 5 secondi,
+poi tornano Leader/Assistant/Master Looter. Un player offline ha priorita' su
+tutto: icona `UI-GroupLoot-Pass-Up` e overlay rosso trasparente sulla barra HP
+con scritta bianca `OFFLINE`. L'overlay non riceve un secondo fade: resta
+leggibile sopra la barra gia' attenuata dal normale fade offline.
+
+## 1.11.111 — Fade solo fuori dall'area visibile (~100 yard)
+
+Il client 3.3.5 non espone la zona degli altri membri e `UnitInRange` copre solo
+il range ristretto delle spell (circa 40 yard), quindi non permette ne' "stessa
+zona" ne' una misura reale a 100 yard. Il fade ora usa esclusivamente
+`UnitIsVisible`: barra piena finche' il client vede l'unita', fade quando non la
+vede piu' (indicativamente oltre ~100 yard, altra area/istanza o offline).
+Rimosse dalla Config le soglie 10/15/20/25/30/35/40: restano solo `Off` e
+`Out of sight (~100 yards)`. Qualunque vecchio valore non-zero nei SavedVariables
+abilita automaticamente il nuovo modo. `UnitInRange` non influenza piu' il fade.
+
+## 1.11.110 — Gear Check: repair sotto l'80%
+
+La soglia di alert della durability (`RF_DUR_ALERT_PCT`) passa da 20 a **80**.
+Il Gear Check richiede quindi il repair quando la percentuale nota e' inferiore
+all'80%; all'80% esatto lo stato resta OK. La soglia degli alert e' ora coerente
+con i colori gia' usati dalla cella (80-100% verde, 60-79% arancione, sotto 60%
+rosso). Test di confine aggiunti: 79% = `low`/repair, 80% = `ok`.
 
 ## 1.11.109 — Role icons filter, MT/OT tag alignment, Durability real % / OK, Buff Warnings cleanup & TBC consumables
 

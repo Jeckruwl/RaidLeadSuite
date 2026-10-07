@@ -13,6 +13,10 @@ local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end 
 local LM_ROW_TOP = 6      -- spazio sopra/sotto il testo dentro la riga
 local LM_ROW_GAP = 2      -- spazio tra una riga e l'altra
 local LM_ROW_MIN_H = 26   -- altezza minima (una sola riga di testo)
+local LM_ROLL_DURATION = 15
+local LM_FIXED_WIDTH = 460
+local LM_TABLE_HEIGHT = 220 -- viewport esatto: cinque righe da max due linee
+local LM_BASE_HEIGHT = 428  -- elementi fissi + tabella + una riga MS Changes
 
 -- Non-overlapping roll/reroll countdowns (AceTimer named timers):
 -- restarting a roll cancels the previous timer instead of stacking a
@@ -83,12 +87,13 @@ end
 
 function LM:CreateFrame()
     local f = CreateFrame("Frame", "RLSuiteLootManager", UIParent)
-    f:SetSize(500, 500)
+    f:SetSize(LM_FIXED_WIDTH, LM_BASE_HEIGHT)
     f:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
     f:SetFrameStrata("HIGH")
     -- NON trascinabile: il Loot Manager si comporta come una finestra
     -- nativa (pannello equip), posizione fissa decisa da SelectTab.
     f:SetMovable(false)
+    if f.SetResizable then f:SetResizable(false) end
     f:EnableMouse(true)
     f:Hide()
     f._noOuterBorder = true
@@ -97,28 +102,35 @@ function LM:CreateFrame()
     RLSuite.utils:ClampWindow(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -10)
     title:SetText("Loot Manager")
     self.titleFS = title
 
+    -- Il testo MS Changes vive nel blocco basso, subito prima dei comandi.
     self.preMsgText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.preMsgText:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -32)
-    self.preMsgText:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -32)
+    self.preMsgText:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -372)
+    self.preMsgText:SetWidth(LM_FIXED_WIDTH - 16)
+    self.preMsgText:SetHeight(14)
+    self.preMsgText:SetWordWrap(true)
     self.preMsgText:SetJustifyH("LEFT")
+    self.preMsgText:SetJustifyV("TOP")
     self.preMsgText:SetText("")
 
     local histLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    histLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -50)
+    histLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -64)
     histLabel:SetText("Loot History")
+    self.histLabel = histLabel
 
     local filterFS = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    filterFS:SetPoint("TOPRIGHT", f, "TOPRIGHT", -152, -54)
     filterFS:SetText("Rarity threshold")
+    self.filterFS = filterFS
 
     self.rarityFilter = (self.db and self.db.rarityFilter) or "all"
     self.rarityDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteLootRarityDD", 130, 20)
     self.rarityDropdown:ClearAllPoints()
-    self.rarityDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -50)
+    self.rarityDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -58)
+    -- L'etichetta è legata al controllo, non a una seconda riga autonoma.
+    filterFS:SetPoint("RIGHT", self.rarityDropdown, "LEFT", -8, 0)
     RLSuite.utils:SetupDropdown(self.rarityDropdown, {
         { text = "All", value = "all" },
         { text = "Poor", value = 0 },
@@ -136,8 +148,9 @@ function LM:CreateFrame()
     -- Checkbox "ignore loots": escludono intere categorie sia in cattura
     -- (mai registrate) sia a video (le righe gia' in storico spariscono).
     local ignoreLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    ignoreLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -78)
+    ignoreLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -42)
     ignoreLabel:SetText("ignore loots:")
+    self.ignoreLabel = ignoreLabel
     self.ignoreChecks = {}
     local ignoreDefs = {
         { key = "recipes",     label = "Recipes" },
@@ -145,11 +158,16 @@ function LM:CreateFrame()
         { key = "gems",        label = "Gems" },
         { key = "shards",      label = "Shards" },
     }
-    local ix = 90
+    local previousIgnoreLabel
     for _, def in ipairs(ignoreDefs) do
         local cb = CreateFrame("CheckButton", "RLSuiteLootIgnore_" .. def.key, f, "UICheckButtonTemplate")
         cb:SetSize(20, 20)
-        cb:SetPoint("TOPLEFT", f, "TOPLEFT", ix, -72)
+        if previousIgnoreLabel then
+            cb:SetPoint("LEFT", previousIgnoreLabel, "RIGHT", 12, 0)
+        else
+            -- Spazio esplicito fra il titolo "ignore loots:" e la prima checkbox.
+            cb:SetPoint("LEFT", ignoreLabel, "RIGHT", 10, 0)
+        end
         cb:SetChecked(self.db and self.db.filters and self.db.filters[def.key] and true or false)
         cb:SetScript("OnClick", function(btn)
             -- Un solo punto di scrittura: cosi' le stesse voci restano
@@ -160,20 +178,21 @@ function LM:CreateFrame()
         lbl:SetPoint("LEFT", cb, "RIGHT", 2, 0)
         lbl:SetText(def.label)
         self.ignoreChecks[def.key] = cb
-        ix = ix + 20 + (#def.label * 7) + 14
+        previousIgnoreLabel = lbl
     end
 
-    -- Header spostato sotto la riga delle checkbox (-74 -> -100).
+    -- Header sotto il titolo ignore e la sua riga di checkbox.
     local header = CreateFrame("Frame", nil, f)
-    header:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -100)
-    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -100)
+    header:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -86)
+    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -86)
     header:SetHeight(18)
     self.histHeader = header
     self:PaintHeader(header)
 
     self.histBox = CreateFrame("Frame", nil, f)
     self.histBox:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -2)
-    self.histBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 78)
+    self.histBox:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -2)
+    self.histBox:SetHeight(LM_TABLE_HEIGHT)
     self:SkinBox(self.histBox)
 
     self.histScroll = CreateFrame("ScrollFrame", "RLSuiteLootHistory", self.histBox, "UIPanelScrollFrameTemplate")
@@ -192,10 +211,16 @@ function LM:CreateFrame()
     end)
 
     self.selBox = CreateFrame("Frame", nil, f)
-    self.selBox:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 40)
-    self.selBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 40)
+    self.selBox:SetPoint("TOPLEFT", self.histBox, "BOTTOMLEFT", 0, -4)
+    self.selBox:SetPoint("TOPRIGHT", self.histBox, "BOTTOMRIGHT", 0, -4)
     self.selBox:SetHeight(34)
     self:SkinBox(self.selBox)
+
+    -- MS Changes è sempre subito sotto l'item selezionato; nessun offset
+    -- assoluto che possa separarlo dal riquadro quando cambia l'altezza.
+    self.preMsgText:ClearAllPoints()
+    self.preMsgText:SetPoint("TOPLEFT", self.selBox, "BOTTOMLEFT", 0, -8)
+    self.preMsgText:SetPoint("TOPRIGHT", self.selBox, "BOTTOMRIGHT", 0, -8)
 
     self.selectedItem = nil
     self.selectedItemIcon = self.selBox:CreateTexture(nil, "ARTWORK")
@@ -212,28 +237,28 @@ function LM:CreateFrame()
 
     self.rollMSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rollMSBtn)
-    self.rollMSBtn:SetSize(80, 24)
-    self.rollMSBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 10)
+    self.rollMSBtn:SetSize(70, 24)
+    self.rollMSBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 8, 10)
     self.rollMSBtn:SetText("Roll MS")
     self.rollMSBtn:SetScript("OnClick", function() self:StartRoll("MS") end)
 
     self.rollOSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rollOSBtn)
-    self.rollOSBtn:SetSize(80, 24)
+    self.rollOSBtn:SetSize(70, 24)
     self.rollOSBtn:SetPoint("LEFT", self.rollMSBtn, "RIGHT", 6, 0)
     self.rollOSBtn:SetText("Roll OS")
     self.rollOSBtn:SetScript("OnClick", function() self:StartRoll("OS") end)
 
     self.rollOtherBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rollOtherBtn)
-    self.rollOtherBtn:SetSize(80, 24)
+    self.rollOtherBtn:SetSize(70, 24)
     self.rollOtherBtn:SetPoint("LEFT", self.rollOSBtn, "RIGHT", 6, 0)
     self.rollOtherBtn:SetText("Roll FFA")
     self.rollOtherBtn:SetScript("OnClick", function() self:StartRoll("FFA") end)
 
     self.rerollBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rerollBtn)
-    self.rerollBtn:SetSize(80, 24)
+    self.rerollBtn:SetSize(70, 24)
     self.rerollBtn:SetPoint("LEFT", self.rollOtherBtn, "RIGHT", 6, 0)
     self.rerollBtn:SetText("Reroll")
     self.rerollBtn:Disable()
@@ -243,9 +268,9 @@ function LM:CreateFrame()
     -- pre-pone al messaggio di roll come preMessage). Utile mentre si lootano.
     self.announceMSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.announceMSBtn)
-    self.announceMSBtn:SetSize(124, 24)
+    self.announceMSBtn:SetSize(140, 24)
     self.announceMSBtn:SetPoint("LEFT", self.rerollBtn, "RIGHT", 6, 0)
-    self.announceMSBtn:SetText("Announce Changes")
+    self.announceMSBtn:SetText("Announce MSCh")
     self.announceMSBtn:SetScript("OnClick", function()
         RLSuite.msManager:GenerateMessage()
     end)
@@ -253,41 +278,33 @@ function LM:CreateFrame()
     f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
 
-    self:HookTradePanel()
+    -- Controllo MS Changes ad OGNI apertura, quando il frame è già visibile:
+    -- così GetStringHeight misura davvero il wrap e adegua subito l'altezza.
+    f:SetScript("OnShow", function()
+        if RLSuite.msManager and RLSuite.msManager.RefreshLootPreMessage then
+            RLSuite.msManager:RefreshLootPreMessage()
+        else
+            LM:ApplyDynamicHeight()
+        end
+    end)
+
     self:EnsureTicker()
 end
 
--- Ancoraggio "finestra nativa": normalmente in alto a sinistra (16, -116),
--- ma se il trade e' aperto il Loot Manager cede la sinistra al trade e si
--- sposta SUBITO a destra di esso (come fanno equip/talenti/spellbook con
--- gli altri pannelli Blizzard).
+-- Posizione fissa già a destra dello spazio occupato dal TradeFrame.
+-- Il Loot Manager non reagisce più all'apertura/chiusura del trade: niente
+-- salto laterale nel momento in cui un player apre la finestra di scambio.
+local LM_FIXED_X = 420
 function LM:AnchorDefault()
     if not self.frame then return end
     self.frame:ClearAllPoints()
-    local x = 16
-    if self.tradeOpen and TradeFrame and TradeFrame.IsShown and TradeFrame:IsShown() then
-        x = (TradeFrame.GetRight and TradeFrame:GetRight() or 0) + 10
-    end
-    if x < 16 then x = 16 end
-    self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", x, -116)
+    self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", LM_FIXED_X, -116)
 end
 
--- Gancio una tantum al TradeFrame di Blizzard (OnShow/OnHide): il pannello
--- "sa" cosa c'e' aperto e reagisce nell'istante in cui il trade appare
--- ("quando aprono una trade si sposta a destra lasciando il trade a
--- sinistra"). Registrabile anche a runtime se il TradeFrame esiste gia'.
+-- Alias storico tenuto per compatibilità con eventuali chiamanti esterni.
+-- Non installa hook: la finestra deve rimanere sempre nella posizione fissa.
 function LM:HookTradePanel()
-    if self._tradeHooked then return end
-    if not (TradeFrame and TradeFrame.HookScript) then return end
-    self._tradeHooked = true
-    TradeFrame:HookScript("OnShow", function()
-        LM.tradeOpen = true
-        LM:AnchorDefault()
-    end)
-    TradeFrame:HookScript("OnHide", function()
-        LM.tradeOpen = false
-        LM:AnchorDefault()
-    end)
+    return
 end
 
 function LM:SkinBox(box)
@@ -301,13 +318,21 @@ end
 
 function LM:HistMetrics(w)
     w = tonumber(w) or 420
-    local timeW, assignedW, typeW, gap, padR = 64, 72, 48, 6, 8
-    local itemX = 58
+    local timeW, gap, padR = 64, 6, 8
+    -- Type e Assigned occupano solo la larghezza reale dell'intestazione
+    -- (+2px di sicurezza). I fallback valgono prima della creazione header.
+    local typeW = math.max(28, tonumber(self.histTypeW) or 28)
+    local assignedW = math.max(50, tonumber(self.histAssignedW) or 50)
+    local itemX = 30
     local assignedX = w - padR - timeW - gap - assignedW
     local typeX = assignedX - gap - typeW
     local inner = typeX - itemX - gap
     if inner < 120 then inner = 120 end
-    local itemW = math.floor(inner * 0.58)
+    -- Item conserva la larghezza del layout precedente (Type=48,
+    -- Assigned=72): tutto lo spazio recuperato va esclusivamente a Boss.
+    local reclaimed = (48 - typeW) + (72 - assignedW)
+    local legacyInner = math.max(120, inner - reclaimed)
+    local itemW = math.floor(legacyInner * 0.58)
     local bossW = inner - itemW
     local bossX = itemX + itemW + gap
     return {
@@ -328,11 +353,14 @@ function LM:PaintHeader(header)
         self.histHeads[key] = fs
         return fs
     end
-    add("num", "#"):SetPoint("LEFT", header, "LEFT", 6, 0)
     add("item", "Item")
     add("boss", "Boss")
-    add("type", "Type")
-    add("assigned", "Assigned")
+    local typeFS = add("type", "Type")
+    local assignedFS = add("assigned", "Assigned")
+    -- Misura il font effettivo: niente valori larghi arbitrari e nessun
+    -- clipping dell'intestazione con scale/font differenti.
+    self.histTypeW = math.ceil(typeFS:GetStringWidth() or 0) + 2
+    self.histAssignedW = math.ceil(assignedFS:GetStringWidth() or 0) + 2
     local tfs = add("time", "Time left")
     tfs:SetJustifyH("RIGHT")
     self:LayoutHeader()
@@ -351,8 +379,6 @@ function LM:LayoutHeader()
     local insetL, insetR = 6, 26
     local m = self:HistMetrics(w - insetL - insetR)
     local h = self.histHeads
-    h.num:ClearAllPoints()
-    h.num:SetPoint("LEFT", header, "LEFT", insetL + 6, 0)
     h.item:ClearAllPoints()
     h.item:SetPoint("LEFT", header, "LEFT", insetL + m.itemX, 0)
     h.boss:ClearAllPoints()
@@ -378,11 +404,28 @@ function LM:TickRemaining()
     end
 end
 
+function LM:ApplyDynamicHeight()
+    if not self.frame then return end
+    -- La finestra ha larghezza fissa. Una riga MS Changes è già compresa
+    -- nell'altezza base; solo le righe aggiuntive aumentano l'altezza totale.
+    self.frame:SetWidth(LM_FIXED_WIDTH)
+    local textH = 14
+    if self.preMsgText then
+        -- Altezza temporanea ampia per misurare il word-wrap senza clipping.
+        self.preMsgText:SetHeight(1000)
+        local measured = self.preMsgText:GetStringHeight()
+        if measured and measured > textH then textH = math.ceil(measured) end
+        self.preMsgText:SetHeight(textH)
+    end
+    self.frame:SetHeight(LM_BASE_HEIGHT + (textH - 14))
+end
+
 function LM:SetPreMessage(msg)
     self.preMessage = msg or ""
     if self.preMsgText then
-        self.preMsgText:SetText(msg)
+        self.preMsgText:SetText(self.preMessage)
     end
+    self:ApplyDynamicHeight()
 end
 
 -- raidName opzionale: nil = usa il raid selezionato in Groupmaking (debug
@@ -803,11 +846,7 @@ function LM:TradeRemaining(entry)
     if left <= 0 then return "Expired" end
     local h = math.floor(left / 3600)
     local m = math.floor((left % 3600) / 60)
-    local s = left % 60
-    if h > 0 then
-        return string.format("%d:%02d:%02d", h, m, s)
-    end
-    return string.format("%d:%02d", m, s)
+    return string.format("%dh %dm", h, m)
 end
 
 function LM:UpdateHistory()
@@ -856,14 +895,6 @@ function LM:UpdateHistory()
             row.entry = entry
             RLSuite.utils:SkinRow(row, self.selectedItem == entry)
 
-            local num = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            num:SetWidth(28)
-            num:SetJustifyH("LEFT")
-            num:SetText("#" .. (entry.id or 0))
-            if not lineH then
-                lineH = num:GetStringHeight() or 14
-            end
-
             local icon = row:CreateTexture(nil, "ARTWORK")
             icon:SetSize(18, 18)
             icon:SetTexture(entry.itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
@@ -872,16 +903,25 @@ function LM:UpdateHistory()
             local name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             name:SetWidth(m.itemW)
             name:SetWordWrap(true)
+            if name.SetMaxLines then name:SetMaxLines(2) end
             name:SetJustifyH("LEFT")
             name:SetJustifyV("TOP")
             name:SetText(entry.itemName or "Unknown")
+            if not lineH then
+                local fontSize
+                if name.GetFont then
+                    local _
+                    _, fontSize = name:GetFont()
+                end
+                lineH = tonumber(fontSize) or 14
+            end
             local q = self:EntryQuality(entry)
             if GetItemQualityColor and q and q >= 0 then
                 local r, g, b = GetItemQualityColor(q)
                 name:SetTextColor(r or 1, g or 1, b or 1)
             end
             -- righe occupate dal nome con wrap (minimo una)
-            local lines = math.max(1, math.ceil((name:GetStringHeight() or lineH) / lineH))
+            local lines = math.min(2, math.max(1, math.ceil((name:GetStringHeight() or lineH) / lineH)))
             row._lines = lines
             if lines > maxLines then maxLines = lines end
             row.name = name
@@ -913,7 +953,6 @@ function LM:UpdateHistory()
             -- all'occhio.
             if entry.assignedTo then
                 local GR = 0.45
-                num:SetTextColor(GR, GR, GR, 1)
                 name:SetTextColor(GR, GR, GR, 1)
                 boss:SetTextColor(GR, GR, GR, 1)
                 itype:SetTextColor(GR, GR, GR, 1)
@@ -923,7 +962,6 @@ function LM:UpdateHistory()
             end
 
             -- riferimenti ai figli per il secondo passaggio (posizionamento)
-            row.num = num
             row.icon = icon
             row.name = name
             row.boss = boss
@@ -970,10 +1008,9 @@ function LM:UpdateHistory()
         row:SetPoint("TOPRIGHT", self.histContent, "TOPRIGHT", 0, -y)
         RLSuite.utils:ClipScrollRow(self.histContent, row, y, rowH)
 
-        -- Riposiziona i figli (num, icon, name, boss, itype, remain,
-        -- assigned) allineandoli in alto, dentro la riga.
-        if row.num then row.num:SetPoint("TOPLEFT", row, "TOPLEFT", 6, -LM_ROW_TOP) end
-        if row.icon then row.icon:SetPoint("TOPLEFT", row, "TOPLEFT", 36, -LM_ROW_TOP) end
+        -- Riposiziona i figli (icon, name, boss, itype, remain, assigned)
+        -- allineandoli in alto, dentro la riga.
+        if row.icon then row.icon:SetPoint("TOPLEFT", row, "TOPLEFT", 6, -LM_ROW_TOP) end
         if row.name then
             row.name:SetPoint("TOPLEFT", row, "TOPLEFT", m.itemX, -LM_ROW_TOP)
             row.name:SetHeight((row._lines or 1) * lineH)
@@ -1023,6 +1060,24 @@ function LM:RefreshHistoryHighlight()
     end
 end
 
+function LM:RollItemText(item)
+    if not item then return "Unknown" end
+    return item.itemLink or item.itemName or "Unknown"
+end
+
+function LM:RollLabel(reroll)
+    if reroll then return "REROLL" end
+    local rollType = self.currentRoll and self.currentRoll.type or "MS"
+    if rollType == "FFA" or rollType == "OTHER" then return "ROLL FFA" end
+    return "ROLL " .. tostring(rollType or "MS")
+end
+
+function LM:RollCountdownWarning(_, seconds)
+    -- A 7s una sola frase esplicativa; poi countdown numerico puro.
+    local msg = seconds == 7 and "rolling ends in 7s" or tostring(seconds)
+    RLSuite.utils:SendChat(msg, "RAID_WARNING")
+end
+
 function LM:StartRoll(rollType)
     if not self.selectedItem then
         RLSuite.utils:Print(L["Select an item from the history first!"])
@@ -1036,20 +1091,17 @@ function LM:StartRoll(rollType)
         -- seen[NomeGiocatore] = primo roll: chi rolla due volte viene ignorato
         -- (vale SOLO il primo roll, come chiesto dal raid leader).
         seen = {},
-        timer = self.db.rollDuration or 10,
+        timer = LM_ROLL_DURATION,
         active = true,
     }
 
-    local typeNames = { MS = "MS", OS = "OS", FFA = "Free For All", OTHER = "Free For All" }
-    local msg = "Roll " .. (typeNames[rollType] or rollType or "MS") .. " for " .. (self.selectedItem.itemName or "Unknown")
-    if self.preMessage and self.preMessage ~= "" then
-        msg = self.preMessage .. " " .. msg
-    end
-    -- I messaggi dei tasti di roll vanno in RAID WARNING
-    -- (Utils:SendChat torna a RAID se non leader/assistant).
+    -- MS Changes resta un'informazione separata nel pannello e viene
+    -- annunciata SOLO dal suo pulsante: i tasti Roll non la premettono più.
+    local msg = self:RollLabel(false) .. " " .. self:RollItemText(self.selectedItem)
+        .. " You have " .. LM_ROLL_DURATION .. "s"
     RLSuite.utils:SendChat(msg, "RAID_WARNING")
-    -- barra-timer in DBM/BigWigs se installati (durata del roll)
-    RLSuite.utils:StartDbmTimer(self.db.rollDuration or 10, "Roll " .. (self.selectedItem.itemName or "Unknown"),
+    -- barra-timer in DBM/BigWigs se installati (durata fissa del roll)
+    RLSuite.utils:StartDbmTimer(LM_ROLL_DURATION, self:RollLabel(false) .. " " .. self:RollItemText(self.selectedItem),
         self.selectedItem.itemTexture)
 
     if RLSuite.DebugMode and RLSuite:DebugMode() then
@@ -1101,8 +1153,10 @@ function LM:RollTick()
         self:AnnounceWinner()
         return
     end
-    if self.rollRemaining <= 3 then
-        RLSuite.utils:SendChat("Roll ending in " .. self.rollRemaining .. "...", "RAID")
+    if self.rollRemaining == 7 or self.rollRemaining == 5
+        or self.rollRemaining == 4 or self.rollRemaining == 3
+        or self.rollRemaining == 2 or self.rollRemaining == 1 then
+        self:RollCountdownWarning(false, self.rollRemaining)
     end
 end
 
@@ -1158,7 +1212,7 @@ function LM:AnnounceWinner()
     self.currentRoll.active = false
 
     if #self.currentRoll.rolls == 0 then
-        RLSuite.utils:SendChat("No rolls received for " .. (self.currentRoll.item.itemName or "Unknown"), "RAID")
+        RLSuite.utils:SendChat("No rolls received for " .. self:RollItemText(self.currentRoll.item), "RAID_WARNING")
         self:ResetButtons()
         self:UnregisterEvent("CHAT_MSG_SYSTEM")
         return
@@ -1181,9 +1235,11 @@ function LM:AnnounceWinner()
         if self.rerollBtn then self.rerollBtn:Enable() end
         local names = {}
         for _, w in ipairs(winners) do table.insert(names, w.name or "?") end
-        RLSuite.utils:SendChat("Tie! Reroll between: " .. table.concat(names, ", "), "RAID")
+        RLSuite.utils:SendChat("Tie for " .. self:RollItemText(self.currentRoll.item)
+            .. "! Reroll between: " .. table.concat(names, ", "), "RAID_WARNING")
     else
-        RLSuite.utils:SendChat((winner.name or "?") .. " wins " .. (self.currentRoll.item.itemName or "Unknown") .. " with " .. (winner.roll or 0) .. "! Please trade.", "RAID")
+        RLSuite.utils:SendChat((winner.name or "?") .. " wins " .. self:RollItemText(self.currentRoll.item)
+            .. " with " .. (winner.roll or 0) .. "! Please trade.", "RAID_WARNING")
         self.currentRoll.item.assignedTo = winner.name
         self:ShowTradeWindow(self.currentRoll.item)
         -- La riga "selected item" torna vuota: con la finestra pickup aperta
@@ -1201,11 +1257,15 @@ function LM:DoReroll()
 
     local winners = self.currentRoll.rerollWinners
     local names = {}
-    for _, w in ipairs(winners) do table.insert(names, w.name or "?") end
+    for _, winner in ipairs(winners) do
+        names[#names + 1] = winner.name or "?"
+    end
 
-    RLSuite.utils:SendChat("Reroll! Only " .. table.concat(names, ", ") .. " can roll for " .. (self.currentRoll.item.itemName or "Unknown"), "RAID_WARNING")
-    -- barra-timer in DBM/BigWigs se installati (durata del reroll)
-    RLSuite.utils:StartDbmTimer(self.db.rerollDuration or 5, "Reroll " .. (self.currentRoll.item.itemName or "Unknown"),
+    RLSuite.utils:SendChat(table.concat(names, ", ") .. " REROLL "
+        .. self:RollItemText(self.currentRoll.item) .. " You have "
+        .. LM_ROLL_DURATION .. "s", "RAID_WARNING")
+    -- barra-timer in DBM/BigWigs: stessa durata fissa del roll iniziale.
+    RLSuite.utils:StartDbmTimer(LM_ROLL_DURATION, "REROLL " .. self:RollItemText(self.currentRoll.item),
         self.currentRoll.item.itemTexture)
 
     self.currentRoll.rolls = {}
@@ -1228,7 +1288,7 @@ function LM:DoReroll()
 
     -- Non-overlapping: cancel any previous reroll/roll countdown.
     self:CancelRollTimers()
-    self.rerollRemaining = self.db.rerollDuration or 5
+    self.rerollRemaining = LM_ROLL_DURATION
     self.rerollTimer = self:ScheduleRepeatingTimer("RerollTick", 1)
 end
 
@@ -1240,6 +1300,12 @@ function LM:RerollTick()
             self.rerollTimer = nil
         end
         self:ProcessReroll()
+        return
+    end
+    if self.rerollRemaining == 7 or self.rerollRemaining == 5
+        or self.rerollRemaining == 4 or self.rerollRemaining == 3
+        or self.rerollRemaining == 2 or self.rerollRemaining == 1 then
+        self:RollCountdownWarning(true, self.rerollRemaining)
     end
 end
 
@@ -1258,13 +1324,15 @@ function LM:ProcessReroll()
     end
 
     if #validRolls == 0 then
-        RLSuite.utils:SendChat("No valid rerolls!", "RAID")
+        RLSuite.utils:SendChat("No valid rerolls for " .. self:RollItemText(self.currentRoll.item) .. "!", "RAID_WARNING")
         return
     end
 
     table.sort(validRolls, function(a, b) return a.roll > b.roll end)
     local winner = validRolls[1]
-    RLSuite.utils:SendChat((winner.name or "?") .. " wins the reroll for " .. (self.currentRoll.item.itemName or "Unknown") .. " with " .. (winner.roll or 0) .. "! Please trade.", "RAID")
+    RLSuite.utils:SendChat((winner.name or "?") .. " wins the reroll for "
+        .. self:RollItemText(self.currentRoll.item) .. " with " .. (winner.roll or 0)
+        .. "! Please trade.", "RAID_WARNING")
     self.currentRoll.item.assignedTo = winner.name
     self:ShowTradeWindow(self.currentRoll.item)
     self:ClearSelection()

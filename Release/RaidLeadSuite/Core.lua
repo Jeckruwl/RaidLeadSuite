@@ -83,7 +83,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.109"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.144"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -197,8 +197,8 @@ local defaults = {
         mschanges = {},
         loot = {
             history = {},
-            rollDuration = 10,
-            rerollDuration = 5,
+            rollDuration = 15,
+            rerollDuration = 15,
             rarityFilter = "all",
             tradeWindow = 7200,
             filters = { recipes = false, boe = false, gems = false, shards = false,
@@ -1700,24 +1700,30 @@ function RLSuite:LayoutDebugPanel()
     return cols, DBG_ROWS
 end
 
+function RLSuite:AnchorDebugPanel()
+    local f = self.debugPanel
+    if not f then return end
+    local mw = self.mainWindow
+    local raidW = (mw and mw.RaidFrameWidth and mw:RaidFrameWidth()) or 0
+    local matrixW = 0
+    if mw and mw.frame then
+        local scale = (mw.frame.GetScale and mw.frame:GetScale()) or 1
+        matrixW = (mw.frame:GetWidth() or 0) * scale
+    end
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", raidW + matrixW, 0)
+end
+
 function RLSuite:EnsureDebugPanel()
     if self.debugPanel then return end
-    -- Matrice NON spostabile e ancorata alla main bar: dove va la barra va
-    -- anche il pannello (punto relativo alla barra, mai salvato).
+    -- Pannello indipendente dalla Raid Control bar: fisso al bordo superiore,
+    -- dopo la larghezza del Raid Frame e della matrice pulsanti.
     local f = CreateFrame("Frame", "RLSuiteDebugPanel", UIParent)
     f:SetSize(126, 60)
     f:SetFrameStrata("HIGH")
     f:SetMovable(false)
     f:EnableMouse(true)
-    local tb = self.mainWindow and self.mainWindow.titleBar
-    local bar = self.mainWindow and self.mainWindow.frame
-    if tb then
-        f:SetPoint("TOPLEFT", tb, "TOPRIGHT", 8, 0)
-    elseif bar then
-        f:SetPoint("TOPLEFT", bar, "TOPRIGHT", 8, 0)
-    else
-        f:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
-    end
+    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0) -- corretto dopo il layout
     -- Borderless come la main bar (_noOuterBorder = fill tenuto, bordo via).
     f._noOuterBorder = true
     self.utils:SkinFrame(f)
@@ -1745,13 +1751,12 @@ function RLSuite:EnsureDebugPanel()
     end
     self.debugPanel = f      -- PRIMA del layout: LayoutDebugPanel legge self.debugPanel
     self:LayoutDebugPanel()
+    self:AnchorDebugPanel()
     f:Hide()
 end
 
--- Il pannello RLS DEBUG e' legato al pannello dei tasti della main bar: si
--- vede solo se il debug e' ATTIVO **e** il pannello e' aperto. Cosi' il tasto
--- "Raid Control" lo apre/chiude insieme al pannello e la X non lo lascia
--- orfano a schermo; a ogni apertura (con debug attivo) ricompare da solo.
+-- RLS DEBUG dipende SOLO dalla debug mode. Non segue piu' apertura, chiusura
+-- o visibilita' della Raid Control bar.
 function RLSuite:SyncDebugPanel()
     if not self:DebugMode() then
         if self.debugPanel then self.debugPanel:Hide() end
@@ -1759,13 +1764,8 @@ function RLSuite:SyncDebugPanel()
     end
     self:EnsureDebugPanel()
     if not self.debugPanel then return end
-    local bar = self.mainWindow and self.mainWindow.frame
-    local tb = self.mainWindow and self.mainWindow.titleBar
-    if (bar and bar:IsShown()) or (tb and tb:IsShown()) then
-        self.debugPanel:Show()
-    else
-        self.debugPanel:Hide()
-    end
+    self:AnchorDebugPanel()
+    self.debugPanel:Show()
 end
 
 -- Called whenever the simulated roster changes (invite accepted, debug
@@ -1892,36 +1892,12 @@ function RLSuite:OnMinimapRetry()
     self:EnsureMinimapIcon()
 end
 
--- Tiene il bottone della minimappa SEMPRE sopra lo sfondo della barra in cui
--- viene raccolto (MinimapButtonFrame e simili). MBF ripara i livelli durante
--- i propri scan; qui li ripristiniamo subito, in modo deterministico e
--- indipendente dall'ordine di caricamento/scan.
+-- Il minimap button ha frame level FISSO 3. Nessun calcolo dal genitore,
+-- nessun incremento dinamico e nessun RaiseWindow può modificarlo.
 function RLSuite:KeepMinimapButtonOnTop()
     local btn = self.minimapIcon
-    if not btn or not btn.SetFrameLevel or not btn.SetFrameStrata then
-        -- Il bottone non c'e' piu': ferma il timer.
-        if self._mmTopTimer and self.CancelTimer then
-            self:CancelTimer(self._mmTopTimer, true)
-        end
-        self._mmTopTimer = nil
-        return
-    end
-
-    local par = (btn.GetParent and btn:GetParent()) or nil
-    local base = 0
-    if par and par.GetFrameLevel then
-        base = tonumber(par:GetFrameLevel()) or 0
-    end
-
-    -- Livello ben sopra quello del genitore (e quindi sopra il suo sfondo),
-    -- qualunque valore usi l'addon che raccoglie i bottoni.
-    local want = base + 100
-    if (tonumber(btn:GetFrameLevel()) or 0) < want then
-        btn:SetFrameLevel(want)
-    end
-    if btn:GetFrameStrata() ~= "MEDIUM" then
-        btn:SetFrameStrata("MEDIUM")
-    end
+    if not btn or not btn.SetFrameLevel then return end
+    btn:SetFrameLevel(3)
 end
 
 -- Chiede a MinimapButtonFrame (se installato) di riscansare subito: il suo
@@ -1955,11 +1931,14 @@ function RLSuite:CreateMinimapIcon()
     -- escludere i pin della minimappa e lo ignorerebbe.
     local btn = CreateFrame("Button", "RLSuiteMinimapButton", Minimap)
     btn:SetSize(32, 32)
-    -- Strata/livello iniziali: visibile sul bordo della minimappa finche' MBF
-    -- non lo raccoglie; il livello viene poi gestito da KeepMinimapButtonOnTop
-    -- per restare SEMPRE sopra lo sfondo della barra di MBF.
+    -- Frame level tassativamente fisso a 3. Blocchiamo il setter del singolo
+    -- bottone: anche chiamanti esterni che tentano SetFrameLevel(x) ottengono 3.
     btn:SetFrameStrata("MEDIUM")
-    btn:SetFrameLevel(10)
+    local nativeSetFrameLevel = btn.SetFrameLevel
+    btn.SetFrameLevel = function(frame, _)
+        nativeSetFrameLevel(frame, 3)
+    end
+    btn:SetFrameLevel(3)
 
     -- ICONA DELL'UTENTE da media/ (priorita' assoluta): hordeicon per
     -- l'Orda, allianceicon altrimenti. Quadrata 32x32, riempie il bottone.
@@ -2033,17 +2012,8 @@ function RLSuite:CreateMinimapIcon()
     self.minimapIcon = btn
     self:PlaceMinimapIcon()
 
-    -- SELF-HEAL dello z-order: MBF (e addon simili) riparentano il bottone e
-    -- durante i propri scan ne reimpostano strata/livello. Un timer leggero
-    -- riporta il livello SEMPRE sopra lo sfondo della barra, cosi' il bottone
-    -- non finisce mai "sotto il quadrato" (il bug prima cambiava tra /reload
-    -- e logout/login perche' dipendeva dall'ordine degli scan).
-    if self.ScheduleRepeatingTimer and not self._mmTopTimer then
-        self._mmTopTimer = self:ScheduleRepeatingTimer("KeepMinimapButtonOnTop", 0.25)
-    end
-
-    -- Ogni volta che il bottone viene mostrato (anche dopo un reparent di
-    -- MBF), ripristina subito il livello sopra lo sfondo.
+    -- Nessun timer di frame-stack: il livello non è dinamico. OnShow ribadisce
+    -- semplicemente il valore fisso dopo eventuali reparent esterni.
     btn:SetScript("OnShow", function() RLSuite:KeepMinimapButtonOnTop() end)
 
     -- Forza la raccolta di MBF appena il bottone esiste: se lo scan singolo
@@ -2243,9 +2213,7 @@ function RLSuite:ApplyDebugMode()
     -- restava vuoto finche' non arrivava il primo invito.
     self:DebugRosterChanged()
     self:UpdatePhaseUI()
-    -- Pannello debug: compare vicino alla main bar solo con il debug ATTIVO e
-    -- il pannello dei tasti aperto (stesso ciclo di vita del tasto Raid
-    -- Control: si chiude insieme a lui, ricompare a ogni apertura).
+    -- Pannello debug indipendente: la sua visibilita' segue solo la debug mode.
     self:SyncDebugPanel()
 end
 

@@ -194,7 +194,9 @@ function MW:CreateFrame()
     -- SOLO skin: la barretta NON si trascina piu' (niente drag, niente
     -- posizione salvata). La barra e' ANCORATA al bordo alto dello schermo e
     -- la sua posizione la calcola ApplyLayout: un drag la farebbe solo
-    -- "staccare" dal posto in cui deve stare.
+    -- "staccare" dal posto in cui deve stare. Niente Tooltip/Dialog border
+    -- Blizzard: stesso trattamento borderless della matrice pulsanti.
+    tb._noOuterBorder = true
     RLSuite.utils:SkinFrame(tb)
 
     -- La barretta resta cliccabile (i suoi bottoni) ma NON trascinabile: la
@@ -670,10 +672,9 @@ function MW:RegisterAllWindows()
         return 350, 280
     end
     RLSuite.windowMins.loot = function()
-        -- larghezza minima = spazio reale dei bottoni di roll
-        -- (16 + Roll MS/OS/FFA/Reroll 4x80 + Announce Changes 124 + margini):
-        -- sotto i 506 il tasto MS "Announce Changes" sborda fuori finestra.
-        return 510, 340
+        -- Dimensione gestita internamente dal Loot Manager: 460px fissi;
+        -- 360px base (tabella da cinque righe), più eventuale wrap MS Changes.
+        return 460, 428
     end
 
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
@@ -707,11 +708,11 @@ function MW:RegisterAllWindows()
         end
     end
 
-    -- Grip di resize per Groupmaking, MS e Loot
+    -- Grip di resize solo per Groupmaking e MS. Il Loot Manager ha larghezza
+    -- fissa e altezza calcolata dal testo MS Changes, quindi nessun grip.
     local resizable = {
         group = { "groupmaking", 420, 380, "groupmaking" },
         ms = { "ms", 320, 260, "ms" },
-        loot = { "loot", 440, 300, "loot" },
     }
     for key, cfg in pairs(resizable) do
         local pane = self:PaneForTab(key)
@@ -771,6 +772,11 @@ function MW:SelectTab(key)
         local swn, shn = (GetScreenWidth and GetScreenWidth()) or 0, (GetScreenHeight and GetScreenHeight()) or 0
         if swn > 0 and pw > swn then pw = swn if L.width and L.width > swn then L.width = swn end end
         if shn > 0 and ph > shn then ph = shn if L.height and L.height > shn then L.height = shn end end
+        if key == "loot" then
+            -- Ignora completamente dimensioni salvate: larghezza fissa e
+            -- altezza base deterministica; il wrap MS Changes la estende.
+            pw, ph = 460, 428
+        end
         pane:SetSize(pw, ph)
         if key == "loot" then
             -- finestra tipo equip: posizione fissa nativa (in alto a

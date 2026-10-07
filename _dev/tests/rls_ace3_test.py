@@ -738,6 +738,8 @@ check(bool(rt.eval("RLSuite.minimapIcon ~= nil")), "minimap icon created at logi
 check(bool(rt.eval("RLSuite:IsHorde() == false")), "Alliance player -> IsHorde() false")
 check(bool(rt.eval("RLSuite.minimapIcon.icon ~= nil")), "minimap icon has a texture")
 check(bool(rt.eval("RLSuite.minimapIcon.icon._texture == 'Interface\\\\AddOns\\\\RaidLeadSuite\\\\media\\\\allianceicon.blp'")), "minimap icon uses allianceicon.blp for an Alliance player")
+rt.execute("RLSuite.minimapIcon:SetFrameLevel(999)")
+check(bool(rt.eval("RLSuite.minimapIcon:GetFrameLevel() == 3 and RLSuite._mmTopTimer == nil")), "v1.11.142: minimap button frame level is immutable at 3 with no dynamic stack timer")
 check(bool(rt.eval("RLSuite.mainWindow.configBtn == nil")), "config gear icon removed from the main bar")
 rt.execute("local saved = RLSuite.config.Toggle; RLSuite.config.Toggle = function() RLSuite.config._spyMinimap = (RLSuite.config._spyMinimap or 0) + 1 end; local b = RLSuite.minimapIcon; if b._scripts.OnClick then b._scripts.OnClick(b, 'LeftButton') end; RLSuite.config.Toggle = saved")
 check(bool(rt.eval("RLSuite.config._spyMinimap == 1")), "minimap left click opens Config")
@@ -3308,11 +3310,33 @@ lm:StartRoll('MS')
 """)
 rt.execute("""
 FOUND_RW = false
+ROLL_START_CLEAN = false
 for _, e in ipairs(CHAT_LOG or {}) do
-    if string.find(e, '%[RAID_WARNING%]') and string.find(e, 'Roll MS for Rolled Item') then FOUND_RW = true end
+    if string.find(e, '%[RAID_WARNING%]') and string.find(e, 'ROLL MS', 1, true)
+        and string.find(e, '[Rolled Item]', 1, true) and string.find(e, 'You have 15s', 1, true) then
+        FOUND_RW = true
+        ROLL_START_CLEAN = not string.find(e, 'MS CHANGES:', 1, true)
+    end
 end
+ROLL_TIMER_15 = (lm.currentRoll.timer == 15 and lm.rollRemaining == 15)
+CHAT_LOG = {}
+for _, before in ipairs({8, 6, 5, 4, 3, 2}) do
+    lm.rollRemaining = before
+    lm:RollTick()
+end
+ROLL_WARNINGS = table.concat(CHAT_LOG, '\n')
 """)
-check(bool(rt.eval("FOUND_RW")), "clicking a roll key sends the announce as RAID WARNING (debug echo: [RAID_WARNING])")
+check(bool(rt.eval("FOUND_RW and ROLL_START_CLEAN and ROLL_TIMER_15")), "v1.11.134: roll starts in RW with item link/15s and never prepends MS changes")
+check(bool(rt.eval("""(function()
+    local s = (ROLL_WARNINGS or '') .. '\n'
+    if not string.find(s, '[RAID_WARNING] rolling ends in 7s\n', 1, true) then return false end
+    for _, n in ipairs({5, 4, 3, 2, 1}) do
+        if not string.find(s, '[RAID_WARNING] ' .. tostring(n) .. '\n', 1, true) then return false end
+    end
+    return not string.find(s, '[Rolled Item]', 1, true)
+        and not string.find(s, 'ROLL MS', 1, true)
+        and not string.find(s, 'rolling ends in 5s', 1, true)
+end)()""")), "v1.11.138: roll countdown is 'rolling ends in 7s', then bare 5/4/3/2/1")
 rt.execute("""
 local lm = RLSuite.lootManager
 lm.currentRoll.rolls = { {name = 'Winnerbot', roll = 99} }  -- deterministic winner (no ties)
@@ -3821,10 +3845,10 @@ check(bool(rt.eval("DBG_TITLE_STYLE.noBackdrop == true and DBG_TITLE_STYLE.mouse
 check(bool(rt.eval("DBG_GAP.n == 1 and DBG_GAP.cells == 8")), "RLS DEBUG grid has ONE empty cell (8 cells: title + 6 buttons + blank)")
 check(bool(rt.eval("DBG_GAP.nameBefore == 'Empty Loot'")), "the blank cell sits right AFTER 'Empty Loot' (%s -> vuota)" % rt.eval("DBG_GAP.nameBefore"))
 check(bool(rt.eval("DBG_GAP.freeCell == true and DBG_GAP.afterAt.y == DBG_GAP.y and DBG_GAP.afterAt.x == DBG_GAP.nextColX")), "no button sits in the blank cell: '%s' starts the cell right after it" % rt.eval("DBG_GAP.afterName"))
-check(bool(rt.eval("""(function() local f = RLSuite.debugPanel return f._points[1] ~= nil and f._points[1][2] == RLSuite.mainWindow.frame end)()""")), "debug panel is anchored to the main bar (moves with it, never saved)")
-check(bool(rt.eval("RLSuite.debugPanel._scripts['OnDragStart'] == nil")), "debug panel is NOT draggable (part of the main bar)")
+check(bool(rt.eval("""(function() local f = RLSuite.debugPanel local p = f._points[1] or {} local mw = RLSuite.mainWindow local expected = mw:RaidFrameWidth() + mw.frame:GetWidth() * mw.frame:GetScale() return p[1] == 'TOPLEFT' and p[2] == UIParent and p[3] == 'TOPLEFT' and math.abs((p[4] or -1) - expected) < 0.001 and p[5] == 0 end)()""")), "v1.11.114: debug panel is top-aligned after Raid Frame width + command matrix width")
+check(bool(rt.eval("RLSuite.debugPanel._scripts['OnDragStart'] == nil")), "debug panel is NOT draggable")
 
-# --- RLS DEBUG segue il pannello dei tasti (Raid Control) ---
+# --- RLS DEBUG indipendente dal pannello dei tasti (Raid Control) ---
 rt.execute("""
 local MWd = RLSuite.mainWindow
 RLSuite.db.profile.debug = true
@@ -3847,10 +3871,9 @@ RLSuite.db.profile.debug = true
 RLSuite:SyncDebugPanel()
 DBG_BACK_ON = RLSuite.debugPanel:IsShown()
 """)
-check(bool(rt.eval("DBG_FOLLOW_CLOSED == false and DBG_FOLLOW_OPEN == true")), "RLS DEBUG shows ONLY with the main panel open")
-check(bool(rt.eval("DBG_AFTER_RC_CLOSE == false")), "pressing Raid Control to CLOSE the panel closes RLS DEBUG with it")
-check(bool(rt.eval("DBG_AFTER_RC_OPEN == true")), "pressing Raid Control again SHOWS RLS DEBUG (debug mode is on)")
-check(bool(rt.eval("DBG_OFF == false and DBG_BACK_ON == true")), "RLS DEBUG disappears with debug mode off even if the panel stays open, and comes back when it is on again")
+check(bool(rt.eval("DBG_FOLLOW_CLOSED == true and DBG_FOLLOW_OPEN == true")), "v1.11.114: RLS DEBUG remains visible independently of the command matrix")
+check(bool(rt.eval("DBG_AFTER_RC_CLOSE == true and DBG_AFTER_RC_OPEN == true")), "v1.11.114: Raid Control does not close or reopen RLS DEBUG")
+check(bool(rt.eval("DBG_OFF == false and DBG_BACK_ON == true")), "RLS DEBUG visibility follows only debug mode")
 
 # --- Debug mode no longer auto-fills the loot manager ---
 rt.execute("""
@@ -3868,35 +3891,106 @@ check(bool(rt.eval("LL_N2 > 0")), "the Fill Loot button is the ONLY thing spawni
 
 # --- Loot Manager: min width includes the MS announce button# --- Loot Manager: min width includes the MS announce button; window fixed like the equip panel ---
 rt.execute("LM_MINW = RLSuite.windowMins.loot()")
-check(bool(rt.eval("LM_MINW >= 506")), "loot min width fits all roll buttons incl. Announce Changes (no clipping)")
-rt.execute("RLSuite.mainWindow:ShowTab('loot')")
+check(bool(rt.eval("LM_MINW == 460")), "v1.11.117: loot minimum width recalculated for two command rows and history columns")
+rt.execute("""
+RLSuite.mainWindow:ShowTab('loot')
+local lm = RLSuite.lootManager
+local il = lm.ignoreLabel._points[1] or {}
+local ic = lm.ignoreChecks.recipes._points[1] or {}
+local ms = lm.rollMSBtn._points[1] or {}
+local rr = lm.rerollBtn._points[1] or {}
+local titleP = lm.titleFS._points[1] or {}
+local histLabelP = lm.histLabel._points[1] or {}
+local histHeaderP = lm.histHeader._points[1] or {}
+local selP = lm.selBox._points[1] or {}
+local histBottomP = lm.histBox._points[2] or {}
+local preP = lm.preMsgText._points[1] or {}
+local histM = lm:HistMetrics(420)
+local reclaimedW = (48 - histM.typeW) + (72 - histM.assignedW)
+local legacyInnerW = (histM.itemW + histM.bossW) - reclaimedW
+LM_LAYOUT_117 = {
+    checksWithLabel = (ic[1] == 'LEFT' and ic[2] == lm.ignoreLabel and ic[3] == 'RIGHT' and ic[4] == 10),
+    noNumberColumn = (lm.histHeads.num == nil and histM.itemX == 30),
+    tightColumns = (histM.typeW == math.max(28, math.ceil(lm.histHeads.type:GetStringWidth()) + 2)
+        and histM.assignedW == math.max(50, math.ceil(lm.histHeads.assigned:GetStringWidth()) + 2)),
+    bossGetsReclaimed = (histM.itemW == math.floor(math.max(120, legacyInnerW) * 0.58)
+        and reclaimedW > 0 and histM.bossW > histM.itemW * 0.5),
+    compactTop = (histLabelP[5] == -64 and histHeaderP[5] == -86),
+    compactBottom = (lm.histBox:GetHeight() == 220 and selP[2] == lm.histBox
+        and preP[2] == lm.selBox and preP[5] == -8 and ms[2] == lm.frame and ms[4] == 8),
+    oneButtonRow = (rr[2] == lm.rollOtherBtn and lm.announceMSBtn._points[1][2] == lm.rerollBtn),
+    buttonSpan = (lm.rollMSBtn:GetWidth() + lm.rollOSBtn:GetWidth() + lm.rollOtherBtn:GetWidth()
+        + lm.rerollBtn:GetWidth() + lm.announceMSBtn:GetWidth() + 24),
+    announceText = lm.announceMSBtn:GetText(),
+    rarityWithHistory = (lm.filterFS._points[1][1] == 'RIGHT'
+        and lm.filterFS._points[1][2] == lm.rarityDropdown
+        and lm.filterFS._points[1][3] == 'LEFT'
+        and math.abs((lm.rarityDropdown._points[1][5] or 0) - (histLabelP[5] or 0)) <= 6),
+    timer = lm:TradeRemaining({ time = time() - 3661 }),
+    topOrder = (titleP[5] > il[5] and il[5] > histLabelP[5] and histLabelP[5] > histHeaderP[5]),
+    bottomOrder = (selP[2] == lm.histBox and preP[2] == lm.selBox and ms[2] == lm.frame),
+}
+""")
 check(bool(rt.eval("RLSuite.lootManager.frame._scripts['OnDragStart'] == nil")), "loot window is NOT draggable anymore (behaves like the native equip panel)")
-check(bool(rt.eval("""(function() local p = RLSuite.lootManager.frame._points[1] return p ~= nil and p[1] == 'TOPLEFT' and p[2] == UIParent and p[4] == 16 and p[5] == -116 end)()""")), "loot window anchors to the fixed equip-style spot (TOPLEFT 16,-116 of UIParent)")
+check(bool(rt.eval("LM_LAYOUT_117.checksWithLabel")), "v1.11.120: ignore category checkboxes share the 'ignore loots' row")
+check(bool(rt.eval("LM_LAYOUT_117.noNumberColumn")), "v1.11.121: Loot History has no # column and Item reclaims its space")
+check(bool(rt.eval("LM_LAYOUT_117.tightColumns and LM_LAYOUT_117.bossGetsReclaimed")), "v1.11.133: Type/Assigned fit their headers and all reclaimed width goes to Boss")
+check(bool(rt.eval("LM_LAYOUT_117.compactTop and LM_LAYOUT_117.compactBottom")), "v1.11.122: no stale vertical gaps remain after checkbox/button reflow")
+check(bool(rt.eval("LM_LAYOUT_117.oneButtonRow")), "v1.11.119: all five Loot Manager buttons are on one row")
+check(bool(rt.eval("LM_LAYOUT_117.buttonSpan == LM_MINW - 16")), "v1.11.129: button row fills the reduced 8px side insets")
+check(bool(rt.eval("LM_LAYOUT_117.announceText == 'Announce MSCh'")), "v1.11.119: announce button uses the shortened label")
+check(bool(rt.eval("LM_LAYOUT_117.rarityWithHistory")), "v1.11.119: Rarity threshold shares the Loot History row")
+check(bool(rt.eval("LM_LAYOUT_117.timer == '1h 1m'")), "v1.11.117: trade timer uses Xh Ym with no seconds")
+check(bool(rt.eval("LM_LAYOUT_117.topOrder")), "v1.11.119: top order is title, ignore controls, Loot History/rarity, table")
+check(bool(rt.eval("LM_LAYOUT_117.bottomOrder")), "v1.11.129: bottom controls follow the fixed five-row table without blank gaps")
+rt.execute("""
+local lm = RLSuite.lootManager
+lm:SetPreMessage('short MS change')
+LM_FIXED_BASE = (lm.frame:GetWidth() == 460 and lm.frame:GetHeight() == 428 and lm.frame._rlsGrip ~= true)
+lm:SetPreMessage(string.rep('very long MS change ', 40))
+LM_WRAP_GROWS = (lm.frame:GetWidth() == 460 and lm.frame:GetHeight() > 428 and lm.preMsgText:GetHeight() > 14)
+lm:SetPreMessage('')
+LM_WRAP_RESETS = (lm.frame:GetHeight() == 428)
+""")
+check(bool(rt.eval("LM_FIXED_BASE and LM_WRAP_GROWS and LM_WRAP_RESETS")), "v1.11.129: Loot Manager is fixed-width/non-resizable and only MS wrap increases height")
+rt.execute("""
+local oldDb = RLSuite.msManager.db
+RLSuite.msManager.db = {}
+for i = 1, 12 do
+    table.insert(RLSuite.msManager.db, { name = 'AutoMSLongName' .. i, spec = 'Very Long Frost Specialization' })
+end
+RLSuite.lootManager:SetPreMessage('')
+RLSuite.lootManager.frame:Hide()
+local chatN = #CHAT_LOG
+RLSuite.mainWindow:ShowTab('loot')
+LM_OPEN_REFRESH = (string.find(RLSuite.lootManager.preMessage, 'MS CHANGES: AutoMSLongName1', 1, true) == 1)
+LM_OPEN_WRAP = (RLSuite.lootManager.preMsgText:GetHeight() > 14 and RLSuite.lootManager.frame:GetHeight() > 428)
+LM_OPEN_SILENT = (#CHAT_LOG == chatN)
+RLSuite.msManager.db = oldDb
+""")
+check(bool(rt.eval("LM_OPEN_REFRESH and LM_OPEN_WRAP and LM_OPEN_SILENT")), "v1.11.132: opening Loot Manager refreshes, wraps, and grows MS changes without announcing")
+check(bool(rt.eval("""(function() local p = RLSuite.lootManager.frame._points[1] return p ~= nil and p[1] == 'TOPLEFT' and p[2] == UIParent and p[4] == 420 and p[5] == -116 end)()""")), "v1.11.116: loot window is permanently parked right of the TradeFrame area (TOPLEFT 420,-116)")
 check(bool(rt.eval("RLSuite.groupmaking.mainFrame._scripts['OnDragStart'] ~= nil")), "other windows keep their draggable behavior (groupmaking untouched)")
 rt.execute("RLSuite.lootManager.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
 
-# --- Loot Manager yields the left side to an open Trade (native panel behavior) ---
+# --- Loot Manager stays fixed when Trade opens/closes ---
 rt.execute("""
 TradeFrame = CreateFrame('Frame', 'RLSuiteTestTrade', UIParent)
-TradeFrame.GetRight = function() return 410 end
-RLSuite.lootManager._tradeHooked = nil
-RLSuite.lootManager:HookTradePanel()
 RLSuite.mainWindow:ShowTab('loot')
 local p1 = RLSuite.lootManager.frame._points[1]
 TF_X1 = p1 and p1[4] or 0
 TradeFrame:Show()
-TradeFrame._scripts['OnShow'](TradeFrame)
+RLSuite.lootManager:AnchorDefault()
 TF_X2 = RLSuite.lootManager.frame._points[1] and RLSuite.lootManager.frame._points[1][4] or 0
 TradeFrame:Hide()
-TradeFrame._scripts['OnHide'](TradeFrame)
+RLSuite.lootManager:AnchorDefault()
 TF_X3 = RLSuite.lootManager.frame._points[1] and RLSuite.lootManager.frame._points[1][4] or 0
+TF_NO_HOOK = (TradeFrame._scripts['OnShow'] == nil and TradeFrame._scripts['OnHide'] == nil)
 RLSuite.lootManager.frame:Hide()
 RLSuite.mainWindow.currentTab = nil
-RLSuite.lootManager.tradeOpen = false
 """)
-check(bool(rt.eval("TF_X1 == 16")), "loot opens at the left equip-style spot when no trade is open")
-check(bool(rt.eval("TF_X2 == 420")), "opening Trade instantly pushes the loot manager to the right of it (trade keeps the left)")
-check(bool(rt.eval("TF_X3 == 16")), "closing Trade puts the loot manager back on the left")
+check(bool(rt.eval("TF_X1 == 420 and TF_X2 == 420 and TF_X3 == 420")), "v1.11.116: Loot Manager never moves when Trade opens or closes")
+check(bool(rt.eval("TF_NO_HOOK")), "v1.11.116: Loot Manager installs no TradeFrame movement hooks")
 rt.execute("TradeFrame = nil")
 
 # --- Reroll button stays ENABLED after a tie (AnnounceWinner -> ResetButtons bug) ---
@@ -3914,9 +4008,12 @@ lm.currentRoll.rolls[2] = {name="Healbot", roll=42}
 lm.currentRoll.rolls[3] = {name="Dpsbot", roll=7}
 for tick = 1, 30 do if lm.rollTimer then lm:RollTick() end end
 RR_ENABLED = lm.rerollBtn:IsEnabled()
+CHAT_LOG = {}
 lm:DoReroll()
+RR_TIMER15 = (lm.rerollRemaining == 15)
 RR_ROLLS = #lm.currentRoll.rolls
 for tick = 1, 30 do if lm.rerollTimer then lm:RerollTick() end end
+RR_MESSAGES = table.concat(CHAT_LOG, '\n')
 RR_DONE_ITEM = (lm.history[#lm.history].assignedTo == "Tankbot" or lm.history[#lm.history].assignedTo == "Healbot")
 lm:ClearHistory()
 RLSuite.lootManager.frame:Hide()
@@ -3924,6 +4021,23 @@ RLSuite.mainWindow.currentTab = nil
 RLSuite.db.profile.debug = false
 """)
 check(bool(rt.eval("RR_ENABLED == true")), "a TIE keeps the Reroll button enabled (was disabled by the trailing ResetButtons)")
+check(bool(rt.eval("""(function()
+    local s = RR_MESSAGES or ''
+    local t = string.find(s, 'Tankbot', 1, true)
+    local h = string.find(s, 'Healbot', 1, true)
+    local r = string.find(s, ' REROLL ', 1, true)
+    return RR_TIMER15 and t and h and r and t < r and h < r
+        and string.find(s, 'You have 15s', 1, true)
+        and not string.find(s, 'Only:', 1, true)
+end)()""")), "v1.11.136: reroll message is names, REROLL, linked item, You have 15s")
+check(bool(rt.eval("""(function()
+    local s = (RR_MESSAGES or '') .. '\n'
+    if not string.find(s, '[RAID_WARNING] rolling ends in 7s\n', 1, true) then return false end
+    for _, n in ipairs({5, 4, 3, 2, 1}) do
+        if not string.find(s, '[RAID_WARNING] ' .. tostring(n) .. '\n', 1, true) then return false end
+    end
+    return true
+end)()""")), "v1.11.138: reroll countdown is 'rolling ends in 7s', then bare 5/4/3/2/1")
 check(bool(rt.eval("RR_DONE_ITEM")), "debug reroll resolves the tie and assigns the item to one of the tied fakes")
 # --- Debug panel: Clear loot ---
 rt.execute("""
@@ -6583,35 +6697,36 @@ local hbDur = RFM._buffHdrBtns[#cols]
 hbDur._scripts.OnClick(hbDur, "LeftButton")
 V90.dur_warn = CHAT_LOG[#CHAT_LOG]
 
--- --- durability del PROPRIO pg: % letta, sotto soglia = "low" ---
-GetInventoryItemDurability = function(slot) return 12, 100 end
+-- --- durability del PROPRIO pg: repair sotto 80%; 80% esatto resta OK ---
+GetInventoryItemDurability = function(slot) return 79, 100 end
 RFM._durCache = nil
 RFM._durStamp = (RFM._durStamp or 0) + 1
 local meSt = RFM:MemberDurability({ name = "Testplayer", unit = "player" })
 V90.me_state = meSt.state
 V90.me_pct = meSt.pct
 V90.me_ok = RFM:_DurCellOk(meSt)
-GetInventoryItemDurability = function() return 100, 100 end
+GetInventoryItemDurability = function() return 80, 100 end
 RFM._durCache = nil
 RFM._durStamp = (RFM._durStamp or 0) + 1
 local meSt2 = RFM:MemberDurability({ name = "Testplayer", unit = "player" })
 V90.me_state2 = meSt2.state
+V90.me_pct2 = meSt2.pct
+V90.me_ok2 = RFM:_DurCellOk(meSt2)
 GetInventoryItemDurability = nil
 GetInventoryItemBroken = nil
 GetInventoryItemLink = nil
 
--- --- fade per distanza ---
-UnitInRange = function(unit)
-    if unit == "raid3" then return true, 12 end
-    if unit == "raid4" then return true, 34 end
-    return false, nil
+-- --- fade solo fuori dall'area visibile (~100 yd), non al range spell ---
+UnitInRange = function() return false, nil end -- non deve piu' influire
+UnitIsVisible = function(unit)
+    return unit == "raid3"
 end
 V90.y_near = RFM:UnitDistanceYards("raid3")
 V90.y_far = RFM:UnitDistanceYards("raid4")
 V90.y_offgrid = RFM:UnitDistanceYards("raid5")
 V90.y_player = RFM:UnitDistanceYards("player")
 local app = RLSuite.db.profile.raidframe.appearance
-app.distanceFade = 25
+app.distanceFade = 25 -- vecchio SavedVariable non-zero: migra al nuovo modo
 app.distanceAlpha = 0.35
 local rNear, rFar = nil, nil
 for _, r in ipairs(RFM.rows) do
@@ -6792,11 +6907,11 @@ check(bool(rt.eval("V90.dur_satisfied == false and V90.dur_missing ~= ''")), "v1
 check(bool(rt.eval("V90.dur_text:find('Gear to repair', 1, true) ~= nil and V90.dur_text_red")), "v1.11.90: tooltip/stato della durability in rosso con l'elenco di chi deve riparare")
 check(bool(rt.eval("V90.dur_warn:find('RAID_WARNING', 1, true) ~= nil and V90.dur_warn:find('Gear check', 1, true) ~= nil")), "v1.11.90: click sull'icona Durability = raid warning di riparazione")
 check(bool(rt.eval("V90.dur_providers == 0")), "v1.11.90: la durability non ha fornitori (nessuna assegnazione possibile)")
-check(bool(rt.eval("V90.me_state == 'low' and V90.me_pct == 12 and V90.me_ok == false")), "v1.11.90: la durability del PROPRIO pg legge la percentuale (12%% = sotto soglia)")
-check(bool(rt.eval("V90.me_state2 == 'ok'")), "v1.11.90: con il 100%% di durability lo stato torna ok")
-check(bool(rt.eval("V90.y_near == 12 and V90.y_far == 34 and V90.y_offgrid == 999 and V90.y_player == 0")), "v1.11.90: distanza in yard (UnitInRange): vicino/lontano/fuori portata/proprio pg")
-check(bool(rt.eval("V90.fade_near == 1 and V90.fade_far == 0.35")), "v1.11.90: fade per distanza: entro la soglia barra piena, oltre la soglia trasparente al livello scelto")
-check(bool(rt.eval("V90.fade_off == 1")), "v1.11.90: con il fade spento (soglia 0) la barra torna piena")
+check(bool(rt.eval("V90.me_state == 'low' and V90.me_pct == 79 and V90.me_ok == false")), "v1.11.110: sotto l'80%% il Gear Check richiede il repair (79%% = low)")
+check(bool(rt.eval("V90.me_state2 == 'ok' and V90.me_pct2 == 80 and V90.me_ok2 == true")), "v1.11.110: all'80%% esatto il Gear Check resta OK")
+check(bool(rt.eval("V90.y_near == 0 and V90.y_far == 999 and V90.y_offgrid == 999 and V90.y_player == 0")), "v1.11.111: visibile/fuori area/proprio pg risolti con UnitIsVisible, non UnitInRange")
+check(bool(rt.eval("V90.fade_near == 1 and V90.fade_far == 0.35")), "v1.11.111: fade solo quando l'unita' non e' piu' visibile (~100 yd/fuori area)")
+check(bool(rt.eval("V90.fade_off == 1")), "v1.11.111: con il fade spento la barra torna piena")
 check(bool(rt.eval("V90.tanks_untouched == true")), "v1.11.90: le barre MT/OT non vengono toccate dal fade")
 check(bool(rt.eval("V90.miss_n > 1")), "v1.11.91: il caso di prova ha piu' di una categoria mancante (elenco non banale) -- %s" % rt.eval("tostring(V90.miss_n)"))
 check(bool(rt.eval("V90.ctrl_sent == nil")), "v1.11.91: l'avviso del giocatore NON e' piu' un whisper: va in raid (niente messaggio privato)")
@@ -7489,6 +7604,133 @@ check(bool(rt.eval("V109_FLASK_MSG:find('Buff Check', 1, true) == nil and V109_F
 check(bool(rt.eval("V109_FOOD_MSG:find('Well Fed') ~= nil and V109_FOOD_MSG:find('Missing Well Fed |', 1, true) ~= nil")), "v1.11.109: Food warning uses 'Well Fed' and no 'Buff Check:'")
 check(bool(rt.eval("V109_STATS_MSG:find('Buff Check', 1, true) == nil and V109_STATS_MSG:find('Missing %stat', 1, true) ~= nil")), "v1.11.109: All buff warnings have 'Buff Check:' removed")
 check(bool(rt.eval("V109_HAS_TBC_FLASK and V109_HAS_TBC_FOOD")), "v1.11.109: TBC flasks and foods added to buffData")
+
+# v1.11.112 — ready-check icons and offline overlay
+rt.execute("""
+local RFM = RLSuite.raidFrame
+local row = RFM.rows[1]
+V112 = {}
+if row then
+    row.fake = false
+    row.unit = "raid1"
+    V112.cdFont = row.cdIcons[1].timer._fontArgs and row.cdIcons[1].timer._fontArgs[2]
+    local oldExists, oldConnected, oldReady = UnitExists, UnitIsConnected, GetReadyCheckStatus
+    local oldGuid, oldName = UnitGUID, UnitName
+    UnitExists = function() return true end
+    UnitIsConnected = function() return true end
+    RFM.readyCheckActive = true
+    GetReadyCheckStatus = function() return "waiting" end
+    RFM:UpdateRoleIcon(row)
+    V112.waiting = tostring(row.roleIcon._texture)
+    GetReadyCheckStatus = function() return "notready" end
+    RFM:UpdateRoleIcon(row)
+    V112.notready = tostring(row.roleIcon._texture)
+    GetReadyCheckStatus = function() return "ready" end
+    RFM:UpdateRoleIcon(row)
+    V112.ready = tostring(row.roleIcon._texture)
+    -- Client non-RL: conferma ricevuta come "player", riga rappresentata da
+    -- "raid1", mentre GetReadyCheckStatus è ancora stale su waiting.
+    GetReadyCheckStatus = function() return "waiting" end
+    UnitGUID = function(unit) return (unit == "player" or unit == "raid1") and "Player-GUID" or nil end
+    UnitName = function(unit) return (unit == "player" or unit == "raid1") and "SelfPlayer" or nil end
+    RFM:OnReadyCheckConfirm("READY_CHECK_CONFIRM", "player", true)
+    V112.aliasReady = (RFM:ReadyStatus("raid1") == "ready")
+    UnitIsConnected = function() return false end
+    RFM:UpdateRoleIcon(row)
+    V112.offline = tostring(row.roleIcon._texture)
+    V112.overlay = row.offlineOverlay:IsShown()
+    V112.text = row.offlineText:IsShown() and row.offlineText._text == "OFFLINE"
+    V112.overlayAlpha = row.offlineOverlay.bg and row.offlineOverlay.bg._vertex and row.offlineOverlay.bg._vertex[4]
+    local op = row.offlineText._points[#row.offlineText._points]
+    V112.textRight = op and op[1] == "RIGHT" and op[3] == "RIGHT" and op[4] == -4
+    RFM.readyCheckActive = nil
+    RFM.readyCheckStatus = nil
+    UnitExists, UnitIsConnected, GetReadyCheckStatus = oldExists, oldConnected, oldReady
+    UnitGUID, UnitName = oldGuid, oldName
+end
+""")
+check(bool(rt.eval("V112.waiting:find('ReadyCheck%-Waiting') ~= nil")), "v1.11.112: ready check waiting = yellow question mark")
+check(bool(rt.eval("V112.notready:find('ReadyCheck%-NotReady') ~= nil")), "v1.11.112: ready check no = red X")
+check(bool(rt.eval("V112.ready:find('ReadyCheck%-Ready') ~= nil")), "v1.11.112: ready check yes = green check")
+check(bool(rt.eval("V112.aliasReady")), "v1.11.139: READY_CHECK_CONFIRM player alias overrides stale waiting on raidN row")
+check(bool(rt.eval("V112.cdFont == 11")), "v1.11.140: the four Raid Frame cooldown labels use the larger 11px font")
+check(bool(rt.eval("RLSuite.utils:FormatCD(120) == '2m' and RLSuite.utils:FormatCD(119) == '2m' and RLSuite.utils:FormatCD(60) == '1m' and RLSuite.utils:FormatCD(59.1) == '60' and RLSuite.utils:FormatCD(58.1) == '59'")), "v1.11.140: cooldown minutes/seconds always round upward and switch below 60s")
+check(bool(rt.eval("V112.offline:find('UI%-GroupLoot%-Pass%-Up') ~= nil and V112.overlay and V112.text")), "v1.11.112: offline = red pass icon plus red OFFLINE overlay")
+check(bool(rt.eval("V112.overlayAlpha == 0.20 and V112.textRight")), "v1.11.114: offline overlay alpha 0.20 and OFFLINE text right-aligned with 4px inset")
+check(bool(rt.eval("RLSuite.mainWindow.titleBar._noOuterBorder == true and RLSuite.mainWindow.titleBar._backdropBorderColor[4] == 0")), "v1.11.115: Raid Control title bar has no Blizzard dialog border")
+
+# v1.11.141 — optional ElvUI/LibSharedMedia font and statusbar choices
+rt.execute("""
+local oldElvUI = _G.ElvUI
+_G.ElvUI = { { media = {
+    normTex = 'Interface\\\\AddOns\\\\ElvUI\\\\Media\\\\Textures\\\\NormTex',
+    font = 'Interface\\\\AddOns\\\\ElvUI\\\\Media\\\\Fonts\\\\Expressway.ttf',
+} } }
+local opts = RLSuite.config:BuildOptionsTable()
+local rfOpts = opts.args.raidframe.args
+local texValues = rfOpts.barTexture.values()
+local fontValues = rfOpts.font.values()
+V141_ELV_TEX = texValues['Interface\\\\AddOns\\\\ElvUI\\\\Media\\\\Textures\\\\NormTex']
+V141_ELV_FONT = fontValues['Interface\\\\AddOns\\\\ElvUI\\\\Media\\\\Fonts\\\\Expressway.ttf']
+_G.ElvUI = oldElvUI
+""")
+check(bool(rt.eval("V141_ELV_TEX ~= nil and V141_ELV_FONT ~= nil")), "v1.11.141: Raid Frame selectors expose ElvUI textures and fonts dynamically")
+
+# v1.11.142 — all Pugger text slots accept item/achievement/quest links
+rt.execute("""
+local gm = RLSuite.groupmaking
+local links = {
+    '|Hitem:1|h[Test Item]|h',
+    '|Hachievement:2:0000000000000000:1:1:1:1:0:0:0:0|h[Test Achievement]|h',
+    '|Hquest:3:80|h[Test Quest]|h',
+}
+V142_LINK_SLOTS = true
+for _, edit in ipairs({gm.aimEdit, gm.reservedEdit, gm.otherEdit}) do
+    gm.aimEdit:ClearFocus(); gm.reservedEdit:ClearFocus(); gm.otherEdit:ClearFocus()
+    edit:Show()
+    edit:SetText('')
+    edit:SetFocus()
+    for _, link in ipairs(links) do ChatEdit_InsertLink(link) end
+    edit:ClearFocus()
+    local text = edit:GetText() or ''
+    for _, link in ipairs(links) do
+        if not string.find(text, link, 1, true) then V142_LINK_SLOTS = false end
+    end
+end
+""")
+check(bool(rt.eval("V142_LINK_SLOTS")), "v1.11.142: Aim, Reserved and Other accept item, achievement and quest links")
+
+# v1.11.143 — expansion submenus in the Pugger-only raid dropdown
+rt.execute("""
+local gm = RLSuite.groupmaking
+local opts = gm.raidDropdown.options
+V143_GROUPS = (#opts == 3 and opts[1].text == 'WotLK Raids'
+    and opts[2].text == 'TBC Raids' and opts[3].text == 'Classic Raids'
+    and #opts[2].children >= 9 and #opts[3].children >= 5)
+RLSuite.utils:OpenDropdownMenu(gm.raidDropdown, opts)
+local root = gm.raidDropdown._rlsDropMenu
+root.optionButtons[2]._scripts.OnEnter(root.optionButtons[2])
+V143_HOVER = root.submenu and root.submenu:IsShown()
+local oldAchievement = GetAchievementLink
+GetAchievementLink = function(id)
+    if id == 694 then return '|Hachievement:694|h[Serpentshrine Cavern]|h' end
+    if id == 686 then return '|Hachievement:686|h[Molten Core]|h' end
+end
+gm.db.raid = 'Serpentshrine Cavern'
+local msg = gm:BuildSpamMessage()
+V143_TBC_ACHI = (string.find(msg, '|Hachievement:694|h[Serpentshrine Cavern]|h', 1, true) ~= nil
+    and string.find(msg, 'Serpentshrine Cavern25', 1, true) == nil)
+gm.db.raid = 'Molten Core'
+local classicMsg = gm:BuildSpamMessage()
+V144_CLASSIC_ACHI = (string.find(classicMsg, '|Hachievement:686|h[Molten Core]|h', 1, true) ~= nil
+    and string.find(classicMsg, 'Molten Core25', 1, true) == nil)
+V143_PUGGER_ONLY = (RLSuite.raidDB['Serpentshrine Cavern'] == nil and RLSuite.raidDB['Molten Core'] == nil)
+GetAchievementLink = oldAchievement
+RLSuite.utils:CloseDropdownMenu()
+""")
+check(bool(rt.eval("V143_GROUPS and V143_HOVER")), "v1.11.143: Pugger raid dropdown has WotLK/TBC/Classic mouseover submenus")
+check(bool(rt.eval("V143_TBC_ACHI and V143_PUGGER_ONLY")), "v1.11.143: TBC Pugger message uses raid achievement link without adding legacy raid globally")
+check(bool(rt.eval("V144_CLASSIC_ACHI")), "v1.11.144: Classic Pugger message also uses the raid achievement link")
 
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

@@ -74,15 +74,15 @@ local RF_PER_GROUP = 5
 local RF_MAX_CDS = 4
 -- Font dei timer dei cooldown nelle icone a destra della barra (era 8: si
 -- leggeva male). Il nome del player resta a nameFontSize, configurabile.
-local RF_CD_FONT = 10
+local RF_CD_FONT = 11
 -- DURABILITY: slot di equipaggiamento controllati (4 = camicia e 19 = tabard
 -- non hanno durability). Per gli ALTRI player il client espone solo "oggetto
 -- rotto" (GetInventoryItemBroken); la percentuale esatta si legge solo sul
 -- proprio personaggio (GetInventoryItemDurability).
 local RF_DUR_SLOTS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 }
-local RF_DUR_ALERT_PCT = 20      -- sotto questa % conta come "da riparare"
+local RF_DUR_ALERT_PCT = 80      -- sotto questa % conta come "da riparare"
 local RF_DUR_REFRESH = 4         -- ricalcolo ogni N passate da 0,5s (2s)
-local RF_FAR_YARDS = 999         -- oltre le 40 yard UnitInRange non da' numeri
+local RF_OUT_OF_SIGHT = 999       -- sentinella: unita' non visibile al client
 -- Tolleranza del gesto di trascinamento (px): prendere una barra a 5-6 px di
 -- distanza deve FUNZIONARE. Con le righe da ~20 px un click "a filo" finiva
 -- nel vuoto e il gesto non faceva niente: da fuori sembrava che quel player
@@ -245,6 +245,9 @@ function RF:RegisterEvents()
     self:RegisterEvent("UNIT_AURA", "OnUnitEvent")
     self:RegisterEvent("UNIT_TARGET", function() RF:UpdateTankTargets() end)
     self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", "OnCombatLog")
+    self:RegisterEvent("READY_CHECK", "OnReadyCheckStarted")
+    self:RegisterEvent("READY_CHECK_CONFIRM", "OnReadyCheckConfirm")
+    self:RegisterEvent("READY_CHECK_FINISHED", "OnReadyCheckFinished")
     -- refresh periodico (prima un frame OnUpdate con accumulo a 0.5s)
     self:ScheduleRepeatingTimer("UpdateAll", 0.5)
 end
@@ -611,6 +614,25 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
     roleIcon:Hide()
     row.roleIcon = roleIcon
 
+    -- Stato OFFLINE sopra la barra HP: il fondo rosso resta volutamente
+    -- leggibile mentre la barra sottostante subisce il normale fade offline.
+    local offlineOverlay = CreateFrame("Frame", nil, self.content)
+    offlineOverlay:SetFrameLevel((self.content.GetFrameLevel and self.content:GetFrameLevel() or 1) + 23)
+    offlineOverlay:EnableMouse(false)
+    local offlineBg = offlineOverlay:CreateTexture(nil, "BACKGROUND")
+    offlineBg:SetAllPoints(offlineOverlay)
+    offlineBg:SetTexture("Interface\\Buttons\\WHITE8x8")
+    offlineBg:SetVertexColor(0.75, 0.02, 0.02, 0.20)
+    offlineOverlay.bg = offlineBg
+    local offlineText = offlineOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    offlineText:SetPoint("CENTER", offlineOverlay, "CENTER", 0, 0)
+    offlineText:SetText("OFFLINE")
+    offlineText:SetTextColor(1, 1, 1, 1)
+    offlineText:SetJustifyH("CENTER")
+    offlineOverlay:Hide()
+    row.offlineOverlay = offlineOverlay
+    row.offlineText = offlineText
+
     -- Le barre TANK al posto della roleIcon hanno il tag MT/OT dorato.
     if row.isTank then
         -- Anche il tag MT/OT fuori dalla riga (stessa regola della barra).
@@ -911,6 +933,18 @@ function RF:LayoutSlotGeometry(slot, m)
         slot.bar:ClearAllPoints()
         slot.bar:SetSize(m.barWidth, m.barHeight)
         slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", roleReserve, 0)
+        if slot.offlineOverlay then
+            slot.offlineOverlay:ClearAllPoints()
+            slot.offlineOverlay:SetAllPoints(slot.bar)
+        end
+        if slot.offlineText then
+            slot.offlineText:ClearAllPoints()
+            slot.offlineText:SetPoint("RIGHT", slot.offlineOverlay, "RIGHT", -4, 0)
+            local app = self.db and self.db.appearance or {}
+            local fontFile = app.font or RLSuite.utils:GetUIFont()
+            local flags = (app.fontOutline == false) and "" or "OUTLINE"
+            slot.offlineText:SetFont(fontFile, m.nameFontSize, flags)
+        end
         -- Tag MT/OT: Nello stesso identico posto delle icone di ruolo (a sinistra della barra)
         if slot.tankTag then
             slot.tankTag:ClearAllPoints()
@@ -1048,6 +1082,8 @@ function RF:ClearSlot(slot)
     if slot.roleIcon then
         slot.roleIcon:Hide()
     end
+    if slot.offlineOverlay then slot.offlineOverlay:Hide() end
+    if slot.offlineText then slot.offlineText:Hide() end
     if slot.tankTag then
         slot.tankTag:Hide()
     end
@@ -1431,9 +1467,77 @@ local RF_ROLE_ICONS = {
     leader = "Interface\\GroupFrame\\UI-Group-LeaderIcon",
     assist = "Interface\\GroupFrame\\UI-Group-AssistantIcon",
     ml = "Interface\\GroupFrame\\UI-Group-MasterLooter",
-    tank = "Interface\\GroupFrame\\UI-Group-MainTankIcon",
-    mainassist = "Interface\\GroupFrame\\UI-Group-MainAssistIcon",
+    offline = "Interface\\Buttons\\UI-GroupLoot-Pass-Up",
+    ready = "Interface\\RaidFrame\\ReadyCheck-Ready",
+    notready = "Interface\\RaidFrame\\ReadyCheck-NotReady",
+    waiting = "Interface\\RaidFrame\\ReadyCheck-Waiting",
 }
+
+function RF:ReadyCacheStatus(unit)
+    if not unit or not self.readyCheckStatus then return nil end
+    local status = self.readyCheckStatus[unit]
+    if not status and UnitGUID then
+        local guid = UnitGUID(unit)
+        if guid then status = self.readyCheckStatus[guid] end
+    end
+    if not status and UnitName then
+        local name = UnitName(unit)
+        if name then status = self.readyCheckStatus[name] end
+    end
+    return status
+end
+
+function RF:ReadyStatus(unit)
+    if not self.readyCheckActive then return nil end
+    local cached = self:ReadyCacheStatus(unit)
+    if unit and GetReadyCheckStatus then
+        local status = GetReadyCheckStatus(unit)
+        -- La conferma evento è più fresca di un API ancora fermo su waiting
+        -- (comune per "player" quando il ready check è avviato da altri).
+        if status == "ready" or status == "notready" then return status end
+        if cached == "ready" or cached == "notready" then return cached end
+        if status == "waiting" then return status end
+    end
+    return cached or "waiting"
+end
+
+function RF:OnReadyCheckStarted()
+    self.readyCheckActive = true
+    self.readyCheckStatus = {}
+    self:UpdateAll()
+end
+
+function RF:OnReadyCheckConfirm(event, unit, isReady)
+    self.readyCheckStatus = self.readyCheckStatus or {}
+    if unit then
+        local ready = isReady == true or isReady == 1 or isReady == "ready"
+        local status = ready and "ready" or "notready"
+        -- READY_CHECK_CONFIRM può identificare noi come "player", mentre la
+        -- riga è "raidN": salva token, GUID e nome per collegare gli alias.
+        self.readyCheckStatus[unit] = status
+        if UnitGUID then
+            local guid = UnitGUID(unit)
+            if guid then self.readyCheckStatus[guid] = status end
+        end
+        if UnitName then
+            local name = UnitName(unit)
+            if name then self.readyCheckStatus[name] = status end
+        end
+    end
+    self:UpdateAll()
+end
+
+function RF:OnReadyCheckFinished()
+    -- Come il frame Blizzard, lascia il risultato leggibile per qualche
+    -- secondo prima di ripristinare Leader/Assist/Master Looter.
+    if self._readyClearTimer then self:CancelTimer(self._readyClearTimer, true) end
+    self._readyClearTimer = self:ScheduleTimer(function()
+        RF.readyCheckActive = nil
+        RF.readyCheckStatus = nil
+        RF._readyClearTimer = nil
+        RF:UpdateAll()
+    end, 5)
+end
 
 function RF:UpdateRoleIcon(row)
     if not row or not row.roleIcon then return end
@@ -1464,13 +1568,29 @@ function RF:UpdateRoleIcon(row)
         end
     end
 
+    local offline = unit and not row.fake and UnitIsConnected and not UnitIsConnected(unit)
+    if row.offlineOverlay then
+        if offline then row.offlineOverlay:Show() else row.offlineOverlay:Hide() end
+    end
+    if row.offlineText then
+        if offline then row.offlineText:Show() else row.offlineText:Hide() end
+    end
+
+    -- Priorita': offline > risposta ready check > ruolo raid normale.
     local icon = nil
-    if rank == 2 then
-        icon = RF_ROLE_ICONS.leader
-    elseif rank == 1 then
-        icon = RF_ROLE_ICONS.assist
-    elseif isML then
-        icon = RF_ROLE_ICONS.ml
+    if offline then
+        icon = RF_ROLE_ICONS.offline
+    else
+        local ready = self:ReadyStatus(unit)
+        if ready then
+            icon = RF_ROLE_ICONS[ready]
+        elseif rank == 2 then
+            icon = RF_ROLE_ICONS.leader
+        elseif rank == 1 then
+            icon = RF_ROLE_ICONS.assist
+        elseif isML then
+            icon = RF_ROLE_ICONS.ml
+        end
     end
 
     if icon then
@@ -3344,38 +3464,38 @@ function RF:WarnBuffCategory(col)
 end
 
 -- ============================================================
--- FADE PER DISTANZA (barre giocatore)
--- In 3.3.5 l'unica lettura numerica della distanza e' UnitInRange(unit)
--- (party/raid): restituisce inRange, inYards (0-40). Oltre le 40 yard il
--- numero non c'e' piu' -> RF_FAR_YARDS, cioe' "lontanissimo".
--- Soglia e trasparenza si scelgono in Configurazione -> Raid Frame.
+-- FADE DI VISIBILITA' (barre giocatore)
+-- Il client 3.3.5 non espone ne' la zona di un'altra unit ne' una distanza
+-- affidabile oltre i 40 yard. UnitInRange quindi non va usato qui: farebbe
+-- sparire compagni ancora vicini e nella stessa area. UnitIsVisible e' il
+-- controllo nativo piu' vicino al comportamento richiesto: resta vero finche'
+-- il client mantiene l'unita' visibile (circa 100 yard) e diventa falso quando
+-- e' fuori dall'area visibile/istanza. Non e' una misura numerica esatta.
 -- ============================================================
 function RF:UnitDistanceYards(unit)
     if not unit then return nil end
     if unit == "player" then return 0 end
     if UnitIsConnected and not UnitIsConnected(unit) then
-        return RF_FAR_YARDS
+        return RF_OUT_OF_SIGHT
     end
-    if UnitIsVisible and not UnitIsVisible(unit) then
-        return RF_FAR_YARDS
+    if UnitIsVisible then
+        return UnitIsVisible(unit) and 0 or RF_OUT_OF_SIGHT
     end
-    if UnitInRange then
-        local inRange, yards = UnitInRange(unit)
-        if yards then return yards end
-        if inRange == 1 or inRange == true then return 0 end
-        if inRange == 0 or inRange == false or inRange == nil then return RF_FAR_YARDS end
-    end
+    -- Su client senza UnitIsVisible non inventiamo una distanza usando
+    -- UnitInRange (che misura solo il range ristretto delle spell).
     return nil
 end
 
 function RF:ApplyDistanceFade(row)
     if not row then return end
     local app = (self.db and self.db.appearance) or {}
-    local thr = tonumber(app.distanceFade) or 0
+    -- Compatibilita' coi profili esistenti: qualunque vecchia soglia non-zero
+    -- abilita il nuovo unico controllo "fuori area visibile (~100 yd)".
+    local enabled = (tonumber(app.distanceFade) or 0) > 0
     local alpha = 1
-    if thr > 0 then
+    if enabled then
         local d = self:UnitDistanceYards(row.unit)
-        if d and d > thr then alpha = tonumber(app.distanceAlpha) or 0.40 end
+        if d == RF_OUT_OF_SIGHT then alpha = tonumber(app.distanceAlpha) or 0.40 end
     end
     if row._fadeAlpha ~= alpha then
         row._fadeAlpha = alpha
@@ -3858,5 +3978,3 @@ function RF:_BuffCellIcon(unit, col)
     end
     return nil
 end
-
-

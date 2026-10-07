@@ -47,6 +47,63 @@ local function select(name, desc, order, values, get, set)
              values = values, get = get, set = set }
 end
 
+-- Media dinamici: se ElvUI/LibSharedMedia sono caricati, espone le stesse
+-- texture statusbar e gli stessi font senza imporre una dipendenza.
+local function mediaValues(kind, current)
+    local values = {}
+    local function add(path, label)
+        if type(path) == "string" and path ~= "" then values[path] = label or path end
+    end
+
+    if kind == "font" then
+        add("Fonts\\FRIZQT__.TTF", "Friz Quadrata (default)")
+        add("Fonts\\ARIALN.TTF", "Arial Narrow")
+        add("Fonts\\SKURRI.TTF", "Skurri")
+        add("Fonts\\MORPHEUS.TTF", "Morpheus")
+    else
+        add("Interface\\TargetingFrame\\UI-StatusBar", "Blizzard (default)")
+        add("Interface\\PAPERDOLLINFOFRAME\\UI-Character-Skills-Bar", "Skill bar")
+        add("Interface\\Buttons\\WHITE8x8", "Flat")
+    end
+
+    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if LSM and LSM.HashTable then
+        local ok, media = pcall(LSM.HashTable, LSM, kind == "font" and "font" or "statusbar")
+        if ok and type(media) == "table" then
+            for name, path in pairs(media) do add(path, tostring(name)) end
+        end
+    end
+
+    local E = _G.ElvUI and _G.ElvUI[1]
+    local function scan(tbl, prefix, depth)
+        if type(tbl) ~= "table" or depth > 2 then return end
+        for key, value in pairs(tbl) do
+            local label = prefix .. tostring(key)
+            if type(value) == "table" then
+                scan(value, label .. ".", depth + 1)
+            elseif type(value) == "string" then
+                local lowerKey = string.lower(tostring(key))
+                local lowerValue = string.lower(value)
+                local isFont = string.find(lowerKey, "font", 1, true)
+                    or string.find(lowerValue, ".ttf", 1, true)
+                    or string.find(lowerValue, ".otf", 1, true)
+                local isTexture = string.find(lowerKey, "tex", 1, true)
+                    or string.find(lowerKey, "texture", 1, true)
+                    or string.find(lowerKey, "statusbar", 1, true)
+                    or string.find(lowerKey, "norm", 1, true)
+                    or string.find(lowerKey, "blank", 1, true)
+                    or string.find(lowerKey, "gloss", 1, true)
+                if (kind == "font" and isFont) or (kind ~= "font" and isTexture and not isFont) then
+                    add(value, "ElvUI: " .. label)
+                end
+            end
+        end
+    end
+    if E and E.media then scan(E.media, "", 0) end
+    add(current, values[current] or "Current")
+    return values
+end
+
 local function execute(name, desc, order, func)
     return { type = "execute", name = name, desc = desc, order = order,
              func = func }
@@ -516,38 +573,27 @@ function CFG:BuildOptionsTable()
         nameFontSize = slider(L["Name font size"], nil, 4, 8, 16, 1,
             function() return rf.appearance.nameFontSize or 11 end,
             function(_, v) rf.appearance.nameFontSize = v; self:ApplyAll() end),
-        font = select(L["Font"], L["Font used for the player name on the bars."], 7, {
-            ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata (default)",
-            ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
-            ["Fonts\\SKURRI.TTF"] = "Skurri",
-            ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
-        },
+        font = select(L["Font"], L["Font used for Raid Frame names, headers and cooldowns. Includes media registered by ElvUI/LibSharedMedia."], 7,
+            function() return mediaValues("font", rf.appearance.font) end,
             function() return rf.appearance.font or "Fonts\\FRIZQT__.TTF" end,
             function(_, v) rf.appearance.font = v; self:ApplyAll() end),
         fontOutline = toggle(L["Font outline"], L["Draw the player name with an outline."], 8,
             function() return rf.appearance.fontOutline ~= false end,
             function(_, v) rf.appearance.fontOutline = v; self:ApplyAll() end),
-        barTexture = select(L["Bar texture"], L["Texture of the player HP bars."], 9, {
-            ["Interface\\TargetingFrame\\UI-StatusBar"] = "Blizzard (default)",
-            ["Interface\\PAPERDOLLINFOFRAME\\UI-Character-Skills-Bar"] = "Skill bar",
-            ["Interface\\Buttons\\WHITE8x8"] = "Flat",
-        },
+        barTexture = select(L["Bar texture"], L["Texture of the player HP bars. Includes statusbar textures registered by ElvUI/LibSharedMedia."], 9,
+            function() return mediaValues("statusbar", rf.appearance.barTexture) end,
             function() return rf.appearance.barTexture or "Interface\\TargetingFrame\\UI-StatusBar" end,
             function(_, v) rf.appearance.barTexture = v; self:ApplyAll() end),
         alpha = slider(L["Opacity"], L["Overall transparency of the Raid Frame HUD."], 10, 0.30, 1.00, 0.05,
             function() return rf.alpha or 1 end,
             function(_, v) rf.alpha = v; self:ApplyAll() end),
-        distanceFade = select(L["Distance fade"], L["Player bars fade out beyond this distance (0 = off)."], 17, {
+        distanceFade = select(L["Distance fade"], L["Fade player bars only when the client can no longer see the unit (approximately 100 yards or outside the visible area)."], 17, {
             ["0"] = L["Off"],
-            ["10"] = "10 yards",
-            ["15"] = "15 yards",
-            ["20"] = "20 yards",
-            ["25"] = "25 yards",
-            ["30"] = "30 yards",
-            ["35"] = "35 yards",
-            ["40"] = "40 yards",
+            ["100"] = "Out of sight (~100 yards)",
         },
-            function() return tostring(rf.appearance.distanceFade or 0) end,
+            -- Migrazione trasparente: ogni vecchia soglia 10-40 diventa il
+            -- nuovo unico modo, senza lasciare la select su un valore sparito.
+            function() return ((tonumber(rf.appearance.distanceFade) or 0) > 0) and "100" or "0" end,
             function(_, v) rf.appearance.distanceFade = tonumber(v) or 0; self:ApplyAll() end),
         distanceAlpha = slider(L["Fade transparency"], L["Transparency of the bars beyond the distance."], 18, 0.20, 1.00, 0.05,
             function() return rf.appearance.distanceAlpha or 0.40 end,
