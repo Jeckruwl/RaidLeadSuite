@@ -7657,6 +7657,23 @@ check(bool(rt.eval("V112.offline:find('UI%-GroupLoot%-Pass%-Up') ~= nil and V112
 check(bool(rt.eval("V112.overlayAlpha == 0.20 and V112.textRight")), "v1.11.114: offline overlay alpha 0.20 and OFFLINE text right-aligned with 4px inset")
 check(bool(rt.eval("RLSuite.mainWindow.titleBar._noOuterBorder == true and RLSuite.mainWindow.titleBar._backdropBorderColor[4] == 0")), "v1.11.115: Raid Control title bar has no Blizzard dialog border")
 
+# v1.11.141 — optional ElvUI/LibSharedMedia font and statusbar choices
+rt.execute("""
+local oldElvUI = _G.ElvUI
+_G.ElvUI = { { media = {
+    normTex = 'Interface\\\\AddOns\\\\ElvUI\\\\Media\\\\Textures\\\\NormTex',
+    font = 'Interface\\\\AddOns\\\\ElvUI\\\\Media\\\\Fonts\\\\Expressway.ttf',
+} } }
+local opts = RLSuite.config:BuildOptionsTable()
+local rfOpts = opts.args.raidframe.args
+local texValues = rfOpts.barTexture.values()
+local fontValues = rfOpts.font.values()
+V141_ELV_TEX = texValues['Interface\\\\AddOns\\\\ElvUI\\\\Media\\\\Textures\\\\NormTex']
+V141_ELV_FONT = fontValues['Interface\\\\AddOns\\\\ElvUI\\\\Media\\\\Fonts\\\\Expressway.ttf']
+_G.ElvUI = oldElvUI
+""")
+check(bool(rt.eval("V141_ELV_TEX ~= nil and V141_ELV_FONT ~= nil")), "v1.11.141: Raid Frame selectors expose ElvUI textures and fonts dynamically")
+
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
     sys.exit(1)

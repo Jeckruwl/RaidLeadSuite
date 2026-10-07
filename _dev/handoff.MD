@@ -14,7 +14,14 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.140**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.141**.
+
+## 1.11.141 — Media ElvUI/LibSharedMedia nel Raid Frame
+
+Le select Font e Bar texture includono dinamicamente font e statusbar registrati
+da LibSharedMedia e i media esposti da ElvUI, senza dipendenza obbligatoria.
+I valori salvati restano path reali e vengono applicati subito al Raid Frame;
+se ElvUI non è caricato restano disponibili le opzioni Blizzard preesistenti.
 
 ## 1.11.140 — Cooldown Raid Frame più grandi e arrotondati per eccesso
 
