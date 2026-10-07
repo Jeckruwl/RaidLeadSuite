@@ -850,7 +850,7 @@ function LM:UpdateHistory()
                 lineH = name:GetStringHeight() or 14
             end
             local q = self:EntryQuality(entry)
-            if GetItemQualityColor and and q >= 0 then
+            if GetItemQualityColor and q and q >= 0 then
                 local r, g, b = GetItemQualityColor(q)
                 name:SetTextColor(r or 1, g or 1, b or 1)
             end
@@ -1437,4 +1437,3 @@ function LM:ClearHistory()
     self:ResetButtons()
     self:UpdateHistory()
 end
-d

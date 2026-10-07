@@ -14,7 +14,13 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.126**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.127**.
+
+## 1.11.127 — Hotfix sintassi dopo riconciliazione shallow
+
+Ripristinato nuovamente il controllo qualità corretto dopo che la riconciliazione
+del checkout shallow aveva reintrodotto il vecchio `and and`. Verificato il
+contenuto finale post-merge con parser Lua prima del commit.
 
 ## 1.11.126 — Loot Manager: compattazione completa e rarity allineata
 
