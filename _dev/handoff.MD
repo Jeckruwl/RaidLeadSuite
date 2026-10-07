@@ -14,7 +14,13 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.124**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.125**.
+
+## 1.11.125 — Hotfix carattere spurio a fine LootManager
+
+Rimosso un carattere `d` isolato dopo l'ultimo `end` di LootManager.lua, che
+causava `=` expected near `<eof>`. Verificata quindi la sintassi di **tutti** i
+file Lua dell'addon con `luaparser`: parsing completato senza errori.
 
 ## 1.11.124 — Hotfix sintassi Loot Manager
 

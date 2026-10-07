@@ -1437,4 +1437,3 @@ function LM:ClearHistory()
     self:ResetButtons()
     self:UpdateHistory()
 end
-d
