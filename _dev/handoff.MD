@@ -14,7 +14,17 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.141**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.142**.
+
+## 1.11.142 — Link nei tre slot Pugger e minimap level fisso 3
+
+Aim, Reserved items e Other requirements accettano tutti link di item,
+achievement e quest tramite shift-click; inserimento, salvataggio e preview
+usano lo stesso hook generico.
+
+Il minimap button usa frame level **3** fisso. Il setter dell'istanza forza 3
+anche se un chiamante tenta un altro valore; rimossi calcolo dal parent e timer
+periodico di frame-stack. OnShow e rescan ribadiscono soltanto il valore 3.
 
 ## 1.11.141 — Media ElvUI/LibSharedMedia nel Raid Frame
 

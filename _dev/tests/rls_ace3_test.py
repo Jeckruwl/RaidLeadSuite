@@ -738,6 +738,8 @@ check(bool(rt.eval("RLSuite.minimapIcon ~= nil")), "minimap icon created at logi
 check(bool(rt.eval("RLSuite:IsHorde() == false")), "Alliance player -> IsHorde() false")
 check(bool(rt.eval("RLSuite.minimapIcon.icon ~= nil")), "minimap icon has a texture")
 check(bool(rt.eval("RLSuite.minimapIcon.icon._texture == 'Interface\\\\AddOns\\\\RaidLeadSuite\\\\media\\\\allianceicon.blp'")), "minimap icon uses allianceicon.blp for an Alliance player")
+rt.execute("RLSuite.minimapIcon:SetFrameLevel(999)")
+check(bool(rt.eval("RLSuite.minimapIcon:GetFrameLevel() == 3 and RLSuite._mmTopTimer == nil")), "v1.11.142: minimap button frame level is immutable at 3 with no dynamic stack timer")
 check(bool(rt.eval("RLSuite.mainWindow.configBtn == nil")), "config gear icon removed from the main bar")
 rt.execute("local saved = RLSuite.config.Toggle; RLSuite.config.Toggle = function() RLSuite.config._spyMinimap = (RLSuite.config._spyMinimap or 0) + 1 end; local b = RLSuite.minimapIcon; if b._scripts.OnClick then b._scripts.OnClick(b, 'LeftButton') end; RLSuite.config.Toggle = saved")
 check(bool(rt.eval("RLSuite.config._spyMinimap == 1")), "minimap left click opens Config")
@@ -7673,6 +7675,30 @@ V141_ELV_FONT = fontValues['Interface\\\\AddOns\\\\ElvUI\\\\Media\\\\Fonts\\\\Ex
 _G.ElvUI = oldElvUI
 """)
 check(bool(rt.eval("V141_ELV_TEX ~= nil and V141_ELV_FONT ~= nil")), "v1.11.141: Raid Frame selectors expose ElvUI textures and fonts dynamically")
+
+# v1.11.142 — all Pugger text slots accept item/achievement/quest links
+rt.execute("""
+local gm = RLSuite.groupmaking
+local links = {
+    '|Hitem:1|h[Test Item]|h',
+    '|Hachievement:2:0000000000000000:1:1:1:1:0:0:0:0|h[Test Achievement]|h',
+    '|Hquest:3:80|h[Test Quest]|h',
+}
+V142_LINK_SLOTS = true
+for _, edit in ipairs({gm.aimEdit, gm.reservedEdit, gm.otherEdit}) do
+    gm.aimEdit:ClearFocus(); gm.reservedEdit:ClearFocus(); gm.otherEdit:ClearFocus()
+    edit:Show()
+    edit:SetText('')
+    edit:SetFocus()
+    for _, link in ipairs(links) do ChatEdit_InsertLink(link) end
+    edit:ClearFocus()
+    local text = edit:GetText() or ''
+    for _, link in ipairs(links) do
+        if not string.find(text, link, 1, true) then V142_LINK_SLOTS = false end
+    end
+end
+""")
+check(bool(rt.eval("V142_LINK_SLOTS")), "v1.11.142: Aim, Reserved and Other accept item, achievement and quest links")
 
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
