@@ -36,13 +36,34 @@ function MW:Toggle()
 end
 
 function MW:SyncVisibilityWithRaidFrame()
+    local isDebug = RLSuite.DebugMode and RLSuite:DebugMode()
+    local isAnchor = RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.anchorMode == true
+    local inRaid = (RLSuite.InRaid and RLSuite:InRaid()) or (GetNumRaidMembers and GetNumRaidMembers() > 0)
     local rf = RLSuite.raidFrame
-    local show = rf and rf.frame and rf.frame:IsShown()
+    local rfShown = rf and rf.frame and rf.frame:IsShown()
+
+    -- REQUISITO FERREO: Fuori dal raid (e senza debug né anchor mode),
+    -- la control bar e il pannello DEVONO essere invisibili.
+    local show = false
+    if isAnchor then
+        show = true
+    elseif isDebug then
+        show = rfShown or true
+    elseif inRaid then
+        show = rfShown and true or false
+    else
+        show = false
+    end
+
     if self.titleBar then
         if show then
             self.titleBar:Show()
+            if self.phaseBtn then self.phaseBtn:Show() end
+            if self.phaseText then self.phaseText:Show() end
         else
             self.titleBar:Hide()
+            if self.phaseBtn then self.phaseBtn:Hide() end
+            if self.phaseText then self.phaseText:Hide() end
             if self.frame then self.frame:Hide() end
         end
     end
