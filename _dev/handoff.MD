@@ -14,7 +14,14 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.127**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.128**.
+
+## 1.11.128 — Rarity threshold agganciata al dropdown
+
+L'etichetta `Rarity threshold` è ora ancorata direttamente al lato sinistro del
+dropdown, con lo stesso centro verticale: non può più finire su una seconda
+riga per differenze di font o scala UI. L'header tabella è stato contestualmente
+rialzato da -104 a -86, eliminando lo spazio verticale liberato.
 
 ## 1.11.127 — Hotfix sintassi dopo riconciliazione shallow
 

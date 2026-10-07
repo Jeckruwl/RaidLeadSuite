@@ -114,7 +114,6 @@ function LM:CreateFrame()
     self.histLabel = histLabel
 
     local filterFS = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    filterFS:SetPoint("TOPRIGHT", f, "TOPRIGHT", -152, -84)
     filterFS:SetText("Rarity threshold")
     self.filterFS = filterFS
 
@@ -122,6 +121,8 @@ function LM:CreateFrame()
     self.rarityDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteLootRarityDD", 130, 20)
     self.rarityDropdown:ClearAllPoints()
     self.rarityDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -58)
+    -- L'etichetta è legata al controllo, non a una seconda riga autonoma.
+    filterFS:SetPoint("RIGHT", self.rarityDropdown, "LEFT", -8, 0)
     RLSuite.utils:SetupDropdown(self.rarityDropdown, {
         { text = "All", value = "all" },
         { text = "Poor", value = 0 },
@@ -169,8 +170,8 @@ function LM:CreateFrame()
 
     -- Header sotto il titolo ignore e la sua riga di checkbox.
     local header = CreateFrame("Frame", nil, f)
-    header:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -104)
-    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -104)
+    header:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -86)
+    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -86)
     header:SetHeight(18)
     self.histHeader = header
     self:PaintHeader(header)

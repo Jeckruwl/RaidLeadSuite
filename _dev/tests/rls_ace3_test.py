@@ -3890,7 +3890,9 @@ LM_LAYOUT_117 = {
     buttonSpan = (lm.rollMSBtn:GetWidth() + lm.rollOSBtn:GetWidth() + lm.rollOtherBtn:GetWidth()
         + lm.rerollBtn:GetWidth() + lm.announceMSBtn:GetWidth() + 24),
     announceText = lm.announceMSBtn:GetText(),
-    rarityWithHistory = (math.abs((lm.filterFS._points[1][5] or 0) - (histLabelP[5] or 0)) <= 2
+    rarityWithHistory = (lm.filterFS._points[1][1] == 'RIGHT'
+        and lm.filterFS._points[1][2] == lm.rarityDropdown
+        and lm.filterFS._points[1][3] == 'LEFT'
         and math.abs((lm.rarityDropdown._points[1][5] or 0) - (histLabelP[5] or 0)) <= 6),
     timer = lm:TradeRemaining({ time = time() - 3661 }),
     topOrder = (titleP[5] > il[5] and il[5] > histLabelP[5] and histLabelP[5] > histHeaderP[5]),
