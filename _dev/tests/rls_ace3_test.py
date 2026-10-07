@@ -3879,17 +3879,19 @@ local titleP = lm.titleFS._points[1] or {}
 local histLabelP = lm.histLabel._points[1] or {}
 local histHeaderP = lm.histHeader._points[1] or {}
 local selP = lm.selBox._points[1] or {}
+local histBottomP = lm.histBox._points[2] or {}
 local preP = lm.preMsgText._points[1] or {}
 LM_LAYOUT_117 = {
     checksWithLabel = (il[5] ~= nil and ic[5] ~= nil and math.abs(ic[5] - il[5]) <= 6 and ic[4] > il[4]),
     noNumberColumn = (lm.histHeads.num == nil and lm:HistMetrics(420).itemX == 30),
-    compactTop = (histLabelP[5] == -60 and histHeaderP[5] == -82),
-    compactBottom = (selP[5] == 66 and preP[5] == 42 and ms[5] == 10),
+    compactTop = (histLabelP[5] == -64 and histHeaderP[5] == -86),
+    compactBottom = (histBottomP[5] == 104 and selP[5] == 66 and preP[5] == 42 and ms[5] == 10),
     oneButtonRow = (rr[2] == lm.rollOtherBtn and lm.announceMSBtn._points[1][2] == lm.rerollBtn),
     buttonSpan = (lm.rollMSBtn:GetWidth() + lm.rollOSBtn:GetWidth() + lm.rollOtherBtn:GetWidth()
         + lm.rerollBtn:GetWidth() + lm.announceMSBtn:GetWidth() + 24),
     announceText = lm.announceMSBtn:GetText(),
-    rarityWithHistory = math.abs((lm.filterFS._points[1][5] or 0) - (histLabelP[5] or 0)) <= 2,
+    rarityWithHistory = (math.abs((lm.filterFS._points[1][5] or 0) - (histLabelP[5] or 0)) <= 2
+        and math.abs((lm.rarityDropdown._points[1][5] or 0) - (histLabelP[5] or 0)) <= 6),
     timer = lm:TradeRemaining({ time = time() - 3661 }),
     topOrder = (titleP[5] > il[5] and il[5] > histLabelP[5] and histLabelP[5] > histHeaderP[5]),
     bottomOrder = (selP[5] > preP[5] and preP[5] > ms[5]),

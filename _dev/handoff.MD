@@ -14,7 +14,15 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.125**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.126**.
+
+## 1.11.126 — Loot Manager: compattazione completa e rarity allineata
+
+Compattazione resa coerente su entrambi i lati della tabella: Loot History e
+header sono stati rialzati, mentre il fondo della tabella è stato esteso fino a
+4px sopra l'item selezionato, eliminando lo spazio vuoto trasferito sotto il
+listato. `Rarity threshold` e il relativo dropdown sono entrambi allineati alla
+riga Loot History.
 
 ## 1.11.125 — Hotfix carattere spurio a fine LootManager
 

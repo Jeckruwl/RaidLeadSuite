@@ -109,7 +109,7 @@ function LM:CreateFrame()
     self.preMsgText:SetText("")
 
     local histLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    histLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -82)
+    histLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -64)
     histLabel:SetText("Loot History")
     self.histLabel = histLabel
 
@@ -177,7 +177,7 @@ function LM:CreateFrame()
 
     self.histBox = CreateFrame("Frame", nil, f)
     self.histBox:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -2)
-    self.histBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 134)
+    self.histBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 104)
     self:SkinBox(self.histBox)
 
     self.histScroll = CreateFrame("ScrollFrame", "RLSuiteLootHistory", self.histBox, "UIPanelScrollFrameTemplate")
@@ -850,7 +850,7 @@ function LM:UpdateHistory()
                 lineH = name:GetStringHeight() or 14
             end
             local q = self:EntryQuality(entry)
-            if GetItemQualityColor and q and q >= 0 then
+            if GetItemQualityColor and and q >= 0 then
                 local r, g, b = GetItemQualityColor(q)
                 name:SetTextColor(r or 1, g or 1, b or 1)
             end
@@ -1437,3 +1437,4 @@ function LM:ClearHistory()
     self:ResetButtons()
     self:UpdateHistory()
 end
+d
