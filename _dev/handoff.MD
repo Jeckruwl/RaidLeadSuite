@@ -14,7 +14,13 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.136**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.137**.
+
+## 1.11.137 — Countdown roll essenziale
+
+Gli avvisi RAID_WARNING a 7/5/3/2/1 secondi non mostrano più tipo di roll o
+item link. Il formato unico, sia per roll sia per reroll, è `rolling ends in
+Xs`.
 
 ## 1.11.136 — Formato reroll essenziale
 

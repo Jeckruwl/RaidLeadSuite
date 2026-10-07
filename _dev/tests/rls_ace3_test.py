@@ -3329,11 +3329,11 @@ check(bool(rt.eval("""(function()
     local s = ROLL_WARNINGS or ''
     for _, n in ipairs({7, 5, 3, 2, 1}) do
         if not string.find(s, 'RAID_WARNING', 1, true)
-            or not string.find(s, tostring(n) .. 's remaining', 1, true)
-            or not string.find(s, '[Rolled Item]', 1, true) then return false end
+            or not string.find(s, 'rolling ends in ' .. tostring(n) .. 's', 1, true) then return false end
     end
-    return true
-end)()""")), "v1.11.134: roll countdown warns in RW with item link at 7/5/3/2/1")
+    return not string.find(s, '[Rolled Item]', 1, true)
+        and not string.find(s, 'ROLL MS', 1, true)
+end)()""")), "v1.11.137: roll countdown RW contains only 'rolling ends in Xs' at 7/5/3/2/1")
 rt.execute("""
 local lm = RLSuite.lootManager
 lm.currentRoll.rolls = { {name = 'Winnerbot', roll = 99} }  -- deterministic winner (no ties)
@@ -4029,10 +4029,10 @@ check(bool(rt.eval("""(function()
 end)()""")), "v1.11.136: reroll message is names, REROLL, linked item, You have 15s")
 check(bool(rt.eval("""(function()
     for _, n in ipairs({7, 5, 3, 2, 1}) do
-        if not string.find(RR_MESSAGES or '', tostring(n) .. 's remaining', 1, true) then return false end
+        if not string.find(RR_MESSAGES or '', 'rolling ends in ' .. tostring(n) .. 's', 1, true) then return false end
     end
     return true
-end)()""")), "v1.11.134: reroll countdown warns at 7/5/3/2/1")
+end)()""")), "v1.11.137: reroll countdown uses 'rolling ends in Xs' at 7/5/3/2/1")
 check(bool(rt.eval("RR_DONE_ITEM")), "debug reroll resolves the tie and assigns the item to one of the tied fakes")
 # --- Debug panel: Clear loot ---
 rt.execute("""

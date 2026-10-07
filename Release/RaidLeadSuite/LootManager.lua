@@ -1072,10 +1072,10 @@ function LM:RollLabel(reroll)
     return "ROLL " .. tostring(rollType or "MS")
 end
 
-function LM:RollCountdownWarning(reroll, seconds)
-    local item = self.currentRoll and self.currentRoll.item
-    RLSuite.utils:SendChat(self:RollLabel(reroll) .. " " .. self:RollItemText(item)
-        .. " " .. tostring(seconds) .. "s remaining", "RAID_WARNING")
+function LM:RollCountdownWarning(_, seconds)
+    -- I richiami intermedi devono restare essenziali: niente tipo roll,
+    -- niente item link, solo i secondi rimanenti.
+    RLSuite.utils:SendChat("rolling ends in " .. tostring(seconds) .. "s", "RAID_WARNING")
 end
 
 function LM:StartRoll(rollType)
