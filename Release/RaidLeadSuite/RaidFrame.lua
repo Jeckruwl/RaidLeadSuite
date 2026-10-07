@@ -1473,15 +1473,32 @@ local RF_ROLE_ICONS = {
     waiting = "Interface\\RaidFrame\\ReadyCheck-Waiting",
 }
 
+function RF:ReadyCacheStatus(unit)
+    if not unit or not self.readyCheckStatus then return nil end
+    local status = self.readyCheckStatus[unit]
+    if not status and UnitGUID then
+        local guid = UnitGUID(unit)
+        if guid then status = self.readyCheckStatus[guid] end
+    end
+    if not status and UnitName then
+        local name = UnitName(unit)
+        if name then status = self.readyCheckStatus[name] end
+    end
+    return status
+end
+
 function RF:ReadyStatus(unit)
     if not self.readyCheckActive then return nil end
+    local cached = self:ReadyCacheStatus(unit)
     if unit and GetReadyCheckStatus then
         local status = GetReadyCheckStatus(unit)
-        if status == "ready" or status == "notready" or status == "waiting" then
-            return status
-        end
+        -- La conferma evento è più fresca di un API ancora fermo su waiting
+        -- (comune per "player" quando il ready check è avviato da altri).
+        if status == "ready" or status == "notready" then return status end
+        if cached == "ready" or cached == "notready" then return cached end
+        if status == "waiting" then return status end
     end
-    return (unit and self.readyCheckStatus and self.readyCheckStatus[unit]) or "waiting"
+    return cached or "waiting"
 end
 
 function RF:OnReadyCheckStarted()
@@ -1492,7 +1509,21 @@ end
 
 function RF:OnReadyCheckConfirm(event, unit, isReady)
     self.readyCheckStatus = self.readyCheckStatus or {}
-    if unit then self.readyCheckStatus[unit] = isReady and "ready" or "notready" end
+    if unit then
+        local ready = isReady == true or isReady == 1 or isReady == "ready"
+        local status = ready and "ready" or "notready"
+        -- READY_CHECK_CONFIRM può identificare noi come "player", mentre la
+        -- riga è "raidN": salva token, GUID e nome per collegare gli alias.
+        self.readyCheckStatus[unit] = status
+        if UnitGUID then
+            local guid = UnitGUID(unit)
+            if guid then self.readyCheckStatus[guid] = status end
+        end
+        if UnitName then
+            local name = UnitName(unit)
+            if name then self.readyCheckStatus[name] = status end
+        end
+    end
     self:UpdateAll()
 end
 

@@ -7612,6 +7612,7 @@ if row then
     row.fake = false
     row.unit = "raid1"
     local oldExists, oldConnected, oldReady = UnitExists, UnitIsConnected, GetReadyCheckStatus
+    local oldGuid, oldName = UnitGUID, UnitName
     UnitExists = function() return true end
     UnitIsConnected = function() return true end
     RFM.readyCheckActive = true
@@ -7624,6 +7625,13 @@ if row then
     GetReadyCheckStatus = function() return "ready" end
     RFM:UpdateRoleIcon(row)
     V112.ready = tostring(row.roleIcon._texture)
+    -- Client non-RL: conferma ricevuta come "player", riga rappresentata da
+    -- "raid1", mentre GetReadyCheckStatus è ancora stale su waiting.
+    GetReadyCheckStatus = function() return "waiting" end
+    UnitGUID = function(unit) return (unit == "player" or unit == "raid1") and "Player-GUID" or nil end
+    UnitName = function(unit) return (unit == "player" or unit == "raid1") and "SelfPlayer" or nil end
+    RFM:OnReadyCheckConfirm("READY_CHECK_CONFIRM", "player", true)
+    V112.aliasReady = (RFM:ReadyStatus("raid1") == "ready")
     UnitIsConnected = function() return false end
     RFM:UpdateRoleIcon(row)
     V112.offline = tostring(row.roleIcon._texture)
@@ -7635,11 +7643,13 @@ if row then
     RFM.readyCheckActive = nil
     RFM.readyCheckStatus = nil
     UnitExists, UnitIsConnected, GetReadyCheckStatus = oldExists, oldConnected, oldReady
+    UnitGUID, UnitName = oldGuid, oldName
 end
 """)
 check(bool(rt.eval("V112.waiting:find('ReadyCheck%-Waiting') ~= nil")), "v1.11.112: ready check waiting = yellow question mark")
 check(bool(rt.eval("V112.notready:find('ReadyCheck%-NotReady') ~= nil")), "v1.11.112: ready check no = red X")
 check(bool(rt.eval("V112.ready:find('ReadyCheck%-Ready') ~= nil")), "v1.11.112: ready check yes = green check")
+check(bool(rt.eval("V112.aliasReady")), "v1.11.139: READY_CHECK_CONFIRM player alias overrides stale waiting on raidN row")
 check(bool(rt.eval("V112.offline:find('UI%-GroupLoot%-Pass%-Up') ~= nil and V112.overlay and V112.text")), "v1.11.112: offline = red pass icon plus red OFFLINE overlay")
 check(bool(rt.eval("V112.overlayAlpha == 0.20 and V112.textRight")), "v1.11.114: offline overlay alpha 0.20 and OFFLINE text right-aligned with 4px inset")
 check(bool(rt.eval("RLSuite.mainWindow.titleBar._noOuterBorder == true and RLSuite.mainWindow.titleBar._backdropBorderColor[4] == 0")), "v1.11.115: Raid Control title bar has no Blizzard dialog border")

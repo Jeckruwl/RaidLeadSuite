@@ -14,7 +14,15 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.138**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.139**.
+
+## 1.11.139 — Ready Check corretto anche se avviato da altri
+
+READY_CHECK_CONFIRM viene ora memorizzato per unit token, GUID e nome. Questo
+collega correttamente l'evento ricevuto come `player` alla riga `raidN`. Una
+conferma evento ready/notready prevale inoltre su `GetReadyCheckStatus` ancora
+stale su `waiting`. Non richiede essere RL o assist: gli eventi sono ricevuti
+da tutti i membri del raid.
 
 ## 1.11.138 — Countdown: frase a 7, poi numeri puri
 
