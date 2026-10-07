@@ -36,24 +36,12 @@ function MW:Toggle()
 end
 
 function MW:SyncVisibilityWithRaidFrame()
-    local isDebug = RLSuite.DebugMode and RLSuite:DebugMode()
-    local isAnchor = RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.anchorMode == true
-    local inRaid = (RLSuite.InRaid and RLSuite:InRaid()) or (GetNumRaidMembers and GetNumRaidMembers() > 0)
     local rf = RLSuite.raidFrame
     local rfShown = rf and rf.frame and rf.frame:IsShown()
 
-    -- REQUISITO FERREO: Fuori dal raid (e senza debug né anchor mode),
-    -- la control bar e il pannello DEVONO essere invisibili.
-    local show = false
-    if isAnchor then
-        show = true
-    elseif isDebug then
-        show = rfShown or true
-    elseif inRaid then
-        show = rfShown and true or false
-    else
-        show = false
-    end
+    -- REGOLA ASSOLUTA: se il Raid Frame non è a schermo,
+    -- la Raid Control bar e il suo pannello NON DEVONO ESISTERE a schermo.
+    local show = rfShown and true or false
 
     if self.titleBar then
         if show then
