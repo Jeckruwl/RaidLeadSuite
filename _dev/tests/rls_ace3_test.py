@@ -3821,10 +3821,10 @@ check(bool(rt.eval("DBG_TITLE_STYLE.noBackdrop == true and DBG_TITLE_STYLE.mouse
 check(bool(rt.eval("DBG_GAP.n == 1 and DBG_GAP.cells == 8")), "RLS DEBUG grid has ONE empty cell (8 cells: title + 6 buttons + blank)")
 check(bool(rt.eval("DBG_GAP.nameBefore == 'Empty Loot'")), "the blank cell sits right AFTER 'Empty Loot' (%s -> vuota)" % rt.eval("DBG_GAP.nameBefore"))
 check(bool(rt.eval("DBG_GAP.freeCell == true and DBG_GAP.afterAt.y == DBG_GAP.y and DBG_GAP.afterAt.x == DBG_GAP.nextColX")), "no button sits in the blank cell: '%s' starts the cell right after it" % rt.eval("DBG_GAP.afterName"))
-check(bool(rt.eval("""(function() local f = RLSuite.debugPanel return f._points[1] ~= nil and f._points[1][2] == RLSuite.mainWindow.frame end)()""")), "debug panel is anchored to the main bar (moves with it, never saved)")
-check(bool(rt.eval("RLSuite.debugPanel._scripts['OnDragStart'] == nil")), "debug panel is NOT draggable (part of the main bar)")
+check(bool(rt.eval("""(function() local f = RLSuite.debugPanel local p = f._points[1] or {} local mw = RLSuite.mainWindow local expected = mw:RaidFrameWidth() + mw.frame:GetWidth() * mw.frame:GetScale() return p[1] == 'TOPLEFT' and p[2] == UIParent and p[3] == 'TOPLEFT' and math.abs((p[4] or -1) - expected) < 0.001 and p[5] == 0 end)()""")), "v1.11.114: debug panel is top-aligned after Raid Frame width + command matrix width")
+check(bool(rt.eval("RLSuite.debugPanel._scripts['OnDragStart'] == nil")), "debug panel is NOT draggable")
 
-# --- RLS DEBUG segue il pannello dei tasti (Raid Control) ---
+# --- RLS DEBUG indipendente dal pannello dei tasti (Raid Control) ---
 rt.execute("""
 local MWd = RLSuite.mainWindow
 RLSuite.db.profile.debug = true
@@ -3847,10 +3847,9 @@ RLSuite.db.profile.debug = true
 RLSuite:SyncDebugPanel()
 DBG_BACK_ON = RLSuite.debugPanel:IsShown()
 """)
-check(bool(rt.eval("DBG_FOLLOW_CLOSED == false and DBG_FOLLOW_OPEN == true")), "RLS DEBUG shows ONLY with the main panel open")
-check(bool(rt.eval("DBG_AFTER_RC_CLOSE == false")), "pressing Raid Control to CLOSE the panel closes RLS DEBUG with it")
-check(bool(rt.eval("DBG_AFTER_RC_OPEN == true")), "pressing Raid Control again SHOWS RLS DEBUG (debug mode is on)")
-check(bool(rt.eval("DBG_OFF == false and DBG_BACK_ON == true")), "RLS DEBUG disappears with debug mode off even if the panel stays open, and comes back when it is on again")
+check(bool(rt.eval("DBG_FOLLOW_CLOSED == true and DBG_FOLLOW_OPEN == true")), "v1.11.114: RLS DEBUG remains visible independently of the command matrix")
+check(bool(rt.eval("DBG_AFTER_RC_CLOSE == true and DBG_AFTER_RC_OPEN == true")), "v1.11.114: Raid Control does not close or reopen RLS DEBUG")
+check(bool(rt.eval("DBG_OFF == false and DBG_BACK_ON == true")), "RLS DEBUG visibility follows only debug mode")
 
 # --- Debug mode no longer auto-fills the loot manager ---
 rt.execute("""
@@ -7529,7 +7528,7 @@ check(bool(rt.eval("V112.waiting:find('ReadyCheck%-Waiting') ~= nil")), "v1.11.1
 check(bool(rt.eval("V112.notready:find('ReadyCheck%-NotReady') ~= nil")), "v1.11.112: ready check no = red X")
 check(bool(rt.eval("V112.ready:find('ReadyCheck%-Ready') ~= nil")), "v1.11.112: ready check yes = green check")
 check(bool(rt.eval("V112.offline:find('UI%-GroupLoot%-Pass%-Up') ~= nil and V112.overlay and V112.text")), "v1.11.112: offline = red pass icon plus red OFFLINE overlay")
-check(bool(rt.eval("V112.overlayAlpha == 0.32 and V112.textRight")), "v1.11.113: offline overlay alpha 0.32 and OFFLINE text right-aligned with 4px inset")
+check(bool(rt.eval("V112.overlayAlpha == 0.20 and V112.textRight")), "v1.11.114: offline overlay alpha 0.20 and OFFLINE text right-aligned with 4px inset")
 
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

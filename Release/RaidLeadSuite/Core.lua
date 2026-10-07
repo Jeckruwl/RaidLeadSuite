@@ -83,7 +83,7 @@ function RLSuite:AddonCopiesWarning()
     return lines
 end
 
-RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.113"
+RLSuite.version = TocVersion("RaidLeadSuite") or "1.11.114"
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
@@ -1700,24 +1700,30 @@ function RLSuite:LayoutDebugPanel()
     return cols, DBG_ROWS
 end
 
+function RLSuite:AnchorDebugPanel()
+    local f = self.debugPanel
+    if not f then return end
+    local mw = self.mainWindow
+    local raidW = (mw and mw.RaidFrameWidth and mw:RaidFrameWidth()) or 0
+    local matrixW = 0
+    if mw and mw.frame then
+        local scale = (mw.frame.GetScale and mw.frame:GetScale()) or 1
+        matrixW = (mw.frame:GetWidth() or 0) * scale
+    end
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", raidW + matrixW, 0)
+end
+
 function RLSuite:EnsureDebugPanel()
     if self.debugPanel then return end
-    -- Matrice NON spostabile e ancorata alla main bar: dove va la barra va
-    -- anche il pannello (punto relativo alla barra, mai salvato).
+    -- Pannello indipendente dalla Raid Control bar: fisso al bordo superiore,
+    -- dopo la larghezza del Raid Frame e della matrice pulsanti.
     local f = CreateFrame("Frame", "RLSuiteDebugPanel", UIParent)
     f:SetSize(126, 60)
     f:SetFrameStrata("HIGH")
     f:SetMovable(false)
     f:EnableMouse(true)
-    local tb = self.mainWindow and self.mainWindow.titleBar
-    local bar = self.mainWindow and self.mainWindow.frame
-    if tb then
-        f:SetPoint("TOPLEFT", tb, "TOPRIGHT", 8, 0)
-    elseif bar then
-        f:SetPoint("TOPLEFT", bar, "TOPRIGHT", 8, 0)
-    else
-        f:SetPoint("CENTER", UIParent, "CENTER", 0, 200)
-    end
+    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0) -- corretto dopo il layout
     -- Borderless come la main bar (_noOuterBorder = fill tenuto, bordo via).
     f._noOuterBorder = true
     self.utils:SkinFrame(f)
@@ -1745,13 +1751,12 @@ function RLSuite:EnsureDebugPanel()
     end
     self.debugPanel = f      -- PRIMA del layout: LayoutDebugPanel legge self.debugPanel
     self:LayoutDebugPanel()
+    self:AnchorDebugPanel()
     f:Hide()
 end
 
--- Il pannello RLS DEBUG e' legato al pannello dei tasti della main bar: si
--- vede solo se il debug e' ATTIVO **e** il pannello e' aperto. Cosi' il tasto
--- "Raid Control" lo apre/chiude insieme al pannello e la X non lo lascia
--- orfano a schermo; a ogni apertura (con debug attivo) ricompare da solo.
+-- RLS DEBUG dipende SOLO dalla debug mode. Non segue piu' apertura, chiusura
+-- o visibilita' della Raid Control bar.
 function RLSuite:SyncDebugPanel()
     if not self:DebugMode() then
         if self.debugPanel then self.debugPanel:Hide() end
@@ -1759,13 +1764,8 @@ function RLSuite:SyncDebugPanel()
     end
     self:EnsureDebugPanel()
     if not self.debugPanel then return end
-    local bar = self.mainWindow and self.mainWindow.frame
-    local tb = self.mainWindow and self.mainWindow.titleBar
-    if (bar and bar:IsShown()) or (tb and tb:IsShown()) then
-        self.debugPanel:Show()
-    else
-        self.debugPanel:Hide()
-    end
+    self:AnchorDebugPanel()
+    self.debugPanel:Show()
 end
 
 -- Called whenever the simulated roster changes (invite accepted, debug
@@ -2243,9 +2243,7 @@ function RLSuite:ApplyDebugMode()
     -- restava vuoto finche' non arrivava il primo invito.
     self:DebugRosterChanged()
     self:UpdatePhaseUI()
-    -- Pannello debug: compare vicino alla main bar solo con il debug ATTIVO e
-    -- il pannello dei tasti aperto (stesso ciclo di vita del tasto Raid
-    -- Control: si chiude insieme a lui, ricompare a ogni apertura).
+    -- Pannello debug indipendente: la sua visibilita' segue solo la debug mode.
     self:SyncDebugPanel()
 end
 

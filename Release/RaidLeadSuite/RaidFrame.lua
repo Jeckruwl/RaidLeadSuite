@@ -622,7 +622,7 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
     local offlineBg = offlineOverlay:CreateTexture(nil, "BACKGROUND")
     offlineBg:SetAllPoints(offlineOverlay)
     offlineBg:SetTexture("Interface\\Buttons\\WHITE8x8")
-    offlineBg:SetVertexColor(0.75, 0.02, 0.02, 0.48)
+    offlineBg:SetVertexColor(0.75, 0.02, 0.02, 0.20)
     offlineOverlay.bg = offlineBg
     local offlineText = offlineOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     offlineText:SetPoint("CENTER", offlineOverlay, "CENTER", 0, 0)

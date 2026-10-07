@@ -14,7 +14,15 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.113**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.114**.
+
+## 1.11.114 — Overlay offline 20% + pannello debug indipendente
+
+L'overlay rosso OFFLINE usa alpha **0.20**. Il pannello RLS DEBUG non segue più
+la Raid Control bar né la sua matrice: con debug attivo resta visibile sempre.
+È ancorato al bordo superiore (`TOPLEFT` di UIParent, y=0) con offset x uguale
+a `larghezza effettiva Raid Frame + larghezza effettiva matrice pulsanti`.
+La posizione viene ricalcolata quando il layout cambia.
 
 ## 1.11.113 — Overlay offline più leggero e testo a destra
 
