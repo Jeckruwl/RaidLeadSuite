@@ -253,41 +253,23 @@ function LM:CreateFrame()
     f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
 
-    self:HookTradePanel()
     self:EnsureTicker()
 end
 
--- Ancoraggio "finestra nativa": normalmente in alto a sinistra (16, -116),
--- ma se il trade e' aperto il Loot Manager cede la sinistra al trade e si
--- sposta SUBITO a destra di esso (come fanno equip/talenti/spellbook con
--- gli altri pannelli Blizzard).
+-- Posizione fissa già a destra dello spazio occupato dal TradeFrame.
+-- Il Loot Manager non reagisce più all'apertura/chiusura del trade: niente
+-- salto laterale nel momento in cui un player apre la finestra di scambio.
+local LM_FIXED_X = 420
 function LM:AnchorDefault()
     if not self.frame then return end
     self.frame:ClearAllPoints()
-    local x = 16
-    if self.tradeOpen and TradeFrame and TradeFrame.IsShown and TradeFrame:IsShown() then
-        x = (TradeFrame.GetRight and TradeFrame:GetRight() or 0) + 10
-    end
-    if x < 16 then x = 16 end
-    self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", x, -116)
+    self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", LM_FIXED_X, -116)
 end
 
--- Gancio una tantum al TradeFrame di Blizzard (OnShow/OnHide): il pannello
--- "sa" cosa c'e' aperto e reagisce nell'istante in cui il trade appare
--- ("quando aprono una trade si sposta a destra lasciando il trade a
--- sinistra"). Registrabile anche a runtime se il TradeFrame esiste gia'.
+-- Alias storico tenuto per compatibilità con eventuali chiamanti esterni.
+-- Non installa hook: la finestra deve rimanere sempre nella posizione fissa.
 function LM:HookTradePanel()
-    if self._tradeHooked then return end
-    if not (TradeFrame and TradeFrame.HookScript) then return end
-    self._tradeHooked = true
-    TradeFrame:HookScript("OnShow", function()
-        LM.tradeOpen = true
-        LM:AnchorDefault()
-    end)
-    TradeFrame:HookScript("OnHide", function()
-        LM.tradeOpen = false
-        LM:AnchorDefault()
-    end)
+    return
 end
 
 function LM:SkinBox(box)

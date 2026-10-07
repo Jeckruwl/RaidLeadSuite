@@ -14,7 +14,14 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.115**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.116**.
+
+## 1.11.116 — Loot Manager sempre già a destra
+
+Il Loot Manager usa sempre la posizione fissa `TOPLEFT UIParent, 420, -116`,
+cioè lo stesso posto che prima assumeva solo durante un trade. Rimossi gli hook
+`OnShow`/`OnHide` del TradeFrame: aprire o chiudere uno scambio non sposta più
+la finestra. `HookTradePanel` resta come alias no-op per compatibilità.
 
 ## 1.11.115 — Raid Control bar senza dialog border
 

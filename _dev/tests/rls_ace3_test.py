@@ -3870,32 +3870,28 @@ rt.execute("LM_MINW = RLSuite.windowMins.loot()")
 check(bool(rt.eval("LM_MINW >= 506")), "loot min width fits all roll buttons incl. Announce Changes (no clipping)")
 rt.execute("RLSuite.mainWindow:ShowTab('loot')")
 check(bool(rt.eval("RLSuite.lootManager.frame._scripts['OnDragStart'] == nil")), "loot window is NOT draggable anymore (behaves like the native equip panel)")
-check(bool(rt.eval("""(function() local p = RLSuite.lootManager.frame._points[1] return p ~= nil and p[1] == 'TOPLEFT' and p[2] == UIParent and p[4] == 16 and p[5] == -116 end)()""")), "loot window anchors to the fixed equip-style spot (TOPLEFT 16,-116 of UIParent)")
+check(bool(rt.eval("""(function() local p = RLSuite.lootManager.frame._points[1] return p ~= nil and p[1] == 'TOPLEFT' and p[2] == UIParent and p[4] == 420 and p[5] == -116 end)()""")), "v1.11.116: loot window is permanently parked right of the TradeFrame area (TOPLEFT 420,-116)")
 check(bool(rt.eval("RLSuite.groupmaking.mainFrame._scripts['OnDragStart'] ~= nil")), "other windows keep their draggable behavior (groupmaking untouched)")
 rt.execute("RLSuite.lootManager.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
 
-# --- Loot Manager yields the left side to an open Trade (native panel behavior) ---
+# --- Loot Manager stays fixed when Trade opens/closes ---
 rt.execute("""
 TradeFrame = CreateFrame('Frame', 'RLSuiteTestTrade', UIParent)
-TradeFrame.GetRight = function() return 410 end
-RLSuite.lootManager._tradeHooked = nil
-RLSuite.lootManager:HookTradePanel()
 RLSuite.mainWindow:ShowTab('loot')
 local p1 = RLSuite.lootManager.frame._points[1]
 TF_X1 = p1 and p1[4] or 0
 TradeFrame:Show()
-TradeFrame._scripts['OnShow'](TradeFrame)
+RLSuite.lootManager:AnchorDefault()
 TF_X2 = RLSuite.lootManager.frame._points[1] and RLSuite.lootManager.frame._points[1][4] or 0
 TradeFrame:Hide()
-TradeFrame._scripts['OnHide'](TradeFrame)
+RLSuite.lootManager:AnchorDefault()
 TF_X3 = RLSuite.lootManager.frame._points[1] and RLSuite.lootManager.frame._points[1][4] or 0
+TF_NO_HOOK = (TradeFrame._scripts['OnShow'] == nil and TradeFrame._scripts['OnHide'] == nil)
 RLSuite.lootManager.frame:Hide()
 RLSuite.mainWindow.currentTab = nil
-RLSuite.lootManager.tradeOpen = false
 """)
-check(bool(rt.eval("TF_X1 == 16")), "loot opens at the left equip-style spot when no trade is open")
-check(bool(rt.eval("TF_X2 == 420")), "opening Trade instantly pushes the loot manager to the right of it (trade keeps the left)")
-check(bool(rt.eval("TF_X3 == 16")), "closing Trade puts the loot manager back on the left")
+check(bool(rt.eval("TF_X1 == 420 and TF_X2 == 420 and TF_X3 == 420")), "v1.11.116: Loot Manager never moves when Trade opens or closes")
+check(bool(rt.eval("TF_NO_HOOK")), "v1.11.116: Loot Manager installs no TradeFrame movement hooks")
 rt.execute("TradeFrame = nil")
 
 # --- Reroll button stays ENABLED after a tie (AnnounceWinner -> ResetButtons bug) ---
