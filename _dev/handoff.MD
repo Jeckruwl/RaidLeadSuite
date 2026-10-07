@@ -14,7 +14,13 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.134**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.135**.
+
+## 1.11.135 — Reroll con nomi degli aventi diritto
+
+Il messaggio iniziale del reroll conserva formato, link item e timer 15s, e
+riporta nuovamente l'elenco dei soli giocatori autorizzati: `Only: Nome1,
+Nome2`. Il messaggio resta in RAID_WARNING.
 
 ## 1.11.134 — Roll separati da MS Changes, 15s e warning completi
 
