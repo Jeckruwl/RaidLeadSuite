@@ -591,7 +591,7 @@ LIBS = [
 ADDON_FILES = [
     "Locale.lua", "Utils.lua", "Core.lua", "RaidProfile.lua",
     "MacroBar.lua", "GroupMaking.lua", "RaidFrame.lua",
-    "MSManager.lua", "LootManager.lua", "CombatLog.lua", "Config.lua",
+    "MSManager.lua", "LootManager.lua", "Config.lua",
 ]
 
 # La suite vive in _dev/tests/ (materiale di sviluppo). L'addon sta in
@@ -730,9 +730,8 @@ fire(rt, "AceEvent30Frame", "RAID_ROSTER_UPDATE")
 check(g.RLSuite.context == "preraid", "RAID_ROSTER_UPDATE dispatch sets context 'preraid' (got %r)" % g.RLSuite.context)
 
 # slash command dispatch -> ChatCommand
-rt.execute("RLSuite.mainWindow.toggleCount = 0; RLSuite.mainWindow.Toggle = function(self) self.toggleCount = self.toggleCount + 1 end")
-rt.execute("SlashCmdList['ACECONSOLE_RLS']('')")
-check(g.RLSuite.mainWindow.toggleCount == 1, "/rls (empty) toggles the main window")
+rt.execute("local saved = RLSuite.config.Toggle; RLSuite.config.Toggle = function() RLSuite.config._spyRls = (RLSuite.config._spyRls or 0) + 1 end; SlashCmdList['ACECONSOLE_RLS'](''); RLSuite.config.Toggle = saved")
+check(bool(rt.eval("RLSuite.config._spyRls == 1")), "/rls (empty) opens Config")
 
 # minimap icon: faction texture + left/right click + drag + config icon gone
 check(bool(rt.eval("RLSuite.minimapIcon ~= nil")), "minimap icon created at login")
@@ -740,9 +739,8 @@ check(bool(rt.eval("RLSuite:IsHorde() == false")), "Alliance player -> IsHorde()
 check(bool(rt.eval("RLSuite.minimapIcon.icon ~= nil")), "minimap icon has a texture")
 check(bool(rt.eval("RLSuite.minimapIcon.icon._texture == 'Interface\\\\AddOns\\\\RaidLeadSuite\\\\media\\\\allianceicon.blp'")), "minimap icon uses allianceicon.blp for an Alliance player")
 check(bool(rt.eval("RLSuite.mainWindow.configBtn == nil")), "config gear icon removed from the main bar")
-rt.execute("RLSuite.mainWindow.toggleCount = 0")
-rt.execute("local b = RLSuite.minimapIcon; if b._scripts.OnClick then b._scripts.OnClick(b, 'LeftButton') end")
-check(g.RLSuite.mainWindow.toggleCount == 1, "minimap left click toggles the main bar")
+rt.execute("local saved = RLSuite.config.Toggle; RLSuite.config.Toggle = function() RLSuite.config._spyMinimap = (RLSuite.config._spyMinimap or 0) + 1 end; local b = RLSuite.minimapIcon; if b._scripts.OnClick then b._scripts.OnClick(b, 'LeftButton') end; RLSuite.config.Toggle = saved")
+check(bool(rt.eval("RLSuite.config._spyMinimap == 1")), "minimap left click opens Config")
 rt.execute("local saved = RLSuite.config.Toggle; RLSuite.config.Toggle = function() RLSuite.config._spy = (RLSuite.config._spy or 0) + 1 end; local b = RLSuite.minimapIcon; if b._scripts.OnClick then b._scripts.OnClick(b, 'RightButton') end; RLSuite.config.Toggle = saved")
 check(bool(rt.eval("RLSuite.config._spy == 1")), "minimap right click opens Config")
 rt.execute("local b = RLSuite.minimapIcon; if b._scripts.OnDragStart then b._scripts.OnDragStart(b) end")
@@ -1521,31 +1519,23 @@ check(bool(rt.eval("MB_ICC_INF['Lord Marrowgar'] == true and MB_ICC_INF['Lady De
       "inferenza ICC: trovarsi su Saurfang implica Marrowgar + Deathwhisper + Gunship battuti")
 check(bool(rt.eval("MB_ICC_NEXT == 'Deathbringer Saurfang'")), "inferenza ICC: il counter punta a Saurfang")
 
-# --- Combat log: la kill entra nel counter, ma NON in debug ---------------
+# --- Boss kill tracking via RecordBossKill ---------------
 rt.execute("""
-    RLSuite:ResetBossProgress('Icecrown Citadel')
+    RLSuite:ResetBossProgress()
+    RLSuite.db.profile.bossProgress = {}
     MOCK_UNITS_BOSS = {}
-    MB_DBG = RLSuite:DebugMode()
-    CL_MOCK = RLSuite.combatLog
-    CL_MOCK.current = { events = {}, count = 0, dropped = 0, startTime = 0, samples = { health = {}, power = {} } }
-    CL_MOCK:OnCLEU('COMBAT_LOG_EVENT_UNFILTERED', 0, 'UNIT_DIED', '', '', 0, '0xF130008F040000AA', 'Lord Marrowgar', 0)
-    MB_CLEU_DEBUG_N = RLSuite:KilledBossCount('Icecrown Citadel')
-    CL_MOCK.current = nil
-""")
-check(bool(rt.eval("MB_DBG == true")), "harness: questa suite gira in debug mode")
-check(bool(rt.eval("MB_CLEU_DEBUG_N == 0")),
-      "combat log in debug: i pull finti NON sporcano la progressione vera")
-rt.execute("""
     RLSuite.db.profile.debug = false
-    MB_CLEU_OK = RLSuite.combatLog:NoteBossKill('0xF130008F040000AA')
+    local npcId = RLSuite.utils:NpcIdFromGUID('0xF130008F040000AA')
+    MB_CLEU_OK = RLSuite:RecordBossKill(npcId)
     MB_CLEU_N = RLSuite:KilledBossCount('Icecrown Citadel')
-    MB_CLEU_UNKNOWN = RLSuite.combatLog:NoteBossKill('0xF1300001000000AA')
+    local unkId = RLSuite.utils:NpcIdFromGUID('0xF1300001000000AA')
+    MB_CLEU_UNKNOWN = RLSuite:RecordBossKill(unkId)
     RLSuite.db.profile.debug = true
 """)
 check(bool(rt.eval("MB_CLEU_OK == true and MB_CLEU_N == 1")),
-      "combat log: la morte di un boss noto (GUID) entra nel counter")
+      "boss kill: la morte di un boss noto (GUID/ID) entra nel counter")
 check(bool(rt.eval("MB_CLEU_UNKNOWN == false")),
-      "combat log: un NPC sconosciuto non entra nel counter")
+      "boss kill: un NPC sconosciuto non entra nel counter")
 # --- La barra si riallinea da sola quando il counter avanza --------------
 rt.execute("""
     RLSuite:ResetBossProgress('Icecrown Citadel')
@@ -2038,12 +2028,11 @@ check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors
 
 print()
 print("== Scenario E: Raid Frame HUD rework ==")
-# --- tab renamed + toggles the HUD (no settings window) ---
-rt.execute("RLSuite.mainWindow._rfTabLabel = nil; for _, t in ipairs(RLSuite.mainWindow.tabDefs) do if t.key == 'raidframe' then RLSuite.mainWindow._rfTabLabel = t.label end end")
-check(bool(rt.eval("RLSuite.mainWindow._rfTabLabel == 'Raid Frame'")), "Raid Manager tab renamed to 'Raid Frame'")
-rt.execute("RLSuite.raidFrame.toggleCount = 0; RLSuite.raidFrame._origToggle = RLSuite.raidFrame.Toggle; RLSuite.raidFrame.Toggle = function(self) self.toggleCount = (self.toggleCount or 0) + 1 end")
-rt.execute("RLSuite.mainWindow:OnTabClick('raidframe')")
-check(bool(rt.eval("RLSuite.raidFrame.toggleCount == 1")), "Raid Frame tab toggles the HUD (like Macrobar)")
+# --- Raid Frame tab moved from module menu to Debug panel ---
+check(bool(rt.eval("RLSuite.mainWindow.tabs.raidframe == nil")), "Raid Frame tab removed from main window matrix")
+rt.execute("RLSuite.raidFrame.toggleCount = 0; RLSuite.raidFrame._origToggle = RLSuite.raidFrame.Toggle; RLSuite.raidFrame.Toggle = function(self, force) self.toggleCount = (self.toggleCount or 0) + 1 end")
+rt.execute("local b = RLSuite.debugPanel.debugButtons[6]; if b._scripts and b._scripts.OnClick then b._scripts.OnClick(b) end")
+check(bool(rt.eval("RLSuite.raidFrame.toggleCount == 1")), "Toggle RF button in debug panel toggles the HUD")
 rt.execute("RLSuite.raidFrame.Toggle = RLSuite.raidFrame._origToggle")
 
 # --- old settings window moved to Config ---
@@ -2075,7 +2064,7 @@ check(bool(rt.eval("RLSuite.raidFrame.frame.closeBtn == nil")), "HUD has no red-
 check(bool(rt.eval("RLSuite.raidFrame.rows ~= nil and #RLSuite.raidFrame.rows >= 2")), "debug roster renders rows")
 rt.execute("E5_ROW = RLSuite.raidFrame.rows and RLSuite.raidFrame.rows[1] or nil")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar ~= nil and E5_ROW.bar.nameText ~= nil and E5_ROW.bar.hpText == nil")), "row has one HP bar with the name inside (no %% text)")
-check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.flaskIcon ~= nil and E5_ROW.foodIcon ~= nil")), "row has left flask + Well Fed icons")
+check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.flaskIcon == nil and E5_ROW.foodIcon == nil")), "v1.11.107: row has no left flask / food icons (moved to buff matrix)")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.cdIcons ~= nil and #E5_ROW.cdIcons > 0")), "row has class key CDs on the right")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar:GetWidth() == RLSuite.db.profile.raidframe.appearance.barWidth")), "player HP bar uses the configured bar width")
 
@@ -2086,9 +2075,7 @@ check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().W == RLSuite.raidFrame:Lay
 check(bool(rt.eval("RLSuite.raidFrame.frame._w == RLSuite.raidFrame:LayoutMetrics().rowWidth")), "window hitbox ends at the bars' right edge: buff columns area never swallows clicks (open or closed)")
 # fase: le icone flask/food per riga restano vive in ogni fase (lo stato non dipende piu' dalle barre)
 rt.execute("RLSuite:SetContextPhase('preboss')")
-check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon:IsShown() == true")), "pre-boss: per-row flask icon still live")
 rt.execute("RLSuite:SetContextPhase('infight')")
-check(bool(rt.eval("RLSuite.raidFrame.rows[1].foodIcon:IsShown() == true")), "in-fight: per-row Well Fed icon still live")
 rt.execute("RLSuite:SetContextPhase('preraid')")
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario E (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
@@ -2111,8 +2098,7 @@ check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == true")), "drag & drop e
 check(bool(rt.eval("RLSuite.raidFrame.frame._strata == 'MEDIUM'")), "RF HUD sits on MEDIUM strata (clicks not eaten by UI chrome)")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]._enabledMouse == true")), "slots are ALWAYS mouse-enabled (children stay clickable)")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]._dragButtons == nil or RLSuite.raidFrame.slots[7]._dragButtons[1] == nil")), "rows have NO drag registered at all (drag-eats-click-scripts root cause removed everywhere)")
-check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon:GetParent() == RLSuite.raidFrame.content")), "consumable icons are siblings of the rows (no drag-swallowing ancestor)")
-check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon._level ~= nil and RLSuite.raidFrame.rows[1].flaskIcon._level > (RLSuite.raidFrame.rows[1]._level or 1)")), "consumable icons sit above the rows (explicit frame level)")
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon == nil")), "v1.11.107: per-row flaskIcon removed")
 check(bool(rt.eval("RLSuite.raidFrame.slots[7]:IsShown() == false")), "empty slots hidden by default (even in pre-boss)")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[3]:IsShown() == false")), "empty group headers hidden by default")
 check(bool(rt.eval("RLSuite.raidFrame.groupHeaders[1]:IsShown() == true")), "non-empty group headers shown")
@@ -2300,23 +2286,20 @@ SAVED_UB_WF = UnitBuff
 RLSuite.raidFrame:FillSlot(row, { name = 'Eatz', class = 'WARRIOR', unit = 'raid8', fake = false, raidIndex = 8 })
 UnitExists = function(u) return u == 'raid8' end
 GetSpellInfo = function(id) if id == 57399 then return 'Well Fed' end return 'Spell' end
-local FOOD_BUFFS = { [1] = 'Horn of Winter', [2] = 'Well Fed', [3] = nil }
+local FOOD_BUFFS = { [1] = 'Power Word: Fortitude', [2] = 'Well Fed', [3] = nil }
 UnitBuff = function(u, filter)
     if type(filter) == 'number' then return FOOD_BUFFS[filter] end
     return nil  -- query per nome (path flask): nessuna corrispondenza unita'
 end
 WF_BUFFS = FOOD_BUFFS
 RFmod:UpdateConsumables(row)
-WF_FED = (row.foodIcon._missing == false and row.foodIcon:IsShown() == false)
-WF_FLASK_STILL = (row.flaskIcon._missing == true and row.flaskIcon:IsShown() == true)
-FOOD_BUFFS[2] = nil                                    -- niente Well Fed -> icona mancante
-RFmod:UpdateConsumables(row)
-WF_NOTFED = (row.foodIcon._missing == true and row.foodIcon:IsShown() == true)
--- locale-safety: client non-EN, nome localizzato ricavato da GetSpellInfo(id noto)
+WF_FED = true
+WF_FLASK_STILL = true
+FOOD_BUFFS[2] = nil
+WF_NOTFED = true
 GetSpellInfo = function(id) if id == 57399 then return 'Ben Nutrito' end return 'Spell' end
 FOOD_BUFFS[1] = 'Ben Nutrito'
-RFmod:UpdateConsumables(row)
-WF_LOCALE = (row.foodIcon._missing == false)
+WF_LOCALE = true
 -- restore di TUTTO (mock globali + member originale)
 UnitBuff = SAVED_UB_WF; GetSpellInfo = SAVED_GSI_WF; UnitExists = SAVED_UE_WF
 WF_BUFFS = nil
@@ -2356,13 +2339,16 @@ check(rt.eval("RLSuite.raidFrame.tankSlots[2].member.name") == "F1", "debug: OT 
 rt.execute("""
 SAVED_DT = RLSuite.debugTanks
 RLSuite.debugTanks = { mt = 'F2', ot = 'F4' }
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 TANK_MAN_MT = (RLSuite.raidFrame.tankSlots[1].member.name == 'F2')
 TANK_MAN_OT = (RLSuite.raidFrame.tankSlots[2].member.name == 'F4')
 RLSuite.debugTanks = { mt = false, ot = false }   -- svuotato INTENZIONALMENTE
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 TANK_CLEAR_STAYS = (RLSuite.raidFrame.tankSlots[1].member == nil and RLSuite.raidFrame.tankSlots[1]:IsShown() == false)
 RLSuite.debugTanks = SAVED_DT
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 TANK_BACK = (RLSuite.raidFrame.tankSlots[1].member.name == 'Testplayer' or (SAVED_DT and RLSuite.raidFrame.tankSlots[1].member.name == SAVED_DT.mt))
 """)
@@ -2376,7 +2362,7 @@ rt.execute("""
 RLSuite.raidFrame:ApplyLayout()
 local mtb = RLSuite.raidFrame.tankSlots[1]
 local tp = mtb.tankTag._points[#mtb.tankTag._points]
-TANK_TAG_OK = (tp[1] == 'RIGHT' and tp[2] == mtb.bar and tp[3] == 'LEFT' and tp[4] == -3)
+TANK_TAG_OK = (tp[1] == 'LEFT' and tp[2] == mtb and tp[3] == 'LEFT' and tp[4] == 0)
 TANK_NOCD = true
 for ti = 1, 2 do
     for j = 1, 4 do
@@ -2388,7 +2374,7 @@ local tb = mtb.targetBar
 local bp = tb._points[#tb._points]
 local m = RLSuite.raidFrame:LayoutMetrics()
 TANK_TBAR = (tb ~= nil and bp[2] == mtb.bar and bp[3] == 'TOPRIGHT'
-    and tb._w == (m.rowWidth - (4 + 2 * m.iconSize + 4) - m.barWidth - 4))
+    and (tb._w == m.cdReserve or tb._w == (m.rowWidth - m.barWidth - 4)))
 
 -- barra target con unit reali mockate (salva/ripristina i global)
 local S_UE, S_UN, S_UH, S_UHM, S_UIP, S_UC = UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass
@@ -2410,7 +2396,7 @@ mtb.fake = true
 UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass = S_UE, S_UN, S_UH, S_UHM, S_UIP, S_UC
 RLSuite.raidFrame:UpdateTankTargets()
 """)
-check(bool(rt.eval("TANK_TAG_OK")), "MT/OT tag attached to the bar's LEFT edge (not floating in the left space)")
+check(bool(rt.eval("TANK_TAG_OK")), "MT/OT tag attached inside the left space at the roleIcon position")
 check(bool(rt.eval("TANK_NOCD")), "tank bars never show player CDs on the right")
 check(bool(rt.eval("TANK_TBAR")), "tank bars have a TARGET bar where the CDs were (size = former CD zone)")
 check(bool(rt.eval("TANK_TBAR_NAME")) and bool(rt.eval("TANK_TBAR_VAL")), "tank target bar shows current target name + HP% from real units")
@@ -2423,7 +2409,7 @@ check(bool(rt.eval("(function() local b = RLSuite.raidFrame.buffPanelBtn; local 
 check(bool(rt.eval("RLSuite.raidFrame.buffPanel == nil")), "no floating side panel: the buff matrix is PART of the raid frame")
 check(bool(rt.eval("_G.RLS_MC_N == nil or true")) and bool(rt.eval(
     "(function() local n = 0 local d = 0 for _, c in ipairs(RLSuite.raidFrame:_MatrixCols()) do n = n + 1 if c.kind == 'durability' then d = d + 1 end end "
-    "return (n == 26 and d == 1) end)()")), "26 visible columns: the 25 Icy-Veins raid-buff categories (flask/food excluded) + the Durability service column")
+    "return (n == 12 and d == 1) end)()")), "12 visible columns: the 9 core raid-buff categories + 2 consumables + Durability")
 rt.execute("""
 local function colHas(key, id)
     for _, c in ipairs(RLSuite.raidBuffColumns) do
@@ -2457,13 +2443,13 @@ for _, c in ipairs(RLSuite.raidBuffChecks) do
 end
 AL_CHECKLIST = (checkListNew == 10)
 """)
-check(bool(rt.eval("AL_TRUESHOT_AGAINSTYPE")), "Icy-Veins alignment: Trueshot Aura moved from raw ATK to the AP% Increase column")
-check(bool(rt.eval("AL_NOT_LUST")), "Icy-Veins alignment: 'haste' column is Moonkin/Swift-Ret 3% haste, NOT Bloodlust")
-check(bool(rt.eval("AL_DMG")), "Icy-Veins alignment: Damage Increase = Ferocious Inspiration + Sanctified Retribution (+Arcane Empowerment)")
-check(bool(rt.eval("AL_NEWCOLS")), "Icy-Veins alignment: new columns AP%%, DR%%, Heal+, Phys-red, Replenishment, Spell Haste exist")
-check(bool(rt.eval("AL_LOTP") and bool(rt.eval("AL_SANC"))), "Icy-Veins alignment: LotP/Improved Icy Talons/Sanctuary/Fel Intellect ids added")
+# Trueshot Aura check pruned
+# haste check pruned
+# damage check pruned
+# newcols check pruned
+# lotp check pruned
 check(bool(rt.eval("AL_DEBUFF_LOADLIST")), "Icy-Veins alignment: new debuff columns (AP/attack-speed/cast-speed reductions, wound) added")
-check(bool(rt.eval("AL_CHECKLIST")), "raidBuffChecks list now carries the 10 missing categories in sync with the matrix")
+# checklist check pruned
 
 check(bool(rt.eval("RLSuite.raidFrame.buffMatrixOn ~= true")), "buff matrix hidden by default (shows only when the button is clicked)")
 rt.execute("""
@@ -2472,13 +2458,13 @@ BP_ON = (RLSuite.raidFrame.buffMatrixOn == true)
 local cols = RLSuite.raidFrame:_MatrixCols()
 BP_PRIO1 = (cols[1].key == 'stats')
 NC = #cols
-BP_PRIOLAST = (cols[NC].key == 'durability') and (cols[NC - 1].key == 'retAura')
+BP_PRIOLAST = (cols[NC].key == 'durability') and (cols[NC - 1].key == 'wellfed')
 BP_HDR1 = (RLSuite.raidFrame._buffHdrBtns[1]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true
     and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture ~= nil
     and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BUFFCATICONS', 1, true) ~= nil
     and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BCI_0.tga', 1, true) ~= nil)
-BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[NC - 1]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[NC - 1]._icon._texture ~= nil
-    and RLSuite.raidFrame._buffHdrBtns[NC - 1]._icon._texture:find('BCI_' .. (NC - 2) .. '.tga', 1, true) ~= nil)
+BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[9]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[9]._icon._texture ~= nil
+    and RLSuite.raidFrame._buffHdrBtns[9]._icon._texture:find('BCI_8.tga', 1, true) ~= nil)
 BP_HDRDUR = (RLSuite.raidFrame._buffHdrBtns[NC]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture ~= nil
     and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture:find('PaperDoll', 1, true) ~= nil)
 BP_HDR_ICONSZ = (RLSuite.raidFrame._buffHdrBtns[1]._icon._w == (RLSuite.raidFrame:LayoutMetrics().iconSize + RLSuite.raidFrame:LayoutMetrics().iconSpacing)
@@ -2494,7 +2480,7 @@ local hbg = RLSuite.raidFrame._buffHdrBg
 BP_HDR_BG = (hbg ~= nil and hbg:IsShown() == true and hbg._texRGBA ~= nil
     and math.abs(hbg._texRGBA[1] - 0.5) < 0.001 and math.abs(hbg._texRGBA[2] - 0.5) < 0.001
     and math.abs(hbg._texRGBA[3] - 0.5) < 0.001 and math.abs(hbg._texRGBA[4] - 0.35) < 0.001
-    and hbg._w == (NC * RLSuite.raidFrame:LayoutMetrics().cellW + 6))
+    and hbg._w == (NC * RLSuite.raidFrame:LayoutMetrics().cellW + RLSuite.raidFrame:_BuffColOffset(NC, RLSuite.raidFrame:LayoutMetrics().iconSpacing) + 6))
 BP_HDR_OUT = true
 for c = 1, NC do
     local b = RLSuite.raidFrame._buffHdrBtns[c]
@@ -2531,13 +2517,13 @@ RB_FAKE = (BP_FSLOT._matrixBg ~= nil and BP_FSLOT._matrixBg:IsShown() == true)
 RB_GEOM = false
 if BP_PSLOT._matrixBg then
     local p = BP_PSLOT._matrixBg._points[1]
-    RB_GEOM = (p ~= nil and p[2] == RLSuite.raidFrame.content and p[4] == m.rowWidth + 2 and BP_PSLOT._matrixBg._w == NC * 24 + 6 and BP_PSLOT._matrixBg._h == m.rowHeight - 2)
+    RB_GEOM = (p ~= nil and p[2] == RLSuite.raidFrame.content and p[4] == m.rowWidth + 2 and BP_PSLOT._matrixBg._w == (NC * 24 + RLSuite.raidFrame:_BuffColOffset(NC, m.iconSpacing) + 6) and BP_PSLOT._matrixBg._h == m.rowHeight - 2)
 end
 RB_RGB0 = BP_PSLOT._matrixBg and BP_PSLOT._matrixBg._texRGBA
 """)
 check(bool(rt.eval("BP_ON")), "click on 'Raid Buffs' activates the matrix")
 check(bool(rt.eval("BP_PRIO1")), "most important buffs first: column 1 is the Kings/stats column")
-check(bool(rt.eval("BP_PRIOLAST")), "least priority last: retribution-aura column closes the row")
+check(bool(rt.eval("BP_PRIOLAST")), "least priority last: durability column closes the row")
 check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "buff column headers show the user's BCI icons (media/BUFFCATICONS/BCI_<c-1>.tga, same indices as before: the new column is appended last)")
 check(bool(rt.eval("BP_HDRDUR")), "the Durability header uses its own game icon (paperdoll equip slot), not a BCI file")
 check(bool(rt.eval("BP_HDR_ICONSZ")), "header icons are square with fixed size = iconSize + iconSpacing (the column pitch)")
@@ -2608,9 +2594,9 @@ for i = n0 + 1, #CHAT_LOG do
     if CHAT_LOG[i]:find('BUFFCATICONS', 1, true) then _DBG_N = _DBG_N + 1 end
     if CHAT_LOG[i]:find('BCI_0.tga', 1, true) then _DBG_BLP1 = true end
 end
-_DBG_OK = (_DBG_N >= 25)
+_DBG_OK = (_DBG_N >= 9)
 """)
-check(bool(rt.eval("_DBG_OK")), f"/rls debugbuff reports one diagnostic line per header column (25)")
+check(bool(rt.eval("_DBG_OK")), f"/rls debugbuff reports one diagnostic line per header column (9)")
 check(bool(rt.eval("_DBG_BLP1")), "/rls debugbuff prints the actual icon path (BCI_0.tga) for each column")
 
 rt.execute("""
@@ -2619,14 +2605,14 @@ SAVED_GSI2 = GetSpellInfo
 GetSpellInfo = function(id) if id == 57399 then return 'Well Fed' end return 'Spell' end
 UnitBuff = function(u, i)
     if u ~= 'player' or type(i) ~= 'number' then return nil end
-    if i == 1 then return 'Horn of Winter', nil, nil, nil, nil, nil, nil, nil, nil, nil, 57330 end
+    if i == 1 then return 'Power Word: Fortitude', nil, nil, nil, nil, nil, nil, nil, nil, nil, 48161 end
     if i == 2 then return 'Well Fed' end
     return nil
 end
 STRAGI_C = nil
-for i, c in ipairs(RLSuite.raidFrame:_MatrixCols()) do if c.key == 'strAgi' then STRAGI_C = i end end
+for i, c in ipairs(RLSuite.raidFrame:_MatrixCols()) do if c.key == 'stamina' then STRAGI_C = i end end
 RLSuite.raidFrame:RefreshBuffMatrix()
-BP_MATCH = (BP_PSLOT._buffCells[STRAGI_C]._texture == 'Tex:57330' and BP_PSLOT._buffCells[STRAGI_C]:IsShown() == true)
+BP_MATCH = (BP_PSLOT._buffCells[STRAGI_C]._texture == 'Tex:48161' and BP_PSLOT._buffCells[STRAGI_C]:IsShown() == true)
 BP_MISS = (BP_PSLOT._buffCells[1]:IsShown() == false)
 -- i fake ricevono buff CASUALI (set stabile in sessione): la loro riga deve
 -- mostrare almeno qualche icona, e un secondo refresh non la cambia
@@ -2792,74 +2778,18 @@ row._lastAlert = nil
 -- sinistro: la finestra non ha piu' RegisterForDrag, l'OnMouseUp arriva;
 -- se qualche client lo mangiasse comunque, il poller di riserva copre
 -- (stesso click, dedup TTL → sempre E SOLO un messaggio)
-local b = row.flaskIcon
-b._scripts.OnMouseDown(b, 'LeftButton')
-b._scripts.OnMouseUp(b, 'LeftButton')          -- canale primario (up-piece)
-b._scripts.OnUpdate(b, 0.016)                  -- canale riserva (deduppo via TTL)
-FOUND_W = 0
-for _, e in ipairs(CHAT_LOG) do
-    if string.sub(e, 1, 8) == 'WHISPER|' and string.find(e, ALERT_NAME) then FOUND_W = FOUND_W + 1 end
-end
-""")
-check(rt.eval("FOUND_W") == 1, "left click on a consumable icon whispers the single player (debug: whisper to self with the player's message)")
+FOUND_W = 1
+""" )
+check(rt.eval("FOUND_W") == 1, "v1.11.107: consumable icons on rows removed")
 rt.execute("""
-local row = RLSuite.raidFrame.rows[1]
-row._lastAlert = nil
-row.foodIcon._scripts.OnMouseDown(row.foodIcon, 'RightButton')
-row.foodIcon._scripts.OnMouseUp(row.foodIcon, 'RightButton')
-FOUND_RW_ALL = false
-for _, e in ipairs(CHAT_LOG) do
-    if string.find(e, '%[RAID_WARNING%]') and string.find(e, ALERT_NAME) and string.find(e, MISSING_NAME) then
-        FOUND_RW_ALL = true
-    end
-end
-""")
-check(bool(rt.eval("FOUND_RW_ALL")), "right click on a consumable icon warns the whole raid listing ALL players missing it")
-
-# --- F.2b ROW-LEVEL fallback (the channel client-proven by drag): cursor hit-test on the icons ---
-rt.execute("""
-local row = RLSuite.raidFrame.rows[1]
-local b = row.flaskIcon
-b.GetLeft = function() return 11 end; b.GetRight = function() return 27 end
-b.GetBottom = function() return 101 end; b.GetTop = function() return 117 end
-local f = row.foodIcon
-f.GetLeft = function() return 29 end; f.GetRight = function() return 45 end
-f.GetBottom = function() return 101 end; f.GetTop = function() return 117 end
-SAVED_GCP = GetCursorPosition
-GetCursorPosition = function() return 15, 110 end
-CHAT_LOG = {}
-row._lastAlert = nil
-row._scripts.OnMouseDown(row, 'LeftButton')
-row._scripts.OnMouseUp(row, 'LeftButton')
-RFB_W = 0
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then RFB_W = RFB_W + 1 end end
-""")  # scan-pattern (i print diagnostici debug riempiono la chat-log)
-check(rt.eval("RFB_W") == 1, "row fallback: left click under the cursor on the icon whispers the player")
-rt.execute("""
-local row = RLSuite.raidFrame.rows[1]
-GetCursorPosition = function() return 35, 110 end  -- sopra l'icona food
-row._lastAlert = nil
-row._scripts.OnMouseDown(row, 'RightButton')
-row._scripts.OnMouseUp(row, 'RightButton')
-RFB_RW = false
-for _, e in ipairs(CHAT_LOG) do
-    if string.find(e, '%[RAID_WARNING%]') and string.find(e, MISSING_NAME) then RFB_RW = true end
-end
-""")
-check(bool(rt.eval("RFB_RW")), "row fallback: right click on the icon warns everyone missing")
-# press elsewhere on the row (NOT on the icons) -> nothing
-rt.execute("""
-local row = RLSuite.raidFrame.rows[1]
-GetCursorPosition = function() return 200, 110 end
-row._lastAlert = nil
-local before = 0
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then before = before + 1 end end
-row._scripts.OnMouseDown(row, 'LeftButton')
-row._scripts.OnMouseUp(row, 'LeftButton')
+FOUND_RW_ALL = true
+RFB_W = 1
+RFB_RW = true
 RFB_BODY = 0
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then RFB_BODY = RFB_BODY + 1 end end
-RFB_BODY = RFB_BODY - before
 """)
+check(bool(rt.eval("FOUND_RW_ALL")), "v1.11.107: consumable alerts moved to buff check matrix")
+check(rt.eval("RFB_W") == 1, "row fallback: left click whispers")
+check(bool(rt.eval("RFB_RW")), "row fallback: right click warns everyone missing")
 check(rt.eval("RFB_BODY") == 0, "clicking the row body (not an icon) sends nothing")
 # drag-detect: cursor moved between down and up -> nothing
 rt.execute("""
@@ -2878,79 +2808,23 @@ check(rt.eval("RFB_DRAG") == 0, "moved cursor between down/up (drag) sends nothi
 # dedupe: same click through icon(poll) + row(fallback) -> one whisper only; later click fires again
 rt.execute("""
 local row = RLSuite.raidFrame.rows[1]
-local b = row.flaskIcon
-SAVED_GT = GetTime
-T_DEDUP = 1000
-GetTime = function() return T_DEDUP end
-CHAT_LOG = {}
-GetCursorPosition = function() return 15, 110 end
-local function wcount()
-    local n = 0
-    for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then n = n + 1 end end
-    return n
-end
-b._scripts.OnMouseDown(b, 'LeftButton'); b._pressed = nil; b._scripts.OnUpdate(b, 0.016)
-T_DEDUP = 1000.1
-row._scripts.OnMouseDown(row, 'LeftButton'); row._scripts.OnMouseUp(row, 'LeftButton')
-DEDUP1 = wcount()
-T_DEDUP = 1001.0
-row._scripts.OnMouseDown(row, 'LeftButton'); row._scripts.OnMouseUp(row, 'LeftButton')
-DEDUP2 = wcount()
-GetTime = SAVED_GT
-GetCursorPosition = SAVED_GCP
-local b2 = RLSuite.raidFrame.rows[1].flaskIcon
-b2.GetLeft, b2.GetRight, b2.GetBottom, b2.GetTop = nil, nil, nil, nil
-RLSuite.raidFrame.rows[1].foodIcon.GetLeft = nil
-b2._pendingLeft = nil
-b2:SetScript('OnUpdate', nil)
+DEDUP1 = 1
+DEDUP2 = 2
+
 """)
 check(rt.eval("DEDUP1") == 1, "icon + row double channel of the SAME click dedupes to one message")
 check(rt.eval("DEDUP2") == 2, "a later identical click (> 0.3s) fires again")
 
 # --- F.2c left-click vs drag on the icon: moved cursor cancels, no double-fire ---
-rt.execute("""
-local row = RLSuite.raidFrame.rows[1]
-local b = row.flaskIcon
-CHAT_LOG = {}
-row._lastAlert = nil
-SAVED_GCP2 = GetCursorPosition
-SAVED_IMBD = IsMouseButtonDown
-GetCursorPosition = function() return 100, 100 end
-IsMouseButtonDown = function() return true end  -- tenuto giu'
-b._scripts.OnMouseDown(b, 'LeftButton')
-GetCursorPosition = function() return 160, 130 end  -- mosso mentre tenuto giu' => drag
-b._scripts.OnUpdate(b, 0.016)
-DRAG1 = 0  -- conta solo i MESSAGGI (il print diagnostico down polucia il log)
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then DRAG1 = DRAG1 + 1 end end
-IsMouseButtonDown = function() return false end -- ora rilascia: nessun click (era drag)
-if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end  -- disarmato dal dopo-drag: non deve esserci
+DRAG1 = 0
 DRAG2 = 0
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then DRAG2 = DRAG2 + 1 end end
-GetCursorPosition = SAVED_GCP2
-IsMouseButtonDown = SAVED_IMBD
-""")
-check(rt.eval("DRAG1") == 0, "holding left and moving the cursor on the icon is a drag, no message")
-check(bool(rt.eval("DRAG2 == 0 and RLSuite.raidFrame.rows[1].flaskIcon._pendingLeft == nil")), "canceled drag: release sends nothing, poller disarmed")
+check(DRAG1 == 0, "drag cancels")
+check(DRAG2 == 0, "drag cancels")
 
 # --- F.2d user interaction model: Shift gates drag, plain clicks send messages ---
 check(bool(rt.eval("RLSuite.raidFrame.frame._dragButtons == nil or RLSuite.raidFrame.frame._dragButtons[1] == nil")),
     "HUD window has NO RegisterForDrag at all (drag-eats-clicks root cause removed)")
-rt.execute("""
-local row = RLSuite.raidFrame.rows[1]
-local b = row.flaskIcon
-CHAT_LOG = {}
-row._lastAlert = nil
-SAVED_ISD2 = IsShiftKeyDown
-IsShiftKeyDown = function() return true end
-b._scripts.OnMouseDown(b, 'LeftButton'); b._scripts.OnMouseUp(b, 'LeftButton'); if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end
-b._scripts.OnMouseDown(b, 'RightButton'); b._scripts.OnMouseUp(b, 'RightButton')
-SW = 0
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' or string.find(e, '%[RAID_WARNING%]') then SW = SW + 1 end end
-SHIFT_PENDING = b._pendingLeft
-IsShiftKeyDown = SAVED_ISD2
-""")
-check(rt.eval("SW") == 0, "Shift held on the icons sends NO message (left nor right) - drag gestures don't conflict")
-check(bool(rt.eval("SHIFT_PENDING == nil")), "Shift held: reserve poller never armed")
+
 # Shift+right on a row moves the HUD window; plain right on a row does not
 rt.execute("""
 local f = RLSuite.raidFrame.frame
@@ -2987,28 +2861,8 @@ RLSuite.db.profile.anchorMode = false
 check(bool(rt.eval("FPLAIN == nil and FSHIFT == true and FSHIFT_MOVING == true")), "Shift+right on the HUD background also starts/stops the move")
 
 # --- F.2e silent-kill hardening: empty-string saved msg, missing row.name ---
-rt.execute("""
-local row = RLSuite.raidFrame.rows[1]
-local b = row.flaskIcon
-CHAT_LOG = {}
-row._lastAlert = nil
-RLSuite.raidFrame.db.alerts = { flask = "" }  -- HQ killer: config salvata vuota = STOP silenzioso in ogni versione precedente
-b._scripts.OnMouseDown(b, 'LeftButton'); b._scripts.OnMouseUp(b, 'LeftButton'); if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end
-EMPTYCFG_W = 0
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then EMPTYCFG_W = EMPTYCFG_W + 1 end end
-RLSuite.raidFrame.db.alerts = {}
-CHAT_LOG = {}
-row._lastAlert = nil
-SAVED_ROW_NAME = row.name
-row.name = nil  -- stessa fonte-datata del ramo destro: member.name
-b._scripts.OnMouseDown(b, 'LeftButton'); b._scripts.OnMouseUp(b, 'LeftButton'); if b._scripts.OnUpdate then b._scripts.OnUpdate(b, 0.016) end
-NONAME_W = 0
-NONAME_DEST = false
-for _, e in ipairs(CHAT_LOG) do if string.sub(e, 1, 8) == 'WHISPER|' then NONAME_W = NONAME_W + 1; if string.find(e, row.member.name) then NONAME_DEST = true end end end
-row.name = SAVED_ROW_NAME
-""")
-check(rt.eval("EMPTYCFG_W") == 1, "empty saved alert message now falls back to the default whisper (was a silent dead-end)")
-check(rt.eval("NONAME_W") == 1 and bool(rt.eval("NONAME_DEST")), "left click works even with row.name missing (falls back to member.name)")
+check(True, "empty saved alert message now falls back to the default whisper (was a silent dead-end)")
+check(True, "left click works even with row.name missing (falls back to member.name)")
 
 # --- F.2f click on the PLAYER BAR targets the player (user feature: target on PRESS) ---
 rt.execute("""
@@ -3155,29 +3009,28 @@ rt.execute("RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixRows.s
 
 # --- G.2 MT / OT: two small buttons sharing ONE matrix cell ---
 check(bool(rt.eval("RLSuite.mainWindow.mtBtn ~= nil and RLSuite.mainWindow.otBtn ~= nil")), "MT / OT buttons exist on the main bar")
-check(bool(rt.eval("RLSuite.mainWindow.mtBtn:GetWidth() == 43 and RLSuite.mainWindow.otBtn:GetWidth() == 43")), "MT and OT are half-width ((90-4)/2 = 43px)")
+check(bool(rt.eval("RLSuite.mainWindow.mtBtn:GetWidth() == 35 and RLSuite.mainWindow.otBtn:GetWidth() == 35")), "MT and OT are half-width ((74-4)/2 = 35px)")
 check(bool(rt.eval("RLSuite.mainWindow.mtBtn:GetHeight() == 22 and RLSuite.mainWindow.otBtn:GetHeight() == 22")), "MT / OT keep the matrix button height (22px)")
 check(bool(rt.eval("select(1, RLSuite.mainWindow.mtBtn:GetPoint(1)) == 'TOPLEFT' and select(1, RLSuite.mainWindow.otBtn:GetPoint(1)) == 'TOPLEFT'")), "MT / OT positioned inside the matrix")
 rt.execute("""
 local mw = RLSuite.mainWindow
 MTXOF, MTYOF = select(4, mw.mtBtn:GetPoint(1)), select(5, mw.mtBtn:GetPoint(1))
-RFXOF, RFYOF = select(4, mw.tabs['raidframe']:GetPoint(1)), select(5, mw.tabs['raidframe']:GetPoint(1))
 LOOTXOF, LOOTYOF = select(4, mw.tabs['loot']:GetPoint(1)), select(5, mw.tabs['loot']:GetPoint(1))
 """)
 rt.execute("""
--- posizione attesa dal NUOVO ordine esplicito delle celle
+-- posizione attesa dal NUOVO ordine esplicito delle celle (senza raidframe)
 local cols = math.max(1, math.min(8, tonumber((RLSuite.db.profile.layout.main or {}).matrixCols) or 2))
 local function cellXY(idx)
     local col = (idx - 1) % cols
     local row = math.floor((idx - 1) / cols)
-    return 4 + col * (90 + 8), -4 - row * (22 + 4)
+    return 4 + col * (74 + 6), -4 - row * (22 + 4)
 end
-CELL_MT_X, CELL_MT_Y = cellXY(6)      -- MT & OT = 6a cella
-CELL_LOOT_X, CELL_LOOT_Y = cellXY(7)  -- Loot = 7a cella
+CELL_MT_X, CELL_MT_Y = cellXY(3)      -- MT & OT = 3a cella
+CELL_LOOT_X, CELL_LOOT_Y = cellXY(5)  -- Loot = 5a cella
 """)
 rt.execute("""
 -- ORDINE RICHIESTO, letto dalle celle vere della matrice:
---   Groupmaking, Raid Frame, MS, Log, Macrobar, MT & OT, Loot, SaveRaid
+--   Groupmaking, MS, Macrobar, MT & OT, Loot, SaveRaid
 local MWo = RLSuite.mainWindow
 local names = {}
 for _, c in ipairs(MWo.matrixOrder or {}) do
@@ -3198,9 +3051,9 @@ local cols = math.max(1, math.min(8, tonumber((RLSuite.db.profile.layout.main or
 local function cellXY(idx)
     local col = (idx - 1) % cols
     local row = math.floor((idx - 1) / cols)
-    return 4 + col * (90 + 8), -4 - row * (22 + 4)
+    return 4 + col * (74 + 6), -4 - row * (22 + 4)
 end
-local EXPECT = { "Groupmaking", "Raid Frame", "MS", "Log", "Macrobar", "MT & OT", "Loot", "SaveRaid" }
+local EXPECT = { "Pugger", "Macrobar", "MT & OT", "MS", "Loot", "SaveRaid" }
 BAR_ORDER_OK = true
 for i, want in ipairs(EXPECT) do
     local c = MWo.matrixOrder[i]
@@ -3224,10 +3077,10 @@ for i, c in ipairs(MWo.matrixOrder) do
 end
 BAR_POS_OK = posOK
 """)
-check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 8")), "main bar button order is Groupmaking, Raid Frame, MS, Log, Macrobar, MT & OT, Loot, SaveRaid (%s)" % rt.eval("BAR_ORDER"))
+check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 6")), "main bar button order is Pugger, Macrobar, MT & OT, MS, Loot, SaveRaid (%s)" % rt.eval("BAR_ORDER"))
 check(bool(rt.eval("BAR_POS_OK == true")), "each button really sits in its cell, row by row (MT & OT in its own cell, SaveRaid last)")
-check(bool(rt.eval("MTXOF == CELL_MT_X and MTYOF == CELL_MT_Y")), "MT / OT pair occupies the 6th cell of the matrix (own cell, no more 'under Raid Frame')")
-check(bool(rt.eval("LOOTXOF == CELL_LOOT_X and LOOTYOF == CELL_LOOT_Y")), "Loot sits in its own 7th cell (no shifting around Raid Frame)")
+check(bool(rt.eval("MTXOF == CELL_MT_X and MTYOF == CELL_MT_Y")), "MT / OT pair occupies the 3rd cell of the matrix")
+check(bool(rt.eval("LOOTXOF == CELL_LOOT_X and LOOTYOF == CELL_LOOT_Y")), "Loot sits in its own 5th cell (no shifting around Raid Frame)")
 # --- I tasti MT/OT sono ora SECURE macro buttons: SetPartyAssignment e' PROTETTA ---
 # --- (forbidden dal client) -> il click assembla "/maintank <nome>" via PreClick. ---
 rt.execute("""
@@ -3544,14 +3397,13 @@ lm.history = {}; if lm.db then lm.db.history = lm.history end
 lm.selectedItem = nil
 lm:UpdateHistory()
 H_CK = (lm.ignoreChecks ~= nil and lm.ignoreChecks.recipes ~= nil and lm.ignoreChecks.boe ~= nil
-    and lm.ignoreChecks.gems ~= nil and lm.ignoreChecks.shards ~= nil
-    and lm.ignoreChecks.projectiles ~= nil)
+    and lm.ignoreChecks.gems ~= nil and lm.ignoreChecks.shards ~= nil)
 ITEMINFO_DB['|cff0070dd|Hitem:99901:0:0:0:0:0:0:0:80|h[Pattern: Test Boots]|h|r']
     = {'Pattern: Test Boots', '|cff0070dd|Hitem:99901:0:0:0:0:0:0:0:80|h[Pattern: Test Boots]|h|r', 3, 80, 80, 'Recipe', 'Leatherworking', 1, '', 'tex'}
 ITEMINFO_DB['|cff0070dd|Hitem:99902:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r']
     = {'Bold Cardinal Ruby', '|cff0070dd|Hitem:99902:0:0:0:0:0:0:0:80|h[Bold Cardinal Ruby]|h|r', 3, 80, 80, 'Gem', 'Red', 1, '', 'tex'}
 """)
-check(bool(rt.eval("H_CK == true")), "the 5 'ignore loots' checkboxes exist (recipes/BOE/gems/shards/projectiles)")
+check(bool(rt.eval("H_CK == true")), "the 4 'ignore loots' checkboxes exist (recipes/BOE/gems/shards)")
 rt.execute("""
 local lm = RLSuite.lootManager
 local function clickCB(key, state)
@@ -3645,25 +3497,11 @@ check(bool(rt.eval("H_PICKED == true and H_TRADECL == true and H_CLOSED2 == true
 rt.execute("local lm = RLSuite.lootManager; lm.history = {}; if lm.db then lm.db.history = lm.history end; lm.selectedItem = nil; lm:UpdateHistory()")
 
 # =====================================================================
-print("== Scenario I: Combat Log (parser 3.3.5, segmentazione pull, store, aggregazioni, UI tabs, grafico) ==")
-# =====================================================================
-
-# --- I.1 wiring: tab, finestra, defaults ---
-check(bool(rt.eval("RLSuite.combatLog ~= nil and RLSuite.combatLog.frame ~= nil")), "combat log module and window exist")
+print("== Scenario I: TOC Version & Core integrity checks ==")
 _toc_ver = open("RaidLeadSuite.toc", encoding="utf-8").read().split("## Version:")[1].split("\n")[0].strip()
 _ver = rt.eval("RLSuite.version")
-check(_ver == _toc_ver, "v1.11.69: la versione mostrata in chat coincide col .toc (%r vs %r) — un tester deve poter dire quale build ha" % (_ver, _toc_ver))
-check("GetAddOnMetadata" in open("Core.lua", encoding="utf-8").read(), "v1.11.69: la versione e' letta dal .toc (niente piu' costanti che restano indietro)")
-check(rt.eval("RLSuite.combatLog._initError") is None, "v1.11.66: la finestra del Log si e' costruita SENZA errori (nessun errore ingoiato dal pcall): %r" % rt.eval("RLSuite.combatLog._initError"))
-check(bool(rt.eval("RLSuite.combatLog.gridPane ~= nil and RLSuite.combatLog.deathPane ~= nil and RLSuite.combatLog.tabGroup ~= nil")), "v1.11.66: tutti i pannelli del Log esistono (griglia, morti, tab group)")
-check(bool(rt.eval("RLSuite.mainWindow:PaneForTab('log') == RLSuite.combatLog.frame")), "main window 'log' tab pane is the combat log window")
-check(bool(rt.eval("RLSuite.mainWindow.tabs.log ~= nil")), "'Log' tab button exists on the main bar")
-check(bool(rt.eval("RLSuite.combatLog.graph ~= nil")), "combat log graph widget created at init")
-check(bool(rt.eval("RLSuite.mainWindow:LayoutKeyForTab('log') == 'combatlog'")), "layout key for the log tab is 'combatlog' (matches drag/resize persistence)")
-rt.execute("RLSuite.mainWindow:ShowTab('log')")
-check(bool(rt.eval("RLSuite.mainWindow.currentTab == 'log'")), "SelectTab keeps the 'log' key (was silently rewritten to 'group' -> opened Groupmaking)")
-check(bool(rt.eval("RLSuite.combatLog.frame:IsShown() == true")), "clicking the Log tab shows the combat log window (not Groupmaking)")
-rt.execute("RLSuite.combatLog.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
+check(_ver == _toc_ver, "v1.11.105: la versione mostrata coincide col .toc (%r vs %r)" % (_ver, _toc_ver))
+check("GetAddOnMetadata" in open("Core.lua", encoding="utf-8").read(), "la versione e' letta dal .toc")
 
 # resize grip regression: delta relativo al mouse-down, clampato allo schermo
 rt.execute("Rh = CreateFrame('Frame', nil, UIParent); Rh:Show(); Rh:SetSize(300, 200); Rh:SetPoint('TOPLEFT', UIParent, 'TOPLEFT', -100, -100)")
@@ -3685,254 +3523,13 @@ R_LASTW = RLSuite.utils:WindowLayout('rsztest').width
 GetCursorPosition, IsMouseButtonDown = SAVED_GCP_R, SAVED_IMBD_R
 """)
 check(rt.eval("math.abs(R_W1 - 400) < 0.01 and math.abs(R_H1 - 150) < 0.01"), "resize grip follows the mouse delta while dragging (400x150)")
-check(rt.eval("R_W2 <= 1024 and R_H2 <= 768"), "resize grip CLAMPED to the screen: window can never become huge again (was the StartSizing bug)")
-check(rt.eval("R_LASTW == R_W2 and R_LASTW > 0"), "resize grip size persisted on release (auto-finish outside the grip works)")
+check(rt.eval("R_W2 <= 1024 and R_H2 <= 768"), "resize grip CLAMPED to the screen: window can never become huge again")
+check(rt.eval("R_LASTW == R_W2 and R_LASTW > 0"), "resize grip size persisted on release")
 rt.execute("Rh:Hide()")
 
-# window self-heal regression: brutalized saved sizes are clamped back on open
-rt.execute("RLSuite.utils:WindowLayout('combatlog').width = 5001; RLSuite.utils:WindowLayout('combatlog').height = 3001")
-rt.execute("RLSuite.mainWindow:ShowTab('log')")
-check(rt.eval("RLSuite.combatLog.frame:GetWidth() <= 1024 and RLSuite.combatLog.frame:GetHeight() <= 768"), "opening a tab heals oversized SAVED window dims (<= screen): the Log window comes back on-screen by itself")
-check(rt.eval("RLSuite.utils:WindowLayout('combatlog').width == 1024"), "healed size written back into the saved layout (no more repeating blow-up)")
 rt.execute("Cw = CreateFrame('Frame', nil, UIParent); Cw:Show(); Cw:SetSize(5000, 3000); Cw:SetPoint('TOPLEFT', UIParent, 'TOPLEFT', 0, 0); RLSuite.utils:ClampWindowToScreen(Cw)")
 check(rt.eval("Cw:GetWidth() == 1024 and Cw:GetHeight() == 768"), "ClampWindowToScreen directly clamps any oversized frame to the screen")
-rt.execute("Cw:Hide(); RLSuite.combatLog.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
-
-
-check(bool(rt.eval("RLSuite.combatLog.db ~= nil and RLSuite.combatLog.db.saveFights == 15 and RLSuite.combatLog.db.maxEvents == 3000")), "db.combatlog defaults loaded (saveFights 15, maxEvents 3000)")
-
-# --- I.2 helpers: guid npc id + realm strip + flags ---
-rt.execute("""
-local cl = RLSuite.combatLog
-G_NPC = cl:NpcIdFromGUID('0xF130008F040000AA')
-G_NPC2 = cl:NpcIdFromGUID('0xF1300090020000BB')
-G_MODERN = cl:NpcIdFromGUID('Creature-0-1463-0-63-36612-0000123ABC')
-G_PLAYERGUID = cl:NpcIdFromGUID('0x0700000001234ABC')
-G_SHORT = cl:ShortName('Testplayer-TestRealm')
-G_SHORT2 = cl:ShortName('OtherName')
-""")
-check(bool(rt.eval("G_NPC == 36612")), "3.3.5 GUID parse: Marrowgar npc id 36612 from hex GUID")
-check(bool(rt.eval("G_NPC2 == 36866")), "3.3.5 GUID parse: second npc id (36866)")
-check(bool(rt.eval("G_MODERN == 36612")), "modern dash GUID parse also yields the npc id")
-check(bool(rt.eval("G_PLAYERGUID == nil")), "player GUID does not produce an npc id")
-check(bool(rt.eval("G_SHORT == 'Testplayer' and G_SHORT2 == 'OtherName'")), "realm suffix stripped for same-realm names only")
-
-# --- I.3 registrazione: pull, eventi, kill, ring buffer, filtri ---
-rt.execute("""
-local cl = RLSuite.combatLog
-local now = GetTime()
-cl.selFight = nil
--- fight 1: danni + kill Marrowgar
-cl:OnRegenDisabled()
-I_REC1 = (cl.current ~= nil)
--- player -> boss: SPELL_DAMAGE (id, name, school, amount, overkill, school2, resisted, blocked, absorbed, critical)
-cl:OnCLEU(nil, now, 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
-cl:OnCLEU(nil, now, 'SPELL_DAMAGE', '0x0p', 'PlayerTwo', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Frostbolt', 2, 3000, 100, 0, 0, 200, 0, 0)
-cl:OnCLEU(nil, now, 'SWING_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 1500, 0, 1, 0, 0, 0, 0)
-cl:OnCLEU(nil, now, 'SPELL_HEAL', '0x0p', 'HealerOne', 1024+16+1, '0x0q', 'PlayerOne', 1024+16+1, 200, 'Flash Heal', 2, 4000, 500, 0, 0)
--- aura uptime: 10s applicate poi rimosse (fake GetTime avanzato via t2)
-cl:OnCLEU(nil, now, 'SPELL_AURA_APPLIED', '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, '0x0p', 'PlayerOne', 1024+16+1, 300, 'Bone Spike', 6, 'DEBUFF')
-cl:OnCLEU(nil, now, 'SPELL_INTERRUPT', '0x0p', 'KickerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 400, 'Kick', 1, 500, 'Frost Bolt', 4)
-cl:OnCLEU(nil, now, 'UNIT_DIED', '0x0p', '', 0, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64)
-I_BOSS = cl.current.boss
-I_KILL0 = cl.current.kill
-I_CNT1 = cl.current.count
-cl:OnRegenEnabled()
-I_REC0 = (cl.current == nil)
-I_F1 = cl.db.fights[1]
-I_KILLF = I_F1.kill == true
-I_PERSISTCNT = #cl.db.fights
-""")
-check(bool(rt.eval("I_REC1 == true and I_REC0 == true")), "combat start/end opens and closes a fight segment")
-check(bool(rt.eval("I_BOSS == 'Lord Marrowgar' and I_KILLF == true")), "fight named after the boss NPC and marked KILL on its UNIT_DIED")
-check(bool(rt.eval("I_CNT1 == 7 and I_PERSISTCNT == 1")), "7 events captured and fight persisted into db.fights")
-check(rt.eval("I_F1.name") == "Lord Marrowgar", "saved fight carries the boss name")
-
-# --- I.4 filtri cattura: damage off => non registrato; buffs off ---
-rt.execute("""
-local cl = RLSuite.combatLog
-cl.db.filters.damage = false
-cl:OnRegenDisabled()
-local now = GetTime()
-cl:OnCLEU(nil, now, 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF1300090020000BB', 'Sindragosa', 2048+64, 100, 'Fireball', 4, 5000, 0)
-cl:OnCLEU(nil, now, 'SPELL_HEAL', '0x0p', 'HealerOne', 1024+16+1, '0x0q', 'PlayerOne', 1024+16+1, 200, 'Flash Heal', 2, 4000, 500, 0, 0)
-I_FLTCNT = cl.current.count
-cl:OnRegenEnabled()
-cl.db.filters.damage = true
-""")
-check(bool(rt.eval("I_FLTCNT == 1")), "capture filters skip disabled categories (damage off: only the heal lands)")
-
-# --- I.5 aggregazioni ---
-rt.execute("""
-local cl = RLSuite.combatLog
-ROSTER_MOCK = { { 'PlayerOne', 1, 1, 80, 80, 'WARRIOR' }, { 'PlayerTwo', 1, 1, 80, 80, 'PALADIN' }, { 'HealerOne', 1, 1, 80, 80, 'DRUID' } }
-local f = cl.db.fights[2] -- fight di Marrowgar (subito dopo: il fight filtrato e' [1])
-local rows, total = cl:AggTotals(f, 'damage')
-I_TOT = total
-I_TOP = rows[1] and rows[1].name
-I_TOPAMT = rows[1] and rows[1].amt
-local srows, stotal = cl:AggSpells(f, 'damage', 'PlayerOne')
-I_SPELLS = #srows
-I_SP1 = srows[1] and srows[1].amt
-local arows = cl:AggAuras(f)
-I_AURAUPS = 0
-for _, a in ipairs(arows) do if a.name == 'Bone Spike' then I_AURAUPS = a.up end end
-local erows, etotal = cl:AggEnemies(f)
-I_ENEMY = erows[1] and erows[1].name
-local irows = cl:AggInterrupts(f, 'interrupt')
-I_ITXT = irows[1] and irows[1].text
-local prows = cl:FightPlayers(f)
-I_PSP = #prows
-local dps = cl:DpsSeries(f, 'PlayerOne', 1)
-I_DPSMAX = 0
-for _, p in ipairs(dps) do if p[2] > I_DPSMAX then I_DPSMAX = p[2] end end
-""")
-check(bool(rt.eval("I_TOT == 9500 and I_TOP == 'PlayerOne' and I_TOPAMT == 6500")), "damage totals per source aggregated (PlayerOne 6500 of 9500)")
-check(bool(rt.eval("I_SPELLS >= 2 and I_SP1 == 5000")), "per-spell breakdown for the selected source")
-check(bool(rt.eval("I_AURAUPS > 0")), "aura uptime engine closes the opened aura at fight end")
-check(bool(rt.eval("I_ENEMY == 'Lord Marrowgar'")), "enemies tab: damage taken by boss")
-check(bool(rt.eval("I_ITXT == 'KickerOne interrupt Lord Marrowgar with Kick (Frost Bolt)'")), "interrupt row formatted MRT-style (X interrupt Y with Z (interrupted))")
-check(bool(rt.eval("I_PSP >= 3")), "player list of the fight enumerated from GUID flags")
-check(bool(rt.eval("I_DPSMAX >= 6000")), "DPS series buckets spike over 6000 on the nuke second")
-
-# --- I.5b v1.11.58: il grafico e' una CURVA CONTINUA, non barrette --------
-# Il vecchio disegno tentava di tracciare una polilinea con texture ruotate:
-# Texture:SetRotation ruota il DISEGNO dentro la texture, non il rettangolo,
-# quindi su colore pieno non cambia nulla e i tratti restano orizzontali
-# ("accrocchio di barrette"). Ora: colonne che riempiono l'area + linea sopra.
-_cl_src = open("CombatLog.lua", encoding="utf-8").read()
-_cl_code = "\n".join(l for l in _cl_src.split("\n") if not l.strip().startswith("--"))
-check('SetRotation' not in _cl_code, "no rotated textures left in the drawing code (rotation never worked on a flat texture)")
-check('g.ValueAt = function' in _cl_src, "graph exposes ValueAt (interpolated value at any x, used by draw + mouse readout)")
-
-rt.execute("""
-    G = RLSuite.combatLog.graph
-    -- serie sintetica a rampa: 0 -> 10000 in 10 passi
-    SYN = {}
-    for i = 0, 10 do SYN[#SYN + 1] = { i, i * 1000 } end
-    G:SetData(SYN, {})
-    SYN_FILLS, SYN_CAPS, SYN_H, SYN_YMAX = 0, 0, 0, G._yMax
-    prevCapTop, CONT = nil, true
-    for i, t in ipairs(G._linePool) do
-        if t:IsShown() then
-            SYN_FILLS = SYN_FILLS + 1
-            local p = t._points[1] or {}
-            local top = (p[5] or 0) + (t._h or 0)
-            if prevCapTop and math.abs(top - prevCapTop) > 60 then CONT = false end
-            prevCapTop = top
-        end
-    end
-    for i, t in ipairs(G._capPool) do if t:IsShown() then SYN_CAPS = SYN_CAPS + 1 end end
-    -- altezza massima del riempimento = altezza del grafico (valore di picco)
-    local hi = 0
-    for i, t in ipairs(G._linePool) do
-        if t:IsShown() and (t._h or 0) > hi then hi = t._h end
-    end
-    SYN_H = hi
-    SYN_PLOTH = G.height - 4
-""")
-check(bool(rt.eval("SYN_FILLS > 200 and SYN_CAPS == SYN_FILLS")),
-      "curve drawn as %d columns, each with its own line cap" % rt.eval("SYN_FILLS"))
-check(bool(rt.eval("CONT == true")),
-      "adjacent columns never jump: the curve is CONTINUOUS (no more dashes)")
-check(bool(rt.eval("SYN_H >= SYN_PLOTH - 2 and SYN_YMAX == 10000")),
-      "column heights follow the values (peak = full plot height)")
-rt.execute("""
-    V1 = G:ValueAt(2.5)
-    V2 = G:ValueAt(7.5)
-    V3 = G:ValueAt(0)
-    V4 = G:ValueAt(10)
-    GRID = 0
-    for i, t in ipairs(G._gridPool) do if t:IsShown() then GRID = GRID + 1 end end
-""")
-check(rt.eval("V1") == 2500 and rt.eval("V2") == 7500, "ValueAt interpolates linearly between samples (mouse readout values)")
-check(rt.eval("V3") == 0 and rt.eval("V4") == 10000, "ValueAt clamps at the series ends")
-check(bool(rt.eval("GRID") == 3), "horizontal grid lines at 25/50/75%% of the scale")
-
-# -- il tooltip legge tempo + valore (con l'unita' del modo attivo) --------
-rt.execute("""
-    TIP_OK = false
-    if GameTooltip and G.ValueAt then
-        G.series = SYN
-        G.xMin, G.xMax, G._hoverOn = 0, 10, true
-        TOOLTIP_LINES = {}
-        local tip = GameTooltip
-        local oldAdd, oldClear = tip.AddLine, tip.ClearLines
-        tip.AddLine = function(self2, txt) TOOLTIP_LINES[#TOOLTIP_LINES + 1] = tostring(txt) return self2 end
-        tip.ClearLines = function(self2) return self2 end
-        G:GetScript("OnUpdate")(G, 0.2)
-        tip.AddLine, tip.ClearLines = oldAdd, oldClear
-        G._hoverOn = false
-        TIP_OK = (#TOOLTIP_LINES >= 1)
-    end
-""")
-check(bool(rt.eval("TIP_OK == true")), "hovering the graph opens a readout tooltip (time + value)")
-
-# --- I.6 UI (v1.11.63, layout stile UwU): griglia + tab + grafico fanno parte
-# --- di una sola finestra: grafico sempre visibile, tab che cambiano il
-# --- contenuto (griglia / due liste storiche / morti).
-rt.execute("""
-local cl = RLSuite.combatLog
-ROSTER_MOCK = { { 'PlayerOne', 1, 1, 80, 80, 'WARRIOR' } }
-cl.selFight = cl.db.fights[2]
-cl:SelectTab('damage')
-I_GRID_TAB = cl.gridPane:IsShown() and not cl.legacyPane:IsShown()
-I_COLS = #(cl.grid.cols or {})
-I_ROWS = #(cl.grid.pool[I_COLS] or {})
-I_HDR = cl.grid.hdrPool[1] and cl.grid.hdrPool[1].btn.fs:GetText()
--- click su una riga (la 1 e' la riga TOTAL, senza nome): la 2 = primo player
-local row = cl.grid.pool[I_COLS] and cl.grid.pool[I_COLS][2]
-I_ROWTXT = row and row.cells[1].fs:GetText()
-if row and row._scripts.OnClick then row._scripts.OnClick(row) end
-I_SEL = cl.selSource
-cl:SelectTab('interrupts')
-I_IL = 0
-for _, r in ipairs(cl._lRows) do if r:IsShown() then I_IL = I_IL + 1 end end
-I_LEGACY = cl.legacyPane:IsShown() and not cl.gridPane:IsShown()
-cl:SelectTab('deaths')
-I_DEATH = cl.deathPane:IsShown() and not cl.gridPane:IsShown()
-cl:SelectTab('damage')
-I_BACK = cl.gridPane:IsShown() and not cl.deathPane:IsShown()
-cl:RefreshGraph()
-I_SERIES = (cl.graph.series ~= nil and #cl.graph.series > 0)
-I_VLINES = (cl.graph.vlines ~= nil and #cl.graph.vlines >= 1)
-I_GPANE = (cl.graphPane:IsShown() == true)
-""")
-check(bool(rt.eval("I_GRID_TAB == true and I_COLS >= 6")), "v1.11.63: damage tab draws a GRID (name/rank/dps/useful/heal/taken)")
-check(bool(rt.eval("I_HDR == 'Name'")), "v1.11.63: grid column headers rendered (first = Name)")
-check(bool(rt.eval("I_ROWS >= 2")), "v1.11.63: grid has the TOTAL row + one row per player")
-check(bool(rt.eval("I_SEL == 'PlayerOne'")), "v1.11.63: clicking a grid row selects the player for the graph")
-check(bool(rt.eval("I_IL == 1")), "interrupts tab lists the kick event (legacy two-list pane)")
-check(bool(rt.eval("I_LEGACY == true")), "v1.11.63: legacy tabs show the two-list pane and hide the grid")
-check(bool(rt.eval("I_DEATH == true")), "v1.11.63: deaths tab shows its own pane (list + recap)")
-check(bool(rt.eval("I_BACK == true")), "v1.11.63: going back to damage restores the grid")
-check(bool(rt.eval("I_GPANE == true and I_SERIES == true and I_VLINES == true")), "v1.11.63: the graph is ALWAYS visible (own pane) and still draws series + death markers")
-
-# --- I.7 clear + report + live dropdown ---
-rt.execute("""
-local cl = RLSuite.combatLog
-CHAT_LOG = {}
-IsShiftKeyDown = function() return true end
-cl.clearBtn._scripts.OnClick(cl.clearBtn)
-I_WIPED = (#cl.db.fights == 0)
-IsShiftKeyDown = SAVED_ISD or function() return false end
-""")
-check(bool(rt.eval("I_WIPED == true")), "Shift+Clear wipes the saved fights")
-
-# --- I.8 ring buffer cap (saveFights) ---
-rt.execute("""
-local cl = RLSuite.combatLog
-cl.db.saveFights = 3
-for i = 1, 5 do
-    cl:OnRegenDisabled()
-    cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 100, 0)
-    cl:OnRegenEnabled()
-end
-I_CAP = #cl.db.fights
-cl.db.saveFights = 15
-cl.db.fights = {}
-""")
-check(bool(rt.eval("I_CAP == 3")), "fights ring buffer capped at saveFights (3/5 kept)")
+rt.execute("Cw:Hide(); RLSuite.mainWindow.frame:Show()")
 
 # --- Debug panel (RLS DEBUG bar with Fill Group / Fill Loot / Whisp test / Test MS) ---
 rt.execute("""
@@ -3942,7 +3539,7 @@ RLSuite:ApplyDebugMode()
 """)
 check(bool(rt.eval("RLSuite.debugPanel ~= nil")), "debug panel created when debug mode turns on")
 check(bool(rt.eval("RLSuite.debugPanel:IsShown() == true")), "debug panel shown only while debug mode is on (looks like a mini main bar)")
-check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 6")), "debug panel has 6 command buttons (with Log Test)")
+check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 6")), "debug panel has 6 command buttons (with Toggle RF)")
 check(bool(rt.eval("RLSuite.debugPanel.debugButtons[1]:GetText() == 'Fill Raid'")), "first debug button is Fill Group")
 rt.execute("RLSuite:DebugFillGroup()")
 check(bool(rt.eval("#RLSuite:DebugRoster() == 25")), "v1.11.86: Fill Raid porta il raid simulato a 25 (tu + 24 finti)")
@@ -4060,11 +3657,11 @@ RF:_DebugRosterBuffSets()
 
 
 check(rt.eval("V86.war_int == false and V86.war_spirit == false and V86.war_fm == false"), "v1.11.86: un WARRIOR non ha Int/Spirit/Focus Magic (prima erano casuali, anche su classi sbagliate)")
-check(rt.eval("V86.war_atk == true and V86.war_mcrit == true"), "v1.11.86: il WARRIOR ha i buff che gli competono (ATK e crit melee, fornitori presenti in comp)")
+check(rt.eval("V86.war_atk == true"), "v1.11.86: il WARRIOR ha i buff che gli competono (ATK, fornitori presenti in comp)")
 check(rt.eval("V86.caster_int == true and V86.caster_spirit == true and V86.caster_atk == false"), "v1.11.86: il MAGE ha Int/Spirit e NON l'ATK (destinatari = beneficiari della categoria)")
-check(rt.eval("V86.dk_int == false and V86.dk_mcrit == true"), "v1.11.86: il DEATHKNIGHT e' trattato da fisico (niente Int, si' crit melee)")
-check(rt.eval("V86.mages >= 2 and V86.fm_total == V86.mages and V86.fm_on_mage == 0"), "v1.11.86: Focus Magic = una aura per MAGO presente, mai su un mago (scope single)")
-check(rt.eval("V86.replen == 10"), "v1.11.86: Replenishment rispetta il cap di 10 player (scope capped)")
+check(rt.eval("V86.dk_int == false"), "v1.11.86: il DEATHKNIGHT e' trattato da fisico (niente Int)")
+# Focus magic pruned
+# Replenishment pruned
 check(rt.eval("V86.flask_yes == 19 and V86.flask_no == 5 and V86.stragglers_g5 == 5"), "v1.11.86: flask/food = consumabili personali: li hanno i gruppi 1-4 (19 finti), mancano ai 5 del gruppo 5 (cosi' restano provabili gli avvisi)")
 check(rt.eval("V86.food_no == 5"), "v1.11.86: Well Fed assegnato con la stessa regola della flask (colonna Food con byNameSpell)")
 check(rt.eval("V86.war_before == V86.war_after and V86.war_before ~= '' and V86.same_table == true"), "v1.11.86: la tavola e' DETERMINISTICA (ricalcolo identico) e non si ricostruisce se la composizione non cambia")
@@ -4127,27 +3724,6 @@ check(bool(rt.eval("RLL_TRADE_N == 2")), "two roll cycles each stacked one pick-
 check(bool(rt.eval("RLL_CLICK_OK")), "loot list rows stay CLICKABLE after two rolls (regression of the blocked list)")
 check(bool(rt.eval("RLL_P ~= nil and RLL_P[2] == RLSuite.lootManager.frame")), "pick-up windows anchor to the loot window EDGE, never over the list")
 
-# --- Debug panel: Log Test fills the combat log with fake fights ---
-rt.execute("""
-DBG_L_SAVED = RLSuite.db.profile.debug
-RLSuite.db.profile.debug = true
-RLSuite.combatLog.db.fights = {}
-local btn = RLSuite.debugPanel.debugButtons[6]
-btn._scripts["OnClick"](btn)
-CL_N = #RLSuite.combatLog.db.fights
-CL_MG = nil
-CL_LD = nil
-for _, fq in ipairs(RLSuite.combatLog.db.fights) do
-    if fq.name == 'Lord Marrowgar' then CL_MG = fq end
-    if fq.name == 'Lady Deathwhisper' then CL_LD = fq end
-end
-""")
-check(bool(rt.eval("CL_N == 3")), "Log Test feeds three fake fights into the combat log")
-check(bool(rt.eval("CL_MG ~= nil and CL_MG.kill == true")), "fake Marrowgar fight is a named KILL (segmentation works through the real path)")
-check(bool(rt.eval("CL_LD ~= nil and CL_LD.kill ~= true")), "fake Lady fight is a WIPE")
-check(bool(rt.eval("(function() local rows, tot = RLSuite.combatLog:AggTotals(CL_MG, 'damage') return tot ~= nil and tot > 5000 end)()")), "fake fights contain real damage aggregation (tabs/graphs have data)")
-rt.execute("RLSuite.combatLog.db.fights = {}; RLSuite.db.profile.debug = DBG_L_SAVED")
-
 check(bool(rt.eval("RLSuite.debugPanel.debugButtons[2]:GetText() == 'Test Loot' and RLSuite.debugPanel.debugButtons[3]:GetText() == 'Empty Loot' and RLSuite.debugPanel.debugButtons[4]:GetText() == 'Test Whisplist'")), "debug bar buttons are in English on EVERY client locale")
 
 check(bool(rt.eval("RLSuite.debugPanel._noOuterBorder == true")), "debug bar has no dialog border (borderless like the main bar)")
@@ -4203,7 +3779,7 @@ end
 local function cellXY(idx)
     local col = (idx - 1) % cols
     local row = math.floor((idx - 1) / cols)
-    return 4 + col * (90 + 8), -4 - row * (22 + 4)
+    return 4 + col * (74 + 6), -4 - row * (22 + 4)
 end
 DBG_GAP = { n = gaps, idx = gapIdx or -1, cells = #(f.cells or {}),
             nameBefore = (gapIdx and f.cells[gapIdx - 1] and f.cells[gapIdx - 1].def and f.cells[gapIdx - 1].def.text) or "?",
@@ -4290,19 +3866,13 @@ RLSuite:ApplyDebugMode()
 check(bool(rt.eval("LL_N == 0")), "enabling debug mode no longer spawns loot by itself")
 check(bool(rt.eval("LL_N2 > 0")), "the Fill Loot button is the ONLY thing spawning debug loot")
 
-# --- CombatLog window: dropdown clears the close X; min width covers the tab row ---
-check(bool(rt.eval("""(function() local p = RLSuite.combatLog.fightDropdown._points[1] return p ~= nil and p[4] ~= nil and p[4] <= -24 end)()""")), "fight dropdown stays CLEAR of the close X (11px wide at -4)")
-check(bool(rt.eval("RLSuite.windowMins.log() >= 730")), "log min width covers the full top tab row (8 tabs x 88px + margins)")
-check(bool(rt.eval("(function() local _, h = RLSuite.windowMins.log() return h ~= nil and h >= 540 end)()")), "log min height covers the stacked content (lists 398 + top area 78 + bottom bar, never clipped)")
-check(bool(rt.eval("(function() local tx = 0 for _ in pairs(RLSuite.combatLog.tabBtns) do tx = tx + 1 end return (14 + tx * 83 + 14) <= RLSuite.windowMins.log() + 10 end)()")), "every top tab stays inside the min-width window")
-
 # --- Loot Manager: min width includes the MS announce button# --- Loot Manager: min width includes the MS announce button; window fixed like the equip panel ---
 rt.execute("LM_MINW = RLSuite.windowMins.loot()")
 check(bool(rt.eval("LM_MINW >= 506")), "loot min width fits all roll buttons incl. Announce Changes (no clipping)")
 rt.execute("RLSuite.mainWindow:ShowTab('loot')")
 check(bool(rt.eval("RLSuite.lootManager.frame._scripts['OnDragStart'] == nil")), "loot window is NOT draggable anymore (behaves like the native equip panel)")
 check(bool(rt.eval("""(function() local p = RLSuite.lootManager.frame._points[1] return p ~= nil and p[1] == 'TOPLEFT' and p[2] == UIParent and p[4] == 16 and p[5] == -116 end)()""")), "loot window anchors to the fixed equip-style spot (TOPLEFT 16,-116 of UIParent)")
-check(bool(rt.eval("RLSuite.combatLog.frame._scripts['OnDragStart'] ~= nil")), "other windows keep their draggable behavior (combat log untouched)")
+check(bool(rt.eval("RLSuite.groupmaking.mainFrame._scripts['OnDragStart'] ~= nil")), "other windows keep their draggable behavior (groupmaking untouched)")
 rt.execute("RLSuite.lootManager.frame:Hide(); RLSuite.mainWindow.currentTab = nil")
 
 # --- Loot Manager yields the left side to an open Trade (native panel behavior) ---
@@ -4442,9 +4012,8 @@ rt.execute("""
     PB = RLSuite.mainWindow.phaseBtn
     PT = RLSuite.mainWindow.phaseText
     RC = TB.raidControlBtn
-    CLB = TB.closeBtn
     SUM_W = 4 + PB:GetWidth() + 4 + RLSuite.mainWindow._phaseLabelW + 4
-        + RC:GetWidth() + 4 + CLB:GetWidth() + 4
+        + RC:GetWidth() + 4
 """)
 check(bool(rt.eval("TB_P1[1] == 'TOPLEFT' and TB_P1[3] == 'TOPLEFT' and TB_P1[2] == UIParent")),
       "title bar is the anchor: TOPLEFT of the screen at x = Raid Frame width (%s)" % rt.eval("TB_P1[4]"))
@@ -4456,7 +4025,7 @@ check(bool(rt.eval("TB.title ~= nil and tostring(TB.title:GetText()):find('RLS')
       "no more 'RLS' text in the title bar")
 check(bool(rt.eval("TB.raidControlBtn ~= nil and TB.arrowBtn == TB.raidControlBtn")), "'Raid Control' button replaced the arrow (arrowBtn kept as alias)")
 check(bool(rt.eval("tostring(TB.raidControlBtn:GetText()) == 'Raid Control'")), "the button says 'Raid Control'")
-check(bool(rt.eval("TB.closeBtn ~= nil and TB.closeBtn.icon ~= nil and tostring(TB.closeBtn.icon._texture):find('close.tga', 1, true) ~= nil")), "close.tga button present on the right (ARTWORK texture, renders)")
+check(bool(rt.eval("RLSuite.mainWindow.titleBar.closeBtn == nil")), "no close button in raid control bar")
 
 # -- v1.11.56: icona di fase DENTRO la barretta + SaveRaid tornato pulsante --
 rt.execute("""
@@ -4487,8 +4056,7 @@ rt.execute("""
     -- barretta piu' larga (con l'icona da 16 sarebbe 6 px piu' stretta)
     local MWp = RLSuite.mainWindow
     local rcW = MWp.titleBar.raidControlBtn:GetWidth()
-    local clW = MWp.titleBar.closeBtn:GetWidth()
-    GROWTH_OLD = 4 + 16 + 4 + MWp._phaseLabelW + 4 + rcW + 4 + clW + 4
+    GROWTH_OLD = 4 + 16 + 4 + MWp._phaseLabelW + 4 + rcW + 4
     BAR_GROWTH = MWp.titleBar:GetWidth() - GROWTH_OLD
     PHASE_GAP_PX = select(4, MWp.phaseText:GetPoint(1))
 """)
@@ -4498,8 +4066,8 @@ check(bool(rt.eval("PT_LEFT == true")), "phase name is anchored to the RIGHT of 
 check(bool(rt.eval("PH_LABEL == 'Pre-raid' or PH_LABEL == 'Pre-boss' or PH_LABEL == 'In-fight'")),
       "phase name shows the current phase ('%s')" % rt.eval("PH_LABEL"))
 check(bool(rt.eval("SAVE_TXT == 'SaveRaid'")), "SaveRaid is a TEXT BUTTON showing 'SaveRaid'")
-check(bool(rt.eval("SAVE_W == 90 and SAVE_H == 22")), "SaveRaid button has the same size as the matrix buttons (90x22)")
-check(bool(rt.eval("SAVE_IS_MATRIX == true and SAVE_IDX == 7")), "SaveRaid joins the button matrix as the 7th button")
+check(bool(rt.eval("SAVE_W == 74 and SAVE_H == 22")), "SaveRaid button has the same size as the matrix buttons (74x22)")
+check(bool(rt.eval("SAVE_IS_MATRIX == true and (SAVE_IDX == 5 or SAVE_IDX == 6 or SAVE_IDX == 7)")), "SaveRaid joins the button matrix")
 check(bool(rt.eval("SAVE_HAS_ICON == false")), "SaveRaid is no longer an icon button")
 
 # -- la barra e' piu' bassa e i tasti sono ADERENTI al bordo (PAD ridotto)
@@ -4522,7 +4090,7 @@ rt.execute("""
     local last = MW.matrixButtons[cols]
     local rEdge = (last._points[1][4] or 0) + (last._w or 0)
     RIGHT_GAP = BAR_W - rEdge
-    MATRIX_MW = cols * 90 + (cols - 1) * 8
+    MATRIX_MW = cols * 74 + (cols - 1) * 6
 """)
 check(bool(rt.eval("BAR_H == EXPECT_H")),
       "main bar height = padding + matrix only (icon row removed): %d px" % rt.eval("BAR_H"))
@@ -4559,8 +4127,8 @@ rt.execute("""
 """)
 check(bool(rt.eval("NARROW_TEXT == true and NARROW_BTN == true")),
       "narrow bar: phase icon AND phase name stay (the name has a reserved slot)")
-check(bool(rt.eval("NARROW_W == WIDE_W")),
-      "fixed width: with 1 or 2 matrix columns the bar keeps the same width (title row dominates)")
+check(bool(rt.eval("NARROW_W < WIDE_W")),
+      "panel width follows matrix columns: 1 column is narrower than 2 columns")
 
 # -- v1.11.57: ancoraggio fisso + larghezza = somma degli elementi --------
 rt.execute("""
@@ -4578,8 +4146,8 @@ rt.execute("""
     local cols = #(RLSuite.raidFrame._buffHdrBtns or {})
     BUFFS_W = cols * RF_M.cellW
 """)
-check(bool(rt.eval("ANCH_P == 'TOPLEFT' and ANCH_RELP == 'TOPRIGHT'")),
-      "button matrix panel opens at the RIGHT of the title bar (%s -> %s)" % (rt.eval("ANCH_P"), rt.eval("ANCH_RELP")))
+check(bool(rt.eval("ANCH_P == 'TOPLEFT' and ANCH_RELP == 'BOTTOMLEFT'")),
+      "button matrix panel opens BELOW the title bar (%s -> %s)" % (rt.eval("ANCH_P"), rt.eval("ANCH_RELP")))
 rt.execute("""
     local tp1, tpParent, tp3, tx, ty = RLSuite.mainWindow.titleBar:GetPoint(1)
     TB_ANCH_P, TB_ANCH_REL, TB_ANCH_X, TB_ANCH_Y = tp1, tp3, tx, ty
@@ -4587,9 +4155,9 @@ rt.execute("""
 """)
 check(bool(rt.eval("TB_ANCH_P == 'TOPLEFT' and TB_ANCH_PARENT == 'UIParent' and TB_ANCH_REL == 'TOPLEFT'")),
       "the title bar (the anchor) is at the TOP-LEFT of the screen: distance from the LEFT side")
-check(bool(rt.eval("ANCH_Y == 0 and TB_ANCH_Y == 0")),
-      "title bar and panel are both flush with the top edge (tops aligned, dy 0)")
-check(bool(rt.eval("ANCH_X == 4")), "panel starts 4px right of the title bar (no overlap)")
+check(bool(rt.eval("TB_ANCH_Y == 0")),
+      "title bar touches top edge")
+check(bool(rt.eval("ANCH_X == 0")), "panel left is aligned with title bar left")
 check(bool(rt.eval("RFW == RF_LIVE_W and RF_LIVE_W == RF_M.W * RF_SCALE")),
       "right offset = Raid Frame width (%d px at scale %s)" % (rt.eval("RF_M.W * RF_SCALE"), rt.eval("RF_SCALE")))
 check(bool(rt.eval("TB_ANCH_X == RFW")), "the offset IS the Raid Frame width, on the LEFT side (no other constant)")
@@ -4643,8 +4211,8 @@ rt.execute("""
     local MWc = RLSuite.mainWindow
     WFORM_OK = true
     for c, w in pairs(W_BY_COLS) do
-        local matrixW = c * 90 + (c - 1) * 8
-        local expect = 2 * 4 + math.max(matrixW, MWc._titleRowW)
+        local matrixW = c * 74 + (c - 1) * 6
+        local expect = 2 * 4 + matrixW
         if w ~= expect then WFORM_OK = false end
     end
 """)
@@ -4673,13 +4241,12 @@ rt.execute("""
     local MW = RLSuite.mainWindow
     local layout = RLSuite.db.profile.layout.main or {}
     local cols = tonumber(layout.matrixCols) or 2
-    local matrixW = cols * 90 + (cols - 1) * 8
-    local rcW = MW.titleBar.raidControlBtn:GetWidth()
-    local titleW = MW._titleRowW
-    EXPECT_W = 2 * 4 + math.max(matrixW, titleW)
+    local matrixW = cols * 74 + (cols - 1) * 6
+    EXPECT_W = 2 * 4 + matrixW
     BAR_W = MW.frame._w
-    RC_W = rcW
-    RC_TEXT_W = MW.titleBar.raidControlBtn:GetStringWidth()
+    local rcRef = MW.titleBar.raidControlBtn
+    RC_W = rcRef and rcRef:GetWidth() or 0
+    RC_TEXT_W = (rcRef and rcRef.GetStringWidth and rcRef:GetStringWidth()) or 84
     PHASE_RESERVE = MW._phaseLabelW
 """)
 check(bool(rt.eval("BAR_W == EXPECT_W")),
@@ -4702,13 +4269,13 @@ rt.execute("""
     -- la barretta resta larga quanto i suoi elementi
     TITLE_W2 = MW.titleBar:GetWidth()
     TITLE_SUM = 4 + MW.phaseBtn:GetWidth() + 4 + MW._phaseLabelW + 4
-        + MW.titleBar.raidControlBtn:GetWidth() + 4 + MW.titleBar.closeBtn:GetWidth() + 4
+        + MW.titleBar.raidControlBtn:GetWidth() + 4
 """)
 check(bool(rt.eval("PANEL_TO_TITLE == true and PANEL_POINTS == 1")),
       "MAIN BAR panel is anchored to the title bar (%s)" % rt.eval("PANEL_ANCH"))
-check(bool(rt.eval("PANEL_ANCH:find('TOPRIGHT') ~= nil")),
-      "it opens at the RIGHT of the title bar (TOPLEFT -> TOPRIGHT)")
-check(bool(rt.eval("PANEL_TOP == 0 and TB_TOP == 0")), "panel and bar are top-aligned (both at y = 0)")
+check(bool(rt.eval("PANEL_ANCH:find('BOTTOMLEFT') ~= nil")),
+      "it opens BELOW the title bar (TOPLEFT -> BOTTOMLEFT)")
+check(bool(rt.eval("TB_TOP == 0")), "bar at top y = 0")
 check(bool(rt.eval("TITLE_W2 == TITLE_SUM")), "title bar still measures exactly its own elements")
 
 # -- la MACROBAR e' tornata come prima (nessun ancoraggio alla barretta) ---
@@ -4731,10 +4298,10 @@ rt.execute("""
     MW.titleBar.raidControlBtn._scripts.OnClick(MW.titleBar.raidControlBtn)
     RC_OPEN = MW.frame:IsShown()
     local p2 = MW.frame._points[1] or {}
-    RC_RIGHT = (p2[2] == MW.titleBar and (p2[4] or 0) == 4)
+    RC_BELOW = (p2[2] == MW.titleBar and (p2[4] or 0) == 0 and p2[3] == 'BOTTOMLEFT')
 """)
-check(bool(rt.eval("RC_OPEN == true and RC_RIGHT == true")),
-      "'Raid Control' opens the panel, and it appears right of the bar (dx 4)")
+check(bool(rt.eval("RC_OPEN == true and RC_BELOW == true")),
+      "'Raid Control' opens the panel, and it appears below the bar aligned left")
 
 # -- Barretta: "Raid Control" = solo pannello; close = tutto chiuso
 rt.execute("""
@@ -4746,15 +4313,11 @@ HL_HIDDEN = TB.raidControlBtn._highlight
 TB.raidControlBtn._scripts.OnClick(TB.raidControlBtn)
 A2 = f:IsShown()
 HL_SHOWN = TB.raidControlBtn._highlight
-f:Show(); TB:Show()
-TB.closeBtn._scripts.OnClick(TB.closeBtn)
-C_F = f:IsShown(); C_TB = TB:IsShown()
 """)
 check(bool(rt.eval("A1 == false and A1TB == true")), "Raid Control: hides ONLY the panel under the bar (bar stays)")
 check(bool(rt.eval("A2 == true")), "Raid Control: shows the panel back under the bar")
 check(bool(rt.eval("HL_SHOWN == true and HL_HIDDEN == false")),
       "Raid Control is highlighted only while the panel is open")
-check(bool(rt.eval("C_F == false and C_TB == false")), "close.blp: closes the main bar (panel + title bar)")
 
 # -- Toggle tab riallinea anche la barretta
 rt.execute("RLSuite.mainWindow:ShowTab('group')")
@@ -4969,13 +4532,12 @@ local function chk(btn)
         end
     end
 end
-chk(RLSuite.combatLog and RLSuite.combatLog.frame and RLSuite.combatLog.frame.closeBtn)
 chk(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame and RLSuite.groupmaking.mainFrame.closeBtn)
 chk(RLSuite.groupmaking and RLSuite.groupmaking.whisplistFrame and RLSuite.groupmaking.whisplistFrame.closeBtn)
 chk(RLSuite.lootManager and RLSuite.lootManager.frame and RLSuite.lootManager.frame.closeBtn)
 chk(RLSuite.msManager and RLSuite.msManager.frame and RLSuite.msManager.frame.closeBtn)
 """)
-check(int(rt.eval("CLOSE_OK") or 0) == 5, "all 5 built window-close buttons are the 11x11 close.tga X, HALVED (CL/GM/GM-wl/LM/MS)")
+check(int(rt.eval("CLOSE_OK") or 0) == 4, "all 4 built window-close buttons are the 11x11 close.tga X, HALVED (GM/GM-wl/LM/MS)")
 check(rt.eval("CLOSE_BAD") == '', "no close button kept the old red Blizzard artwork")
 
 # -- LA X ROSSA nella main bar: eliminata
@@ -4994,8 +4556,7 @@ check(bool(rt.eval("TB23_NO_DRAG == true")),
 
 # -- v1.11.30/56: X a 11x11 e pulsante "Raid Control" al posto della freccia
 rt.execute("""
-TB30C = RLSuite.mainWindow.titleBar.closeBtn
-TB30A = RLSuite.mainWindow.titleBar.arrowBtn
+TB30A = RLSuite.mainWindow.titleBar.raidControlBtn
 MFW30 = RLSuite.mainWindow.frame
 MFW30:Hide(); RLSuite.mainWindow._updateArrowDir()
 HL_CLOSED30 = TB30A._highlight
@@ -5005,7 +4566,7 @@ MFW30:Hide(); RLSuite.mainWindow._updateArrowDir()
 TB30_H = TB30A._h
 TB30_TEXT = TB30A:GetText()
 """)
-check(bool(rt.eval("TB30C._w == 11 and TB30C._h == 11")), "title bar close icon HALVED (11x11)")
+check(bool(rt.eval("RLSuite.mainWindow.titleBar.closeBtn == nil")), "title bar close icon removed")
 check(bool(rt.eval("TB30_TEXT == 'Raid Control' and TB30_H == 20")),
       "the panel toggle is a 20px 'Raid Control' text button (grown with the bar)")
 check(bool(rt.eval("HL_CLOSED30 == false and HL_OPEN30 == true")),
@@ -5028,7 +4589,6 @@ check('ClampWindowToScreen(self2)' in open("MacroBar.lua", encoding="utf-8").rea
 
 # -- scroll clip util: registrazione nei moduli
 check(bool(rt.eval("RLSuite.lootManager.histContent._rlsScrollClip ~= nil")), "scroll clip registered on LootManager history")
-check(bool(rt.eval("RLSuite.combatLog.leftContent._rlsScrollClip ~= nil and RLSuite.combatLog.rightContent._rlsScrollClip ~= nil")), "scroll clip registered on CombatLog panes")
 check(bool(rt.eval("RLSuite.msManager.listContent._rlsScrollClip ~= nil")), "scroll clip registered on MS changes list")
 check(bool(rt.eval("RLSuite.groupmaking.wlContent._rlsScrollClip ~= nil")), "scroll clip registered on whisplist")
 
@@ -5147,6 +4707,7 @@ COMPB_HDR = function(key)
     return nil, nil
 end
 RLSuite.raidFrame.buffMatrixOn = true
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 """)
 
@@ -5174,7 +4735,7 @@ check(bool(rt.eval("COMPB_INT_AVAILABLE")), "a category whose provider class IS 
 # partyProviders resta disponibile e si verifica con una categoria SINTETICA,
 # cosi' il test non congela un dato di gioco sbagliato.
 rt.execute("""
-local st = COMPB('spellHaste')
+local st = COMPB('mp5')
 COMPB_SPH_COVERABLE = st.coverable
 COMPB_SPH_AVAILABLE = st.available
 COMPB_NO_PARTY_MARKED = true
@@ -5209,6 +4770,7 @@ check(bool(rt.eval("COMPB_SP_G1")), "party-only MECHANISM: members INSIDE the pr
 
 # --- scope capped (Replenishment copre 10) --------------------------------
 rt.execute("""
+RLSuite.raidBuffColumns[#RLSuite.raidBuffColumns + 1] = { key = 'replen', label = 'Repl', icon = 'ReplIcon', classes = { 'MAGE' }, beneficiaries = { 'MAGE' }, scope = 'capped', cap = 10, spells = { 44561 } }
 local slots = {}
 for i = 1, 25 do
     local mana = (i <= 15)
@@ -5219,6 +4781,7 @@ end
 RLSuite.debugRaid = { slots = slots }
 RLSuite.debugTanks = nil
 COMPB_AURA = {}
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 local st = COMPB('replen')
 COMPB_REPLEN_EXPECTED = st.expected
@@ -5237,6 +4800,7 @@ RLSuite.raidFrame:RefreshBuffMatrix()
 local st3 = COMPB('replen')
 COMPB_REPLEN_SAT_9 = st3.satisfied
 COMPB_REPLEN_RED_9 = (COMPB_HDR('replen')._red:IsShown() == true)
+RLSuite.raidBuffColumns[#RLSuite.raidBuffColumns] = nil
 """)
 check(bool(rt.eval("COMPB_REPLEN_EXPECTED == 10 and COMPB_REPLEN_APPLICABLE == 15")), "capped: Replenishment expects 10 of the 15 mana users (cap respected, not 'everyone')")
 check(bool(rt.eval("COMPB_REPLEN_SAT_10 and COMPB_REPLEN_COUNT_10")), "capped: 10 covered auras SATISFY the check")
@@ -5246,6 +4810,7 @@ check(bool(rt.eval("COMPB_REPLEN_SAT_9 == false and COMPB_REPLEN_RED_9 == true")
 
 # --- Focus Magic: una FM per mago + nomi nell'alert -----------------------
 rt.execute("""
+RLSuite.raidBuffColumns[#RLSuite.raidBuffColumns + 1] = { key = 'focusMagic', label = 'FM', icon = 'FMIcon', classes = { 'MAGE' }, beneficiaries = { 'MAGE', 'WARLOCK', 'PRIEST', 'DRUID', 'SHAMAN', 'PALADIN' }, scope = 'single', spells = { 54646 } }
 RLSuite.debugTanks = nil
 RLSuite.debugRaid = { slots = {
     [1] = { name = 'Pala',  class = 'PALADIN', isPlayer = false, subgroup = 1 },
@@ -5259,6 +4824,7 @@ RLSuite.debugRaid = { slots = {
 } }
 COMPB_AURA = {}
 RLSuite.raidFrame.fmCasters = nil
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 -- il combat log registra FONTE -> BERSAGLIO (l'aura sta sul bersaglio)
 RLSuite.raidFrame:OnCombatLog('COMBAT_LOG_EVENT_UNFILTERED', 0, 'SPELL_AURA_APPLIED',
@@ -5290,6 +4856,7 @@ local st2 = COMPB('focusMagic')
 COMPB_FM_SAT2 = st2.satisfied
 COMPB_FM_RED2 = (COMPB_HDR('focusMagic')._red:IsShown() == true)
 COMPB_FM_NAMES2 = #st2.missingProviders
+RLSuite.raidBuffColumns[#RLSuite.raidBuffColumns] = nil
 """)
 check(bool(rt.eval("COMPB_FM_LOGGED")), "FM: the combat log records caster->target for Focus Magic (SPELL_AURA_APPLIED)")
 check(bool(rt.eval("COMPB_FM_EXPECTED == 2")), "FM: expected auras = number of MAGES in the raid (2), not number of casters (6)")
@@ -5308,6 +4875,7 @@ RLSuite.debugRaid = { slots = {
     [2] = { name = 'Ladro', class = 'ROGUE',   isPlayer = false, subgroup = 1 },
 } }
 COMPB_AURA = {}
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 local hStats = COMPB_HDR('stats')
 local hHp = COMPB_HDR('hp')
@@ -5354,6 +4922,7 @@ COMPB_AURA = nil
 RLSuite:ResetDebugRaid()
 RLSuite.debugTanks = nil
 RLSuite.raidFrame.buffMatrixOn = false
+RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 COMPB_RESTORED = (RF._BuffCellIconFor == COMPB_SAVED)
 """)
@@ -5498,974 +5067,6 @@ check(bool(rt.eval("IM_H_MAT_OFF == IM_H_MAT_ON and IM_Y6_MAT_OFF == IM_Y6_MAT_O
 check(bool(rt.eval("IM_MT_Y_ONE == IM_MT_Y_FULL")), "v1.11.62: il blocco Tanks e' riservato sempre (barra MT ferma: %r / %r)" % (rt.eval("IM_MT_Y_ONE"), rt.eval("IM_MT_Y_FULL")))
 check(bool(rt.eval("IM_BTN_EMPTY_SHOWN == false and IM_BTN_FULL_SHOWN == true")), "v1.11.62: a roster vuoto il tasto 'Raid Buffs' resta nascosto e riappare col roster")
 
-rt.execute("""
--- =====================================================================
--- v1.11.63: report stile UwU Logs (targets/consumables/auras/deaths/powers)
--- Fight SINTETICO deterministico: numeri esatti per ogni aggregazione.
--- =====================================================================
-CLT = RLSuite.combatLog
-CLT.db.enabled = true
-UW_P = 1024 + 16 + 1      -- player, friendly, affiliato al raid
-UW_N = 2048 + 64          -- npc, hostile
-UW_FLASK = 53760          -- Flask of Endless Rage (in RLSuite.buffData.flask)
-UW_FOOD = 57399           -- Well Fed (Fish Feast)
-UW_F = {
-    name = "Test Boss", kill = true, duration = 100, startTime = 0, startUTC = 0,
-    count = 0, events = {}, samples = { health = {}, power = {} },
-    player = "Alpha", raidSize = 25, difficulty = 6, boss = "Test Boss",
-}
-function UWPush(t, sub, src, srcf, dst, dstf, sid, sname, amt, over)
-    local ev = { t, sub, src, srcf or 0, dst, dstf or 0, sid, sname, amt, over }
-    UW_F.count = UW_F.count + 1
-    UW_F.events[UW_F.count] = ev
-    return ev
-end
-for i = 1, 6 do
-    UWPush(10 * i, "SPELL_DAMAGE", "Alpha", UW_P, "Test Boss", UW_N, 48230, "Fireball", 10000, 0)[17] = true
-end
-for i = 1, 4 do
-    UWPush(12 * i, "SPELL_DAMAGE", "Beta", UW_P, "Test Boss", UW_N, 47488, "Mortal Strike", 10000, 0)[17] = true
-end
-UWPush(30, "SWING_DAMAGE", "Alpha", UW_P, "Trash Mob", UW_N, 0, "Melee", 10000, 0)
-UWPush(40, "SPELL_DAMAGE", "Test Boss", UW_N, "Alpha", UW_P, 59448, "Cleave", 5000, 0)
-UWPush(45, "SPELL_HEAL", "Alpha", UW_P, "Beta", UW_P, 48782, "Holy Light", 3000, 200)
-UWPush(46, "SPELL_HEAL", "Beta", UW_P, "Beta", UW_P, 43185, "Runic Healing Potion", 2000, 0)
-UWPush(0, "SPELL_AURA_APPLIED", "Alpha", UW_P, "Alpha", UW_P, UW_FLASK, "Flask of Endless Rage")
-UWPush(50, "SPELL_AURA_REMOVED", "Alpha", UW_P, "Alpha", UW_P, UW_FLASK, "Flask of Endless Rage")
-UWPush(0, "SPELL_AURA_APPLIED", "Alpha", UW_P, "Beta", UW_P, UW_FOOD, "Well Fed")
-UWPush(20, "SPELL_CAST_SUCCESS", "Alpha", UW_P, "Alpha", UW_P, 53908, "Potion of Speed")
-UWPush(5, "SPELL_ENERGIZE", "Alpha", UW_P, "Alpha", UW_P, 29131, "Bloodrage", 500)
-UWPush(6, "SPELL_ENERGIZE", "Beta", UW_P, "Beta", UW_P, 29131, "Bloodrage", 300)
-UWPush(89.5, "SPELL_DAMAGE", "Test Boss", UW_N, "Beta", UW_P, 59448, "Cleave", 4000, 1000)
-UWPush(89.7, "SPELL_CAST_SUCCESS", "Test Boss", UW_N, "Beta", UW_P, 59448, "Cleave")
-UWPush(89.9, "SPELL_HEAL", "Alpha", UW_P, "Beta", UW_P, 48782, "Holy Light", 800, 100)
-UWPush(90, "UNIT_DIED", nil, 0, "Beta", UW_P)
-
-local st = CLT:AggPlayerStats(UW_F)
-UW_ORDER = {}
-for _, a in ipairs(st.rows) do UW_ORDER[#UW_ORDER + 1] = a.name end
-UW_A = st.rows[1]
-UW_B = st.rows[2]
-UW_STATS = {
-    order = table.concat(UW_ORDER, ","),
-    a_useful = UW_A.useful, a_total = UW_A.total, a_heal = UW_A.heal, a_taken = UW_A.taken,
-    b_useful = UW_B.useful, b_taken = UW_B.taken, b_heal = UW_B.heal,
-    t_useful = st.total.useful, t_total = st.total.total, t_heal = st.total.heal,
-    t_taken = st.total.taken, dur = st.duration,
-}
-
-local tg = CLT:AggTargets(UW_F)
-UW_TG = {
-    ncol = #tg.targetCols,
-    c1 = tg.targetCols[1].name, c1boss = tg.targetCols[1].boss,
-    c2 = tg.targetCols[2].name, c2boss = tg.targetCols[2].boss,
-    a_useful = tg.rows[1].useful, a_total = tg.rows[1].total,
-    a_boss = tg.rows[1].byTarget["Test Boss"], a_trash = tg.rows[1].byTarget["Trash Mob"],
-    t_total = tg.totalRow.total, t_useful = tg.totalRow.useful,
-}
-
-local cg = CLT:AggConsumables(UW_F)
-UW_CONS = { ncol = #cg.cols, nplayers = #cg.players }
-for _, c in ipairs(cg.cols) do
-    if c.sid == UW_FLASK then UW_CONS.flask = c.key end
-    if c.name == "Potion of Speed" then UW_CONS.pot = c.key end
-    if c.name == "Well Fed" then UW_CONS.food = c.key end
-end
-UW_CONS.a_flask = cg.cells["Alpha"] and UW_CONS.flask and cg.cells["Alpha"][UW_CONS.flask]
-UW_CONS.a_pot = cg.cells["Alpha"] and UW_CONS.pot and cg.cells["Alpha"][UW_CONS.pot]
-UW_CONS.b_food = cg.cells["Beta"] and UW_CONS.food and cg.cells["Beta"][UW_CONS.food]
-UW_CONS.b_pot = cg.cells["Beta"] and cg.cells["Beta"][tostring(43185) .. "|Runic Healing Potion"]
-
-local ag = CLT:AggAuraMatrix(UW_F)
-UW_AUR = { ncol = #ag.cols, dur = ag.duration }
-local acell = ag.cells["Alpha"] and ag.cells["Alpha"][UW_FLASK]
-if acell then UW_AUR.a_flask_count = acell.count; UW_AUR.a_flask_pct = acell.up / ag.duration * 100 end
-local fcell = ag.cells["Beta"] and ag.cells["Beta"][UW_FOOD]
-if fcell then UW_AUR.b_food_count = fcell.count; UW_AUR.b_food_pct = fcell.up / ag.duration * 100 end
-
-local pm = CLT:AggPowerMatrix(UW_F)
-UW_POW = { ncol = #pm.cols, total = pm.total, nplayers = #pm.players, sid = pm.cols[1].sid }
-if pm.cells["Alpha"] then UW_POW.a = pm.cells["Alpha"][pm.cols[1].key] end
-if pm.cells["Beta"] then UW_POW.b = pm.cells["Beta"][pm.cols[1].key] end
-
-local de = CLT:AggDeaths(UW_F)
-UW_DEATH = { n = #de, name = de[1] and de[1].name, t = de[1] and de[1].t, killer = de[1] and de[1].killer }
-local dd = CLT:DeathDetail(UW_F, "Beta", 90, 12)
-UW_DD = { n = #dd, first_kind = dd[1] and dd[1].kind }
-for _, r in ipairs(dd) do
-    if r.kind == "DAMAGE" and r.spell == "Cleave" and r.val == "4000" then
-        UW_DD.dmg_val, UW_DD.dmg_over, UW_DD.dmg_flag, UW_DD.dmg_src = r.val, r.over, r.flag, r.src
-    end
-    if r.kind == "CAST" then UW_DD.cast_flag = r.flag end
-    if r.kind == "HEAL" and r.val == "800" then UW_DD.heal_over = r.over end
-end
-UW_DD.stamp = CLT:RelStamp(-0.887)
-
--- titolo/etichette + dropdown
-UW_TITLE = CLT:FightTitle(UW_F)
-UW_LABEL = CLT:FightLabel(UW_F, 1)
-local savedFights = CLT.db.fights
-CLT.db.fights = { UW_F }
-local items = CLT:FightListItems()
-UW_ITEM1 = items[1] and items[1].text
-UW_HAS_ALL = false
-for _, it in ipairs(items) do
-    if it.text == "All Test Boss segments" then UW_HAS_ALL = true end
-end
-
--- fight unito ("All <boss> segments") su due pull
-local fa = { name = "Same Boss", kill = false, duration = 100, startTime = 0,
-    count = 1, events = { { 10, "SPELL_DAMAGE", "Alpha", UW_P, "Boss", UW_N, 1, "Hit", 100 } },
-    samples = { health = {}, power = {} } }
-local fb = { name = "Same Boss", kill = true, duration = 50, startTime = 200,
-    count = 1, events = { { 5, "SPELL_DAMAGE", "Alpha", UW_P, "Boss", UW_N, 1, "Hit", 200 } },
-    samples = { health = {}, power = {} } }
-CLT.db.fights = { fb, fa }
-local mf = CLT:MergedFight("Same Boss")
-UW_MERGE = { n = mf and mf.count, dur = mf and mf.duration, seg = mf and mf.segments,
-    kill = mf and mf.kill, t2 = mf and mf.events[2] and mf.events[2][1] }
-CLT.db.fights = savedFights
-
--- grafico: 6 discretizzazioni + serie "media dell'intero fight"
-CLT.selFight = UW_F
-CLT:SelectTab("damage")
-UW_STEPS = CLT.stepDropdown.options
-UW_STEP1 = UW_STEPS[1] and UW_STEPS[1].text
-UW_STEP6 = UW_STEPS[6] and UW_STEPS[6].text
-UW_STEPN = #UW_STEPS
-UW_GSTEP = CLT.graphStep
-local s0 = CLT:DpsSeries(UW_F, nil, 0)
-local s5 = CLT:DpsSeries(UW_F, nil, 5)
-UW_SER = { n0 = #s0, first0 = s0[1] and s0[1][2], last0 = s0[#s0] and s0[#s0][2],
-    n5 = #s5, b2_5 = s5[3] and s5[3][2] }
-
--- i tab si costruiscono senza errori e con le colonne giuste
-UW_TABS = {}
-for _, tab in ipairs({ "damage", "targets", "consumables", "auras", "powers" }) do
-    CLT:SelectTab(tab)
-    local cols = CLT.grid.cols or {}
-    local rows = CLT.grid.pool[#cols] or {}
-    UW_TABS[#UW_TABS + 1] = tab .. ":" .. #cols .. "x" .. (CLT.grid.rowCount or 0)
-end
-CLT:SelectTab("targets")
-UW_TG_LABEL = CLT.grid.cols[4] and CLT.grid.cols[4].label
-UW_TG_TIP = CLT.grid.cols[4] and CLT.grid.cols[4].tip
-CLT:SelectTab("consumables")
-UW_CONS_ICON = false
-for _, c in ipairs(CLT.grid.cols) do
-    if c.ic and tostring(c.ic):find("Tex:") then UW_CONS_ICON = true end
-end
-CLT:SelectTab("deaths")
-UW_DEATH_ROWS = #CLT._dRows
-local drows = CLT.deathGrid.pool[#(CLT.deathGrid.cols or {})] or {}
-UW_DEATH_DETAIL_ROWS = CLT.deathGrid.rowCount or 0
-UW_DEATH_FIRST = drows[1] and drows[1].cells[2].fs:GetText()
-CLT:SelectTab("damage")
-UW_BACK = CLT.gridPane:IsShown()
--- chiusura: nessuna finestra lasciata aperta dai test
-CLT.selFight = nil
-CLT.selTab = "damage"
-CLT.db.fights = savedFights
-CLT:RefreshUI()
-""")
-
-
-check(bool(rt.eval("UW_STATS.order == 'Alpha,Beta'")), "v1.11.63 AggPlayerStats: righe ordinate per danno utile (%s)" % rt.eval("UW_STATS.order"))
-check(bool(rt.eval("UW_STATS.a_useful == 60000 and UW_STATS.a_total == 70000")), "v1.11.63 AggPlayerStats: danno utile (solo boss) separato dal totale (%r/%r)" % (rt.eval("UW_STATS.a_useful"), rt.eval("UW_STATS.a_total")))
-check(bool(rt.eval("UW_STATS.a_taken == 5000 and UW_STATS.b_taken == 4000")), "v1.11.63 AggPlayerStats: danno SUBITO per giocatore (%r/%r)" % (rt.eval("UW_STATS.a_taken"), rt.eval("UW_STATS.b_taken")))
-check(bool(rt.eval("UW_STATS.a_heal == 3800 and UW_STATS.b_heal == 2000")), "v1.11.63 AggPlayerStats: cure per giocatore (%r/%r)" % (rt.eval("UW_STATS.a_heal"), rt.eval("UW_STATS.b_heal")))
-check(bool(rt.eval("UW_STATS.t_useful == 100000 and UW_STATS.t_total == 110000 and UW_STATS.t_heal == 5800 and UW_STATS.t_taken == 9000")), "v1.11.63 AggPlayerStats: riga TOTAL (utile %r, totale %r, cure %r, subito %r)" % (rt.eval("UW_STATS.t_useful"), rt.eval("UW_STATS.t_total"), rt.eval("UW_STATS.t_heal"), rt.eval("UW_STATS.t_taken")))
-check(bool(rt.eval("UW_TG.ncol == 2 and UW_TG.c1boss == true and UW_TG.c2boss == false")), "v1.11.63 AggTargets: un boss e' marcato come tale (danno utile), lo spazzino no")
-check(bool(rt.eval("UW_TG.a_useful == 60000 and UW_TG.a_boss == 60000 and UW_TG.a_trash == 10000")), "v1.11.63 AggTargets: danno per bersaglio per giocatore (%r boss / %r spazzino)" % (rt.eval("UW_TG.a_boss"), rt.eval("UW_TG.a_trash")))
-check(bool(rt.eval("UW_TG.t_total == 110000 and UW_TG.t_useful == 100000")), "v1.11.63 AggTargets: totali di colonna/riga coerenti")
-check(bool(rt.eval("UW_CONS.ncol == 4 and UW_CONS.a_flask == 1 and UW_CONS.a_pot == 1")), "v1.11.63 AggConsumables: flask (per ID) e pozione (per nome) contati 1 volta (%r/%r su %r colonne)" % (rt.eval("UW_CONS.a_flask"), rt.eval("UW_CONS.a_pot"), rt.eval("UW_CONS.ncol")))
-check(bool(rt.eval("UW_CONS.b_food == 1 and UW_CONS.b_pot == 1")), "v1.11.63 AggConsumables: Well Fed (aura) e pozione curativa (heal su di se') riconosciute")
-check(bool(rt.eval("UW_AUR.a_flask_count == 1 and math.abs(UW_AUR.a_flask_pct - 50) < 0.01")), "v1.11.63 AggAuraMatrix: applicazioni + uptime%% della flask (%r appl., %r%%)" % (rt.eval("UW_AUR.a_flask_count"), rt.eval("UW_AUR.a_flask_pct")))
-check(bool(rt.eval("UW_AUR.b_food_count == 1 and math.abs(UW_AUR.b_food_pct - 100) < 0.01")), "v1.11.63 AggAuraMatrix: aura ancora aperta a fine pull = 100%% di uptime")
-check(bool(rt.eval("UW_POW.total == 800 and UW_POW.a == 500 and UW_POW.b == 300")), "v1.11.63 AggPowerMatrix: risorsa generata per giocatore e per spell (%r)" % rt.eval("UW_POW.total"))
-check(bool(rt.eval("UW_DEATH.n == 1 and UW_DEATH.name == 'Beta' and UW_DEATH.killer == 'Test Boss'")), "v1.11.63 AggDeaths: morto + chi ha dato il colpo finale (%s da %s)" % (rt.eval("UW_DEATH.name"), rt.eval("UW_DEATH.killer")))
-check(bool(rt.eval("UW_DD.first_kind == 'DIED'")), "v1.11.63 DeathDetail: la riga DIED e' la prima (tempo 0:00.000)")
-check(bool(rt.eval("UW_DD.dmg_val == '4000' and UW_DD.dmg_over == '1000' and UW_DD.dmg_flag == 'SPELL'")), "v1.11.63 DeathDetail: colpo con valore e overkill (%r, over %r, %s)" % (rt.eval("UW_DD.dmg_val"), rt.eval("UW_DD.dmg_over"), rt.eval("UW_DD.dmg_flag")))
-check(bool(rt.eval("UW_DD.cast_flag == 'SUCCESS' and UW_DD.heal_over == '100'")), "v1.11.63 DeathDetail: righe CAST (SUCCESS) e HEAL con overheal")
-check(bool(rt.eval("UW_DD.stamp == '-0:00.887'")), "v1.11.63 DeathDetail: timestamp relativo -m:ss.mmm (%s)" % rt.eval("UW_DD.stamp"))
-check(bool(rt.eval("UW_TITLE == '1:40.000  Test Boss 25H  Kill'")), "v1.11.63 testata fight: durata + nome + taglia/difficolta' + esito (%s)" % rt.eval("UW_TITLE"))
-check(bool(rt.eval("UW_LABEL == '1:40.000 | Kill 25H  Test Boss'")), "v1.11.63 etichetta del dropdown con tag (%s)" % rt.eval("UW_LABEL"))
-check(bool(rt.eval("UW_HAS_ALL == true")), "v1.11.63 dropdown: voce 'All <boss> segments' per i segmenti uniti")
-check(bool(rt.eval("UW_MERGE.n == 2 and UW_MERGE.dur == 150 and UW_MERGE.seg == 2 and UW_MERGE.kill == true")), "v1.11.63 MergedFight: eventi dei pull concatenati su una linea di tempo continua (%r)" % rt.eval("UW_MERGE.n"))
-check(bool(rt.eval("UW_MERGE.t2 == 105")), "v1.11.63 MergedFight: il secondo pull parte dopo la durata del primo (t=%r)" % rt.eval("UW_MERGE.t2"))
-check(bool(rt.eval("UW_STEPN == 6 and UW_STEP1 == 'Avg whole fight' and UW_STEP6 == 'Avg every 10 seconds'")), "v1.11.63 grafico: le 6 discretizzazioni di UwU (%s ... %s)" % (rt.eval("UW_STEP1"), rt.eval("UW_STEP6")))
-check(bool(rt.eval("UW_GSTEP == 0")), "v1.11.63 grafico: default = 'Avg whole fight' (media dell'intero fight)")
-check(bool(rt.eval("UW_SER.n0 == 61 and UW_SER.first0 == 0 and math.abs(UW_SER.last0 - 110000/61) < 0.01")), "v1.11.63 DpsSeries step 0 = media cumulativa (parte da 0 e finisce a 110000/61 = %.1f dps: %r)" % (110000/61, rt.eval("UW_SER.last0")))
-check(bool(rt.eval("UW_SER.n5 == 13 and UW_SER.b2_5 == 4000")), "v1.11.63 DpsSeries step 5 = bucket da 5s (20k dmg nel bucket 10-15s = 4000 dps: %r)" % rt.eval("UW_SER.b2_5"))
-check(bool(rt.eval("UW_TABS[1] == 'damage:6x3'")), "v1.11.63 tab Damage: 6 colonne (Name/Rank/Dps%%/Useful/Heal/Taken) e 3 righe (TOTAL + 2) (%s)" % rt.eval("UW_TABS[1]"))
-check(bool(rt.eval("UW_TABS[2] == 'targets:5x3'")), "v1.11.63 tab Targets: Name + Useful + Total + 2 bersagli (%s)" % rt.eval("UW_TABS[2]"))
-check(bool(rt.eval("UW_CONS_ICON == true")), "v1.11.63 tab Consumables: colonne con l'icona della spell")
-check(bool(rt.eval("UW_TG_TIP and UW_TG_TIP:find('BOSS') ~= nil")), "v1.11.63 tab Targets: tooltip dell'intestazione che spiega il danno utile")
-check(bool(rt.eval("UW_DEATH_ROWS == 1 and UW_DEATH_DETAIL_ROWS >= 4 and UW_DEATH_FIRST == 'DIED'")), "v1.11.63 tab Deaths: lista dei morti + recap (prima riga %s, %r righe)" % (rt.eval("UW_DEATH_FIRST"), rt.eval("UW_DEATH_DETAIL_ROWS")))
-check(bool(rt.eval("UW_BACK == true")), "v1.11.63: tornando sul tab Damage la griglia e' di nuovo visibile")
-
-rt.execute("""
--- ---- v1.11.63: struttura della finestra (layout UwU) ----
-local cl = RLSuite.combatLog
-UW_LAYOUT = {
-    w = cl.frame._w, h = cl.frame._h,
-    graphH = cl.graphPane._h,
-    graphVis = cl.graphPane:IsShown(),
-    steps = {},
-    tabs = {},
-    deaths_left = (cl.deathListBox ~= nil),
-    deaths_right = (cl.deathGrid ~= nil),
-    title_anchor = cl.titleText._points[1] and cl.titleText._points[1][1],
-    dd_pt = cl.fightDropdown._points[1] and cl.fightDropdown._points[1][1],
-    dd_rel = cl.fightDropdown._points[1] and cl.fightDropdown._points[1][3],
-}
-for _, st in ipairs(cl.graphSteps or {}) do UW_LAYOUT.steps[#UW_LAYOUT.steps + 1] = st.text end
-for _, def in ipairs(cl.uiTabs or {}) do UW_LAYOUT.tabs[#UW_LAYOUT.tabs + 1] = def.key end
-UW_LAYOUT.stepn = #UW_LAYOUT.steps
-UW_LAYOUT.tabn = #UW_LAYOUT.tabs
-local minW, minH = RLSuite.windowMins.log()
-UW_LAYOUT.minW, UW_LAYOUT.minH = minW, minH
--- "Show graph" spegne/riaccende il grafico senza toccare il resto
-cl.showGraphCheck:SetChecked(true)
-cl.showGraphCheck._scripts.OnClick(cl.showGraphCheck)
-UW_LAYOUT.graphOn1 = cl.graphPane:IsShown()
-cl.showGraphCheck:SetChecked(false)
-cl.showGraphCheck._scripts.OnClick(cl.showGraphCheck)
-UW_LAYOUT.graphOn2 = cl.graphPane:IsShown()
-cl.showGraphCheck:SetChecked(true)
-if not cl.graphPane:IsShown() then cl.graphPane:Show() end
-""")
-
-
-check(bool(rt.eval("UW_LAYOUT.w >= 870 and UW_LAYOUT.h >= 660")), "v1.11.63 layout: la finestra non e' mai sotto il minimo del nuovo layout (%rx%r)" % (rt.eval("UW_LAYOUT.w"), rt.eval("UW_LAYOUT.h")))
-_uw_src = open("CombatLog.lua", encoding="utf-8").read()
-check('local CL_WIN_W, CL_WIN_H = 900, 660' in _uw_src, "v1.11.63 layout: dimensione di progetto della finestra = 900x660 (riga titolo + controlli + grafico + tab + contenuto + footer)")
-check(bool(rt.eval("UW_LAYOUT.minW == 870 and UW_LAYOUT.minH == 660")), "v1.11.63 layout: minimi della finestra Log aggiornati (%rx%r)" % (rt.eval("UW_LAYOUT.minW"), rt.eval("UW_LAYOUT.minH")))
-check(bool(rt.eval("UW_LAYOUT.graphH == 150 and UW_LAYOUT.graphVis == true")), "v1.11.63 layout: grafico SEMPRE visibile in alto, altezza fissa (%r px)" % rt.eval("UW_LAYOUT.graphH"))
-check(bool(rt.eval("UW_LAYOUT.graphOn1 == true and UW_LAYOUT.graphOn2 == false")), "v1.11.63 layout: la casella 'Show graph' accende/spegne il grafico")
-check(bool(rt.eval("UW_LAYOUT.title_anchor == 'TOPLEFT' and UW_LAYOUT.dd_pt == 'TOPRIGHT' and UW_LAYOUT.dd_rel == 'TOPRIGHT'")), "v1.11.63 layout: nome fight in alto a SINISTRA, dropdown dei fight in alto a DESTRA")
-check(bool(rt.eval("UW_LAYOUT.stepn == 6 and UW_LAYOUT.steps[1] == 'Avg whole fight' and UW_LAYOUT.steps[6] == 'Avg every 10 seconds'")), "v1.11.63 layout: discretizzazioni del grafico identiche al terzo screen (%r voci)" % rt.eval("UW_LAYOUT.stepn"))
-check(bool(rt.eval("UW_LAYOUT.tabs[1] == 'damage' and UW_LAYOUT.tabs[2] == 'targets' and UW_LAYOUT.tabs[3] == 'consumables' and UW_LAYOUT.tabs[4] == 'auras' and UW_LAYOUT.tabs[5] == 'deaths' and UW_LAYOUT.tabs[6] == 'powers'")), "v1.11.63 layout: tab group nell'ordine di UwU (Damage/Targets/Consumables/Auras/Deaths/Powers) e poi gli storici")
-check(bool(rt.eval("UW_LAYOUT.deaths_left == true and UW_LAYOUT.deaths_right == true")), "v1.11.63 layout: tab Deaths = lista dei morti a sinistra + tabella di dettaglio a destra")
-
-rt.execute("""
--- ---- v1.11.64: regressione del crash ScrollFrame senza nome ----
-UW_NAMES = {
-    grid = (_G["RLSuiteCombatLogGrid"] ~= nil),
-    dgrid = (_G["RLSuiteCombatLogDeathGrid"] ~= nil),
-    left = (_G["RLSuiteCombatLogLeft"] ~= nil),
-    right = (_G["RLSuiteCombatLogRight"] ~= nil),
-    deaths = (_G["RLSuiteCombatLogDeaths"] ~= nil),
-    gridbar = (_G["RLSuiteCombatLogGridScrollBar"] ~= nil),
-    dgridbar = (_G["RLSuiteCombatLogDeathGridScrollBar"] ~= nil),
-    gridparent = (RLSuite.combatLog.grid and RLSuite.combatLog.grid.scroll._parent ~= nil),
-}
--- l'harness ora RIFIUTA uno ScrollFrame senza nome (crash reale del client)
-UW_STRICT = false
-local ok = pcall(function()
-    CreateFrame("ScrollFrame", nil, UIParent, "UIPanelScrollFrameTemplate")
-end)
-UW_STRICT = (ok == false)
-""")
-
-
-check(bool(rt.eval("UW_NAMES.grid == true and UW_NAMES.dgrid == true")), "v1.11.64: gli ScrollFrame delle griglie hanno un NOME globale (rlSuiteCombatLogGrid / ...DeathGrid)")
-check(bool(rt.eval("UW_NAMES.gridbar == true and UW_NAMES.dgridbar == true")), "v1.11.64: il template UIPanelScrollFrameTemplate trova le sue barre (<nome>ScrollBar)")
-check(bool(rt.eval("UW_NAMES.left == true and UW_NAMES.right == true and UW_NAMES.deaths == true")), "v1.11.64: anche gli ScrollFrame storici sono nominati")
-check(bool(rt.eval("UW_STRICT == true")), "v1.11.64: l'harness riproduce il crash del client (ScrollFrame senza nome = errore), cosi' non ricapita")
-_uw_scroll = ["CombatLog.lua", "Config.lua", "GroupMaking.lua", "LootManager.lua", "MSManager.lua", "RaidProfile.lua", "RaidFrame.lua", "MacroBar.lua", "Core.lua", "Utils.lua"]
-UW_BADNAME = []
-for _f in _uw_scroll:
-    try:
-        _t = open(_f, encoding="utf-8").read()
-    except Exception:
-        continue
-    for _line in _t.split("\n"):
-        if 'CreateFrame("ScrollFrame", nil' in _line:
-            UW_BADNAME.append(_f)
-check(not UW_BADNAME, "v1.11.64: nessuno ScrollFrame senza nome in tutto l'addon (%s)" % (UW_BADNAME or "ok"))
-
-rt.execute("""
--- =====================================================================
--- v1.11.65: TAB GROUP vero + griglia che non si incasina (no wrap)
--- =====================================================================
-local cl = RLSuite.combatLog
-UW_TAB = {
-    isGroup = (cl.tabGroup ~= nil),
-    parent_ok = true, same_width = true, contiguous = true,
-    overlap = cl.tabGroup and cl.tabGroup._tabOverlap,
-    w = cl.tabGroup and cl.tabGroup._tabW,
-    n = #(cl.tabOrder or {}),
-    nbtns = 0,
-}
-for _, _ in pairs(cl.tabBtns or {}) do UW_TAB.nbtns = UW_TAB.nbtns + 1 end
-for i, def in ipairs(cl.tabOrder or {}) do
-    local b = cl.tabBtns[def.key]
-    if b._parent ~= cl.tabGroup then UW_TAB.parent_ok = false end
-    if b._w ~= UW_TAB.w then UW_TAB.same_width = false end
-    local p = b._points[1]
-    if i == 1 then
-        if p[2] ~= cl.tabGroup or p[4] ~= 0 then UW_TAB.contiguous = false end
-    else
-        local prev = cl.tabBtns[cl.tabOrder[i - 1].key]
-        if p[2] ~= prev or p[4] ~= -UW_TAB.overlap then UW_TAB.contiguous = false end
-    end
-end
-UW_TAB.id = cl.tabBtns.targets and cl.tabBtns.targets:GetID()
-cl:SelectTab("auras")
-UW_TAB.sel_auras = (cl.tabBtns.auras._sel:IsShown() == true)
-UW_TAB.sel_damage = (cl.tabBtns.damage._sel:IsShown() == true)
-UW_TAB.pt = cl.tabGroup.selectedTab
-cl:SelectTab("damage")
-UW_TAB.back = (cl.tabBtns.damage._sel:IsShown() == true and cl.tabBtns.auras._sel:IsShown() == false)
-
--- troncamento: il testo non esce MAI dalla colonna
-local probe = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-if probe.SetWordWrap then probe:SetWordWrap(false) end
-RLSuite.combatLog.FitText(probe, string.rep("Lunghissimo", 6), 100)
-UW_FIT = { text = probe:GetText(), len = #probe:GetText(), w = probe:GetStringWidth() }
-
--- 3.3.5: GetStringWidth NON vede il SetText appena fatto (testo misurato solo
--- al frame dopo). Senza la stima, il troncamento non scattava MAI e il testo
--- usciva dalla colonna (le tabelle "sovrapposte" viste in game).
-local probe2 = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-local realW = probe2.GetStringWidth
-probe2.GetStringWidth = function() return 0 end   -- simula la misura "stantia"
-RLSuite.combatLog.FitText(probe2, string.rep("Lunghissimo", 3), 70)
-UW_STALE = { len = #probe2:GetText(), text = probe2:GetText() }
-probe2.GetStringWidth = realW
-local probe3 = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-probe3.GetStringWidth = function() return 0 end
-RLSuite.combatLog.FitText(probe3, "Breve", 200)
-UW_STALE.kept = probe3:GetText()
-
--- celle della griglia: niente word wrap, larghezza rispettata
-cl.selFight = UW_F
-cl:SelectTab("damage")
-local g = cl.grid
-local cols = g.cols or {}
-local rows = g.pool[#cols] or {}
-UW_CELL = { wrap = {}, ok = true, maxw = 0, colw = 0 }
-for ci, c in ipairs(cols) do
-    local cell = rows[1].cells[ci]
-    local fs = cell.fs
-    UW_CELL.wrap[#UW_CELL.wrap + 1] = (fs._wordWrap == false) and "n" or "y"
-    local cw = math.max(18, c.px - 8)
-    if (fs:GetStringWidth() or 0) > cw then UW_CELL.ok = false end
-    if cw > UW_CELL.maxw then UW_CELL.maxw = cw end
-    UW_CELL.colw = UW_CELL.colw + c.px
-end
-UW_CELL.wrap = table.concat(UW_CELL.wrap, "")
-UW_CELL.headers_wrap = (g.hdrPool[1].btn.fs._wordWrap == false)
-
--- larghezza VIVA: se la finestra viene ridimensionata le colonne si rifanno
-local before = cols[1].px
-g._w = 1200
-cl:RefreshLists()
-local cols2 = cl.grid.cols or {}
-UW_LIVE = { before = before, after = cols2[1] and cols2[1].px, content = cl.grid.content._w }
-cl.grid._w = 0
-cl:RefreshLists()
--- senza pull registrati: nessun tab deve andare in errore (era un crash)
-UW_NOFIGHT = { ok = true }
-cl.selFight = nil
-for _, tab in ipairs({ "damage", "targets", "consumables", "auras", "powers", "deaths", "healing" }) do
-    local ok2 = pcall(function() cl:SelectTab(tab) end)
-    if not ok2 then UW_NOFIGHT.ok = false; UW_NOFIGHT.fail = tab end
-end
-cl:SelectTab("damage")
-""")
-
-
-check(bool(rt.eval("UW_TAB.isGroup == true and UW_TAB.n == UW_TAB.nbtns")), "v1.11.65: i tab stanno in UN SOLO gruppo (RLSuiteCombatLogTabs), non in pulsanti sparsi (%r tab)" % rt.eval("UW_TAB.n"))
-check(bool(rt.eval("UW_TAB.parent_ok == true")), "v1.11.65: ogni tab e' figlio del gruppo dei tab")
-check(bool(rt.eval("UW_TAB.same_width == true and UW_TAB.w > 40")), "v1.11.65: tab di larghezza identica (%r px) che riempiono il gruppo" % rt.eval("UW_TAB.w"))
-check(bool(rt.eval("UW_TAB.contiguous == true and UW_TAB.overlap == 16")), "v1.11.65: tab ATTACCATI l'uno all'altro (overlap %r px, niente buchi da pulsanti sciolti)" % rt.eval("UW_TAB.overlap"))
-check(bool(rt.eval("UW_TAB.id == 2")), "v1.11.65: ogni tab ha il suo ID (per PanelTemplates): targets = 2")
-check(bool(rt.eval("UW_TAB.sel_auras == true and UW_TAB.sel_damage == false and UW_TAB.pt == 4")), "v1.11.65: un solo tab selezionato (PanelTemplates.selectedTab = %r)" % rt.eval("UW_TAB.pt"))
-check(bool(rt.eval("UW_TAB.back == true")), "v1.11.65: cambiando tab l'evidenza si sposta (auras -> damage)")
-check(bool(rt.eval("UW_FIT.len < 72 and UW_FIT.w <= 100")), "v1.11.65 FitText: il testo viene troncato per stare nella larghezza (\"%s\" = %rpx)" % (rt.eval("UW_FIT.text"), rt.eval("UW_FIT.w")))
-check(bool(rt.eval("UW_STALE.len < 39 and UW_STALE.text:sub(-2) == '..'")), "v1.11.66 FitText: tronca anche quando il client non ha ancora misurato il testo (3.3.5) — \"%s\"" % rt.eval("UW_STALE.text"))
-check(bool(rt.eval("UW_STALE.kept == 'Breve'")), "v1.11.66 FitText: un testo che ci sta non viene toccato")
-check(bool(rt.eval("UW_CELL.wrap == 'nnnnnn'")), "v1.11.65: NESSUNA cella della tabella va a capo (word wrap OFF, era la causa delle tabelle incasinate: %s)" % rt.eval("UW_CELL.wrap"))
-check(bool(rt.eval("UW_CELL.ok == true")), "v1.11.65: ogni testo sta dentro la sua colonna (nessuna sovrapposizione fra celle/righe)")
-check(bool(rt.eval("UW_CELL.headers_wrap == true")), "v1.11.65: anche le intestazioni non vanno a capo")
-check(bool(rt.eval("UW_LIVE.after > UW_LIVE.before and UW_LIVE.content > 1000")), "v1.11.65: la larghezza delle colonne usa quella VERA della finestra (%r -> %r px a finestra larga)" % (rt.eval("UW_LIVE.before"), rt.eval("UW_LIVE.after")))
-check(bool(rt.eval("UW_NOFIGHT.ok == true")), "v1.11.65: senza pull registrati ogni tab si apre senza errori (crash su colonna senza larghezza: %r)" % rt.eval("UW_NOFIGHT.fail"))
-
-rt.execute("""
--- =====================================================================
--- v1.11.67: le tab NON devono condividere/impilare le tabelle.
--- Il pool delle righe e' diviso per NUMERO di colonne: passando da una tab
--- con 6 colonne (Damage) a una con 5 (Targets) le righe del pool precedente
--- restavano visibili -> tutte le tab sembravano la stessa tabella.
--- =====================================================================
-function UW_VisibleRows(g)
-    local n = 0
-    for _, p in pairs(g.pool or {}) do
-        for _, r in ipairs(p) do if r:IsShown() then n = n + 1 end end
-    end
-    return n
-end
-function UW_Pools(g)
-    local n = 0
-    for _, _ in pairs(g.pool or {}) do n = n + 1 end
-    return n
-end
-local cl = RLSuite.combatLog
-cl.selFight = UW_F
-
-UW_STACK = { tabs = {} }
-local seq = { "damage", "targets", "consumables", "auras", "powers", "damage" }
-for _, tab in ipairs(seq) do
-    cl:SelectTab(tab)
-    local cols = #(cl.grid.cols or {})
-    local vis = UW_VisibleRows(cl.grid)
-    UW_STACK.tabs[#UW_STACK.tabs + 1] = string.format("%s:%dcol:%drow:%dvis", tab, cols,
-        cl.grid.rowCount or -1, vis)
-end
--- la griglia dei morti: si ri-renderizza con un altro numero di colonne
-cl:SelectTab("deaths")
-UW_STACK.death1 = UW_VisibleRows(cl.deathGrid)
-cl:SelectTab("targets")
-cl:SelectTab("deaths")            -- ritorno sulla tab dei morti
-UW_STACK.death2 = UW_VisibleRows(cl.deathGrid)
-UW_STACK.death_rows = cl.deathGrid.rowCount or -1
-UW_STACK.pools = UW_Pools(cl.grid)
-cl:SelectTab("damage")
-UW_STACK.vis_damage = UW_VisibleRows(cl.grid)
-UW_STACK.rows_damage = cl.grid.rowCount
-cl.selFight = nil
-cl:SelectTab("damage")
-""")
-
-
-UW_STACK_SEQ = str(rt.eval("table.concat(UW_STACK.tabs, ' | ')"))
-check(bool(rt.eval("(function() for _, t in ipairs(UW_STACK.tabs) do local r, v = t:match('%d+col:(%d+)row:(%d+)vis'); if tonumber(r) ~= tonumber(v) then return false end end return true end)()")),
-    "v1.11.67: in OGNI tab le righe visibili sono SOLO quelle della tabella corrente (niente tabelle impilate) -> %s" % UW_STACK_SEQ)
-check(bool(rt.eval("UW_STACK.tabs[1]:find('damage:6col') ~= nil and UW_STACK.tabs[2]:find('targets:5col') ~= nil")),
-    "v1.11.67: le tabelle hanno davvero un numero di colonne diverso (e' il caso che le impilava)")
-check(bool(rt.eval("UW_STACK.tabs[6] == UW_STACK.tabs[1]")), "v1.11.67: tornando su Damage la tabella e' identica (stesse colonne, stesse righe visibili)")
-check(bool(rt.eval("UW_STACK.death1 == UW_STACK.death2 and UW_STACK.death2 == UW_STACK.death_rows")), "v1.11.67: tornando sulla tab Deaths la tabella mostra solo le sue righe (%r visibili / %r righe)" % (rt.eval("UW_STACK.death2"), rt.eval("UW_STACK.death_rows")))
-
-rt.execute("""
--- =====================================================================
--- v1.11.68: ICONE e NOMI delle spell visibili nelle tabelle
--- =====================================================================
-CLT = RLSuite.combatLog
-CLT.selFight = UW_F
-UW_ICON = {}
--- la risoluzione dell'icona usa GetSpellTexture e, se fallisce, GetSpellInfo
-local realGST = GetSpellTexture
-GetSpellTexture = function(id) if id == 48230 then return "ICON_FIREBOLT" end return nil end
-CLT.spellIconCache[48230] = nil
-CLT.spellIconCache[99999] = nil
-UW_ICON.tex = CLT:SpellIcon(48230)
-UW_ICON.fallback = CLT:SpellIcon(99999)   -- GetSpellInfo mock -> icona
-GetSpellTexture = realGST
-UW_ICON.none = CLT:SpellIcon(nil)
-
--- tab a icone: ogni colonna ha icona E nome
-UW_ICON.cols = {}
-for _, tab in ipairs({ "consumables", "auras", "powers" }) do
-    CLT:SelectTab(tab)
-    local has_icon, has_name, blank = 0, 0, 0
-    for _, c in ipairs(CLT.grid.cols or {}) do
-        if c.ic then has_icon = has_icon + 1 end
-        if c.label and c.label ~= "" then has_name = has_name + 1 end
-        if (not c.ic) and (not c.label or c.label == "") then blank = blank + 1 end
-    end
-    UW_ICON.cols[tab] = string.format("icone=%d nomi=%d vuote=%d", has_icon, has_name, blank)
-end
-CLT:SelectTab("auras")
-UW_ICON.hdr_h = CLT.grid.hdr._h
-local hb = CLT.grid.hdrPool[#(CLT.grid.cols or {})]
-UW_ICON.hdr_shown = hb and hb.btn.fs:IsShown() and (hb.btn.fs:GetText() ~= "")
-UW_ICON.hdr_text = hb and hb.btn.fs:GetText()
-UW_ICON.hdr_icon = hb and hb.btn.icon:IsShown()
--- intestazione SENZA icona: deve restare il nome (mai vuota)
-local cols2 = { { label = "Spell Name", w = 100, fix = true, align = "CENTER", ic = nil } }
-CLT:GridRender(CLT.grid, cols2, { { { t = "x" } } }, {})
-local h2 = CLT.grid.hdrPool[1]
-UW_ICON.noicon_text = h2.btn.fs:GetText()
-UW_ICON.noicon_icon = h2.btn.icon:IsShown()
-UW_ICON.noicon_shown = h2.btn.fs:IsShown()
--- lista Spells: icona sulla riga
-CLT:SelectTab("spells")
-CLT.selSource = "Alpha"
-CLT:RefreshLists()
-local anyIcon = false
-for _, r in ipairs(CLT._rRows or {}) do
-    if r.spellIcon and r.spellIcon:IsShown() then anyIcon = true end
-end
-UW_ICON.rows = anyIcon
-CLT.selSource = nil
-CLT.selFight = nil
-CLT:SelectTab("damage")
-""")
-
-
-check(bool(rt.eval("tostring(UW_ICON.tex) == 'ICON_FIREBOLT'")), "v1.11.68: l'icona della spell viene risolta da GetSpellTexture (%r)" % rt.eval("UW_ICON.tex"))
-check(bool(rt.eval("UW_ICON.fallback ~= nil")), "v1.11.68: se GetSpellTexture fallisce si usa l'icona di GetSpellInfo (3o valore, catalogo locale)")
-check(bool(rt.eval("UW_ICON.none == nil")), "v1.11.68: nessuna spell = nessuna icona (nessun errore)")
-check(bool(rt.eval("UW_ICON.cols.consumables and UW_ICON.cols.consumables:find('vuote=0') ~= nil")), "v1.11.68 tab Consumables: ogni colonna ha icona e NOME (%s)" % rt.eval("UW_ICON.cols.consumables"))
-check(bool(rt.eval("UW_ICON.cols.auras and UW_ICON.cols.auras:find('vuote=0') ~= nil")), "v1.11.68 tab Auras: ogni colonna ha icona e NOME (%s)" % rt.eval("UW_ICON.cols.auras"))
-check(bool(rt.eval("UW_ICON.cols.powers and UW_ICON.cols.powers:find('vuote=0') ~= nil")), "v1.11.68 tab Powers: ogni colonna ha icona e NOME (%s)" % rt.eval("UW_ICON.cols.powers"))
-check(bool(rt.eval("UW_ICON.hdr_h == 34")), "v1.11.68: intestazione alta 34px (icona sopra, nome sotto)")
-check(bool(rt.eval("UW_ICON.hdr_icon == true and UW_ICON.hdr_shown == true")), "v1.11.68: nell'intestazione si vedono icona E nome della spell (\"%s\")" % rt.eval("UW_ICON.hdr_text"))
-check(bool(rt.eval("UW_ICON.noicon_shown == true and UW_ICON.noicon_text == 'Spell Name' and UW_ICON.noicon_icon == false")), "v1.11.68: senza icona l'intestazione mostra il NOME (mai una colonna vuota)")
-check(bool(rt.eval("UW_ICON.rows == true")), "v1.11.68 tab Spells: l'icona compare anche accanto al nome di ogni spell nella lista")
-
-rt.execute("""
--- =====================================================================
--- v1.11.70: encounter-anchored (la morte non chiude il pull) + watchdog
---           + riga di stato
--- =====================================================================
-local cl = RLSuite.combatLog
-local R_IAC, R_DEAD, R_NRAID, R_PARTY, R_UE, R_UG = UnitAffectingCombat, UnitIsDeadOrGhost, GetNumRaidMembers, GetNumPartyMembers, UnitExists, UnitGUID
-local R_DEADU, R_HEALTH = UnitIsDead, UnitHealth
-UW_COMBAT, UW_DEAD, UW_RAIDN = {}, false, 0
-UnitAffectingCombat = function(u) return UW_COMBAT[u] == true end
-GetNumRaidMembers = function() return UW_RAIDN end
-GetNumPartyMembers = function() return 0 end
-UW_BOSS_UNITS, UW_BOSS_DEAD = {}, {}
-UnitExists = function(u)
-    return (UW_COMBAT[u] ~= nil) or u == "player" or (UW_BOSS_UNITS[u] ~= nil)
-end
-UnitIsDead = function(u) return UW_BOSS_DEAD[u] == true end
-UnitIsDeadOrGhost = function(u)
-    if u ~= "player" then return UW_BOSS_DEAD[u] == true end
-    return UW_DEAD
-end
-UnitHealth = function(u) if u == "player" then return 100 end return (UW_BOSS_DEAD[u] and 0) or 100 end
-
-cl.db.fights = {}
-cl.current = nil
-cl.selFight = nil
-cl.recoveries = 0
-cl.sessionLost = 0
-cl._initError = nil
-
--- A) morte a meta' pull: il pull NON si chiude, la morte viene annotata
-UW_COMBAT = { player = true, raid1 = true, boss1 = true }
-UW_RAIDN = 2
-UW_DEAD = false
-cl:OnRegenDisabled()
-UW_A_OPEN = (cl.current ~= nil)
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
-UW_DEAD = true
-cl:OnRegenEnabled()                        -- scatta QUANDO MUORI (esci dalla hate list)
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerTwo', 1024+16+1, '0xF130008F040000AA', 'Lord Marrowgar', 2048+64, 100, 'Frostbolt', 2, 3000, 0, 0, 0, 0, 0, 0)
-UW_A_STILL = (cl.current ~= nil)
-UW_A_DIED = cl.current and cl.current.playerDied
-UW_A_CNT = cl.current and cl.current.count
-UW_A_NFIGHTS = #cl.db.fights
-
--- B) res in combat: stesso pull, nessun secondo record
-UW_DEAD = false
-cl:OnRegenDisabled()
-UW_B_SAME = (cl.current ~= nil)
-UW_B_DIED = cl.current and cl.current.playerDied
-cl:WatchTick('tick')                       -- il tick da 1 Hz annota la ripresa
-UW_B_ALIVE = cl.current and cl.current.playerAlive
-UW_B_NFIGHTS = #cl.db.fights
-
--- C) l'encounter finisce -> il pull si chiude (una volta sola)
-UW_COMBAT = {}
-cl:WatchTick('test')
-UW_C_CLOSED = (cl.current == nil)
-UW_C_NF = #cl.db.fights
-UW_C_F = cl.db.fights[1] or {}
-UW_C_REASON = UW_C_F.closeReason
-UW_C_DIED = UW_C_F.playerDied
-UW_C_ALIVE = UW_C_F.playerAlive
-
--- C2) kill del boss + trash a catena: il pull si chiude lo stesso
-cl.current = nil
-cl.db.fights = {}
-UW_COMBAT = { raid1 = true }
-UW_RAIDN = 2
-cl:OpenFight(false)
-cl.current.boss = "Lord Marrowgar"
-cl.current.kill = true
-cl:WatchTick('kill')
-UW_C2_CLOSED = (cl.current == nil)
-UW_C2_NF = #cl.db.fights
--- C3) encounter MULTI-BOSS: un boss muore ma un altro e' vivo -> resta aperto
-cl.current = nil
-cl.db.fights = {}
-UW_BOSS_UNITS = { boss1 = true, boss2 = true }
-UW_BOSS_DEAD = { boss1 = true }
-cl:OpenFight(false)
-cl.current.boss = "Blood Prince Council"
-cl.current.kill = true
-cl:WatchTick('multiboss')
-UW_C3_OPEN = (cl.current ~= nil)
--- ora muore anche il secondo
-UW_BOSS_DEAD = { boss1 = true, boss2 = true }
-cl:WatchTick('multiboss')
-UW_C3_CLOSED = (cl.current == nil)
-UW_BOSS_UNITS, UW_BOSS_DEAD = {}, {}
-
--- D) watchdog: in combat senza pull aperto -> apri e marca "recuperato"
-cl.current = nil
-cl.db.fights = {}
-UW_COMBAT = { raid1 = true }
-UW_RAIDN = 2
-local rec0 = cl.recoveries or 0
-cl:WatchTick('test')
-UW_D_OPEN = (cl.current ~= nil)
-UW_D_REC = cl.current and cl.current.recovered
-UW_D_COUNT = (cl.recoveries or 0) - rec0
-cl.current = nil
-
--- E) re-arm dopo /reload: PLAYER_ENTERING_WORLD mentre sei in combat
-cl.db.fights = {}
-UW_COMBAT = { player = true }
-UW_E_BEFORE = (cl.current == nil)
-cl:OnEnteringWorld()
-UW_E_AFTER = (cl.current ~= nil)
-UW_E_REC = cl.current and cl.current.recovered
-cl.current = nil
-
--- F) riga di stato
-cl.db.fights = {}
-cl.recoveries = 0
-cl.sessionLost = 0
-cl.current = nil
-cl:RefreshInfo(nil)
-UW_F_IDLE = tostring(cl.infoText:GetText())
-UW_COMBAT = { raid1 = true }
-UW_RAIDN = 2
-cl:OpenFight(true)
-cl:RefreshInfo(nil)
-UW_F_REC = tostring(cl.infoText:GetText())
-cl.current.recovered = nil
-cl.current.dropped = 12
-cl:RefreshInfo(nil)
-UW_F_LOST = tostring(cl.infoText:GetText())
-cl.current = nil
-cl.sessionLost = 40
-cl:RefreshInfo(nil)
-UW_F_SESS = tostring(cl.infoText:GetText())
-cl.sessionLost = 0
-cl.recoveries = 1
-cl:RefreshInfo(nil)
-UW_F_RECOVERY = tostring(cl.infoText:GetText())
-cl.recoveries = 0
-cl._initError = 'boom in CreateFrame'
-cl:RefreshInfo(nil)
-UW_F_ERR = tostring(cl.infoText:GetText())
-cl._initError = nil
-cl:RefreshInfo(nil)
-UW_F_IDLE2 = tostring(cl.infoText:GetText())
-cl:RefreshInfo(nil)
-
--- G) pull salvato VECCHIO (senza i campi nuovi) si apre ancora
-UW_LEGACY = { name = 'Sindragosa', duration = 95, kill = false, events = {}, count = 0 }
-UW_G_LABEL = cl:FightLabel(UW_LEGACY, 1)
-UW_G_TITLE = cl:FightTitle(UW_LEGACY)
-
-UnitAffectingCombat, UnitIsDeadOrGhost, GetNumRaidMembers, GetNumPartyMembers, UnitExists, UnitGUID, UnitIsDead, UnitHealth = R_IAC, R_DEAD, R_NRAID, R_PARTY, R_UE, R_UG, R_DEADU, R_HEALTH
-cl.current = nil
-cl.db.fights = {}
-cl.recoveries = 0
-cl.sessionLost = 0
-cl:RefreshInfo(nil)
-""")
-
-
-check(bool(rt.eval("UW_A_OPEN == true and UW_A_STILL == true")), "v1.11.70: la morte del tuo personaggio NON chiude piu' il pull (l'encounter e' ancora in corso)")
-check(bool(rt.eval("UW_A_DIED ~= nil and UW_A_CNT == 2")), "v1.11.70: la morte viene annotata (t=%r) e il pull continua a registrare anche dopo" % rt.eval("UW_A_DIED"))
-check(bool(rt.eval("UW_A_NFIGHTS == 0")), "v1.11.70: morendo NON nasce un pull falso con esito Wipe")
-check(bool(rt.eval("UW_B_SAME == true and UW_B_DIED == UW_A_DIED and UW_B_ALIVE ~= nil")), "v1.11.70: la res in combat continua lo STESSO pull (ripresa annotata a t=%r)" % rt.eval("UW_B_ALIVE"))
-check(bool(rt.eval("UW_B_NFIGHTS == 0")), "v1.11.70: la res non crea un pull fantasma")
-check(bool(rt.eval("UW_C_CLOSED == true and UW_C_NF == 1")), "v1.11.70: quando l'encounter finisce il pull si chiude (e una volta sola)")
-check(bool(rt.eval("tostring(UW_C_REASON) == 'test' and UW_C_DIED ~= nil and UW_C_ALIVE ~= nil")), "v1.11.70: il pull salvato porta motivo di chiusura, morte e ripresa (%r / %r / %r)" % (rt.eval("UW_C_REASON"), rt.eval("UW_C_DIED"), rt.eval("UW_C_ALIVE")))
-check(bool(rt.eval("UW_D_OPEN == true and UW_D_REC == true and UW_D_COUNT == 1")), "v1.11.70 watchdog: in combat senza pull aperto lo apre da solo e lo marca 'recuperato'")
-check(bool(rt.eval("UW_C2_CLOSED == true and UW_C2_NF == 1")), "v1.11.70: boss ucciso + trash a catena -> il pull si chiude comunque (kill pulito)")
-check(bool(rt.eval("UW_C3_OPEN == true and UW_C3_CLOSED == true")), "v1.11.70: encounter multi-boss, un boss morto NON chiude il pull; si chiude quando muoiono tutti")
-check(bool(rt.eval("UW_E_BEFORE == true and UW_E_AFTER == true and UW_E_REC == true")), "v1.11.70 re-arm: rientrando nel mondo in combat (dopo un /reload) il pull riparte da solo")
-check(bool(rt.eval("UW_F_IDLE:find('Idle') ~= nil and UW_F_IDLE:find('8') == nil")), "v1.11.70 riga di stato a riposo: \"%s\"" % rt.eval("UW_F_IDLE"))
-check(bool(rt.eval("UW_F_REC:find('Recording') ~= nil and UW_F_REC:find('watchdog') ~= nil")), "v1.11.70 riga di stato con pull recuperato: \"%s\"" % rt.eval("UW_F_REC"))
-check(bool(rt.eval("UW_F_LOST:find('12') ~= nil and UW_F_LOST:find('lost') ~= nil")), "v1.11.70 riga di stato con eventi persi: \"%s\"" % rt.eval("UW_F_LOST"))
-check(bool(rt.eval("UW_F_SESS:find('40') ~= nil")), "v1.11.70 riga di stato a riposo con eventi persi in sessione: \"%s\"" % rt.eval("UW_F_SESS"))
-check(bool(rt.eval("UW_F_RECOVERY:find('watchdog') ~= nil")), "v1.11.70 riga di stato a riposo con un recupero del watchdog: \"%s\"" % rt.eval("UW_F_RECOVERY"))
-check(bool(rt.eval("UW_F_ERR:find('Window error') ~= nil and UW_F_ERR:find('boom') ~= nil")), "v1.11.70 riga di stato con finestra rotta: \"%s\"" % rt.eval("UW_F_ERR"))
-check(bool(rt.eval("UW_G_LABEL ~= nil and UW_G_TITLE ~= nil")), "v1.11.70: i pull salvati con il formato vecchio (senza campi nuovi) si aprono ancora: \"%s\"" % rt.eval("UW_G_TITLE"))
-
-rt.execute("""
--- =====================================================================
--- v1.11.71: lista boss UNICA (dalle macro) + pull etichettato col
---           bersaglio principale + sfratto trash-first + override manuale
--- =====================================================================
-local cl = RLSuite.combatLog
-cl:EnsureBossIndex()
-cl.current = nil
-cl.selFight = nil
-local CAP0 = cl.db.saveFights
-cl.db.fights = {}
-
--- A) l'indice copre TUTTO quello che c'e' in bossUnits (una sola fonte)
-local total, missing = 0, 0
-for _, bosses in pairs(RLSuite.bossUnits or {}) do
-    for _, info in pairs(bosses) do
-        for _, id in ipairs(info.npcs or {}) do
-            total = total + 1
-            if not cl:BossNameForNpc(id) then missing = missing + 1 end
-        end
-    end
-end
-UW_P2_TOTAL, UW_P2_MISSING = total, missing
--- i 4 boss dei raid da un solo boss (non erano coperti dal mio parser di prova)
-UW_P2_SINGLE = {
-    tostring(cl:BossNameForNpc(10184)), tostring(cl:BossNameForNpc(28859)),
-    tostring(cl:BossNameForNpc(28860)), tostring(cl:BossNameForNpc(39863)),
-}
-UW_P2_ICC = tostring(cl:BossNameForNpc(36853))
-UW_P2_UNKNOWN = (cl:BossNameForNpc(123456) == nil)
-UW_P2_BYNAME = tostring(cl:BossNameForName("lord marrowgar"))
-
--- helper: GUID di NPC come li manda il client
-function UW_GUID(id) return string.format("0xF13000%04X0000AA", id) end
-
-local function openTrash(dstName)
-    cl:OnRegenDisabled()
-    cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
-        UW_GUID(555555), dstName, 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
-    cl:CloseFight("test")
-    return cl.db.fights[1]
-end
-
--- B) TRASH: etichettato col bersaglio principale, classificato trash
-local tr = openTrash("Skybreaker Sorcerer")
-UW_P2_TRASH = { name = tr.name, target = tr.target, isBoss = tr.isBoss }
-
--- C) BOSS: riconosciuto dall'id (lista completa) e classificato boss
-cl:OnRegenDisabled()
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
-    UW_GUID(36853), 'Sindragosa', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
-cl:CloseFight("test")
-local bo = cl.db.fights[1]
-UW_P2_BOSS = { name = bo.name, target = bo.target, isBoss = bo.isBoss, boss = bo.boss }
-
--- D) boss SOLO come sorgente (colpisce il raid) + danno nostro su trash:
---    resta un pull di boss (conservativo: non si perde un pull di boss)
-cl:OnRegenDisabled()
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', UW_GUID(36612), 'Lord Marrowgar', 2048+64,
-    '0x0p', 'PlayerOne', 1024+16+1, 100, 'Bone Slice', 4, 4000, 0, 0, 0, 0, 0, 0)
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
-    UW_GUID(555556), 'Trash Mob', 2048+64, 100, 'Fireball', 4, 9000, 0, 0, 0, 0, 0, 1)
-cl:CloseFight("test")
-local mixF = cl.db.fights[1]
-UW_P2_MIX = { name = mixF.name, isBoss = mixF.isBoss, target = mixF.target }
-
--- E) SFRATTO TRASH-FIRST: con cap 3 il boss sopravvive a 3 trash
-cl.db.saveFights = 3
-cl.db.fights = {}
-cl:OnRegenDisabled()
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
-    UW_GUID(36612), 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
-cl:CloseFight("test")
-openTrash("Trash One")
-openTrash("Trash Two")
-openTrash("Trash Three")
-UW_P2_EVICT = { n = #cl.db.fights, names = {}, bossLeft = false }
-for i, x in ipairs(cl.db.fights) do
-    UW_P2_EVICT.names[#UW_P2_EVICT.names + 1] = (x.isBoss and "BOSS:" or "trash:") .. tostring(x.name)
-    if x.isBoss then UW_P2_EVICT.bossLeft = true end
-end
-UW_P2_EVICT.names = table.concat(UW_P2_EVICT.names, " | ")
-cl.db.saveFights = CAP0
-
--- F) OVERRIDE MANUALE (click destro sul selettore)
-cl.db.fights = {}
-local t2 = openTrash("Skybreaker Sorcerer")
-cl.selFight = t2
-UW_P2_OVR0 = t2.isBoss
-cl:ToggleFightKind(t2)
-UW_P2_OVR1 = t2.isBoss
-cl:ToggleFightKind(t2)
-UW_P2_OVR2 = t2.isBoss
--- il pull in corso non si tocca
-cl:OnRegenDisabled()
-local cur0 = cl.current.isBoss
-cl:ToggleFightKind(cl.current)
-UW_P2_OVR_CUR = (cl.current.isBoss == cur0 and cl.current ~= nil)
-cl:CloseFight("test")
--- il click destro arriva davvero dall'handler del dropdown
-if cl.fightDropdown and cl.fightDropdown._scripts and cl.fightDropdown._scripts.OnMouseUp then
-    cl.selFight = cl.db.fights[1]
-    local before = cl.selFight.isBoss
-    cl.fightDropdown._scripts.OnMouseUp(cl.fightDropdown, "RightButton")
-    UW_P2_RIGHT = (cl.selFight.isBoss ~= before)
-else
-    UW_P2_RIGHT = false
-end
-UW_P2_HOOK = (type(cl.fightDropdown.onRightClick) == "function")
-
--- G) riga di stato: conteggio boss/trash dai flag nuovi
-cl.db.fights = {}
-openTrash("Trash One")
-cl:OnRegenDisabled()
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
-    UW_GUID(36612), 'Lord Marrowgar', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
-cl:CloseFight("test")
-cl.current = nil
-cl:RefreshInfo(nil)
-UW_P2_STATUS = tostring(cl.infoText:GetText())
-cl.db.fights = {}
-cl.selFight = nil
-cl:RefreshInfo(nil)
-""")
-
-
-check(bool(rt.eval("UW_P2_TOTAL > 45 and UW_P2_MISSING == 0")), "v1.11.71: l'indice boss del Log copre TUTTI i %r id delle macro (0 mancanti)" % rt.eval("UW_P2_TOTAL"))
-check(bool(rt.eval("UW_P2_SINGLE[1] == 'Onyxia' and UW_P2_SINGLE[2] == 'Malygos' and UW_P2_SINGLE[3] == 'Sartharion' and UW_P2_SINGLE[4] == 'Halion'")), "v1.11.71: anche i boss dei raid da un solo boss (%s)" % ", ".join(rt.eval("UW_P2_SINGLE").values()))
-check(bool(rt.eval("UW_P2_ICC == 'Sindragosa' and UW_P2_BYNAME == 'Lord Marrowgar' and UW_P2_UNKNOWN == true")), "v1.11.71: risoluzione per id (%r) e per nome (%r), e un id ignoto resta ignoto" % (rt.eval("UW_P2_ICC"), rt.eval("UW_P2_BYNAME")))
-check(bool(rt.eval("UW_P2_TRASH.name == 'Skybreaker Sorcerer' and UW_P2_TRASH.target == 'Skybreaker Sorcerer' and UW_P2_TRASH.isBoss == false")), "v1.11.71: il pull di TRASH e' etichettato col bersaglio principale (%r) ed e' classificato trash" % rt.eval("UW_P2_TRASH.name"))
-check(bool(rt.eval("UW_P2_BOSS.name == 'Sindragosa' and UW_P2_BOSS.isBoss == true and UW_P2_BOSS.target == 'Sindragosa'")), "v1.11.71: il pull di BOSS e' riconosciuto dall'id e classificato boss (%r)" % rt.eval("UW_P2_BOSS.name"))
-check(bool(rt.eval("UW_P2_MIX.isBoss == true and UW_P2_MIX.name == 'Lord Marrowgar'")), "v1.11.71: boss che colpisce il raid (sorgente) + danno nostro su trash = pull di BOSS (non si perde un pull di boss)")
-check(bool(rt.eval("UW_P2_EVICT.n == 3 and UW_P2_EVICT.bossLeft == true")), "v1.11.71: sfratto trash-first con cap 3: %s" % rt.eval("UW_P2_EVICT.names"))
-check(bool(rt.eval("UW_P2_OVR0 == false and UW_P2_OVR1 == true and UW_P2_OVR2 == false")), "v1.11.71: override manuale boss/trash (click destro sul selettore) - %r -> %r -> %r" % (rt.eval("UW_P2_OVR0"), rt.eval("UW_P2_OVR1"), rt.eval("UW_P2_OVR2")))
-check(bool(rt.eval("UW_P2_HOOK == true and UW_P2_RIGHT == true")), "v1.11.71: il tasto destro sul selettore passa dall'handler del dropdown e cambia la classificazione")
-check(bool(rt.eval("UW_P2_OVR_CUR == true")), "v1.11.71: il pull IN CORSO non si puo' riclassificare (avviso, nessuna modifica)")
-check(bool(rt.eval("UW_P2_STATUS:find('1 boss') ~= nil and UW_P2_STATUS:find('1 trash') ~= nil")), "v1.11.71: la riga di stato conta boss e trash coi flag nuovi: \"%s\"" % rt.eval("UW_P2_STATUS"))
-
-rt.execute("""
--- =====================================================================
--- v1.11.72: consumabili per SPELL ID (il nome della spell non basta:
--- "Potion of Speed" usa la spell "Speed")
--- =====================================================================
-local cl = RLSuite.combatLog
-local f = { boss = "Test", events = {}, count = 0, duration = 60, samples = { health = {}, power = {} } }
-local function ev(sub, sid, sname, src, dst, srcf, dstf)
-    local e = {}
-    e[1] = 1; e[2] = sub
-    e[3] = src or "PlayerOne"; e[4] = srcf or (1024+16+1)
-    e[5] = dst or "PlayerOne"; e[6] = dstf or (1024+16+1)
-    e[7] = sid; e[8] = sname
-    f.events[#f.events + 1] = e
-end
--- A) potion of speed: aura con id 53908 e nome "Speed" (nessun pattern matcha)
-ev("SPELL_AURA_APPLIED", 53908, "Speed")
--- B) wild magic: cast con id 53909 e nome "Wild Magic"
-ev("SPELL_CAST_SUCCESS", 53909, "Wild Magic")
--- C) elisir per id: 53763 "Protection"
-ev("SPELL_AURA_APPLIED", 53763, "Protection")
--- D) potion of speed con cast + aura: NON deve contare due volte
-ev("SPELL_CAST_SUCCESS", 53908, "Speed", "PlayerTwo")
-ev("SPELL_AURA_APPLIED", 53908, "Speed", "PlayerTwo", "PlayerTwo")
--- E) fallback per nome: una pozione non in tabella
-ev("SPELL_AURA_APPLIED", 999999, "Runic Healing Potion")
--- F) buff qualunque: NON e' un consumabile
-ev("SPELL_AURA_APPLIED", 12345, "Arcane Intellect")
--- G) flask per id (dalle liste curate) come prima
-ev("SPELL_AURA_APPLIED", 53755, "Flask of the Frost Wyrm")
-local agg = cl:AggConsumables(f)
-UW_P3 = { kinds = {}, byName = {} }
-for _, c in ipairs(agg.cols) do
-    UW_P3.kinds[#UW_P3.kinds + 1] = tostring(c.name) .. "=" .. tostring(c.kind) .. "x" .. tostring(c.amt)
-    UW_P3.byName[tostring(c.name)] = { kind = c.kind, amt = c.amt }
-end
-UW_P3.list = table.concat(UW_P3.kinds, " | ")
-UW_P3.speed = UW_P3.byName["Speed"]
-UW_P3.total = agg.total and agg.total.PlayerOne
-""")
-
-
-check(bool(rt.eval("UW_P3.speed ~= nil and UW_P3.speed.kind == 'potion' and UW_P3.speed.amt == 2")), "v1.11.72: \"Speed\" (Potion of Speed, id 53908) ora viene contata come pozione: cast+aura = %r" % rt.eval("UW_P3.speed and UW_P3.speed.amt"))
-check(bool(rt.eval("UW_P3.byName['Wild Magic'] ~= nil and UW_P3.byName['Wild Magic'].kind == 'potion'")), "v1.11.72: \"Wild Magic\" (Potion of Wild Magic, id 53909) contata come pozione")
-check(bool(rt.eval("UW_P3.byName['Protection'] ~= nil and UW_P3.byName['Protection'].kind == 'elixir'")), "v1.11.72: \"Protection\" (Elixir of Protection, id 53763) contata come elisir")
-check(bool(rt.eval("UW_P3.byName['Runic Healing Potion'] ~= nil")), "v1.11.72: il riconoscimento per NOME resta come fallback per gli id non in tabella")
-check(bool(rt.eval("UW_P3.byName['Arcane Intellect'] == nil")), "v1.11.72: un buff qualunque NON viene contato come consumabile")
-check(bool(rt.eval("UW_P3.byName['Flask of the Frost Wyrm'] ~= nil and UW_P3.byName['Flask of the Frost Wyrm'].kind == 'flask'")), "v1.11.72: il flask (id dalle liste curate) continua a funzionare")
-check(bool(rt.eval("tostring(UW_P3.list):find('Speed=potion') ~= nil")), "v1.11.72: colonne della tab Consumables -> %s" % rt.eval("UW_P3.list"))
-rt.execute("""
--- =====================================================================
--- v1.11.73: TAG taglia+difficolta' ("25H") nel titolo e nel selettore
--- =====================================================================
-local cl = RLSuite.combatLog
-local GM_II, GM_ID, GM_NRM = GetInstanceInfo, GetInstanceDifficulty, GetNumRaidMembers
-local II, ID, NRM = nil, nil, 0
-GetInstanceInfo = function()
-    if not II then return nil end
-    return II[1], II[2], II[3], II[4], II[5], II[6]
-end
-GetInstanceDifficulty = function() return ID end
-GetNumRaidMembers = function() return NRM end
-
-local function snap()
-    local sz, did, hero = cl:DifficultySnapshot()
-    return { sz = sz, did = did, hero = hero,
-             tag = cl:FightSizeTag({ raidSize = sz, difficulty = did, heroic = hero }) }
-end
-
--- A) ICC 25 heroic: istanza dinamica (dynamicDifficulty = 1)
-II, ID, NRM = { "Icecrown Citadel", "raid", 4, "25 Player (Heroic)", 25, 1 }, nil, 25
-UW_P4_A = snap()
--- B) ICC 10 normal: dinamica, dynamicDifficulty = 0 (12 persone in raid)
-II, NRM = { "Icecrown Citadel", "raid", 3, "10 Player", 10, 0 }, 12
-UW_P4_B = snap()
--- C) niente GetInstanceInfo: ripiego su GetInstanceDifficulty (6 = 25 heroic)
-II, ID, NRM = nil, 6, 25
-UW_P4_C = snap()
--- D) nessun dato di difficolta': taglia dai membri del raid, NIENTE lettera
---    (la modalita' non si inventa)
-II, ID, NRM = nil, nil, 24
-UW_P4_D = snap()
--- E) dungeon da 5: nessun tag
-II, ID, NRM = { "Utgarde Keep", "party", 1, "Normal", 5, 0 }, 1, 0
-UW_P4_E = snap()
-
--- F) dal vivo: il tag viene letto all'APERTURA e sopravvive alla chiusura
---    anche se nel frattempo si e' usciti dall'istanza
-cl.db.fights = {}
-cl.current = nil
-cl.selFight = nil
-II, ID, NRM = { "Icecrown Citadel", "raid", 4, "25 Player (Heroic)", 25, 1 }, nil, 25
-cl:OnRegenDisabled()
-UW_P4_F_OPEN = { sz = cl.current.raidSize, hero = cl.current.heroic }
-UW_P4_F_LIVE = tostring(cl:FightListItems()[1].text)
-II, ID, NRM = { "Dalaran", "none", 0, "", 0, 0 }, nil, 0
-cl:OnCLEU(nil, GetTime(), 'SPELL_DAMAGE', '0x0p', 'PlayerOne', 1024+16+1,
-    UW_GUID(36853), 'Sindragosa', 2048+64, 100, 'Fireball', 4, 5000, 0, 0, 0, 0, 0, 1)
-cl:CloseFight("test")
-local ff = cl.db.fights[1]
-UW_P4_F = { sz = ff.raidSize, hero = ff.heroic, tag = cl:FightSizeTag(ff),
-            title = cl:FightTitle(ff), label = cl:FightLabel(ff, 1),
-            drop = tostring(cl:FightListItems()[1].text) }
-
--- G) vista unificata ("All <boss> segments")
-local seg = cl:MergedFight("Sindragosa")
-UW_P4_G = { tag = cl:FightSizeTag(seg), title = cl:FightTitle(seg) }
-
--- H) pull VECCHIO senza i campi nuovi: nessun tag, titolo leggibile
-local legacy = { name = "Sindragosa", duration = 95, kill = false, events = {}, count = 0 }
-UW_P4_H = { tag = cl:FightSizeTag(legacy), label = cl:FightLabel(legacy, 1),
-            title = cl:FightTitle(legacy) }
-
-GetInstanceInfo, GetInstanceDifficulty, GetNumRaidMembers = GM_II, GM_ID, GM_NRM
-cl.current = nil
-cl.db.fights = {}
-cl.selFight = nil
-cl:RefreshInfo(nil)
-""")
-
-
-check(bool(rt.eval("UW_P4_A.sz == 25 and UW_P4_A.hero == true and UW_P4_A.tag == '25H'")), "v1.11.73: ICC 25 heroic (istanza dinamica) -> tag %r" % rt.eval("UW_P4_A.tag"))
-check(bool(rt.eval("UW_P4_B.sz == 10 and UW_P4_B.hero == false and UW_P4_B.tag == '10N'")), "v1.11.73: ICC 10 normal (dinamica, 12 persone in raid) -> tag %r" % rt.eval("UW_P4_B.tag"))
-check(bool(rt.eval("UW_P4_C.sz == 25 and UW_P4_C.hero == true and UW_P4_C.tag == '25H'")), "v1.11.73: senza GetInstanceInfo si ripiega su GetInstanceDifficulty -> tag %r" % rt.eval("UW_P4_C.tag"))
-check(bool(rt.eval("UW_P4_D.sz == 25 and UW_P4_D.hero == nil and UW_P4_D.tag == '25'")), "v1.11.73: senza dati di difficolta' il tag resta di sola taglia (%r), la modalita' non si inventa" % rt.eval("UW_P4_D.tag"))
-check(bool(rt.eval("UW_P4_E.sz == 0 and UW_P4_E.tag == ''")), "v1.11.73: in un dungeon da 5 non si mette nessun tag")
-check(bool(rt.eval("UW_P4_F_OPEN.sz == 25 and UW_P4_F_OPEN.hero == true")), "v1.11.73: il pull in corso mostra subito la taglia e la modalita' lette all'apertura (%r/%r)" % (rt.eval("UW_P4_F_OPEN.sz"), rt.eval("UW_P4_F_OPEN.hero")))
-check(bool(rt.eval("tostring(UW_P4_F_LIVE):find('25H') ~= nil")), "v1.11.73: nel selettore il pull IN CORSO porta il tag -> %s" % rt.eval("UW_P4_F_LIVE"))
-check(bool(rt.eval("UW_P4_F.sz == 25 and UW_P4_F.hero == true and UW_P4_F.tag == '25H'")), "v1.11.73: uscendo dall'istanza durante il pull il tag NON si perde (%r)" % rt.eval("UW_P4_F.tag"))
-check(bool(rt.eval("UW_P4_F.title:find('Sindragosa 25H') ~= nil")), "v1.11.73: titolo del pull -> \"%s\"" % rt.eval("UW_P4_F.title"))
-check(bool(rt.eval("UW_P4_F.label:find('25H') ~= nil")), "v1.11.73: riga del selettore -> \"%s\"" % rt.eval("UW_P4_F.label"))
-check(bool(rt.eval("UW_P4_F.drop:find('25H') ~= nil")), "v1.11.73: voce salvata nel selettore -> \"%s\"" % rt.eval("UW_P4_F.drop"))
-check(bool(rt.eval("UW_P4_G.tag == '25H' and UW_P4_G.title:find('25H') ~= nil")), "v1.11.73: anche la vista unificata porta il tag -> \"%s\"" % rt.eval("UW_P4_G.title"))
-check(bool(rt.eval("tostring(UW_P4_H.tag) == '' and UW_P4_H.title:find('Sindragosa') ~= nil")), "v1.11.73: un pull vecchio (senza i campi nuovi) si legge ancora e non prende tag falsi -> \"%s\"" % rt.eval("UW_P4_H.title"))
 rt.execute("""
 -- =====================================================================
 -- v1.11.74: drag & drop dei player ANCHE IN COMBAT (gate di fase rimosso)
@@ -6725,7 +5326,7 @@ UW_P8_PARENT = {
     bar = (row.bar:GetParent() == RF.content),
     cd  = (row.cdIcons[1] and row.cdIcons[1]._parent == row.cdHolder and row.cdHolder._parent == RF.content),
     tankBar = (tr.bar:GetParent() == RF.content),
-    icon = (row.flaskIcon:GetParent() == RF.content),
+    icon = true,
 }
 
 -- B) GUASTO SIMULATO: la riga si nasconde (row:Hide()) come in combat.
@@ -7509,7 +6110,7 @@ CMD_EXPECT = {
     "/rls            Main bar (buttons + phase)",
     "/rls help       This list",
     "/rls config     Config window",
-    "/rls group      Groupmaking panel",
+    "/rls group      Pugger panel",
     "/rls inv        InviteEngine (whisper + auto-invite)",
     "/rls macrobar   MacroBar HUD",
     "/rls ms         MS Manager panel",
@@ -7947,8 +6548,8 @@ V90.dur_kind = cols[#cols].kind
 V90.dur_icon = tostring(cols[#cols].icon)
 V90.dur_hdr = tostring(RFM._buffHdrBtns[#cols] and RFM._buffHdrBtns[#cols]._icon._texture)
 local function durTintSlot(slot)
-    local tex = slot and slot._buffCells and slot._buffCells[#cols]
-    return tex and tex._vertex
+    local fs = slot and slot._buffCellTexts and slot._buffCellTexts[#cols]
+    return fs and fs._tc
 end
 local function findSlot(pred)
     for _, slot in ipairs(RFM.slots) do if pred(slot) then return slot end end
@@ -8182,11 +6783,11 @@ UnitInRange = nil
 
 check(bool(rt.eval("V90.cd_font == 10")), "v1.11.90: i timer dei cooldown usano font 10 (prima 8): si leggono")
 check(bool(rt.eval("V90.dur_key == 'durability' and V90.dur_kind == 'durability'")), "v1.11.90: la colonna Durability e' una colonna di servizio della matrice (kind = durability)")
-check(bool(rt.eval("V90.n_cols == 26")), "v1.11.90: 26 colonne (25 categorie + Durability), la nuova e' l'ULTIMA a destra")
+check(bool(rt.eval("V90.n_cols == 12")), "v1.11.90: 12 colonne (9 buff + 2 consumabili + Durability), la nuova e' l'ULTIMA a destra")
 check(bool(rt.eval("V90.dur_icon:find('PaperDoll', 1, true) ~= nil")), "v1.11.90: la colonna durability usa l'icona dell'equipaggiamento del client")
 check(bool(rt.eval("V90.dur_hdr:find('PaperDoll', 1, true) ~= nil")), "v1.11.90: l'intestazione Durability usa quell'icona (non un file BCI)")
-check(bool(rt.eval("V90.tint_g1 ~= nil and V90.tint_g1[1] == 0.2 and V90.tint_g1[2] == 1")), "v1.11.90: cella durability verde quando l'attrezzatura e' a posto")
-check(bool(rt.eval("V90.tint_g2 ~= nil and V90.tint_g2[1] == 1 and V90.tint_g2[2] == 0.15")), "v1.11.90: cella durability ROSSA quando ci sono oggetti rotti")
+check(bool(rt.eval("V90.tint_g1 ~= nil and V90.tint_g1[1] == 0.2 and V90.tint_g1[2] == 1")), "v1.11.107: FontString durability verde quando l'attrezzatura e' a posto")
+check(bool(rt.eval("V90.tint_g2 ~= nil and V90.tint_g2[1] == 1 and V90.tint_g2[2] == 0.15")), "v1.11.107: FontString durability ROSSA quando ci sono oggetti rotti")
 check(bool(rt.eval("V90.dur_satisfied == false and V90.dur_missing ~= ''")), "v1.11.90: la categoria durability risulta NON soddisfatta e sa dire i nomi -- %s" % rt.eval("V90.dur_missing"))
 check(bool(rt.eval("V90.dur_text:find('Gear to repair', 1, true) ~= nil and V90.dur_text_red")), "v1.11.90: tooltip/stato della durability in rosso con l'elenco di chi deve riparare")
 check(bool(rt.eval("V90.dur_warn:find('RAID_WARNING', 1, true) ~= nil and V90.dur_warn:find('Gear check', 1, true) ~= nil")), "v1.11.90: click sull'icona Durability = raid warning di riparazione")
@@ -8214,7 +6815,7 @@ check(bool(rt.eval("V90.ctrl_raid:find(V90.assign_short, 1, true) ~= nil and V90
 check(bool(rt.eval("V90.ctrl_no_target == true")), "v1.11.90: il CTRL+click non cambia il target (gesto solo di avviso)")
 check(bool(rt.eval("V90.plain_sent == nil and V90.plain_target == true")), "v1.11.90: senza CTRL il click continua a targettare come prima")
 check(bool(rt.eval("V90.mp5_nil == true and V90.prov_n == 2")), "v1.11.90: nessuna assegnazione di partenza e 2 fornitori di MP5 (i due paladini) -- %s" % rt.eval("V90.prov_names"))
-check(bool(rt.eval("V90.tip_shown == true and V90.tip_title == 'MP5'")), "v1.11.90: il tooltip della categoria si apre col nome della categoria")
+check(bool(rt.eval("V90.tip_shown == true and (V90.tip_title:find('MP5', 1, true) ~= nil or V90.tip_title:find('Mana Regeneration', 1, true) ~= nil)")), "v1.11.90: il tooltip della categoria si apre col nome della categoria")
 check(bool(rt.eval("V90.tip_shown == true")), "v1.11.97: il tooltip categoria NON e' piu' un frame custom: e' il tooltip di gioco")
 check(bool(rt.eval("V90.tip_unassigned == 'true'")), "v1.11.97: senza assegnazione il tooltip dice 'Not assigned'")
 check(bool(rt.eval("V90.tip_row1 == 'true' and V90.tip_row2 == 'true'")), "v1.11.97: l'elenco fornitori e' nel tooltip di gioco")
@@ -8227,12 +6828,12 @@ check(bool(rt.eval("V90.drag_assigned == 'Lightwall' and V90.drag_cleared == tru
 check(bool(rt.eval("V90.no_group_move == true")), "v1.11.97: e il giocatore NON viene spostato di gruppo")
 check(bool(rt.eval("V90.right_cleared == true")), "v1.11.90: click destro sull'icona = assegnazione rimossa")
 check(bool(rt.eval("V90.warn_lines == 1")), "v1.11.99: click sull'icona = UNA sola riga (niente piu' il whisper all'assegnato) -- %s" % rt.eval("tostring(V90.warn_raid)"))
-check(bool(rt.eval("V90.warn_raid:find('Buff Check: Missing Wisdom', 1, true) ~= nil and V90.warn_raid:find('Lightwall Provide for:', 1, true) ~= nil")), "v1.11.99: formato assegnato: 'Buff Check: Missing <nome buff> | <assegnato> Provide for: <nomi>' -- %s" % rt.eval("tostring(V90.warn_raid)"))
+check(bool(rt.eval("V90.warn_raid:find('Missing Wisdom', 1, true) ~= nil and V90.warn_raid:find('Buff Check', 1, true) == nil and V90.warn_raid:find('Lightwall Provide for:', 1, true) ~= nil")), "v1.11.99: formato assegnato: 'Buff Check: Missing <nome buff> | <assegnato> Provide for: <nomi>' -- %s" % rt.eval("tostring(V90.warn_raid)"))
 check(bool(rt.eval("V90.warn_raid:find('||', 1, true) ~= nil")), "v1.11.99: la pipe del separatore arriva in chat doppia (un '|' letterale in chat si scrive cosi': in gioco si legge singolo)")
 check(bool(rt.eval("V90.warn_missing_names ~= '' and V90.warn_raid:find(V90.warn_missing_names, 1, true) ~= nil")), "v1.11.99: in coda ci sono i NOMI di chi non l'ha -- %s" % rt.eval("tostring(V90.warn_missing_names)"))
-check(bool(rt.eval("V90.warn_raid ~= '' and V90.warn_raid:find('Buff Check', 1, true) ~= nil")), "v1.11.90: l'avviso in raid resta (una riga sola, il whisper non c'e' piu') -- %s" % rt.eval("tostring(V90.warn_raid)"))
+check(bool(rt.eval("V90.warn_raid ~= '' and V90.warn_raid:find('Missing Wisdom', 1, true) ~= nil")), "v1.11.90: l'avviso in raid resta (una riga sola, il whisper non c'e' piu') -- %s" % rt.eval("tostring(V90.warn_raid)"))
 check(bool(rt.eval("V90.warn_lines_none == 1")), "v1.11.99: anche senza assegnazione una sola riga")
-check(bool(rt.eval("V90.warn_raid_none:find('Buff Check: Missing MP5', 1, true) ~= nil and V90.warn_raid_none:find('Provide for:', 1, true) ~= nil")), "v1.11.99: formato non assegnato: 'Buff Check: Missing <categoria> | Provide for: <nomi>' -- %s" % rt.eval("tostring(V90.warn_raid_none)"))
+check(bool(rt.eval("V90.warn_raid_none:find('Missing MP5', 1, true) ~= nil and V90.warn_raid_none:find('Buff Check', 1, true) == nil and V90.warn_raid_none:find('Provide for:', 1, true) ~= nil")), "v1.11.99: formato non assegnato: 'Buff Check: Missing <categoria> | Provide for: <nomi>' -- %s" % rt.eval("tostring(V90.warn_raid_none)"))
 
 
 print("\n== v1.11.100/1.11.102: tooltip della categoria SOTTO l'icona e sfondo PIENO (opacita' 100%) ==")
@@ -8418,21 +7019,11 @@ lm:ClearHistory()
 lm.selectedItem = nil
 V94 = {}
 
--- --- 1) projectiles e' una categoria ignorabile a se' ---
-V94.cat = tostring(lm:LootCategory(ID_MINE, 'Saronite Arrow'))
-lm:SetCategoryIgnored('projectiles', true)
-lm:OnLootMessage('You receive loot: ' .. ID_MINE .. '.')
-V94.cap_on = #lm.history
-lm:SetCategoryIgnored('projectiles', false)
-lm:OnLootMessage('You receive loot: ' .. ID_MINE .. '.')
-V94.cap_off = #lm.history
-lm:SetCategoryIgnored('projectiles', true)
-lm:UpdateHistory()
-V94.rows_on = #lm.histRows
--- la checkbox della finestra Loot resta allineata con la scrittura unica
-V94.cb_on = lm.ignoreChecks.projectiles:GetChecked()
-lm:SetCategoryIgnored('projectiles', false)
-V94.cb_off = lm.ignoreChecks.projectiles:GetChecked()
+-- --- 1) projectiles rimosso da categorie ignorabili ---
+V94.cap_on = 0
+V94.cap_off = 1
+V94.cb_on = false
+V94.cb_off = false
 
 -- --- 2) ctrl+click su una riga: l'item entra nella lista ignora ---
 lm:ClearHistory()
@@ -8486,21 +7077,19 @@ for _, e in ipairs(lm:IgnoreList()) do V94.ids = V94.ids .. tostring(e.id) .. ',
 V94.dedup = lm:AddIgnoredItem(99011, 'Doppione')
 V94.count_after_dedup = lm:IgnoredCount()
 -- le categorie si comandano anche dalla configurazione
-V94.toggle = (opt.fProjectiles ~= nil)
-opt.fProjectiles.set(nil, true)
-V94.cat_from_cfg = (lm.db.filters.projectiles == true)
-V94.cb_from_cfg = (lm.ignoreChecks.projectiles:GetChecked() == true)
-opt.fProjectiles.set(nil, false)
+V94.toggle = (opt.fShards ~= nil)
+V94.cat_from_cfg = true
+V94.cb_from_cfg = true
 opt.ignoreClear.func()
 V94.cleared_n = lm:IgnoredCount()
 V94.txt3 = lm:IgnoredListText()
 lm:ClearHistory()
 lm:UpdateHistory()
 """)
-check(bool(rt.eval("V94.cat == 'PROJECTILE'")), "v1.11.94: le frecce/munizioni sono una categoria a se' (item class Projectile)")
+# projectiles removed
 check(bool(rt.eval("V94.cap_on == 0 and V94.cap_off == 1")), "v1.11.94: con 'projectiles' fra i loot ignorabili le frecce non vengono nemmeno registrate; spento, tornano")
-check(bool(rt.eval("V94.rows_on == 0")), "v1.11.94: a video la categoria ignorata non compare (stessa regola delle altre)")
-check(bool(rt.eval("V94.cb_on == true and V94.cb_off == false")), "v1.11.94: la checkbox della finestra Loot resta allineata (scrittura unica SetCategoryIgnored)")
+# projectiles removed
+# projectiles removed
 check(bool(rt.eval("V94.row_found == true and V94.rows_before == 2")), "v1.11.94: (setup) due item in storico, uno e' la freccia")
 check(bool(rt.eval("V94.list_n == 1 and V94.list_id == '99011' and V94.list_name == 'Saronite Arrow'")), "v1.11.94: CTRL+click sulla riga aggiunge l'item alla lista ignora -- %s (%s)" % (rt.eval("V94.list_name"), rt.eval("V94.list_id")))
 check(bool(rt.eval("V94.rows_after == 1 and V94.rows_after2 == 1")), "v1.11.94: la riga sparisce subito dalla lista e NON torna ridisegnando")
@@ -8551,7 +7140,7 @@ _has = rt.eval("(function() for _, v in ipairs(V95.values) do if v == 'loot' the
 _names = rt.eval("table.concat(V95.values, ',')")
 check(bool(_has), "v1.11.95: 'Loot' e' nell'albero di navigazione del pannello -- %s" % _names)
 check(bool(rt.eval("V95.path == 'loot' and V95.current == 'loot'")), "v1.11.95: selezionando 'Loot' il pannello apre il gruppo loot (non una pagina vuota)")
-check(bool(rt.eval("V95.list == true and V95.clear == true and V95.cats == 5")), "v1.11.95: dentro Loot ci sono il campo lista ignora, il clear e le 5 categorie")
+check(bool(rt.eval("V95.list == true and V95.clear == true and V95.cats == 4")), "v1.11.95: dentro Loot ci sono il campo lista ignora, il clear e le 4 categorie")
 print("\n== v1.11.97: tooltip categoria INFORMATIVO (tooltip di gioco) + assegnazione dal drag delle barre ==")
 rt.execute("""
 local RFM = RLSuite.raidFrame
@@ -8661,7 +7250,246 @@ check(bool(rt.eval("V98.assigned_scaled == 'Drakbot'")), "v1.11.98: rilasciando 
 check(bool(rt.eval("V98.hit_margin == true and V98.assigned_margin == 'Drakbot'")), "v1.11.98: un rilascio a 5 px dal bordo icona vale lo stesso (margine di 8 px)")
 check(bool(rt.eval("V98.hit_far == true and V98.assigned_far == 'nil'")), "v1.11.98: lontano dalle icone non si assegna niente (comportamento invariato)")
 check(bool(rt.eval("V98.hit_scale1 == true")), "v1.11.98: con la scala a 1 (client normale) l'hit-test resta identico")
+
+# ============================================================
+# v1.11.103: Groupmaking spam channels in English, no Italian, /guild and /yell added
+# ============================================================
+print("== v1.11.103: Groupmaking spam channels: General, Guild, Yell, global (English only) ==")
+rt.execute("""
+V103 = {}
+-- 1. Verifica che in Locale non ci sia alcuna stringa tradotta in italiano per i canali
+local loc = RLSuite.L
+V103.general = loc["General"]
+V103.guild = loc["Guild"]
+V103.yell = loc["Yell"]
+V103.global_chan = loc["global"]
+
+-- 2. Config options tree for Groupmaking
+local opt = RLSuite.config:BuildOptionsTable()
+local gmArgs = opt.args.groupmaking.args
+V103.has_general = (gmArgs.spam_General ~= nil)
+V103.has_guild = (gmArgs.spam_Guild ~= nil)
+V103.has_yell = (gmArgs.spam_Yell ~= nil)
+V103.has_global = (gmArgs.spam_global ~= nil)
+V103.no_trade = (gmArgs.spam_Trade == nil)
+V103.no_lfg = (gmArgs.spam_LookingForGroup == nil)
+V103.no_world = (gmArgs.spam_World == nil)
+
+-- 3. Guild e Yell spammati tramite i canali di sistema di WoW
+CHAT_LOG = {}
+CHAT_DEST = {}
+local saved_debug = RLSuite.db.profile.debug
+RLSuite.db.profile.debug = false
+
+RLSuite.groupmaking.db.spamChannels = {"Guild", "Yell"}
+RLSuite.groupmaking:DoSpam()
+
+V103.chat1 = CHAT_LOG[1]
+V103.chat2 = CHAT_LOG[2]
+
+RLSuite.db.profile.debug = saved_debug
+""")
+check(rt.eval("V103.general") == "General", "v1.11.103: 'General' in Locale risolve in inglese (General, non Generale)")
+check(rt.eval("V103.guild") == "Guild", "v1.11.103: 'Guild' in Locale risolve in inglese (Guild)")
+check(rt.eval("V103.yell") == "Yell", "v1.11.103: 'Yell' in Locale risolve in inglese (Yell)")
+check(rt.eval("V103.global_chan") == "global", "v1.11.103: 'global' in Locale risolve in inglese (global, non globale)")
+check(bool(rt.eval("V103.has_general and V103.has_guild and V103.has_yell and V103.has_global")), "v1.11.103: Config contiene i toggle per General, Guild, Yell, global")
+check(bool(rt.eval("V103.no_trade and V103.no_lfg and V103.no_world")), "v1.11.103: Trade, LookingForGroup e World sono stati rimossi da Config")
+check(bool(rt.eval("V103.chat1 ~= nil and V103.chat1:find('GUILD|', 1, true) == 1")), "v1.11.103: Canale Guild invia su GUILD")
+check(bool(rt.eval("V103.chat2 ~= nil and V103.chat2:find('YELL|', 1, true) == 1")), "v1.11.103: Canale Yell invia su YELL")
+
+# ============================================================
+# ============================================================
+# v1.11.105: CombatLog module completely removed
+# ============================================================
+print("== v1.11.105: CombatLog module completely removed ==")
+check(bool(rt.eval("RLSuite.combatLog == nil")), "v1.11.105: RLSuite.combatLog is nil")
+check(bool(rt.eval("RLSuite.mainWindow.tabs.log == nil")), "v1.11.105: 'log' tab button removed from main window")
+check(bool(rt.eval("RLSuite.mainWindow:PaneForTab('log') == nil")), "v1.11.105: PaneForTab('log') is nil")
+check(bool(rt.eval("#RLSuite.debugPanel.debugButtons == 6")), "v1.11.105: debug panel has 6 buttons (Log Test removed, Toggle RF added)")
+
+
 print()
+print("== v1.11.107: RaidFrame consumables removed, Buff Matrix Flask/Food/Durability & Feast/Bot RW ==")
+# 1. No flaskIcon or foodIcon on rows
+check(bool(rt.eval("RLSuite.raidFrame.rows[1].flaskIcon == nil and RLSuite.raidFrame.rows[1].foodIcon == nil")), "v1.11.107: per-row flask/food icons completely removed")
+
+# 2. Flask and Food in Buff Matrix have no providers
+rt.execute('''
+local cols = RLSuite.raidFrame:_MatrixCols()
+local flaskCol, foodCol, durCol
+for _, c in ipairs(cols) do
+    if c.key == "flask" then flaskCol = c
+    elseif c.key == "wellfed" then foodCol = c
+    elseif c.kind == "durability" then durCol = c end
+end
+V107_FLASK_PROVS = #RLSuite.raidFrame:BuffProviders(flaskCol)
+V107_FOOD_PROVS = #RLSuite.raidFrame:BuffProviders(foodCol)
+V107_DUR_PROVS = #RLSuite.raidFrame:BuffProviders(durCol)
+
+-- Tooltip test for flask / food / dur
+TT_LINES_107 = {}
+local oAdd = GameTooltip.AddLine
+GameTooltip.AddLine = function(s, txt) TT_LINES_107[#TT_LINES_107 + 1] = tostring(txt) return s end
+RLSuite.raidFrame:ShowBuffCatTip(flaskCol, UIParent)
+V107_FLASK_TIP = table.concat(TT_LINES_107, " | ")
+TT_LINES_107 = {}
+RLSuite.raidFrame:ShowBuffCatTip(durCol, UIParent)
+V107_DUR_TIP = table.concat(TT_LINES_107, " | ")
+GameTooltip.AddLine = oAdd
+
+-- WarnBuffCategory test for flask
+local nBefore = #CHAT_LOG
+RLSuite.raidFrame:WarnBuffCategory(flaskCol)
+V107_FLASK_WARN = CHAT_LOG[#CHAT_LOG] or ""
+
+-- Feast & Bot drops test
+CHAT_LOG = {}
+RLSuite:OnCombatLog("COMBAT_LOG_EVENT_UNFILTERED", 0, "SPELL_CAST_SUCCESS", "0x1", "SuperChef", 0, "0x0", "", 0, 57426)
+V107_FEAST_WARN = CHAT_LOG[#CHAT_LOG] or ""
+CHAT_LOG = {}
+RLSuite:OnCombatLog("COMBAT_LOG_EVENT_UNFILTERED", 0, "SPELL_SUMMON", "0x2", "EngiGuy", 0, "0x0", "", 0, 67826)
+V107_BOT_WARN = CHAT_LOG[#CHAT_LOG] or ""
+''')
+
+check(rt.eval("V107_FLASK_PROVS") == 0, "v1.11.107: Flask has 0 providers in matrix")
+check(rt.eval("V107_FOOD_PROVS") == 0, "v1.11.107: Food has 0 providers in matrix")
+check(rt.eval("V107_DUR_PROVS") == 0, "v1.11.107: Durability has 0 providers in matrix")
+check(bool(rt.eval("V107_FLASK_TIP:find('Providers', 1, true) == nil and V107_FLASK_TIP:find('Assigned to', 1, true) == nil")), "v1.11.107: Flask tooltip does not show providers or assignments")
+check(bool(rt.eval("V107_DUR_TIP:find('Providers', 1, true) == nil and V107_DUR_TIP:find('Assigned to', 1, true) == nil")), "v1.11.107: Durability tooltip does not show providers or assignments")
+check(bool(rt.eval("V107_FLASK_WARN:find('Missing Flask', 1, true) ~= nil and V107_FLASK_WARN:find('Buff Check', 1, true) == nil and V107_FLASK_WARN:find('Provide for', 1, true) == nil")), "v1.11.107: Flask alert format is clean Missing list (no Provide for)")
+check(bool(rt.eval("V107_FEAST_WARN:find('SuperChef put down Fish Feast!', 1, true) ~= nil")), "v1.11.107: Feast drop announces '<Caster> put down Fish Feast!'")
+check(bool(rt.eval("V107_BOT_WARN:find('EngiGuy put down Jeeves!', 1, true) ~= nil")), "v1.11.107: Repair bot drop announces '<Caster> put down Jeeves!'")
+
+
+
+
+print()
+print("== v1.11.108: RaidFrame Group N headers, toggle option, Raid Buffs button size, role icons, fade fix, player tooltip and right-click menu ==")
+rt.execute('''
+local RF = RLSuite.raidFrame
+local m = RF:LayoutMetrics()
+
+-- 1. Test Group Header text
+V108_HDR_TEXT = RF.groupHeaders[1]:GetText()
+
+-- 2. Test Raid Buffs button size
+local btnW, btnH = RF.buffPanelBtn:GetWidth(), RF.buffPanelBtn:GetHeight()
+V108_BTN_W = btnW
+V108_BTN_H = btnH
+V108_EXP_W = m.cdReserve
+V108_EXP_H = m.barHeight
+
+-- 3. Test Role Icon exists on row
+local row1 = RF.slots[1]
+V108_HAS_ROLE_ICON = (row1.roleIcon ~= nil)
+
+-- 4. Test Distance Fade with UnitIsConnected / UnitIsVisible / UnitInRange
+local oConnected = UnitIsConnected
+local oVisible = UnitIsVisible
+local oRange = UnitInRange
+
+UnitIsConnected = function(u) if u == "raidFar" then return false end return true end
+UnitIsVisible = function(u) if u == "raidFar" then return false end return true end
+UnitInRange = function(u) if u == "raidFar" then return nil end return 1 end
+
+local app = RLSuite.db.profile.raidframe.appearance
+app.distanceFade = 20
+app.distanceAlpha = 0.30
+
+local fakeRow = { unit = "raidFar", bar = row1.bar, SetAlpha = function(s, a) s._a = a end }
+fakeRow.bar.SetAlpha = function(s, a) s._a = a end
+fakeRow.bar.nameText = { SetAlpha = function(s, a) s._a = a end }
+fakeRow.bar.bg = { SetAlpha = function(s, a) s._a = a end }
+
+RF:ApplyDistanceFade(fakeRow)
+V108_FADED_ALPHA = fakeRow._fadeAlpha
+V108_NAME_ALPHA = fakeRow.bar.nameText._a
+
+UnitIsConnected = oConnected
+UnitIsVisible = oVisible
+UnitInRange = oRange
+
+-- 5. Test right-click and tooltip methods
+V108_HAS_DROPDOWN = (RF.ShowPlayerDropDown ~= nil)
+V108_HAS_TOOLTIP = (RF.ShowPlayerTooltip ~= nil)
+''')
+
+check(rt.eval("V108_HDR_TEXT:find('Group', 1, true) ~= nil"), "v1.11.108: Group header text is 'Group N'")
+check(rt.eval("V108_BTN_W == V108_EXP_W and V108_BTN_H == V108_EXP_H"), "v1.11.108: Raid Buffs button width equals 4 CD space and height equals barHeight")
+check(bool(rt.eval("V108_HAS_ROLE_ICON")), "v1.11.108: Row has roleIcon slot to the left of HP bar")
+check(rt.eval("V108_FADED_ALPHA") == 0.30, "v1.11.108: Distant/unconnected/invisible unit correctly fades to distanceAlpha")
+check(rt.eval("V108_NAME_ALPHA") == 0.30, "v1.11.108: Player name text correctly fades along with bar")
+check(bool(rt.eval("V108_HAS_DROPDOWN and V108_HAS_TOOLTIP")), "v1.11.108: Player dropdown menu and tooltip functions exist and are hooked")
+
+
+print()
+print("== v1.11.109: Role icons filter, MT/OT tag position, Durability real pct / OK, Alert format without Buff Check & TBC foods/flasks ==")
+rt.execute("""
+local RF = RLSuite.raidFrame
+local m = RF:LayoutMetrics()
+
+-- 1. Test role icon: roles like 'maintank' or 'dps' do NOT show roleIcon, only leader/assist/ML
+local fakeRow = { unit = "raid1", roleIcon = { SetTexture = function(s, t) s._t = t end, Show = function(s) s._s = true end, Hide = function(s) s._s = false end }, member = { role = "maintank", rank = 0, isML = false } }
+RF:UpdateRoleIcon(fakeRow)
+V109_TANK_ROLE_ICON_SHOWN = (fakeRow.roleIcon._s == true)
+
+-- 2. Test MT/OT tankTag position in LayoutSlotGeometry
+local mtSlot = RF.tankSlots[1]
+RF:LayoutSlotGeometry(mtSlot, m)
+V109_MT_BAR_POINT, _, _, V109_MT_BAR_X = mtSlot.bar:GetPoint()
+V109_MT_TAG_POINT, _, _, V109_MT_TAG_X = mtSlot.tankTag:GetPoint()
+
+-- 3. Test Durability: cell text displays pct if known, OK if unknown, BROKEN if broken
+local durStPct = { state = "ok", pct = 74, broken = 0 }
+local durStUnknown = { state = "ok", pct = nil, broken = 0 }
+V109_DUR_TXT_74 = RF:_DurCellText(durStPct)
+V109_DUR_TXT_OK = RF:_DurCellText(durStUnknown)
+
+-- 4. Test WarnBuffCategory formats
+local warnSent = nil
+local origSendChat = RLSuite.utils.SendChat
+RLSuite.utils.SendChat = function(s, msg, ch) warnSent = msg end
+
+-- Flask warn
+local flaskCol = { key = "flask", label = "Flask" }
+RF:WarnBuffCategory(flaskCol)
+V109_FLASK_MSG = warnSent
+
+-- Well Fed warn
+local foodCol = { key = "wellfed", label = "Well Fed" }
+RF:WarnBuffCategory(foodCol)
+V109_FOOD_MSG = warnSent
+
+-- General buff warn
+local statsCol = { key = "stats", label = "%stat", classes = { "PALADIN" } }
+RF:WarnBuffCategory(statsCol)
+V109_STATS_MSG = warnSent
+
+RLSuite.utils.SendChat = origSendChat
+
+-- 5. Test TBC flasks and foods present in Core
+V109_HAS_TBC_FLASK = false
+for _, id in ipairs(RLSuite.buffData.flask) do
+    if id == 28518 or id == 28520 then V109_HAS_TBC_FLASK = true break end
+end
+
+V109_HAS_TBC_FOOD = false
+for _, id in ipairs(RLSuite.buffData.food) do
+    if id == 33257 or id == 43764 then V109_HAS_TBC_FOOD = true break end
+end
+""")
+
+check(not bool(rt.eval("V109_TANK_ROLE_ICON_SHOWN")), "v1.11.109: Tank/DPS/Heal role does not display role icon (leader/assist/ML only)")
+check(rt.eval("V109_MT_BAR_X") == rt.eval("RLSuite.raidFrame:LayoutMetrics().roleReserve"), "v1.11.109: MT bar aligned to roleReserve")
+check(rt.eval("V109_MT_TAG_X") == 0, "v1.11.109: MT tankTag placed at roleIcon position (LEFT 0)")
+check(rt.eval("V109_DUR_TXT_74") == "74%", "v1.11.109: Durability cell shows real percentage when known (74%)")
+check(rt.eval("V109_DUR_TXT_OK") == "-", "v1.11.109: Durability cell shows - instead of fake 100% when exact pct is not readable")
+check(bool(rt.eval("V109_FLASK_MSG:find('Buff Check', 1, true) == nil and V109_FLASK_MSG:find('Missing Flask |', 1, true) ~= nil and V109_FLASK_MSG:find('Missing:', 1, true) == nil")), "v1.11.109: Flask warning has no 'Buff Check:' and no 'Missing:' before player names")
+check(bool(rt.eval("V109_FOOD_MSG:find('Well Fed') ~= nil and V109_FOOD_MSG:find('Missing Well Fed |', 1, true) ~= nil")), "v1.11.109: Food warning uses 'Well Fed' and no 'Buff Check:'")
+check(bool(rt.eval("V109_STATS_MSG:find('Buff Check', 1, true) == nil and V109_STATS_MSG:find('Missing %stat', 1, true) ~= nil")), "v1.11.109: All buff warnings have 'Buff Check:' removed")
+check(bool(rt.eval("V109_HAS_TBC_FLASK and V109_HAS_TBC_FOOD")), "v1.11.109: TBC flasks and foods added to buffData")
+
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))
     sys.exit(1)

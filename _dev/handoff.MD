@@ -1,13 +1,68 @@
 # Handoff — RaidLeadSuite (agent → agent)
 
 Documento di passaggio per continuare il lavoro su questa repo in una nuova chat.
-Branch di lavoro corrente: `arena/01a0c461-raidleadsuite` — base `main @ 0430146`
-(che già include il merge della PR #4 della sessione precedente, branch
-`arena/01a0aa40-raidleadsuite`, 1.11.30 → 1.11.48).
+Branch di lavoro corrente: `arena/be6d8187-raidleadsuite` — base `main @ b468a85`
+(main contiene già tutto il lavoro delle sessioni precedenti fino alla **1.11.102**;
+la catena storica dei branch è `arena/01a0aa40-…` → PR #4 → `arena/01a0c461-…`).
 Questo file è committato nel branch, quindi **entra in `main` con la PR**.
 
+Stato verificato a inizio sessione (nessuna modifica al codice):
+suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
+= 1.11.102, coerente col fallback in `Core.lua`. `lupa` va installato con
+`pip install --break-system-packages lupa`. Il checkout dell'ambiente è
+*shallow* (un solo commit, `grafted`): non fare `git rebase`/`reset` su commit
+che non si vedono in `git log`.
+
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.102**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.104**.
+
+
+
+## 1.11.109 — Role icons filter, MT/OT tag alignment, Durability real % / OK, Buff Warnings cleanup & TBC consumables
+
+1. **Role Icons Filter**: rimosse le icone di ruolo di combattimento (tank, assist/mainassist, dps, heal). L'icona singola a sinistra della barra mostra SOLO lo status di gruppo: Leader, Assistant, Master Looter.
+2. **Posizione MT / OT Tag**: il tag dorato MT/OT nelle barre dei Tank è ora posizionato all'interno dello slot nello stesso identico spazio della roleIcon (a sinistra della barra HP), agganciato al frame e perfettamente allineato con le barre sottostanti.
+3. **Durability reale / 'OK'**: risolto il problema della percentuale fittizia. Il controllo sul player usa  mostrando la percentuale reale calcolata (). Per gli altri membri del raid (dove WoW 3.3.5 espone solo ), la cella mostra  invece del falso  quando non ci sono pezzi rotti, oppure  se rotti.
+4. **Buff Warnings Cleanup**:
+   - Rimosso il prefisso 'Buff Check: ' da tutti gli alert di buff in chat.
+   - Per Food e Flask: rimosso il 'Missing: ' che precedeva la lista dei nomi dei giocatori (es. ).
+   - Sostituito 'Food' con 'Well Fed' sia nei warning che come etichetta della colonna.
+   - Aggiunti tutti i Flask TBC (Fortification, Mighty Restoration, Relentless Assault, Blinding Light, Pure Death, Chromatic Wonder, Shattrath Flasks, Unstable Flasks, Classic flasks) e cibi Well Fed TBC (Spicy Crawdad, Fisherman's Feast, Blackened Sporefish, Skullfish Soup, ecc.).
+
+
+## 1.11.109 — Role icons filter, MT/OT tag alignment, Durability real % / OK, Buff Warnings cleanup & TBC consumables
+
+1. **Role Icons Filter**: rimosse le icone di ruolo di combattimento (tank, assist/mainassist, dps, heal). L icona singola a sinistra della barra mostra SOLO lo status di gruppo: Leader, Assistant, Master Looter.
+2. **Posizione MT / OT Tag**: il tag dorato MT/OT nelle barre dei Tank e ora posizionato all interno dello slot nello stesso identico spazio della roleIcon (a sinistra della barra HP), agganciato al frame e perfettamente allineato con le barre sottostanti.
+3. **Durability reale / OK**: risolto il problema della percentuale fittizia. Il controllo sul player usa UnitIsUnit(unit, player) mostrando la percentuale reale calcolata (es. 74%). Per gli altri membri del raid (dove WoW 3.3.5 espone solo GetInventoryItemBroken), la cella mostra OK invece del falso 100% quando non ci sono pezzi rotti, oppure BROKEN se rotti.
+4. **Buff Warnings Cleanup**:
+   - Rimosso il prefisso Buff Check: da tutti gli alert di buff in chat.
+   - Per Food e Flask: rimosso il Missing: che precedeva la lista dei nomi dei giocatori (es. Missing Well Fed | Nick1, Nick2).
+   - Sostituito Food con Well Fed sia nei warning che come etichetta della colonna.
+   - Aggiunti tutti i Flask TBC (Fortification, Mighty Restoration, Relentless Assault, Blinding Light, Pure Death, Chromatic Wonder, Shattrath Flasks, Unstable Flasks, Classic flasks) e cibi Well Fed TBC (Spicy Crawdad, Fisherman Feast, Blackened Sporefish, Skullfish Soup, ecc.).
+
+## 1.11.108 — RaidFrame headers, button size, role icon, distance fade & player dropdown/tooltip
+
+1. **Group Headers**: visualizzati per esteso ("Group 1".."Group 6") con opzione toggle "Show group headers" nel Config.
+2. **Raid Buffs Button**: larghezza pari allo spazio dei 4 CD (`m.cdReserve`), altezza pari alle barre player (`m.barHeight`).
+3. **Role Icon**: spazio dedicato per una singola icona a sinistra della barra HP con icone Blizzard di default (Leader, Assist, ML, Tank, Main Assist).
+4. **Distance Fade**: risolto bug opacità (supporto a `UnitIsConnected`, `UnitIsVisible`, `UnitInRange == 1/nil`, fade esteso al font del nome e a tutti gli elementi).
+5. **Player Tooltip & Right-Click Menu**: tooltip di default Blizzard (`GameTooltip:SetUnit`) al mouseover e menu a tendina contestuale Blizzard (`UnitPopup_ShowMenu`) al click destro sulla riga.
+
+## 1.11.107 — RaidFrame consumables removed, Buff Matrix clean Flask/Food/Durability & Feast/Bot Raid Warnings
+
+Changelog:
+1. **Raid Frame HP Bars**: Rimosse completamente le icone `flaskIcon` e `foodIcon` a sinistra delle barre HP del RaidFrame. Layout riallineato: le barre HP iniziano a sinistra e la larghezza di riga e target bar sono adattate.
+2. **Buff Check Matrix - Flask & Food**:
+   - Provider, assegnazioni e availability rimossi/disattivati (Flask e Food non hanno fornitori raid).
+   - Left-click sull'icona header: invia un alert pulito di soli player mancanti (`Buff Check: Missing <label> | Missing: <nomi>`).
+   - Tooltip header: mostra solo quanti e quali player mancano (senza provider ne assegnazioni).
+3. **Buff Check Matrix - Durability**:
+   - Icona della cella sostituita con FontString percentuale/stato (`100%`, `45%`, `BROKEN`, `-`), colorata in verde/giallo/rosso.
+   - Tooltip colonna pulito da provider e assegnazioni.
+4. **Feast & Repair Bot Alerts**:
+   - Riconoscimento al lancio/summon di Fish Feast, Great Feast, Bountiful Feast, Jeeves, Field Repair Bot 74A/110G, Scrap-E e MOLL-E.
+   - Annuncio immediato in RAID_WARNING: `"<Caster> put down <Object>!"`.
 
 ## COME L'UTENTE PRENDE GLI AGGIORNAMENTI (DECISIONE, 25/09)
 
@@ -34,6 +89,40 @@ scompattato in `Interface/AddOns`, quindi va generato a OGNI versione insieme a
 rsync ne' branch alternativi: tutto rifiutato. Se un giorno vuole che il solo
 `git pull` basti anche per il gioco, l'unica strada e' spostare l'addon in
 radice alla repo: chiedere prima.
+
+## 1.11.104 — CombatLog: fight volatili di sessione (soluzione definitiva ai SavedVariables da 900k righe)
+
+Causa del crash con `<eof>` a riga 878647 dei SavedVariables: il modulo CombatLog
+salvava fino a 15 pull con 3000 eventi CLEU completi nel profilo AceDB, esplodendo
+in un file su disco da quasi 900.000 righe che corrompeva il salvataggio al logout.
+
+Fix:
+- `CL.fights`: tabella **volatile di sessione**. I pull registrati, le analisi, i tab
+  e i grafici rimangono interamente funzionanti e consultabili durante tutta la
+  sessione di gioco.
+- `CL:DB()`: wrap trasparente che instrada `cl.db.fights` su `CL.fights`, tenendo
+  `raw.fights = nil` nei SavedVariables.
+- `CL:OnPlayerLogout()`: su `PLAYER_LOGOUT`, `combatlog.fights` viene esplicitamente
+  svuotato dal profilo SavedVariables prima che AceDB serializzi su disco.
+- Il file WTF su disco rimane snello (pochi KB) e non può più esplodere né corrompersi.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1251 PASS** (3 nuovi check: cl.db.fights attivo durante la sessione, profile.combatlog.fights nil al logout, fight preservati in memoria).
+
+## 1.11.103 — Groupmaking: spam channels in INGLESE puro, eliminati Trade/LFG/World, aggiunti Guild e Yell
+
+Richiesta del raid leader:
+1. Zero italiano nell'addon: qualsiasi stringa residua in italiano è stata eliminata da `Locale.lua`. Tutto inglese (`true` in AceLocale).
+2. Canali spam eliminati: `Trade` (Commercio), `LookingForGroup` (Ricerca Gruppo), `World` (Mondo).
+3. Canali spam aggiunti: `Guild` (/guild) e `Yell` (/yell).
+4. Canali spam disponibili ora in Config -> Groupmaking: `General`, `Guild`, `Yell`, `global`.
+   - `Guild` e `Yell` inviano direttamente con `SendChatMessage(msg, "GUILD")` e `SendChatMessage(msg, "YELL")`.
+   - `General` e `global` restano canali numerati con supporto per `Channel #` opzionale.
+
+### Suite
+
+`_dev/tests/rls_ace3_test.py`: **1248 PASS** (8 nuovi check: risoluzione inglese Locale, presenza toggle General/Guild/Yell/global, assenza Trade/LFG/World, invio su GUILD e YELL).
 
 Conseguenza da rispettare: nel checkout l'addon e' una **sottocartella**
 (`Release/RaidLeadSuite/`), quindi un clone dentro `Interface/AddOns/` NON e'
@@ -3659,3 +3748,30 @@ aggiornati (MT/OT sotto Raid Frame, bordi 16/16/18) · fix 1.4.4 nel blocco bord
    nessun codice di produzione le legge, le referenziano solo i test. Da
    rimuovere o da ricollegare alla ability bar verticale (che oggi usa
    `raidBuffColumns`).
+
+## v1.11.106 - Loot fixes & filters, MacroBar drag, RaidFrame fade & clean Buff Check
+
+- **LootManager**:
+  - Risolto pickup per il trade verso i player tramite `PickupContainerItem(bag, slot)` (invece di `PickupItem`).
+  - Filtro modalità di loot: ignorati gli eventi `CHAT_MSG_LOOT` se `GetLootMethod() == "group"`.
+  - Rimossa categoria `projectiles` dai filtri ignore.
+  - Filtro `shards` reso dinamico: ignora qualsiasi item non-armatura con "shard" o "Shards" nel nome.
+  - Checkbox dei filtri ignore con iniziali maiuscole (`Recipes`, `Boe`, `Gems`, `Shards`).
+- **MacroBar**:
+  - Shift-click per trascinare la barra reso sempre attivo indipendentemente dallo stato di `locked`.
+  - Impostato default di `locked` a `false`.
+- **RaidFrame**:
+  - Distance Fade fixato: l'alpha per la distanza viene propagato esplicitamente alla statusbar della vita e a tutti gli elementi visivi dello slot (`bar`, icone flask/food, tag tank, cdHolder).
+  - Aggiunto toggle per le ancore ("Toggle Anchors") nella pagina Config dedicata a Raid Frame.
+  - Buff Check: mappatura esplicita dei nomi reali delle spell per provider di tutte le classi (`RF_PROVIDER_BUFFS`), tooltip con nome categoria esteso.
+  - Pulizia colonne matrice Buff: mantenute le sole 9 colonne buff essenziali + 1 colonna durability (rimossi combat totems/auras a distanza e ridimensionata la finestra).
+
+
+- **RaidFrame - Raggruppamento e Spacing colonne BuffCheck**:
+  - Spostate le colonne Food e Flask nella matrice del Buff Check prima di Durability.
+  - Tre gruppi distinti di colonne:
+    1. BUFF (tutti e 9 i buff core: Stats, Stamina, Gift, Int, Spirit, Shadow, MP5, ATK, HP)
+    2. CONSUMABILI (Flask, Food)
+    3. DURABILITY (Durability)
+  - Aggiunto lo spacing extra (iconSpacing) unicamente tra un gruppo e l'altro (_BuffColOffset), mantenendo compatto l'interno di ciascun gruppo.
+  - Adattato sia il posizionamento delle icone header/celle sia la larghezza totale dei backdrop di riga e della strip.

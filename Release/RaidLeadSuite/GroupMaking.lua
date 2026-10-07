@@ -194,7 +194,7 @@ function GM:CreateMainWindow()
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
-    title:SetText("Group Making")
+    title:SetText("Pugger")
 
     local raidLabel = FontStr(f, "OVERLAY", 14)
     raidLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -36)
@@ -1071,17 +1071,25 @@ function GM:DoSpam()
         RLSuite.utils:SendChat(msg, "LFM")
         return
     end
-    local channels = self.db.spamChannels or {"General", "Trade"}
+    local channels = self.db.spamChannels or {"General"}
     -- Numero canale: esplicito (Config > Groupmaking > Channel #) ha la
     -- precedenza; altrimenti risoluzione automatica dal nome.
     local nums = self.db.spamChannelNums or {}
+    local sanitized = RLSuite.utils:SanitizeChat(msg)
     for _, ch in ipairs(channels) do
-        local chNum = tonumber(nums[ch])
-        if not chNum or chNum <= 0 then
-            chNum = GetChannelName(ch)
-        end
-        if chNum and chNum > 0 then
-            SendChatMessage(RLSuite.utils:SanitizeChat(msg), "CHANNEL", nil, chNum)
+        local lch = strlower(ch)
+        if lch == "guild" then
+            SendChatMessage(sanitized, "GUILD")
+        elseif lch == "yell" then
+            SendChatMessage(sanitized, "YELL")
+        else
+            local chNum = tonumber(nums[ch])
+            if not chNum or chNum <= 0 then
+                chNum = GetChannelName(ch)
+            end
+            if chNum and chNum > 0 then
+                SendChatMessage(sanitized, "CHANNEL", nil, chNum)
+            end
         end
     end
 end

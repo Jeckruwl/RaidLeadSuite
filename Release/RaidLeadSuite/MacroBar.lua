@@ -91,8 +91,6 @@ function MB:EndShiftDrag()
 end
 
 function MB:BeginShiftDrag()
-    local p = self:PhaseSettings()
-    if p and p.locked and not (RLSuite.db and RLSuite.db.profile.anchorMode) then return end
     if not self.frame then return end
     self._shiftDrag = true
     self.frame:StartMoving()
@@ -249,7 +247,7 @@ MB.phaseList = { "preraid", "preboss", "infight" }
 function MB:PhaseDefaults()
     return {
         enabled = true,
-        locked = true,
+        locked = false,
         scale = 1,
         point = "CENTER",
         relPoint = "CENTER",
@@ -1179,13 +1177,20 @@ function MB:StartPullTimer(seconds)
         RLSuite.utils:Print(L["You must be raid leader or assist to use the pull timer."])
         return
     end
-    RLSuite.utils:SendChat(string.format(L["Pull in %d seconds!"], seconds), "RAID_WARNING")
-    -- barra-timer in DBM/BigWigs se installati
-    RLSuite.utils:StartDbmTimer(seconds, "Pull", "Interface\\Icons\\Ability_Warrior_Charge")
-    -- Non-overlapping: a second click replaces the running countdown.
-    self:CancelPullTimer()
-    self.pullRemaining = seconds
-    self.pullTimer = self:ScheduleRepeatingTimer("PullTick", 1)
+    -- Esegue il comando pull nativo di DBM se disponibile
+    if SlashCmdList and SlashCmdList["DEADLYBOSSMODS"] then
+        SlashCmdList["DEADLYBOSSMODS"]("pull " .. tostring(seconds))
+    elseif SlashCmdList and SlashCmdList["DBM"] then
+        SlashCmdList["DBM"]("pull " .. tostring(seconds))
+    elseif SlashCmdList and SlashCmdList["PULL"] then
+        SlashCmdList["PULL"](tostring(seconds))
+    else
+        RLSuite.utils:SendChat(string.format(L["Pull in %d seconds!"], seconds), "RAID_WARNING")
+        RLSuite.utils:StartDbmTimer(seconds, "Pull", "Interface\\Icons\\Ability_Warrior_Charge")
+        self:CancelPullTimer()
+        self.pullRemaining = seconds
+        self.pullTimer = self:ScheduleRepeatingTimer("PullTick", 1)
+    end
 end
 
 function MB:CancelPullTimer()
@@ -1215,20 +1220,26 @@ function MB:FormatDuration(seconds)
     return s .. "s"
 end
 
--- Timer di pausa (break): annuncia in raid warning, crea una barra in
--- DBM/BigWigs e ricorda lo scadere nei minuti intermedi e nel countdown
--- finale, come lo StartPullTimer.
 function MB:StartBreakTimer(seconds)
     if not (RLSuite.IsOfficer and RLSuite:IsOfficer()) then
         RLSuite.utils:Print(L["You must be raid leader or assist to use the break timer."])
         return
     end
-    RLSuite.utils:SendChat(string.format(L["BREAK TIME - %s!"], self:FormatDuration(seconds)), "RAID_WARNING")
-    RLSuite.utils:StartDbmTimer(seconds, "Break", "Interface\\Icons\\INV_Drink_05")
-    -- Non-overlapping: a second click replaces the running countdown.
-    self:CancelBreakTimer()
-    self.breakRemaining = seconds
-    self.breakTimer = self:ScheduleRepeatingTimer("BreakTick", 1)
+    local minutes = math.ceil(seconds / 60)
+    -- Esegue il comando break nativo di DBM se disponibile
+    if SlashCmdList and SlashCmdList["DEADLYBOSSMODS"] then
+        SlashCmdList["DEADLYBOSSMODS"]("break " .. tostring(minutes))
+    elseif SlashCmdList and SlashCmdList["DBM"] then
+        SlashCmdList["DBM"]("break " .. tostring(minutes))
+    elseif SlashCmdList and SlashCmdList["BREAK"] then
+        SlashCmdList["BREAK"](tostring(minutes))
+    else
+        RLSuite.utils:SendChat(string.format(L["BREAK TIME - %s!"], self:FormatDuration(seconds)), "RAID_WARNING")
+        RLSuite.utils:StartDbmTimer(seconds, "Break", "Interface\\Icons\\INV_Drink_05")
+        self:CancelBreakTimer()
+        self.breakRemaining = seconds
+        self.breakTimer = self:ScheduleRepeatingTimer("BreakTick", 1)
+    end
 end
 
 function MB:CancelBreakTimer()

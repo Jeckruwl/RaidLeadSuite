@@ -140,16 +140,11 @@ function LM:CreateFrame()
     ignoreLabel:SetText("ignore loots:")
     self.ignoreChecks = {}
     local ignoreDefs = {
-        { key = "recipes",     label = "recipes" },
-        { key = "boe",         label = "BOE" },
-        { key = "gems",        label = "gems" },
-        { key = "shards",      label = "shards" },
-        -- Frecce/proiettili (item class "Projectile"): categoria a se', come
-        -- le altre: si ignorano in cattura e a video.
-        { key = "projectiles", label = "projectiles" },
+        { key = "recipes",     label = "Recipes" },
+        { key = "boe",         label = "BoE" },
+        { key = "gems",        label = "Gems" },
+        { key = "shards",      label = "Shards" },
     }
-    -- Passo piu' stretto (14 invece di 18) per far stare anche projectiles
-    -- nella stessa riga dentro i 500 di larghezza della finestra.
     local ix = 90
     for _, def in ipairs(ignoreDefs) do
         local cb = CreateFrame("CheckButton", "RLSuiteLootIgnore_" .. def.key, f, "UICheckButtonTemplate")
@@ -431,6 +426,7 @@ end
 
 function LM:OnLootMessage(msg)
     if self._containerLoot then return end -- loot da item in borsa: MAI tracciato
+    if GetLootMethod and GetLootMethod() == "group" then return end
     local itemLink = RLSuite.utils:GetItemLinkFromChat(msg or "")
     if not itemLink then return end
     local itemName, _, quality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemLink)
@@ -485,11 +481,8 @@ local LM_SHARD_IDS = {
     [22448] = true, [22449] = true, [22450] = true, [20725] = true,
     [14343] = true, [14344] = true,
 }
-local LM_GEM_CLASSES = { Gem = true, Gemma = true }
-local LM_RECIPE_CLASSES = { Recipe = true, Ricetta = true }
--- Frecce/munizioni ("Projectile"): item class del client, con la traduzione
--- itIT per sicurezza (stesso schema di Gem/Gemma e Recipe/Ricetta).
-local LM_PROJECTILE_CLASSES = { Projectile = true, Proiettile = true }
+local LM_GEM_CLASSES = { Gem = true }
+local LM_RECIPE_CLASSES = { Recipe = true }
 -- La lista ignora vive nei SavedVariables: un tetto la tiene sotto controllo.
 local LM_IGNORE_MAX = 500
 
@@ -524,11 +517,14 @@ function LM:LootCategory(itemLink, itemName)
         if LM_EMBLEM_IDS[id] then return "EMBLEM" end
         if LM_SHARD_IDS[id] then return "SHARD" end
     end
-    local itemClass = select(6, GetItemInfo(itemLink))
+    local name, _, _, _, _, itemClass = GetItemInfo(itemLink)
+    local checkName = itemName or name
+    if checkName and string.find(string.lower(checkName), "shard") and itemClass ~= "Armor" then
+        return "SHARD"
+    end
     if itemClass then
         if LM_GEM_CLASSES[itemClass] then return "GEM" end
         if LM_RECIPE_CLASSES[itemClass] then return "RECIPE" end
-        if LM_PROJECTILE_CLASSES[itemClass] then return "PROJECTILE" end
     end
     if self:DetectItemType(itemLink, itemName) == "PATTERN" then
         return "RECIPE"
@@ -557,7 +553,6 @@ function LM:IsCategoryIgnored(cat)
     if cat == "BOE" then return f.boe == true end
     if cat == "GEM" then return f.gems == true end
     if cat == "SHARD" then return f.shards == true end
-    if cat == "PROJECTILE" then return f.projectiles == true end
     return false
 end
 
@@ -1354,10 +1349,32 @@ function LM:ShowTradeWindow(item)
     f.pickBtn = btn
     btn:SetScript("OnClick", function()
         if TradeFrame and TradeFrame:IsShown() then
-            if item.itemLink then
+            local foundBag, foundSlot = nil, nil
+            local targetId = item.itemLink and tonumber(string.match(item.itemLink, "item:(%d+)"))
+            if GetContainerNumSlots and GetContainerItemLink then
+                for bag = 0, 4 do
+                    local slots = GetContainerNumSlots(bag) or 0
+                    for slot = 1, slots do
+                        local link = GetContainerItemLink(bag, slot)
+                        if link then
+                            local id = tonumber(string.match(link, "item:(%d+)"))
+                            if (targetId and id == targetId) or (link == item.itemLink) then
+                                foundBag, foundSlot = bag, slot
+                                break
+                            end
+                        end
+                    end
+                    if foundBag then break end
+                end
+            end
+            if foundBag and foundSlot and PickupContainerItem then
+                PickupContainerItem(foundBag, foundSlot)
+            elseif item.itemLink and PickupItem then
                 PickupItem(item.itemLink)
             end
-            ClickTradeButton(1)
+            if ClickTradeButton then
+                ClickTradeButton(1)
+            end
             self:CloseTradeWindow(f)
         else
             -- NIENTE pickup senza trade aperto: un item sul cursore trasforma

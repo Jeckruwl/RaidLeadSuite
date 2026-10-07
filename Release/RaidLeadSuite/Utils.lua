@@ -1,3 +1,23 @@
+-- 3.3.5 compatibility polyfill: SetColorTexture does not exist on WotLK 3.3.5
+-- If another addon loaded a modern/backported AceGUI that calls SetColorTexture,
+-- define it on textures so it works seamlessly without breaking.
+do
+    local testFrame = CreateFrame and CreateFrame("Frame")
+    local testTex = testFrame and testFrame.CreateTexture and testFrame:CreateTexture()
+    if testTex and not testTex.SetColorTexture then
+        local mt = getmetatable(testTex)
+        local idx = mt and mt.__index
+        if type(idx) == "table" then
+            idx.SetColorTexture = function(self, r, g, b, a)
+                self:SetTexture("Interface\\Buttons\\WHITE8x8")
+                if r then
+                    self:SetVertexColor(r, g or r, b or r, a or 1)
+                end
+            end
+        end
+    end
+end
+
 -- ============================================================
 -- RLSuite - Utils
 -- ============================================================

@@ -38,7 +38,7 @@ do
     L["  /rls            Main bar (buttons + phase)"] = true
     L["  /rls help       This list"] = true
     L["  /rls config     Config window"] = true
-    L["  /rls group      Groupmaking panel"] = true
+    L["  /rls group      Pugger panel"] = true
     L["  /rls inv        InviteEngine (whisper + auto-invite)"] = true
     L["  /rls macrobar   MacroBar HUD"] = true
     L["  /rls ms         MS Manager panel"] = true
@@ -155,71 +155,27 @@ do
 
     L["Open the trade with the winner first, then click the item icon."] = true
 
-    -- CombatLog
-    L["Spam channels"] = "Canali spam"
-    L["Channel #"] = "N° canale"
-    L["Explicit channel number; leave empty (or 0) to auto-detect by name."] = "Numero canale esplicito; lascia vuoto (o 0) per rilevarlo dal nome."
-L["General"] = "Generale"
-L["Trade"] = "Commercio"
-L["LookingForGroup"] = "Ricerca Gruppo"
-L["World"] = "Mondo"
-L["global"] = "globale"
+    -- Groupmaking spam channels
+    L["Spam channels"] = true
+    L["Channel #"] = true
+    L["Explicit channel number; leave empty (or 0) to auto-detect by name."] = true
+    L["General"] = true
+    L["Guild"] = true
+    L["Yell"] = true
+    L["global"] = true
 
-L["Debug: loot history cleared."] = "Debug: storico loot svuotato."
-L["Test MS"] = "Test MS"
-L["Debug mode is OFF."] = "Modalita' debug OFF."
-L["Debug: raid filled with %d fake players."] = "Debug: raid riempito con %d giocatori fittizi."
-L["Debug: loot spawned from %s."] = "Debug: loot generato da %s."
-L["Log Test"] = "Test log"
-L["Debug: combat log filled with %d fights."] = "Debug: combat log riempito con %d pull."
-L["Debug: %d fake whispers sent."] = "Debug: %d whisper fittizi inviati."
-L["Debug: %d fake MS whispers sent."] = "Debug: %d whisper MS fittizi inviati."
-L["Ask MS changes first (MS Manager), then click Test MS."] = "Chiedi prima gli MS change (MS Manager), poi clicca Test MS."
-L["Start the spammer first, then Whisp test sends the fake whispers."] = "Avvia prima lo spammer, poi Whisper di test invia i whisper fittizi."
-
-    L["Combat log"] = true
-    -- Riga di stato del pannello Log (v1.11.70)
-    L["Recording"] = true
-    L["Idle"] = true
-    L["events lost"] = true
-    L["recovered by watchdog"] = true
-    L["watchdog recoveries"] = true
-    L["you died at"] = true
-    L["Window error"] = true
-    L["pulls"] = true
-    L["Pull marked as %s."] = true
-    L["Close the pull first."] = true
-    L["Right-click: mark this pull as boss/trash"] = true
-    L["boss"] = true
-    L["trash"] = true
-    L["Select fight"] = true
-    L["Send report"] = true
-    L["Shift+click to wipe the saved fights."] = true
-    L["No fights recorded"] = true
-    L["[LIVE]"] = true
-    L["Live"] = true
-    L["Events"] = true
-    L["dropped"] = true
-    L["Total"] = true
-    L["By cast"] = true
-    L["By target"] = true
-    L["Spells list"] = true
-    L["Select player"] = true
-    L["Uptime"] = true
-    L["Interrupts"] = true
-    L["Dispels"] = true
-    L["Damage"] = true
-    L["Healing"] = true
-    L["Enemies"] = true
-    L["Auras"] = true
-    L["Players spells"] = true
-    L["Power"] = true
-    L["Graphs"] = true
-    L["DPS"] = true
-    L["Health"] = true
-    L["Total DPS"] = true
-    L["Step, sec."] = true
-    L["drag: zoom, click: reset, hover: values"] = true
+    -- Debug strings
+    L["Debug: loot history cleared."] = true
+    L["Test MS"] = true
+    L["Debug mode is OFF."] = true
+    L["Debug: raid filled with %d fake players."] = true
+    L["Debug: loot spawned from %s."] = true
+    L["Log Test"] = true
+    L["Debug: combat log filled with %d fights."] = true
+    L["Debug: %d fake whispers sent."] = true
+    L["Debug: %d fake MS whispers sent."] = true
+    L["Ask MS changes first (MS Manager), then click Test MS."] = true
+    L["Start the spammer first, then Whisp test sends the fake whispers."] = true
 
     -- MacroBar
     L["Macrobar is disabled in Config."] = true
@@ -326,7 +282,7 @@ L["Start the spammer first, then Whisp test sends the fake whispers."] = "Avvia 
     L["Borders:"] = true
     L["Border thickness"] = true
     L["Font size"] = true
-    L["Simulates a raid group. Macros, LFM, rolls, loot and MS changes are whispered to you. Fake loot uses the raid selected in Groupmaking."] = true
+    L["Simulates a raid group. Macros, LFM, rolls, loot and MS changes are whispered to you. Fake loot uses the raid selected in Pugger."] = true
     L["Enable debug mode"] = true
     L["Fill fake loot"] = true
     L["Bar and tab windows"] = true

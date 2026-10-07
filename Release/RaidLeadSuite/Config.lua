@@ -71,7 +71,7 @@ end
 local CATEGORIES = {
     { value = "general", text = "General" },
     { value = "modulemenu", text = "Module Menu" },
-    { value = "groupmaking", text = "Groupmaking" },
+    { value = "groupmaking", text = "Pugger" },
     { value = "macros", text = "Macros", children = {
         { value = "layout", text = "Bar Layout" },
         { value = "editor", text = "Macro Editor" },
@@ -391,27 +391,34 @@ function CFG:BuildOptionsTable()
     local groupmaking = {
         spamDesc = { type = "description", name = L["Spam channels"] .. ":", order = 1, fontSize = "medium" },
     }
-    -- Ogni canale: checkbox + campo numero canale affiancato. Numero 0 o
-    -- vuoto = risoluzione automatica da GetChannelName(nome); un numero
-    -- esplicito > 0 ha la precedenza sul nome.
-    local _gmChans = { "General", "Trade", "LookingForGroup", "World", "global" }
+    -- Canali standard WoW (Guild, Yell) e numerati (General, global).
+    -- Per i canali numerati: numero 0 o vuoto = risoluzione automatica da GetChannelName;
+    -- un numero esplicito > 0 ha la precedenza.
+    -- Per Guild e Yell il campo numero non serve perche' non sono canali custom numerati.
+    local _gmChans = { "General", "Guild", "Yell", "global" }
     for i, ch in ipairs(_gmChans) do
         local tgl = toggle(L[ch], nil, 1 + i, gmSpamGet(ch), gmSpamSet(ch))
-        tgl.width = "half"
-        groupmaking["spam_" .. ch] = tgl
-        groupmaking["spamNum_" .. ch] = numinput(L["Channel #"], L["Explicit channel number; leave empty (or 0) to auto-detect by name."], 1 + i + 0.01,
-            (function(c) return function()
-                local d = RLSuite.groupmaking and RLSuite.groupmaking.db
-                local n = d and d.spamChannelNums and tonumber(d.spamChannelNums[c])
-                return (n and n > 0) and tostring(n) or ""
-            end end)(ch),
-            (function(c) return function(_, v)
-                local d = RLSuite.groupmaking and RLSuite.groupmaking.db
-                if not d then return end
-                d.spamChannelNums = d.spamChannelNums or {}
-                local n = tonumber(v)
-                d.spamChannelNums[c] = (n and n > 0) and n or nil
-            end end)(ch))
+        local isNumbered = (ch ~= "Guild" and ch ~= "Yell")
+        if isNumbered then
+            tgl.width = "half"
+            groupmaking["spam_" .. ch] = tgl
+            groupmaking["spamNum_" .. ch] = numinput(L["Channel #"], L["Explicit channel number; leave empty (or 0) to auto-detect by name."], 1 + i + 0.01,
+                (function(c) return function()
+                    local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+                    local n = d and d.spamChannelNums and tonumber(d.spamChannelNums[c])
+                    return (n and n > 0) and tostring(n) or ""
+                end end)(ch),
+                (function(c) return function(_, v)
+                    local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+                    if not d then return end
+                    d.spamChannelNums = d.spamChannelNums or {}
+                    local n = tonumber(v)
+                    d.spamChannelNums[c] = (n and n > 0) and n or nil
+                end end)(ch))
+        else
+            tgl.width = "normal"
+            groupmaking["spam_" .. ch] = tgl
+        end
     end
 
     -- --- Macros / Bar Layout -------------------------------------
@@ -497,6 +504,9 @@ function CFG:BuildOptionsTable()
     rf.appearance.nameFontSize = rf.appearance.nameFontSize or 11
 
     local raidLayout = {
+        anchors = toggle(L["Toggle Anchors"], L["Show anchor points for dragging."], 0,
+            function() return RLSuite.db.profile.anchorMode == true end,
+            function(_, v) RLSuite:ApplyAnchorMode(v) end),
         iconSize = slider(L["Icon size"], nil, 1, 10, 24, 1,
             function() return rf.appearance.iconSize or 16 end,
             function(_, v) rf.appearance.iconSize = v; self:ApplyAll() end),
@@ -554,6 +564,9 @@ function CFG:BuildOptionsTable()
         groupHeaderFontSize = slider(L["Group header font size"], L["Font size of the group labels (Tanks, G1..G6)."], 15, 8, 16, 1,
             function() return rf.appearance.groupHeaderFontSize or 10 end,
             function(_, v) rf.appearance.groupHeaderFontSize = v; self:ApplyAll() end),
+        showGroupHeaders = toggle(L["Show group headers"], L["Show or hide the Group headers (Group 1..Group 6)."], 16,
+            function() return rf.showGroupHeaders ~= false end,
+            function(_, v) rf.showGroupHeaders = v; self:ApplyAll() end),
         matrixBackdrop = {
             name = L["Buff check backdrop"],
             desc = L["Backdrop color and transparency of the Raid Buffs matrix rows."],
@@ -639,11 +652,10 @@ function CFG:BuildOptionsTable()
                 end
             end),
         filtersHead = { type = "header", name = L["Ignore loot categories"], order = 4 },
-        fRecipes = filterToggle("recipes", L["recipes"], 5),
-        fBoe = filterToggle("boe", L["BOE"], 6),
-        fGems = filterToggle("gems", L["gems"], 7),
-        fShards = filterToggle("shards", L["shards"], 8),
-        fProjectiles = filterToggle("projectiles", L["projectiles"], 9),
+        fRecipes = filterToggle("recipes", L["Recipes"], 5),
+        fBoe = filterToggle("boe", L["BoE"], 6),
+        fGems = filterToggle("gems", L["Gems"], 7),
+        fShards = filterToggle("shards", L["Shards"], 8),
     }
 
     return {
@@ -652,7 +664,7 @@ function CFG:BuildOptionsTable()
         args = {
             general = { type = "group", name = L["General"], order = 1, args = general },
             modulemenu = { type = "group", name = L["Module Menu"], order = 2, args = moduleMenu },
-            groupmaking = { type = "group", name = L["Groupmaking"], order = 3, args = groupmaking },
+            groupmaking = { type = "group", name = L["Pugger"], order = 3, args = groupmaking },
             macros = { type = "group", name = L["Macros"], order = 4, args = macros },
             raidframe = { type = "group", name = L["Raid Frame"], order = 5, args = raidframe },
             savedraids = savedraids,
@@ -1384,7 +1396,7 @@ function CFG:RestoreMacroBar()
     end
     local mb = RLSuite.db.profile.macrobar
     mb.enabled = true
-    mb.locked = true
+    mb.locked = false
     mb.backdrop = true
     mb.showEmpty = true
     mb.mouseover = false
@@ -1448,7 +1460,6 @@ function CFG:ApplyAll()
     scale(RLSuite.groupmaking and RLSuite.groupmaking.mainFrame)
     scale(RLSuite.msManager and RLSuite.msManager.frame)
     scale(RLSuite.lootManager and RLSuite.lootManager.frame)
-    scale(RLSuite.combatLog and RLSuite.combatLog.frame)
 end
 
 function CFG:ApplyTheme(theme)
