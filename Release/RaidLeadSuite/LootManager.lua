@@ -14,8 +14,8 @@ local LM_ROW_TOP = 6      -- spazio sopra/sotto il testo dentro la riga
 local LM_ROW_GAP = 2      -- spazio tra una riga e l'altra
 local LM_ROW_MIN_H = 26   -- altezza minima (una sola riga di testo)
 local LM_FIXED_WIDTH = 460
-local LM_TABLE_HEIGHT = 152 -- viewport: cinque righe da 26px + gap e inset
-local LM_BASE_HEIGHT = 360  -- elementi fissi + tabella + una riga MS Changes
+local LM_TABLE_HEIGHT = 220 -- viewport esatto: cinque righe da max due linee
+local LM_BASE_HEIGHT = 436  -- elementi fissi + tabella + una riga MS Changes
 
 -- Non-overlapping roll/reroll countdowns (AceTimer named timers):
 -- restarting a roll cancels the previous timer instead of stacking a
@@ -101,7 +101,7 @@ function LM:CreateFrame()
     RLSuite.utils:ClampWindow(f)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -10)
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -10)
     title:SetText("Loot Manager")
     self.titleFS = title
 
@@ -127,7 +127,7 @@ function LM:CreateFrame()
     self.rarityFilter = (self.db and self.db.rarityFilter) or "all"
     self.rarityDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteLootRarityDD", 130, 20)
     self.rarityDropdown:ClearAllPoints()
-    self.rarityDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -58)
+    self.rarityDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -66)
     -- L'etichetta è legata al controllo, non a una seconda riga autonoma.
     filterFS:SetPoint("RIGHT", self.rarityDropdown, "LEFT", -8, 0)
     RLSuite.utils:SetupDropdown(self.rarityDropdown, {
@@ -147,7 +147,7 @@ function LM:CreateFrame()
     -- Checkbox "ignore loots": escludono intere categorie sia in cattura
     -- (mai registrate) sia a video (le righe gia' in storico spariscono).
     local ignoreLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    ignoreLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -42)
+    ignoreLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -50)
     ignoreLabel:SetText("ignore loots:")
     self.ignoreLabel = ignoreLabel
     self.ignoreChecks = {}
@@ -161,7 +161,7 @@ function LM:CreateFrame()
     for _, def in ipairs(ignoreDefs) do
         local cb = CreateFrame("CheckButton", "RLSuiteLootIgnore_" .. def.key, f, "UICheckButtonTemplate")
         cb:SetSize(20, 20)
-        cb:SetPoint("TOPLEFT", f, "TOPLEFT", ix, -36)
+        cb:SetPoint("TOPLEFT", f, "TOPLEFT", ix, -44)
         cb:SetChecked(self.db and self.db.filters and self.db.filters[def.key] and true or false)
         cb:SetScript("OnClick", function(btn)
             -- Un solo punto di scrittura: cosi' le stesse voci restano
@@ -869,11 +869,17 @@ function LM:UpdateHistory()
             local name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             name:SetWidth(m.itemW)
             name:SetWordWrap(true)
+            if name.SetMaxLines then name:SetMaxLines(2) end
             name:SetJustifyH("LEFT")
             name:SetJustifyV("TOP")
             name:SetText(entry.itemName or "Unknown")
             if not lineH then
-                lineH = name:GetStringHeight() or 14
+                local fontSize
+                if name.GetFont then
+                    local _
+                    _, fontSize = name:GetFont()
+                end
+                lineH = tonumber(fontSize) or 14
             end
             local q = self:EntryQuality(entry)
             if GetItemQualityColor and q and q >= 0 then
@@ -881,7 +887,7 @@ function LM:UpdateHistory()
                 name:SetTextColor(r or 1, g or 1, b or 1)
             end
             -- righe occupate dal nome con wrap (minimo una)
-            local lines = math.max(1, math.ceil((name:GetStringHeight() or lineH) / lineH))
+            local lines = math.min(2, math.max(1, math.ceil((name:GetStringHeight() or lineH) / lineH)))
             row._lines = lines
             if lines > maxLines then maxLines = lines end
             row.name = name

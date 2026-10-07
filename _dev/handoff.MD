@@ -14,7 +14,17 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.129**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.130**.
+
+## 1.11.130 — Cinque righe reali, pulsanti a filo, più spazio sotto titolo
+
+La tabella è ora alta 220px: viewport esatto per cinque righe da massimo due
+linee (40px ciascuna), quattro gap da 2px e inset verticali da 6px. I nomi item
+sono limitati a due linee e l'altezza riga usa il font size reale. Altezza base
+finestra aggiornata a 436px; solo il wrap MS Changes aggiunge altezza.
+La fila pulsanti è ancorata direttamente al frame a x=8 (nessun offset ereditato
+dal FontString). L'intero blocco sotto il titolo è stato abbassato di 8px per
+dare respiro alla riga ignore loots, senza creare spazi intermedi.
 
 ## 1.11.129 — Loot Manager fisso con altezza guidata dalle MS Changes
 

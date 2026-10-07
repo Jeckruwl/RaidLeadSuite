@@ -674,7 +674,7 @@ function MW:RegisterAllWindows()
     RLSuite.windowMins.loot = function()
         -- Dimensione gestita internamente dal Loot Manager: 460px fissi;
         -- 360px base (tabella da cinque righe), più eventuale wrap MS Changes.
-        return 460, 360
+        return 460, 436
     end
 
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
@@ -775,7 +775,7 @@ function MW:SelectTab(key)
         if key == "loot" then
             -- Ignora completamente dimensioni salvate: larghezza fissa e
             -- altezza base deterministica; il wrap MS Changes la estende.
-            pw, ph = 460, 360
+            pw, ph = 460, 436
         end
         pane:SetSize(pw, ph)
         if key == "loot" then
