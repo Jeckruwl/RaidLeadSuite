@@ -14,7 +14,15 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.121**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.122**.
+
+## 1.11.122 — Loot Manager: eliminati gli spazi verticali residui
+
+Compattata la parte alta dopo aver riportato le checkbox sulla riga del titolo:
+Loot History/rarity e l'intestazione tabella sono stati rialzati di 22px.
+Compattata la parte bassa dopo aver riportato i pulsanti su una sola riga:
+tabella e item selezionato sono stati abbassati di 30px. Rimossi quindi entrambi
+gli spazi vuoti lasciati dai layout intermedi.
 
 ## 1.11.121 — Loot Manager: rimossa colonna numero
 

@@ -121,7 +121,7 @@ function LM:CreateFrame()
     self.rarityFilter = (self.db and self.db.rarityFilter) or "all"
     self.rarityDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteLootRarityDD", 130, 20)
     self.rarityDropdown:ClearAllPoints()
-    self.rarityDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -80)
+    self.rarityDropdown:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -58)
     RLSuite.utils:SetupDropdown(self.rarityDropdown, {
         { text = "All", value = "all" },
         { text = "Poor", value = 0 },
@@ -196,8 +196,8 @@ function LM:CreateFrame()
     end)
 
     self.selBox = CreateFrame("Frame", nil, f)
-    self.selBox:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 96)
-    self.selBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 96)
+    self.selBox:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 66)
+    self.selBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 66)
     self.selBox:SetHeight(34)
     self:SkinBox(self.selBox)
 
@@ -850,7 +850,7 @@ function LM:UpdateHistory()
                 lineH = name:GetStringHeight() or 14
             end
             local q = self:EntryQuality(entry)
-            if GetItemQualityColor and q and q >= 0 then
+            if GetItemQualityColor and and q >= 0 then
                 local r, g, b = GetItemQualityColor(q)
                 name:SetTextColor(r or 1, g or 1, b or 1)
             end
@@ -1437,3 +1437,4 @@ function LM:ClearHistory()
     self:ResetButtons()
     self:UpdateHistory()
 end
+d
