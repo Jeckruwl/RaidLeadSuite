@@ -14,7 +14,13 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.123**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.124**.
+
+## 1.11.124 — Hotfix sintassi Loot Manager
+
+Corretto il controllo qualità item in LootManager: un refuso `and and` alla
+riga 853 impediva il caricamento dell'intero file Lua. Ripristinata la condizione
+corretta `GetItemQualityColor and q and q >= 0`.
 
 ## 1.11.123 — Loot Manager: MS changes aggiornate all'apertura
 
