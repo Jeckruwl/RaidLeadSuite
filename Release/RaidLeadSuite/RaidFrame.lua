@@ -939,7 +939,7 @@ function RF:LayoutSlotGeometry(slot, m)
         end
         if slot.offlineText then
             slot.offlineText:ClearAllPoints()
-            slot.offlineText:SetPoint("CENTER", slot.offlineOverlay, "CENTER", 0, 0)
+            slot.offlineText:SetPoint("RIGHT", slot.offlineOverlay, "RIGHT", -4, 0)
             local app = self.db and self.db.appearance or {}
             local fontFile = app.font or RLSuite.utils:GetUIFont()
             local flags = (app.fontOutline == false) and "" or "OUTLINE"
@@ -3947,5 +3947,3 @@ function RF:_BuffCellIcon(unit, col)
     end
     return nil
 end
-
-

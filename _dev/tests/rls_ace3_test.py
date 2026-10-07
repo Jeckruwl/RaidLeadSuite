@@ -7517,6 +7517,9 @@ if row then
     V112.offline = tostring(row.roleIcon._texture)
     V112.overlay = row.offlineOverlay:IsShown()
     V112.text = row.offlineText:IsShown() and row.offlineText._text == "OFFLINE"
+    V112.overlayAlpha = row.offlineOverlay.bg and row.offlineOverlay.bg._vertex and row.offlineOverlay.bg._vertex[4]
+    local op = row.offlineText._points[#row.offlineText._points]
+    V112.textRight = op and op[1] == "RIGHT" and op[3] == "RIGHT" and op[4] == -4
     RFM.readyCheckActive = nil
     RFM.readyCheckStatus = nil
     UnitExists, UnitIsConnected, GetReadyCheckStatus = oldExists, oldConnected, oldReady
@@ -7526,6 +7529,7 @@ check(bool(rt.eval("V112.waiting:find('ReadyCheck%-Waiting') ~= nil")), "v1.11.1
 check(bool(rt.eval("V112.notready:find('ReadyCheck%-NotReady') ~= nil")), "v1.11.112: ready check no = red X")
 check(bool(rt.eval("V112.ready:find('ReadyCheck%-Ready') ~= nil")), "v1.11.112: ready check yes = green check")
 check(bool(rt.eval("V112.offline:find('UI%-GroupLoot%-Pass%-Up') ~= nil and V112.overlay and V112.text")), "v1.11.112: offline = red pass icon plus red OFFLINE overlay")
+check(bool(rt.eval("V112.overlayAlpha == 0.32 and V112.textRight")), "v1.11.113: offline overlay alpha 0.32 and OFFLINE text right-aligned with 4px inset")
 
 if fails:
     print("RESULT: %d FAILURES: %s" % (len(fails), fails))

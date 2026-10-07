@@ -14,7 +14,13 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.112**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.113**.
+
+## 1.11.113 — Overlay offline più leggero e testo a destra
+
+L'overlay rosso OFFLINE passa da alpha 0.48 a **0.32**. La scritta bianca
+`OFFLINE` non è più centrata: è allineata al bordo destro della barra HP con
+4 px di margine interno.
 
 ## 1.11.112 — Ready Check nelle role icon + stato OFFLINE
 
