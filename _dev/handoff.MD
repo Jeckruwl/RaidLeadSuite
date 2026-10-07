@@ -14,7 +14,17 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.128**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.129**.
+
+## 1.11.129 — Loot Manager fisso con altezza guidata dalle MS Changes
+
+Loot Manager non è più ridimensionabile e ignora dimensioni salvate: larghezza
+fissa **460px**. Gli inset laterali sono scesi da 16px a 8px; la fila pulsanti
+occupa esattamente i 444px interni. La tabella ha altezza fissa **152px**, pari
+al viewport di cinque righe standard, e tutti gli elementi fissi producono
+un'altezza base di **360px**. `MS CHANGES` usa word-wrap: una riga è compresa
+nella base e soltanto le righe aggiuntive aumentano l'altezza della finestra;
+riducendo il testo, l'altezza torna automaticamente a 360px.
 
 ## 1.11.128 — Rarity threshold agganciata al dropdown
 

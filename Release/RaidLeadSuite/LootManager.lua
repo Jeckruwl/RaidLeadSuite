@@ -13,6 +13,9 @@ local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end 
 local LM_ROW_TOP = 6      -- spazio sopra/sotto il testo dentro la riga
 local LM_ROW_GAP = 2      -- spazio tra una riga e l'altra
 local LM_ROW_MIN_H = 26   -- altezza minima (una sola riga di testo)
+local LM_FIXED_WIDTH = 460
+local LM_TABLE_HEIGHT = 152 -- viewport: cinque righe da 26px + gap e inset
+local LM_BASE_HEIGHT = 360  -- elementi fissi + tabella + una riga MS Changes
 
 -- Non-overlapping roll/reroll countdowns (AceTimer named timers):
 -- restarting a roll cancels the previous timer instead of stacking a
@@ -83,12 +86,13 @@ end
 
 function LM:CreateFrame()
     local f = CreateFrame("Frame", "RLSuiteLootManager", UIParent)
-    f:SetSize(500, 500)
+    f:SetSize(LM_FIXED_WIDTH, LM_BASE_HEIGHT)
     f:SetPoint("CENTER", UIParent, "CENTER", 0, -100)
     f:SetFrameStrata("HIGH")
     -- NON trascinabile: il Loot Manager si comporta come una finestra
     -- nativa (pannello equip), posizione fissa decisa da SelectTab.
     f:SetMovable(false)
+    if f.SetResizable then f:SetResizable(false) end
     f:EnableMouse(true)
     f:Hide()
     f._noOuterBorder = true
@@ -103,9 +107,12 @@ function LM:CreateFrame()
 
     -- Il testo MS Changes vive nel blocco basso, subito prima dei comandi.
     self.preMsgText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    self.preMsgText:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 42)
-    self.preMsgText:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 42)
+    self.preMsgText:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -304)
+    self.preMsgText:SetWidth(LM_FIXED_WIDTH - 16)
+    self.preMsgText:SetHeight(14)
+    self.preMsgText:SetWordWrap(true)
     self.preMsgText:SetJustifyH("LEFT")
+    self.preMsgText:SetJustifyV("TOP")
     self.preMsgText:SetText("")
 
     local histLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -150,7 +157,7 @@ function LM:CreateFrame()
         { key = "gems",        label = "Gems" },
         { key = "shards",      label = "Shards" },
     }
-    local ix = 90
+    local ix = 82
     for _, def in ipairs(ignoreDefs) do
         local cb = CreateFrame("CheckButton", "RLSuiteLootIgnore_" .. def.key, f, "UICheckButtonTemplate")
         cb:SetSize(20, 20)
@@ -170,15 +177,16 @@ function LM:CreateFrame()
 
     -- Header sotto il titolo ignore e la sua riga di checkbox.
     local header = CreateFrame("Frame", nil, f)
-    header:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -86)
-    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, -86)
+    header:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -86)
+    header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -86)
     header:SetHeight(18)
     self.histHeader = header
     self:PaintHeader(header)
 
     self.histBox = CreateFrame("Frame", nil, f)
     self.histBox:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -2)
-    self.histBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 104)
+    self.histBox:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -2)
+    self.histBox:SetHeight(LM_TABLE_HEIGHT)
     self:SkinBox(self.histBox)
 
     self.histScroll = CreateFrame("ScrollFrame", "RLSuiteLootHistory", self.histBox, "UIPanelScrollFrameTemplate")
@@ -197,8 +205,8 @@ function LM:CreateFrame()
     end)
 
     self.selBox = CreateFrame("Frame", nil, f)
-    self.selBox:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 66)
-    self.selBox:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 66)
+    self.selBox:SetPoint("TOPLEFT", self.histBox, "BOTTOMLEFT", 0, -4)
+    self.selBox:SetPoint("TOPRIGHT", self.histBox, "BOTTOMRIGHT", 0, -4)
     self.selBox:SetHeight(34)
     self:SkinBox(self.selBox)
 
@@ -248,7 +256,7 @@ function LM:CreateFrame()
     -- pre-pone al messaggio di roll come preMessage). Utile mentre si lootano.
     self.announceMSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.announceMSBtn)
-    self.announceMSBtn:SetSize(124, 24)
+    self.announceMSBtn:SetSize(140, 24)
     self.announceMSBtn:SetPoint("LEFT", self.rerollBtn, "RIGHT", 6, 0)
     self.announceMSBtn:SetText("Announce MSCh")
     self.announceMSBtn:SetScript("OnClick", function()
@@ -362,11 +370,28 @@ function LM:TickRemaining()
     end
 end
 
+function LM:ApplyDynamicHeight()
+    if not self.frame then return end
+    -- La finestra ha larghezza fissa. Una riga MS Changes è già compresa
+    -- nell'altezza base; solo le righe aggiuntive aumentano l'altezza totale.
+    self.frame:SetWidth(LM_FIXED_WIDTH)
+    local textH = 14
+    if self.preMsgText then
+        -- Altezza temporanea ampia per misurare il word-wrap senza clipping.
+        self.preMsgText:SetHeight(1000)
+        local measured = self.preMsgText:GetStringHeight()
+        if measured and measured > textH then textH = math.ceil(measured) end
+        self.preMsgText:SetHeight(textH)
+    end
+    self.frame:SetHeight(LM_BASE_HEIGHT + (textH - 14))
+end
+
 function LM:SetPreMessage(msg)
     self.preMessage = msg or ""
     if self.preMsgText then
-        self.preMsgText:SetText(msg)
+        self.preMsgText:SetText(self.preMessage)
     end
+    self:ApplyDynamicHeight()
 end
 
 -- raidName opzionale: nil = usa il raid selezionato in Groupmaking (debug

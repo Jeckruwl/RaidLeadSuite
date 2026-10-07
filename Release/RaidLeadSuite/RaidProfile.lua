@@ -672,10 +672,9 @@ function MW:RegisterAllWindows()
         return 350, 280
     end
     RLSuite.windowMins.loot = function()
-        -- A 460px, la larghezza interna fra i margini da 16px è 428px:
-        -- esattamente la fila completa (4x70 + 124 + 4 spazi da 6).
-        -- Le colonne dello storico richiedono almeno 452px complessivi.
-        return 460, 350
+        -- Dimensione gestita internamente dal Loot Manager: 460px fissi;
+        -- 360px base (tabella da cinque righe), più eventuale wrap MS Changes.
+        return 460, 360
     end
 
     -- Aggancia trascinamento + posizione persistente alle finestre dei tab.
@@ -709,11 +708,11 @@ function MW:RegisterAllWindows()
         end
     end
 
-    -- Grip di resize per Groupmaking, MS e Loot
+    -- Grip di resize solo per Groupmaking e MS. Il Loot Manager ha larghezza
+    -- fissa e altezza calcolata dal testo MS Changes, quindi nessun grip.
     local resizable = {
         group = { "groupmaking", 420, 380, "groupmaking" },
         ms = { "ms", 320, 260, "ms" },
-        loot = { "loot", 440, 300, "loot" },
     }
     for key, cfg in pairs(resizable) do
         local pane = self:PaneForTab(key)
@@ -773,6 +772,11 @@ function MW:SelectTab(key)
         local swn, shn = (GetScreenWidth and GetScreenWidth()) or 0, (GetScreenHeight and GetScreenHeight()) or 0
         if swn > 0 and pw > swn then pw = swn if L.width and L.width > swn then L.width = swn end end
         if shn > 0 and ph > shn then ph = shn if L.height and L.height > shn then L.height = shn end end
+        if key == "loot" then
+            -- Ignora completamente dimensioni salvate: larghezza fissa e
+            -- altezza base deterministica; il wrap MS Changes la estende.
+            pw, ph = 460, 360
+        end
         pane:SetSize(pw, ph)
         if key == "loot" then
             -- Ogni apertura rilegge le MS changes correnti senza annunciarle:
