@@ -3881,7 +3881,7 @@ local histHeaderP = lm.histHeader._points[1] or {}
 local selP = lm.selBox._points[1] or {}
 local preP = lm.preMsgText._points[1] or {}
 LM_LAYOUT_117 = {
-    checksBelow = (il[5] ~= nil and ic[5] ~= nil and ic[5] < il[5]),
+    checksWithLabel = (il[5] ~= nil and ic[5] ~= nil and math.abs(ic[5] - il[5]) <= 6 and ic[4] > il[4]),
     oneButtonRow = (rr[2] == lm.rollOtherBtn and lm.announceMSBtn._points[1][2] == lm.rerollBtn),
     buttonSpan = (lm.rollMSBtn:GetWidth() + lm.rollOSBtn:GetWidth() + lm.rollOtherBtn:GetWidth()
         + lm.rerollBtn:GetWidth() + lm.announceMSBtn:GetWidth() + 24),
@@ -3893,7 +3893,7 @@ LM_LAYOUT_117 = {
 }
 """)
 check(bool(rt.eval("RLSuite.lootManager.frame._scripts['OnDragStart'] == nil")), "loot window is NOT draggable anymore (behaves like the native equip panel)")
-check(bool(rt.eval("LM_LAYOUT_117.checksBelow")), "v1.11.117: ignore category checkboxes are below the 'ignore loots' label")
+check(bool(rt.eval("LM_LAYOUT_117.checksWithLabel")), "v1.11.120: ignore category checkboxes share the 'ignore loots' row")
 check(bool(rt.eval("LM_LAYOUT_117.oneButtonRow")), "v1.11.119: all five Loot Manager buttons are on one row")
 check(bool(rt.eval("LM_LAYOUT_117.buttonSpan == LM_MINW - 32")), "v1.11.119: button row exactly fills the minimum inner width")
 check(bool(rt.eval("LM_LAYOUT_117.announceText == 'Announce MSCh'")), "v1.11.119: announce button uses the shortened label")

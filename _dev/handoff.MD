@@ -14,7 +14,12 @@ suite `_dev/tests/rls_ace3_test.py` = **1240 PASS, 0 FAIL**, versione nel `.toc`
 che non si vedono in `git log`.
 
 Contesto prodotto: addon per **raid leader** su WoW **WotLK 3.3.5** (Interface `30300`),
-target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.119**.
+target **Warmane**. Cartella addon: `RaidLeadSuite` (= nome del `.toc`). Versione: **1.11.120**.
+
+## 1.11.120 — Loot Manager: ignore loots su una riga
+
+Le checkbox Recipes/BoE/Gems/Shards sono state riportate sulla stessa riga del
+testo `ignore loots:`, lasciando invariata la riga separata Loot History/rarity.
 
 ## 1.11.119 — Loot Manager: rarity con storico e pulsanti su una riga
 

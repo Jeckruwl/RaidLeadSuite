@@ -149,11 +149,11 @@ function LM:CreateFrame()
         { key = "gems",        label = "Gems" },
         { key = "shards",      label = "Shards" },
     }
-    local ix = 16
+    local ix = 90
     for _, def in ipairs(ignoreDefs) do
         local cb = CreateFrame("CheckButton", "RLSuiteLootIgnore_" .. def.key, f, "UICheckButtonTemplate")
         cb:SetSize(20, 20)
-        cb:SetPoint("TOPLEFT", f, "TOPLEFT", ix, -54)
+        cb:SetPoint("TOPLEFT", f, "TOPLEFT", ix, -36)
         cb:SetChecked(self.db and self.db.filters and self.db.filters[def.key] and true or false)
         cb:SetScript("OnClick", function(btn)
             -- Un solo punto di scrittura: cosi' le stesse voci restano
