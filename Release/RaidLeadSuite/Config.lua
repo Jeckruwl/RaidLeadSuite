@@ -465,7 +465,8 @@ function CFG:BuildOptionsTable()
     -- Per i canali numerati: numero 0 o vuoto = risoluzione automatica da GetChannelName;
     -- un numero esplicito > 0 ha la precedenza.
     -- Per Guild e Yell il campo numero non serve perche' non sono canali custom numerati.
-    local _gmChans = { "General", "Guild", "Yell", "global" }
+    -- Ordinamento visuale richiesto nella riga: global, General, Yell, Guild.
+    local _gmChans = { "global", "General", "Yell", "Guild" }
     for i, ch in ipairs(_gmChans) do
         local tgl = toggle(L[ch], nil, 2 + i, gmSpamGet(ch), gmSpamSet(ch))
         -- Tutte le checkbox e i due campi numerici usano mezza larghezza:
