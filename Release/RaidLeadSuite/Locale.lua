@@ -238,7 +238,7 @@ do
     L["Buff headers: media/BUFFCATICONS/BCI_<0..24>.tga"] = true
     L["Raid frame not initialized yet."] = true
     L["Color of the player name on the bars."] = true
-    L["Open the raid buffs matrix panel."] = true
+    L["Open or close the standalone raid-buff matrix."] = true
     L["Main tank"] = true
     L["Main assist"] = true
     L["Cannot assign Main Tank / Main Assist while in combat."] = true
@@ -305,7 +305,6 @@ do
     L["Default window height"] = true
     L["Bar scale"] = true
     L["Button matrix (bar only)"] = true
-    L["How many columns and buttons per column to use for the bar buttons. SaveRaid is a normal button of the matrix; the phase icon (with the phase name) sits in the title bar and cycles to the next phase on click."] = true
     L["Columns"] = true
     L["Buttons per column"] = true
     L["HUD anchors (ElvUI style)"] = true

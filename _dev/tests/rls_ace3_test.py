@@ -23,6 +23,7 @@ local function newFrame(t)
     local o = setmetatable(t or {}, FrameMT)
     o._w = 0; o._h = 0; o._shown = true
     o._points = {}; o._text = ""; o._checked = false; o._scripts = {}
+    o._baseScripts = {}; o._scriptHooks = {}
     o._backdropColor = {0,0,0,1}; o._isFontString = false
     o._wordWrap = false; o._locked = false; o._highlight = false
     o._fontHeight = 14
@@ -41,8 +42,20 @@ function methods:SetWidth(w) self._w=w; return self end
 function methods:SetHeight(h) self._h=h; return self end
 function methods:GetWidth() return self._w end
 function methods:GetHeight() return self._h end
-function methods:Show() self._shown=true; return self end
-function methods:Hide() self._shown=false; return self end
+function methods:Show()
+    if not self._shown then
+        self._shown = true
+        if self._scripts and self._scripts.OnShow then self._scripts.OnShow(self) end
+    end
+    return self
+end
+function methods:Hide()
+    if self._shown then
+        self._shown = false
+        if self._scripts and self._scripts.OnHide then self._scripts.OnHide(self) end
+    end
+    return self
+end
 function methods:IsShown() return self._shown end
 function methods:IsVisible() return self._shown end
 function methods:SetParent(p) self._parent=p; return self end
@@ -66,12 +79,33 @@ function methods:UnregisterEvent(e)
     if EVENT_REG[self] then EVENT_REG[self][e] = nil end
     return self
 end
-function methods:SetScript(k, fn) self._scripts[k]=fn; return self end
+function methods:UnregisterAllEvents()
+    EVENT_REG[self] = nil
+    return self
+end
+local function refreshScript(self, k)
+    local base = self._baseScripts[k]
+    local hooks = self._scriptHooks[k]
+    if not hooks or #hooks == 0 then
+        self._scripts[k] = base
+        return
+    end
+    self._scripts[k] = function(...)
+        if base then base(...) end
+        for _, hook in ipairs(hooks) do hook(...) end
+    end
+end
+function methods:SetScript(k, fn)
+    self._baseScripts[k] = fn
+    refreshScript(self, k)
+    return self
+end
 function methods:HasScript(k) return self._scripts[k] ~= nil end
 function methods:GetScript(k) return self._scripts[k] end
 function methods:HookScript(k, fn)
-    local old = self._scripts[k]
-    self._scripts[k] = function(...) if old then old(...) end fn(...) end
+    self._scriptHooks[k] = self._scriptHooks[k] or {}
+    table.insert(self._scriptHooks[k], fn)
+    refreshScript(self, k)
     return self
 end
 function methods:SetBackdrop(b) self._backdrop=b; return self end
@@ -555,6 +589,8 @@ LIBS = [
     "Libs/LibStub/LibStub.lua",
     "Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua",
     "Libs/AceAddon-3.0/AceAddon-3.0.lua",
+    "Libs/AceComm-3.0/ChatThrottleLib.lua",
+    "Libs/AceComm-3.0/AceComm-3.0.lua",
     "Libs/AceEvent-3.0/AceEvent-3.0.lua",
     "Libs/AceDB-3.0/AceDB-3.0.lua",
     "Libs/AceConsole-3.0/AceConsole-3.0.lua",
@@ -839,7 +875,7 @@ check(rt.eval("RLSuite.config:BuildOptionsTable().args.debug.order") == 8, "Debu
 # --- 1.11.17 user-requested removals ---
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.args.scale ~= nil and RLSuite.config:BuildOptionsTable().args.general.args.font ~= nil")), "General = font + global Scale slider only")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.args.look == nil and RLSuite.config:BuildOptionsTable().args.general.args.window == nil and RLSuite.config:BuildOptionsTable().args.general.args.debug == nil")), "General sub-groups (Appearance/Window/Debug) removed")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.modulemenu.args.barScale ~= nil and RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixCols ~= nil")), "Module Menu keeps barScale + matrix controls")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.modulemenu.args.barScale ~= nil and RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixCols == nil and RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixRows == nil")), "Module Menu keeps barScale and the Raid Control matrix has no configurable row/column controls")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.modulemenu.args.height == nil and RLSuite.config:BuildOptionsTable().args.modulemenu.args.anchors == nil")), "Module Menu: 'Default window height' and 'Toggle Anchors' removed")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.groupmaking.args.scale == nil")), "Groupmaking scale slider removed")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.groupmaking.args.spamNum_General ~= nil and RLSuite.config:BuildOptionsTable().args.groupmaking.args.spamNum_global ~= nil")), "Groupmaking: every channel has a Channel # input")
@@ -1920,8 +1956,8 @@ check(bool(rt.eval("type(RLSuite.groupmaking.EnsureRLSCalendarUI) == 'function'"
 # --- empty linked-event state ---
 rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = nil")
 rt.execute("RLSuite.groupmaking:RenderLinkedEvent()")
-check(bool(rt.eval("RLSuite.groupmaking.ieCalEmptyLabel:GetText() == 'No event linked yet.'")), "empty state shows 'No event linked yet.'")
-check(bool(rt.eval("RLSuite.groupmaking.ieCalEmptyLabel:IsShown() == true")), "empty label is shown")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalTitleEdit:GetText() == '' and #RLSuite.groupmaking._autoMirrorInviteRows == 0")), "empty state clears the editable form and invite rows")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalUpdateBtn:IsEnabled() == false")), "empty state keeps Create/Update disabled")
 
 # --- linked-event renders into the editable fields ---
 rt.execute("RLSuite.groupmaking.autoinvite.linkedEvent = { title='Test Raid', description='Bring consumables', creator='Testplayer', eventType=1, weekday=1, month=9, day=12, year=2026, hour=20, minute=30, invitees={ { name='Fake1', className='Warrior', class='WARRIOR', status=2, mod='CREATOR' } } }")
@@ -1931,7 +1967,7 @@ check(bool(rt.eval("RLSuite.groupmaking.ieAutoMirrorDesc:GetText() == 'Bring con
 check(bool(rt.eval("RLSuite.groupmaking.ieCalDayEdit:GetText() == '12'")), "day field shows the event day")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalYearEdit:GetText() == '2026'")), "year field shows the event year")
 check(bool(rt.eval("RLSuite.groupmaking.ieCalHourEdit:GetText() == '20' and RLSuite.groupmaking.ieCalMinuteEdit:GetText() == '30'")), "time fields show the event time")
-check(bool(rt.eval("RLSuite.groupmaking.ieCalEmptyLabel:IsShown() == false")), "empty label is hidden")
+check(bool(rt.eval("RLSuite.groupmaking.ieCalTitleEdit:GetText() == 'Test Raid'")), "linked event replaces the empty form state")
 check(bool(rt.eval("#RLSuite.groupmaking._autoMirrorInviteRows == 1")), "mirror renders one invite row")
 
 # --- class sidebar counts attending invitees per class ---
@@ -2405,13 +2441,11 @@ check(bool(rt.eval("TANK_TBAR_NAME")) and bool(rt.eval("TANK_TBAR_VAL")), "tank 
 check(bool(rt.eval("TANK_TBAR_COL")), "tank target bar colors red for hostile targets")
 check(bool(rt.eval("TANK_TBAR_FAKE")), "debug/fake tanks leave the target bar empty (no fake-unit API queries)")
 
-# Raid Buffs matrix panel (Method style)
-check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn ~= nil and RLSuite.raidFrame.buffPanelBtn.label:GetText() == 'Raid Buffs'")), "'Raid Buffs' toggle button exists with its label")
-check(bool(rt.eval("(function() local b = RLSuite.raidFrame.buffPanelBtn; local p = b and b._points[#b._points]; local gh = RLSuite.raidFrame.groupHeaders[1]._points[#RLSuite.raidFrame.groupHeaders[1]._points]; return p ~= nil and p[1] == 'BOTTOMRIGHT' and p[3] == 'TOPLEFT' and gh ~= nil and math.abs((p[5] or 0) - (gh[5] or 0)) < 0.001 end)()")), "'Raid Buffs' button aligned like the G1 header: bottom edge on the G1 text line below the tank target bars")
-check(bool(rt.eval("RLSuite.raidFrame.buffPanel == nil")), "no floating side panel: the buff matrix is PART of the raid frame")
-check(bool(rt.eval("_G.RLS_MC_N == nil or true")) and bool(rt.eval(
-    "(function() local n = 0 local d = 0 for _, c in ipairs(RLSuite.raidFrame:_MatrixCols()) do n = n + 1 if c.kind == 'durability' then d = d + 1 end end "
-    "return (n == 12 and d == 1) end)()")), "12 visible columns: the 9 core raid-buff categories + 2 consumables + Durability")
+# Raid Buffs standalone matrix panel (Method style)
+check(bool(rt.eval("RLSuite.mainWindow.raidBuffBtn ~= nil and RLSuite.mainWindow.raidBuffBtn:GetText() == 'Raid Buffs'")), "Raid Buffs button is in the Raid Control matrix")
+check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn == nil")), "Raid Frame no longer contains the Raid Buffs button")
+check(bool(rt.eval("RLSuite.mainWindow.matrixOrder[6].btn == RLSuite.mainWindow.raidBuffBtn and RLSuite.mainWindow.saveRaidBtn:GetParent() == RLSuite.mainWindow.titleBar")), "Raid Buffs uses the sixth fixed matrix cell; SaveRaid remains available in the title bar")
+check(bool(rt.eval("(function() local n,d=0,0 for _,c in ipairs(RLSuite.raidFrame:_MatrixCols()) do n=n+1 if c.kind=='durability' then d=d+1 end end return n==13 and d==1 end)()")), "13 columns: 10 buff categories including Focus Magic, 2 consumables, and Durability")
 rt.execute("""
 local function colHas(key, id)
     for _, c in ipairs(RLSuite.raidBuffColumns) do
@@ -2453,157 +2487,116 @@ AL_CHECKLIST = (checkListNew == 10)
 check(bool(rt.eval("AL_DEBUFF_LOADLIST")), "Icy-Veins alignment: new debuff columns (AP/attack-speed/cast-speed reductions, wound) added")
 # checklist check pruned
 
-check(bool(rt.eval("RLSuite.raidFrame.buffMatrixOn ~= true")), "buff matrix hidden by default (shows only when the button is clicked)")
+check(bool(rt.eval("RLSuite.raidFrame.buffMatrixOn ~= true and RLSuite.raidFrame.buffWindow == nil")), "standalone buff window is hidden until requested")
 rt.execute("""
-RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
-BP_ON = (RLSuite.raidFrame.buffMatrixOn == true)
-local cols = RLSuite.raidFrame:_MatrixCols()
-BP_PRIO1 = (cols[1].key == 'stats')
+local RF, MW = RLSuite.raidFrame, RLSuite.mainWindow
+MW.raidBuffBtn._scripts.OnClick(MW.raidBuffBtn)
+BP_ON = RF.buffMatrixOn == true and RF.buffWindow:IsShown() == true
+local cols, entries = RF:_MatrixCols(), RF:_BuffMatrixEntries()
 NC = #cols
-BP_PRIOLAST = (cols[NC].key == 'durability') and (cols[NC - 1].key == 'wellfed')
-BP_HDR1 = (RLSuite.raidFrame._buffHdrBtns[1]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == true
-    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture ~= nil
-    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BUFFCATICONS', 1, true) ~= nil
-    and RLSuite.raidFrame._buffHdrBtns[1]._icon._texture:find('BCI_0.tga', 1, true) ~= nil)
-BP_HDR19 = (RLSuite.raidFrame._buffHdrBtns[9]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[9]._icon._texture ~= nil
-    and RLSuite.raidFrame._buffHdrBtns[9]._icon._texture:find('BCI_8.tga', 1, true) ~= nil)
-BP_HDRDUR = (RLSuite.raidFrame._buffHdrBtns[NC]._icon ~= nil and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture ~= nil
-    and RLSuite.raidFrame._buffHdrBtns[NC]._icon._texture:find('PaperDoll', 1, true) ~= nil)
-BP_HDR_ICONSZ = (RLSuite.raidFrame._buffHdrBtns[1]._icon._w == (RLSuite.raidFrame:LayoutMetrics().iconSize + RLSuite.raidFrame:LayoutMetrics().iconSpacing)
-    and RLSuite.raidFrame._buffHdrBtns[1]._icon._h == (RLSuite.raidFrame:LayoutMetrics().iconSize + RLSuite.raidFrame:LayoutMetrics().iconSpacing))
-BP_HDR_H = (RLSuite.raidFrame._buffHdrBtns[1].height == 80 or (RLSuite.raidFrame._buffHdrBtns[1]._h == 80) or true)
-local hb1 = RLSuite.raidFrame._buffHdrBtns[1]
-local hbpt = hb1._points[#hb1._points]
-local gh1pt = RLSuite.raidFrame.groupHeaders[1]._points[#RLSuite.raidFrame.groupHeaders[1]._points]
-BP_HDR_TOP = (hbpt[2] == RLSuite.raidFrame.frame and gh1pt ~= nil and gh1pt[1] == 'BOTTOMLEFT'
-    and math.abs((hbpt[5] or 0) - ((gh1pt[5] or 0) + (RLSuite.raidFrame:LayoutMetrics().cellW + 4))) < 0.001)
-SLOT1Y_ON = RLSuite.raidFrame.slots[1]._points[1][5]
-local hbg = RLSuite.raidFrame._buffHdrBg
-BP_HDR_BG = (hbg ~= nil and hbg:IsShown() == true and hbg._texRGBA ~= nil
-    and math.abs(hbg._texRGBA[1] - 0.5) < 0.001 and math.abs(hbg._texRGBA[2] - 0.5) < 0.001
-    and math.abs(hbg._texRGBA[3] - 0.5) < 0.001 and math.abs(hbg._texRGBA[4] - 0.35) < 0.001
-    and hbg._w == (NC * RLSuite.raidFrame:LayoutMetrics().cellW + RLSuite.raidFrame:_BuffColOffset(NC, RLSuite.raidFrame:LayoutMetrics().iconSpacing) + 6))
-BP_HDR_OUT = true
-for c = 1, NC do
-    local b = RLSuite.raidFrame._buffHdrBtns[c]
-    BP_HDR_OUT = BP_HDR_OUT and (b:GetParent() == RLSuite.raidFrame.frame) and (b:IsShown() == true)
+BP_ORDER = cols[1].key == 'stats' and cols[10].key == 'focusMagic'
+    and cols[11].key == 'flask' and cols[12].key == 'wellfed'
+    and cols[13].key == 'durability'
+local function colIdx(key)
+    for i, col in ipairs(cols) do if col.key == key then return i end end
 end
-BP_TANK_UNDER = (math.abs((RLSuite.raidFrame.tankHeader._points[#RLSuite.raidFrame.tankHeader._points][5] or 0) - 0) < 0.001)
--- REGRESSIONE 1.7.2: un errore nella costruzione dell'intestazione 45°
--- interrompeva ApplyLayout a meta': i gruppi vuoti non venivano piu' packati,
--- l'overlay dorato/UpdateAll non partiva, le celle matrice restavano vuote e
--- le impostazioni non si applicavano. Qui verifichiamo che il layout arrivi
--- SEMPRE in fondo (height content positiva + ultimo gruppo packato).
-BP_LAYOUT_DONE = (RLSuite.raidFrame.content:GetHeight() ~= nil and RLSuite.raidFrame.content:GetHeight() > 0)
-for g = 1, 6 do
-    local gh = RLSuite.raidFrame.groupHeaders[g]
-    if gh:IsShown() and (gh._points == nil or #gh._points == 0) then BP_LAYOUT_DONE = false end
+local function hasPath(key, file)
+    local i = colIdx(key)
+    return i and RF:_BuffHeaderIconPath(cols[i], i):find(file, 1, true) ~= nil
 end
-local m = RLSuite.raidFrame:LayoutMetrics()
-BP_W = (m.W == m.rowWidth)
-local lbp = RLSuite.raidFrame._buffHdrBtns[NC]._points[#RLSuite.raidFrame._buffHdrBtns[NC]._points]
-BP_SPILL = ((lbp[4] + 24) > m.W)
--- la riga del player (unit 'player') e quella di un fake
-BP_PSLOT, BP_FSLOT = nil, nil
-for _, s in ipairs(RLSuite.raidFrame.slots) do
-    if s.member and s.member.unit == 'player' then BP_PSLOT = s end
-    if (not BP_FSLOT) and s.member and s.member.fake then BP_FSLOT = s end
-end
-BP_CELL_ON_ROW = (BP_PSLOT and BP_PSLOT._buffCells[1] ~= nil)
-if BP_PSLOT then
-    local pt = BP_PSLOT._buffCells[1]._points[1]
-    BP_CELL_SIDE = (pt[2] == RLSuite.raidFrame.content and pt[4] > m.rowWidth)
-end
-RB_SHOW = (BP_PSLOT._matrixBg ~= nil and BP_PSLOT._matrixBg:IsShown() == true)
-RB_FAKE = (BP_FSLOT._matrixBg ~= nil and BP_FSLOT._matrixBg:IsShown() == true)
-RB_GEOM = false
-if BP_PSLOT._matrixBg then
-    local p = BP_PSLOT._matrixBg._points[1]
-    RB_GEOM = (p ~= nil and p[2] == RLSuite.raidFrame.content and p[4] == m.rowWidth + 2 and BP_PSLOT._matrixBg._w == (NC * 24 + RLSuite.raidFrame:_BuffColOffset(NC, m.iconSpacing) + 6) and BP_PSLOT._matrixBg._h == m.rowHeight - 2)
-end
-RB_RGB0 = BP_PSLOT._matrixBg and BP_PSLOT._matrixBg._texRGBA
-""")
-check(bool(rt.eval("BP_ON")), "click on 'Raid Buffs' activates the matrix")
-check(bool(rt.eval("BP_PRIO1")), "most important buffs first: column 1 is the Kings/stats column")
-check(bool(rt.eval("BP_PRIOLAST")), "least priority last: durability column closes the row")
-check(bool(rt.eval("BP_HDR1") and bool(rt.eval("BP_HDR19"))), "buff column headers show the user's BCI icons (media/BUFFCATICONS/BCI_<c-1>.tga, same indices as before: the new column is appended last)")
-check(bool(rt.eval("BP_HDRDUR")), "the Durability header uses its own game icon (paperdoll equip slot), not a BCI file")
-check(bool(rt.eval("BP_HDR_ICONSZ")), "header icons are square with fixed size = iconSize + iconSpacing (the column pitch)")
-check(bool(rt.eval("BP_HDR_TOP")), "G1 header attaches to the BOTTOM of its permanent strip zone; icons live in the zone above the text")
-check(bool(rt.eval("BP_LAYOUT_DONE")), "matrix header build can never abort ApplyLayout half-way: whole layout completes (groups + backdrop + cells)")
-check(bool(rt.eval("BP_HDR_OUT")), "category header buttons live OUTSIDE the panel (children of the window) and STAY visible with the matrix open")
-check(bool(rt.eval("BP_TANK_UNDER")), "the Tanks header sits at the very top of the frame (icon strip moved down to G1)")
-check(bool(rt.eval("BP_HDR_BG")), "icon strip backdrop uses the SAME value as the bars backdrop (appearance.matrixBackdrop) and spans all columns")
-check(bool(rt.eval("BP_W")), "window width does NOT include the matrix columns area")
-check(bool(rt.eval("BP_SPILL")), "header/column icons are drawn BEYOND the window's right edge (rendered outside = click-through)")
-check(bool(rt.eval("BP_CELL_ON_ROW") and bool(rt.eval("BP_CELL_SIDE"))), "category icons live ALONG the player's row, past the row right edge")
-# --- hover: il titolo di categoria si "illumina"; click: raid warning categoria ---
-# v1.11.49: l'accensione vale per le categorie DISPONIBILI con la composizione
-# (quelle non disponibili restano spente anche in hover). La verifica sceglie
-# quindi una colonna disponibile invece di dare per scontato che lo sia la 1.
-rt.execute("""
-local av, na
-for c, b in ipairs(RLSuite.raidFrame._buffHdrBtns) do
-    if b:IsShown() and b._status then
-        if b._nodata == false and not av then av = b end
-        if b._nodata == true and not na then na = b end
+BP_ICON_MP5 = hasPath('mp5', 'BCI_7.tga')
+BP_ICON_ATK = hasPath('atkpower', 'BCI_8.tga')
+BP_ICON_HP = hasPath('hp', 'BCI_10.tga')
+BP_ICON_FM = hasPath('focusMagic', 'BCI_17.tga')
+BP_ICON_STATS = hasPath('stats', 'BCI_0.tga')
+BP_ICON_STAM = hasPath('stamina', 'BCI_1.tga')
+BP_ICON_SPECIALS = hasPath('flask', 'EndlessFlask')
+    and hasPath('wellfed', 'Spell_Misc_Food')
+    and hasPath('durability', 'PaperDoll')
+BP_FM_DATA = false
+for _, col in ipairs(RLSuite.raidBuffColumns) do
+    if col.key == 'focusMagic' then
+        BP_FM_DATA = col.scope == 'single' and col.spells[1] == 54646
+            and col.classes[1] == 'MAGE' and col.beneficiaries ~= nil
     end
 end
-BP_HOVER_ON, BP_HOVER_OFF, BP_HOVER_TIP, BP_NODATA_HOVER = false, false, false, false
-if av then
-    av._scripts.OnEnter(av)
-    BP_HOVER_ON = (av._icon._vertex ~= nil and av._icon._vertex[1] == 1 and av._icon._vertex[2] == 1 and av._icon._vertex[3] == 1)
-    -- Tooltip = GameTooltip di gioco (informativo): catturo le righe.
-    HV_LINES = {}
-    local oAdd, oClear = GameTooltip.AddLine, GameTooltip.ClearLines
-    GameTooltip.AddLine = function(s2, txt) HV_LINES[#HV_LINES + 1] = tostring(txt) return s2 end
-    GameTooltip.ClearLines = function(s2) HV_LINES = {} return s2 end
-    RFM_HOVER_TXT = nil
-    if av._scripts.OnEnter then av._scripts.OnEnter(av) end
-    RFM_HOVER_TXT = table.concat(HV_LINES, " | ")
-    GameTooltip.AddLine, GameTooltip.ClearLines = oAdd, oClear
-    BP_HOVER_TIP = (RFM_HOVER_TXT ~= nil and RFM_HOVER_TXT:find(av._col.label, 1, true) ~= nil)
-    av._scripts.OnLeave(av)
-    BP_HOVER_OFF = (av._icon._vertex[1] == 0.8 and av._icon._vertex[2] == 0.8)
+BP_WINDOW_PARENT = RF.buffWindow:GetParent() == UIParent and RF.buffWindow ~= RF.frame
+BP_HDR_PARENT = RF._buffHdrBtns[1]:GetParent() == RF.buffWindow
+BP_ROWS_FLAT = (#RF._buffWindowRows == #entries and RF.buffWindow._groupHeaders == nil)
+BP_ROW_COMPACT = RF._buffWindowRows[1]._h == 17
+    and RF._buffWindowRows[1]._h < RF:LayoutMetrics().rowHeight
+BP_WINDOW_TITLE = RF.buffWindow._buffTitle:GetText() == 'Raid Buffs'
+BP_HDR_DUR = RF._buffHdrBtns[13]._icon._texture:find('PaperDoll', 1, true) ~= nil
+local iconSpacing = tonumber(RF.db.appearance.iconSpacing) or 8
+local expectedPitch = math.max(18, 16 + iconSpacing)
+local rowCells = RF._buffWindowRows[1]._cells
+BP_ICON_GAPS = RF:_BuffColOffset(11, iconSpacing) == iconSpacing
+    and RF:_BuffColOffset(13, iconSpacing) == iconSpacing * 2
+BP_WINDOW_PITCH = math.abs(rowCells[2]._points[1][4] - rowCells[1]._points[1][4] - expectedPitch) < 0.001
+local playerIndex, staminaIndex, statsIndex
+for i, entry in ipairs(entries) do
+    if entry.member.unit == 'player' then playerIndex = i end
 end
-if na then
-    na._scripts.OnEnter(na)
-    BP_NODATA_HOVER = (na._icon._vertex[1] == 0.35 and na._red:IsShown() == false)
-    na._scripts.OnLeave(na)
+staminaIndex, statsIndex = colIdx('stamina'), colIdx('stats')
+BP_PLAYER_ROW = #entries > 0 and RF._buffWindowRows[1]._name:GetText() == entries[1].member.name
+BP_NO_INLINE_CELLS = RF.slots[1]._buffCells == nil and RF._buffHdrBg == nil
+BP_RF_GRID = RF.groupHeaders[1]._points[#RF.groupHeaders[1]._points][1] == 'TOPLEFT'
+    and RF.groupHeaders[1]._points[#RF.groupHeaders[1]._points][2] == RF.content
+""")
+check(bool(rt.eval("BP_ON")), "Raid Control button opens the standalone Raid Buffs matrix")
+check(bool(rt.eval("BP_ORDER")), "current compact matrix retains buff, consumable, and durability ordering")
+check(bool(rt.eval("BP_FM_DATA")), "Focus Magic column is restored with its original single-mage spell/provider data")
+check(bool(rt.eval("BP_ICON_STATS and BP_ICON_STAM and BP_ICON_MP5 and BP_ICON_ATK and BP_ICON_HP and BP_ICON_FM")), "category icons use their semantic BCI indices (MP5 7, AP 8, HP 10, Focus Magic 17)")
+check(bool(rt.eval("BP_ICON_SPECIALS and BP_HDR_DUR")), "Food, Flask, and Durability retain their own game icons")
+check(bool(rt.eval("BP_ICON_GAPS")), "buff/consumable/durability column spacing remains grouped")
+check(bool(rt.eval("BP_WINDOW_PITCH")), "standalone matrix honors the configured category-icon spacing")
+check(bool(rt.eval("BP_WINDOW_PARENT and BP_HDR_PARENT")), "window and category headers are separate from the Raid Frame")
+check(bool(rt.eval("BP_ROWS_FLAT and BP_PLAYER_ROW")), "roster rows are a single flat list with member names and no raid-group subdivisions")
+check(bool(rt.eval("BP_ROW_COMPACT")), "standalone roster rows use compact 17-pixel height")
+check(bool(rt.eval("BP_WINDOW_TITLE")), "standalone window has a Raid Buffs title and close control")
+check(bool(rt.eval("BP_NO_INLINE_CELLS")), "buff cells and headers are no longer rendered inside Raid Frame rows")
+check(bool(rt.eval("BP_RF_GRID")), "removing the embedded matrix leaves Raid Frame group layout intact")
+
+# Header hover, tooltip and warning behavior remain unchanged.
+rt.execute("""
+local RF = RLSuite.raidFrame
+local available
+for _, btn in ipairs(RF._buffHdrBtns or {}) do
+    if btn._status and btn._status.available then available = btn break end
 end
-local hb = RLSuite.raidFrame._buffHdrBtns[1]
+BP_HOVER_ON, BP_HOVER_OFF, BP_HOVER_TIP = false, false, false
+if available then
+    available._scripts.OnEnter(available)
+    BP_HOVER_ON = available._icon._vertex[1] == 1
+    local lines = {}
+    local oldAdd, oldClear = GameTooltip.AddLine, GameTooltip.ClearLines
+    GameTooltip.AddLine = function(_, txt) lines[#lines + 1] = tostring(txt) end
+    GameTooltip.ClearLines = function() lines = {} end
+    available._scripts.OnEnter(available)
+    BP_HOVER_TIP = table.concat(lines, ' | '):find(available._col.label, 1, true) ~= nil
+    GameTooltip.AddLine, GameTooltip.ClearLines = oldAdd, oldClear
+    available._scripts.OnLeave(available)
+    BP_HOVER_OFF = available._icon._vertex[1] == 0.8
+end
 local n0 = #CHAT_LOG
-hb._scripts.OnClick(hb)
+if available then available._scripts.OnClick(available) end
 BP_WARN = false
 for i = n0 + 1, #CHAT_LOG do
-    if CHAT_LOG[i]:find('RAID_WARNING', 1, true) and CHAT_LOG[i]:find('%stat', 1, true) then BP_WARN = true end
+    if CHAT_LOG[i]:find('RAID_WARNING', 1, true) then BP_WARN = true end
 end
 """)
-check(bool(rt.eval("BP_HOVER_ON")), "hovering an AVAILABLE category icon lights it up (full brightness)")
-check(bool(rt.eval("BP_HOVER_TIP")), "header hover: GameTooltip (grafica di gioco) shows the category name -- %s" % rt.eval("tostring(RFM_HOVER_TXT)"))
-check(bool(rt.eval("BP_HOVER_OFF")), "hover-exit dims the icon again")
-check(bool(rt.eval("BP_HOVER_TIP")), "hovering a category icon shows its name in the tooltip")
-# (il caso "categoria non disponibile" e' verificato in modo deterministico
-#  nella sezione v1.11.49, con un roster costruito ad hoc)
-check(bool(rt.eval("BP_WARN")), "clicking a category title sends a RAID WARNING for that category")
-rt.execute("""
-local n0 = #CHAT_LOG
-RLSuite:ChatCommand('debugbuff')
-_DBG_N, _DBG_BLP1, _DBG_NOTLOADED = 0, false, {"0 rows"}
-local lines = {}
-for i = n0 + 1, #CHAT_LOG do
-    lines[#lines + 1] = CHAT_LOG[i]
-    if CHAT_LOG[i]:find('BUFFCATICONS', 1, true) then _DBG_N = _DBG_N + 1 end
-    if CHAT_LOG[i]:find('BCI_0.tga', 1, true) then _DBG_BLP1 = true end
-end
-_DBG_OK = (_DBG_N >= 9)
-""")
-check(bool(rt.eval("_DBG_OK")), f"/rls debugbuff reports one diagnostic line per header column (9)")
-check(bool(rt.eval("_DBG_BLP1")), "/rls debugbuff prints the actual icon path (BCI_0.tga) for each column")
+check(bool(rt.eval("BP_HOVER_ON and BP_HOVER_TIP and BP_HOVER_OFF")), "category hover still lights the icon and shows the existing tooltip")
+check(bool(rt.eval("BP_WARN")), "category click still sends the existing raid-warning check")
 
+# Live aura rendering and compact row backdrop.
 rt.execute("""
-SAVED_UB2 = UnitBuff
-SAVED_GSI2 = GetSpellInfo
+local RF = RLSuite.raidFrame
+local savedDebugRaid, savedDebugTanks = RLSuite.debugRaid, RLSuite.debugTanks
+RLSuite:ResetDebugRaid()
+RLSuite.debugTanks = nil
+RLSuite:DebugInviteAccept('BuffTest', 'MAGE')
+RF:Rebuild()
+local oldUnitBuff, oldGetSpellInfo = UnitBuff, GetSpellInfo
 GetSpellInfo = function(id) if id == 57399 then return 'Well Fed' end return 'Spell' end
 UnitBuff = function(u, i)
     if u ~= 'player' or type(i) ~= 'number' then return nil end
@@ -2611,101 +2604,78 @@ UnitBuff = function(u, i)
     if i == 2 then return 'Well Fed' end
     return nil
 end
-STRAGI_C = nil
-for i, c in ipairs(RLSuite.raidFrame:_MatrixCols()) do if c.key == 'stamina' then STRAGI_C = i end end
-RLSuite.raidFrame:RefreshBuffMatrix()
-BP_MATCH = (BP_PSLOT._buffCells[STRAGI_C]._texture == 'Tex:48161' and BP_PSLOT._buffCells[STRAGI_C]:IsShown() == true)
-BP_MISS = (BP_PSLOT._buffCells[1]:IsShown() == false)
--- i fake ricevono buff CASUALI (set stabile in sessione): la loro riga deve
--- mostrare almeno qualche icona, e un secondo refresh non la cambia
-BP_FNAME = BP_FSLOT.member and BP_FSLOT.member.name or '?'
-local shown1 = {}
-local count1 = 0
-for c = 1, NC do
-    local tc = BP_FSLOT._buffCells[c]
-    if tc and tc:IsShown() then
-        shown1[c] = tc._texture or '?'
-        count1 = count1 + 1
-    end
+local entries, cols = RF:_BuffMatrixEntries(), RF:_MatrixCols()
+local pi, si, wi, st = nil, nil, nil, nil
+for i,e in ipairs(entries) do if e.member.unit == 'player' then pi=i end end
+for i,c in ipairs(cols) do
+    if c.key=='stamina' then si=i elseif c.key=='wellfed' then wi=i elseif c.key=='stats' then st=i end
 end
-RLSuite.raidFrame:RefreshBuffMatrix()
-local same = true
-for c = 1, NC do
-    local tc = BP_FSLOT._buffCells[c]
-    if (tc and tc:IsShown() and shown1[c] ~= tc._texture) or ((not tc or not tc:IsShown()) and shown1[c] ~= nil) then
-        same = false
-    end
+RF:RefreshBuffMatrix()
+BP_MATCH = RF._buffWindowRows[pi]._cells[si]._texture == 'Tex:48161'
+    and RF._buffWindowRows[pi]._cells[si]:IsShown() == true
+BP_WELLFED = RF._buffWindowRows[pi]._cells[wi]:IsShown() == true
+BP_MISS = RF._buffWindowRows[pi]._cells[st]:IsShown() == false
+local fakeIndex
+for i,e in ipairs(entries) do if e.member.fake then fakeIndex=i break end end
+local fakeCell = RF._buffWindowRows[fakeIndex]._cells[si]
+BP_FAKE_SOME = false
+for c=1,#cols do
+    local cell=RF._buffWindowRows[fakeIndex]._cells[c]
+    if cell and cell:IsShown() then BP_FAKE_SOME=true end
 end
-BP_FAKE_SOME = (count1 >= 1)
-BP_FAKE_STABLE = same
-UnitBuff = SAVED_UB2
-GetSpellInfo = SAVED_GSI2
-RLSuite.raidFrame:UpdateAll()
-RLSuite.raidFrame:RefreshBuffMatrix()
-BP_HDR_STILL = true
-for c = 1, NC do
-    BP_HDR_STILL = BP_HDR_STILL and (RLSuite.raidFrame._buffHdrBtns[c]:IsShown() == true)
-end
-RB_STILL = (BP_PSLOT._matrixBg ~= nil and BP_PSLOT._matrixBg:IsShown() == true)
-BP_AFTER = (BP_PSLOT._buffCells[STRAGI_C]:IsShown() == false)
+local fakeBefore = fakeCell._texture
+RF:RefreshBuffMatrix()
+BP_FAKE_STABLE = fakeCell._texture == fakeBefore
+local backdrop = RF._buffWindowRows[pi]._bg._texRGBA
+BP_ROW_BG = backdrop ~= nil and math.abs(backdrop[1] - 0.5) < 0.01
+    and math.abs(backdrop[4] - 0.35) < 0.01
+UnitBuff, GetSpellInfo = oldUnitBuff, oldGetSpellInfo
+RLSuite.debugRaid, RLSuite.debugTanks = savedDebugRaid, savedDebugTanks
+RLSuite.debugBuffs = nil
+RF:Rebuild()
 """)
-check(bool(rt.eval("BP_MATCH")), "cell on the player's row shows the icon of the ACTIVE buff covering that category")
-check(bool(rt.eval("BP_MISS")), "missing category leaves the player's cell empty")
-check(bool(rt.eval("BP_FAKE_SOME")), "invited (fake) players receive random buffs: their matrix row shows some category icons")
-check(bool(rt.eval("BP_FAKE_STABLE")), "debug random buff sets are stable across refreshes (no flicker)")
-check(bool(rt.eval("BP_AFTER")), "buffs gone -> icons gone (matrix tracks live auras)")
-check(bool(rt.eval("BP_HDR_STILL")), "all the category titles STAY visible through aura updates/refreshes (never flicker away)")
-check(bool(rt.eval("RB_STILL")), "per-row backdrops stay visible through refreshes")
+check(bool(rt.eval("BP_MATCH and BP_WELLFED and BP_MISS")), "active buffs render in the correct player cells while missing cells stay empty")
+check(bool(rt.eval("BP_FAKE_SOME and BP_FAKE_STABLE")), "debug roster buff cells remain deterministic across refreshes")
+check(bool(rt.eval("BP_ROW_BG")), "compact player rows retain their semi-transparent backdrop")
+
+# Raid Frame appearance remains independent; backdrop options apply to the window rows.
 rt.execute("""
--- spacing configurabili + colore backdrop: li cambio, ApplyLayout, misuro
+local RF = RLSuite.raidFrame
 local app = RLSuite.db.profile.raidframe.appearance
+local beforeY = RF.slots[1]._points[1][5]
 app.iconSpacing, app.rowSpacing, app.groupSpacing = 2, 6, 20
 app.groupHeaderFontSize = 14
 app.matrixBackdrop = { r = 1, g = 0, b = 0, a = 0.6 }
-RLSuite.raidFrame:ApplyLayout()
-local m3 = RLSuite.raidFrame:LayoutMetrics()
-SP_CELLW = (m3.cellW == m3.iconSize + 2)
-SP_W = (m3.W == m3.rowWidth)
-local s1 = RLSuite.raidFrame.slots[1]._points[1][5]
-local s2 = RLSuite.raidFrame.slots[2]._points[1][5]
-SP_ROWS = (math.abs((s1 - s2) - (m3.rowHeight + 6)) < 0.001)
-SP_GHFONT = (RLSuite.raidFrame.groupHeaders[1]._fontArgs ~= nil and RLSuite.raidFrame.groupHeaders[1]._fontArgs[2] == 14)
-SP_TKH = (RLSuite.raidFrame.tankHeader._fontArgs ~= nil and RLSuite.raidFrame.tankHeader._fontArgs[2] == 14)
-local bga = BP_PSLOT._matrixBg._texRGBA
-SP_BG = (bga ~= nil and math.abs(bga[1] - 1) < 0.01 and math.abs(bga[4] - 0.6) < 0.01)
+RF:ApplyLayout()
+local m = RF:LayoutMetrics()
+SP_CELLW = m.cellW == m.iconSize + 2
+SP_ROWS = math.abs((RF.slots[1]._points[1][5] - RF.slots[2]._points[1][5]) - (m.rowHeight + 6)) < 0.001
+SP_GHFONT = RF.groupHeaders[1]._fontArgs ~= nil and RF.groupHeaders[1]._fontArgs[2] == 14
+SP_TKH = RF.tankHeader._fontArgs ~= nil and RF.tankHeader._fontArgs[2] == 14
+local bga = RF._buffWindowRows[1]._bg._texRGBA
+SP_BG = bga ~= nil and math.abs(bga[1] - 1) < 0.01 and math.abs(bga[4] - 0.6) < 0.01
+SP_WINDOW_STANDALONE = RF.buffWindow:GetParent() == UIParent and RF.buffWindow ~= RF.frame
 app.iconSpacing, app.rowSpacing, app.groupSpacing = nil, nil, nil
-app.groupHeaderFontSize = nil
-app.matrixBackdrop = nil
-RLSuite.raidFrame:ApplyLayout()
-SP_DEF = (RLSuite.raidFrame:LayoutMetrics().cellW == 24)
+app.groupHeaderFontSize, app.matrixBackdrop = nil, nil
+RF:ApplyLayout()
+SP_DEF = RF:LayoutMetrics().cellW == 24
 """)
-check(bool(rt.eval("SP_CELLW")), "Icon spacing option drives the matrix column pitch (iconSize + spacing)")
-check(bool(rt.eval("SP_W")), "window width stays rowWidth regardless of icon spacing (columns spill past the window)")
-check(bool(rt.eval("SP_ROWS")), "Row spacing option drives the gap between bars inside a group")
-check(bool(rt.eval("SP_GHFONT") and rt.eval("SP_TKH")), "Group header font size option applies to G-buttons and the Tanks header")
-check(bool(rt.eval("SP_BG")), "Buff check backdrop option recolors the matrix rows backdrop (color + alpha)")
-check(bool(rt.eval("SP_DEF")), "spacing options restored to defaults")
+check(bool(rt.eval("SP_CELLW and SP_ROWS and SP_GHFONT and SP_TKH")), "Raid Frame layout options still control its group/header spacing and typography")
+check(bool(rt.eval("SP_BG")), "Buff check backdrop color option recolors standalone player rows")
+check(bool(rt.eval("SP_WINDOW_STANDALONE")), "Raid Buffs stays outside the Raid Frame while its layout options change")
+check(bool(rt.eval("SP_DEF")), "Raid Frame spacing options restore to defaults")
+
 rt.execute("""
-RLSuite.raidFrame.buffPanelBtn._scripts.OnClick(RLSuite.raidFrame.buffPanelBtn)
-BP_CLOSED = (RLSuite.raidFrame.buffMatrixOn ~= true and BP_PSLOT._buffCells[10] ~= nil and BP_PSLOT._buffCells[10]:IsShown() == false)
-local m2 = RLSuite.raidFrame:LayoutMetrics()
-BP_W_KEEP = (m2.W == m2.rowWidth)
-RB_OFF = (BP_PSLOT._matrixBg ~= nil and BP_PSLOT._matrixBg:IsShown() == false)
-BP_HDR_PERM = (RLSuite.raidFrame._buffHdrBtns[1]:IsShown() == false and RLSuite.raidFrame._buffHdrBtns[NC]:IsShown() == false)
-BP_NOSHIFT = (SLOT1Y_ON ~= nil and math.abs(RLSuite.raidFrame.slots[1]._points[1][5] - SLOT1Y_ON) < 0.001)
-BP_HBG_OFF = (RLSuite.raidFrame._buffHdrBg == nil or RLSuite.raidFrame._buffHdrBg:IsShown() == false)
+local MW, RF = RLSuite.mainWindow, RLSuite.raidFrame
+local rowY = RF.slots[1]._points[1][5]
+MW.raidBuffBtn._scripts.OnClick(MW.raidBuffBtn)
+BP_CLOSED = RF.buffMatrixOn ~= true and RF.buffWindow:IsShown() == false
+BP_CELLS_OFF = RF._buffWindowRows[1]._cells[1]:IsShown() == false
+BP_HEADERS_OFF = RF._buffHdrBtns[1]:IsShown() == false and RF._buffHdrBtns[NC]:IsShown() == false
+BP_GRID_STABLE = RF.slots[1]._points[1][5] == rowY
 """)
-check(bool(rt.eval("BP_CLOSED")), "second click on 'Raid Buffs' hides the row icons/cells")
-check(bool(rt.eval("RB_SHOW")), "each PLAYER ROW gets its own gray backdrop strip while the matrix is on (not one window-sized panel)")
-check(bool(rt.eval("RB_FAKE")), "fake players' rows also get their per-row backdrop strip")
-rgba = rt.eval("RB_RGB0")
-check(abs(float(rt.eval("RB_RGB0[1]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[2]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[3]")) - 0.5) < 0.01 and abs(float(rt.eval("RB_RGB0[4]")) - 0.35) < 0.01, "row backdrop is a semi-transparent GRAY solid texture (0.5,0.5,0.5,0.35)")
-check(bool(rt.eval("RB_GEOM")), "row backdrop spans exactly the matrix columns of its own bar, height = row height")
-check(bool(rt.eval("BP_W_KEEP")), "matrix columns zone stays OUTSIDE the window hitbox when toggled (click-through preserved)")
-check(bool(rt.eval("RB_OFF")), "per-row backdrops are hidden when the matrix icons are off")
-check(bool(rt.eval("BP_HDR_PERM")), "header icon row HIDDEN again when the 'Raid Buffs' pipe is off (button toggles the header row)")
-check(bool(rt.eval("BP_HBG_OFF")), "header strip backdrop hidden when the matrix is off")
-check(bool(rt.eval("BP_NOSHIFT")), "toggling the buff matrix never shifts the player rows (strip zone always reserved between Tanks and G1)")
+check(bool(rt.eval("BP_CLOSED and BP_CELLS_OFF and BP_HEADERS_OFF")), "closing Raid Buffs hides the standalone rows and header icons")
+check(bool(rt.eval("BP_GRID_STABLE")), "opening and closing Raid Buffs does not move Raid Frame rows")
 
 # --- F.4 MT/OT assignment: SECURE macro buttons (SetPartyAssignment is PROTECTED) ---
 check(rt.eval("RLSuite.mainWindow.mtBtn:GetAttribute('type')") == 'macro', "MT button is a SECURE macro button (protected SetPartyAssignment never called)")
@@ -2997,17 +2967,9 @@ check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors
 print()
 print("== Scenario G: main bar MT/OT + realtime config, loot pickup stack, debug-off clear, WL gold drag, real-raid join ==")
 
-# --- G.1 Config -> Window sliders apply to the main bar IN REAL TIME ---
-rt.execute("W0 = RLSuite.mainWindow.frame:GetWidth()")
-rt.execute("RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixCols.set(nil, 4)")
-rt.execute("W1 = RLSuite.mainWindow.frame:GetWidth()")
-check(bool(rt.eval("W1 > W0")), "matrix Columns slider re-layouts the main bar in real time (w %d -> %d)" % (rt.eval("W0"), rt.eval("W1")))
-rt.execute("RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixCols.set(nil, 2)")
-rt.execute("H0 = RLSuite.mainWindow.frame:GetHeight()")
-rt.execute("RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixRows.set(nil, 8)")
-rt.execute("H1 = RLSuite.mainWindow.frame:GetHeight()")
-check(bool(rt.eval("H1 > H0")), "matrix Rows slider re-layouts the main bar in real time (h %d -> %d)" % (rt.eval("H0"), rt.eval("H1")))
-rt.execute("RLSuite.config:BuildOptionsTable().args.modulemenu.args.matrixRows.set(nil, 4)")
+# --- G.1 Raid Control keeps its fixed one-row, six-column matrix ----------
+rt.execute("RLSuite.mainWindow:ApplyLayout(); MW_FIXED_W = RLSuite.mainWindow.frame._w; MW_FIXED_H = RLSuite.mainWindow.frame._h; MW_FIXED_CELLS = #RLSuite.mainWindow.matrixOrder")
+check(bool(rt.eval("MW_FIXED_CELLS == 6 and MW_FIXED_W == 482 and MW_FIXED_H == 30")), "Raid Control remains a fixed 1x6 matrix (482x30 including padding)")
 
 # --- G.2 MT / OT: two small buttons sharing ONE matrix cell ---
 check(bool(rt.eval("RLSuite.mainWindow.mtBtn ~= nil and RLSuite.mainWindow.otBtn ~= nil")), "MT / OT buttons exist on the main bar")
@@ -3021,7 +2983,7 @@ LOOTXOF, LOOTYOF = select(4, mw.tabs['loot']:GetPoint(1)), select(5, mw.tabs['lo
 """)
 rt.execute("""
 -- posizione attesa dal NUOVO ordine esplicito delle celle (senza raidframe)
-local cols = math.max(1, math.min(8, tonumber((RLSuite.db.profile.layout.main or {}).matrixCols) or 2))
+local cols = 6
 local function cellXY(idx)
     local col = (idx - 1) % cols
     local row = math.floor((idx - 1) / cols)
@@ -3032,14 +2994,14 @@ CELL_LOOT_X, CELL_LOOT_Y = cellXY(5)  -- Loot = 5a cella
 """)
 rt.execute("""
 -- ORDINE RICHIESTO, letto dalle celle vere della matrice:
---   Groupmaking, MS, Macrobar, MT & OT, Loot, SaveRaid
+--   Pugger, Macrobar, MT & OT, MS, Loot, Raid Buffs
 local MWo = RLSuite.mainWindow
 local names = {}
 for _, c in ipairs(MWo.matrixOrder or {}) do
     if c.role then
         names[#names + 1] = "MT & OT"
-    elseif c.btn == MWo.saveRaidBtn then
-        names[#names + 1] = "SaveRaid"
+    elseif c.btn == MWo.raidBuffBtn then
+        names[#names + 1] = "Raid Buffs"
     elseif c.btn then
         names[#names + 1] = tostring(c.btn:GetText())
     else
@@ -3049,19 +3011,19 @@ end
 BAR_ORDER = table.concat(names, " | ")
 BAR_CELLS = #(MWo.matrixOrder or {})
 -- posizioni reali: riga per riga, da sinistra a destra
-local cols = math.max(1, math.min(8, tonumber((RLSuite.db.profile.layout.main or {}).matrixCols) or 2))
+local cols = 6
 local function cellXY(idx)
     local col = (idx - 1) % cols
     local row = math.floor((idx - 1) / cols)
     return 4 + col * (74 + 6), -4 - row * (22 + 4)
 end
-local EXPECT = { "Pugger", "Macrobar", "MT & OT", "MS", "Loot", "SaveRaid" }
+local EXPECT = { "Pugger", "Macrobar", "MT & OT", "MS", "Loot", "Raid Buffs" }
 BAR_ORDER_OK = true
 for i, want in ipairs(EXPECT) do
     local c = MWo.matrixOrder[i]
     local got
     if c.role then got = "MT & OT"
-    elseif c.btn == MWo.saveRaidBtn then got = "SaveRaid"
+    elseif c.btn == MWo.raidBuffBtn then got = "Raid Buffs"
     elseif c.btn then got = tostring(c.btn:GetText()) end
     if got ~= want then BAR_ORDER_OK = false end
 end
@@ -3079,10 +3041,10 @@ for i, c in ipairs(MWo.matrixOrder) do
 end
 BAR_POS_OK = posOK
 """)
-check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 6")), "main bar button order is Pugger, Macrobar, MT & OT, MS, Loot, SaveRaid (%s)" % rt.eval("BAR_ORDER"))
-check(bool(rt.eval("BAR_POS_OK == true")), "each button really sits in its cell, row by row (MT & OT in its own cell, SaveRaid last)")
+check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 6")), "Raid Control order is Pugger, Macrobar, MT & OT, MS, Loot, Raid Buffs (%s)" % rt.eval("BAR_ORDER"))
+check(bool(rt.eval("BAR_POS_OK == true")), "each button really sits in its fixed cell (Raid Buffs is cell six)")
 check(bool(rt.eval("MTXOF == CELL_MT_X and MTYOF == CELL_MT_Y")), "MT / OT pair occupies the 3rd cell of the matrix")
-check(bool(rt.eval("LOOTXOF == CELL_LOOT_X and LOOTYOF == CELL_LOOT_Y")), "Loot sits in its own 5th cell (no shifting around Raid Frame)")
+check(bool(rt.eval("LOOTXOF == CELL_LOOT_X and LOOTYOF == CELL_LOOT_Y")), "Loot sits in its own 5th cell")
 # --- I tasti MT/OT sono ora SECURE macro buttons: SetPartyAssignment e' PROTETTA ---
 # --- (forbidden dal client) -> il click assembla "/maintank <nome>" via PreClick. ---
 rt.execute("""
@@ -3141,12 +3103,12 @@ local function aceSkin(b)
         and b._backdrop.edgeFile == nil
         and b._backdropColor and math.abs(b._backdropColor[1] - 0.16) < 0.001
 end
-ACE_RF = aceSkin(RLSuite.raidFrame.buffPanelBtn)
+ACE_RF = aceSkin(RLSuite.mainWindow.raidBuffBtn)
 ACE_GM = aceSkin(RLSuite.groupmaking.diffBtn10) and aceSkin(RLSuite.groupmaking.spamBtn)
 ACE_LM = aceSkin(RLSuite.lootManager.rollMSBtn) and aceSkin(RLSuite.lootManager.rerollBtn)
 ACE_MS = aceSkin(RLSuite.msManager.requestBtn) and aceSkin(RLSuite.msManager.genMsgBtn)
 -- hover = fill che schiarisce (hooks OnEnter/OnLeave), mai un bordo
-local b0 = RLSuite.raidFrame.buffPanelBtn
+local b0 = RLSuite.mainWindow.raidBuffBtn
 if b0._scripts and b0._scripts.OnEnter then b0._scripts.OnEnter(b0) end
 ACE_HOVER = (b0._backdropColor and math.abs(b0._backdropColor[1] - 0.26) < 0.001
     and math.abs(b0._backdropColor[2] - 0.29) < 0.001)
@@ -3309,6 +3271,7 @@ lm:SelectItem(lm.history[#lm.history])
 lm:StartRoll('MS')
 """)
 rt.execute("""
+local lm = RLSuite.lootManager
 FOUND_RW = false
 ROLL_START_CLEAN = false
 for _, e in ipairs(CHAT_LOG or {}) do
@@ -3324,14 +3287,14 @@ for _, before in ipairs({8, 6, 5, 4, 3, 2}) do
     lm.rollRemaining = before
     lm:RollTick()
 end
-ROLL_WARNINGS = table.concat(CHAT_LOG, '\n')
+ROLL_WARNINGS = table.concat(CHAT_LOG, '\\n')
 """)
 check(bool(rt.eval("FOUND_RW and ROLL_START_CLEAN and ROLL_TIMER_15")), "v1.11.134: roll starts in RW with item link/15s and never prepends MS changes")
 check(bool(rt.eval("""(function()
-    local s = (ROLL_WARNINGS or '') .. '\n'
-    if not string.find(s, '[RAID_WARNING] rolling ends in 7s\n', 1, true) then return false end
+    local s = (ROLL_WARNINGS or '') .. '\\n'
+    if not string.find(s, '[RAID_WARNING] rolling ends in 7s\\n', 1, true) then return false end
     for _, n in ipairs({5, 4, 3, 2, 1}) do
-        if not string.find(s, '[RAID_WARNING] ' .. tostring(n) .. '\n', 1, true) then return false end
+        if not string.find(s, '[RAID_WARNING] ' .. tostring(n) .. '\\n', 1, true) then return false end
     end
     return not string.find(s, '[Rolled Item]', 1, true)
         and not string.find(s, 'ROLL MS', 1, true)
@@ -3684,7 +3647,7 @@ check(rt.eval("V86.war_int == false and V86.war_spirit == false and V86.war_fm =
 check(rt.eval("V86.war_atk == true"), "v1.11.86: il WARRIOR ha i buff che gli competono (ATK, fornitori presenti in comp)")
 check(rt.eval("V86.caster_int == true and V86.caster_spirit == true and V86.caster_atk == false"), "v1.11.86: il MAGE ha Int/Spirit e NON l'ATK (destinatari = beneficiari della categoria)")
 check(rt.eval("V86.dk_int == false"), "v1.11.86: il DEATHKNIGHT e' trattato da fisico (niente Int)")
-# Focus magic pruned
+check(rt.eval("V86.mages == V86.fm_total and V86.fm_on_mage == 0"), "v1.11.86: Focus Magic is restored, one aura per mage and assigned off-mage whenever possible")
 # Replenishment pruned
 check(rt.eval("V86.flask_yes == 19 and V86.flask_no == 5 and V86.stragglers_g5 == 5"), "v1.11.86: flask/food = consumabili personali: li hanno i gruppi 1-4 (19 finti), mancano ai 5 del gruppo 5 (cosi' restano provabili gli avvisi)")
 check(rt.eval("V86.food_no == 5"), "v1.11.86: Well Fed assegnato con la stessa regola della flask (colonna Food con byNameSpell)")
@@ -4013,7 +3976,7 @@ lm:DoReroll()
 RR_TIMER15 = (lm.rerollRemaining == 15)
 RR_ROLLS = #lm.currentRoll.rolls
 for tick = 1, 30 do if lm.rerollTimer then lm:RerollTick() end end
-RR_MESSAGES = table.concat(CHAT_LOG, '\n')
+RR_MESSAGES = table.concat(CHAT_LOG, '\\n')
 RR_DONE_ITEM = (lm.history[#lm.history].assignedTo == "Tankbot" or lm.history[#lm.history].assignedTo == "Healbot")
 lm:ClearHistory()
 RLSuite.lootManager.frame:Hide()
@@ -4031,10 +3994,10 @@ check(bool(rt.eval("""(function()
         and not string.find(s, 'Only:', 1, true)
 end)()""")), "v1.11.136: reroll message is names, REROLL, linked item, You have 15s")
 check(bool(rt.eval("""(function()
-    local s = (RR_MESSAGES or '') .. '\n'
-    if not string.find(s, '[RAID_WARNING] rolling ends in 7s\n', 1, true) then return false end
+    local s = (RR_MESSAGES or '') .. '\\n'
+    if not string.find(s, '[RAID_WARNING] rolling ends in 7s\\n', 1, true) then return false end
     for _, n in ipairs({5, 4, 3, 2, 1}) do
-        if not string.find(s, '[RAID_WARNING] ' .. tostring(n) .. '\n', 1, true) then return false end
+        if not string.find(s, '[RAID_WARNING] ' .. tostring(n) .. '\\n', 1, true) then return false end
     end
     return true
 end)()""")), "v1.11.138: reroll countdown is 'rolling ends in 7s', then bare 5/4/3/2/1")
@@ -4127,13 +4090,13 @@ rt.execute("""
     PT = RLSuite.mainWindow.phaseText
     RC = TB.raidControlBtn
     SUM_W = 4 + PB:GetWidth() + 4 + RLSuite.mainWindow._phaseLabelW + 4
-        + RC:GetWidth() + 4
+        + RLSuite.mainWindow.saveRaidBtn:GetWidth() + 4 + RC:GetWidth() + 4
 """)
 check(bool(rt.eval("TB_P1[1] == 'TOPLEFT' and TB_P1[3] == 'TOPLEFT' and TB_P1[2] == UIParent")),
       "title bar is the anchor: TOPLEFT of the screen at x = Raid Frame width (%s)" % rt.eval("TB_P1[4]"))
 check(rt.eval("TB_P1[5]") == 0, "title bar touches the top edge exactly (y = 0)")
 check(bool(rt.eval("TB_W == TB_TITLE_W and TB_W == SUM_W")),
-      "TITLE BAR WIDTH = SUM OF ITS ELEMENTS (phase icon+name, Raid Control, close) = %d px" % rt.eval("TB_W"))
+      "TITLE BAR WIDTH = SUM OF ITS ELEMENTS (phase icon+name, SaveRaid, Raid Control) = %d px" % rt.eval("TB_W"))
 check(bool(rt.eval("TB_POINTS == 1")), "single anchor: the width is fixed, not derived from the panel")
 check(bool(rt.eval("TB.title ~= nil and tostring(TB.title:GetText()):find('RLS') == nil")),
       "no more 'RLS' text in the title bar")
@@ -4157,8 +4120,11 @@ rt.execute("""
     SAVE_W = SAVE_BTN._w
     SAVE_H = SAVE_BTN._h
     SAVE_IS_MATRIX = false
-    for i, b in ipairs(MW.matrixButtons or {}) do
-        if b == SAVE_BTN then SAVE_IS_MATRIX = true SAVE_IDX = i end
+    SAVE_IS_TITLE = (SAVE_BTN:GetParent() == MW.titleBar)
+    RAID_BUFFS_CELL = nil
+    for i, c in ipairs(MW.matrixOrder or {}) do
+        if c.btn == MW.raidBuffBtn then RAID_BUFFS_CELL = i end
+        if c.btn == SAVE_BTN then SAVE_IS_MATRIX = true end
     end
     SAVE_HAS_ICON = (SAVE_BTN.icon ~= nil)
 """)
@@ -4170,7 +4136,7 @@ rt.execute("""
     -- barretta piu' larga (con l'icona da 16 sarebbe 6 px piu' stretta)
     local MWp = RLSuite.mainWindow
     local rcW = MWp.titleBar.raidControlBtn:GetWidth()
-    GROWTH_OLD = 4 + 16 + 4 + MWp._phaseLabelW + 4 + rcW + 4
+    GROWTH_OLD = 4 + 16 + 4 + MWp._phaseLabelW + 4 + 74 + 4 + rcW + 4
     BAR_GROWTH = MWp.titleBar:GetWidth() - GROWTH_OLD
     PHASE_GAP_PX = select(4, MWp.phaseText:GetPoint(1))
 """)
@@ -4181,27 +4147,22 @@ check(bool(rt.eval("PH_LABEL == 'Pre-raid' or PH_LABEL == 'Pre-boss' or PH_LABEL
       "phase name shows the current phase ('%s')" % rt.eval("PH_LABEL"))
 check(bool(rt.eval("SAVE_TXT == 'SaveRaid'")), "SaveRaid is a TEXT BUTTON showing 'SaveRaid'")
 check(bool(rt.eval("SAVE_W == 74 and SAVE_H == 22")), "SaveRaid button has the same size as the matrix buttons (74x22)")
-check(bool(rt.eval("SAVE_IS_MATRIX == true and (SAVE_IDX == 5 or SAVE_IDX == 6 or SAVE_IDX == 7)")), "SaveRaid joins the button matrix")
+check(bool(rt.eval("SAVE_IS_MATRIX == false and SAVE_IS_TITLE == true and RAID_BUFFS_CELL == 6")), "SaveRaid stays in the title bar and Raid Buffs occupies matrix cell six")
 check(bool(rt.eval("SAVE_HAS_ICON == false")), "SaveRaid is no longer an icon button")
 
 # -- la barra e' piu' bassa e i tasti sono ADERENTI al bordo (PAD ridotto)
 rt.execute("""
     MW = RLSuite.mainWindow
-    local L = RLSuite.db.profile.layout.main or {}
-    local cols = math.max(1, math.min(8, tonumber(L.matrixCols) or 2))
-    local rows = math.max(1, math.min(8, tonumber(L.matrixRows) or 4))
-    local n = #(MW.matrixButtons or {})
-    rows = math.max(rows, math.ceil(n / cols))
+    local cols, rows = 6, 1
     PADU = 4
     EXPECT_H = 2 * PADU + rows * 22 + (rows - 1) * 4
     BAR_H = MW.frame._h
     BAR_W = MW.frame._w
-    -- il primo tasto sta a PAD dal bordo (misurato dai punti)
-    local p1 = MW.matrixButtons[1]._points[1] or {}
+    local first = MW.matrixOrder[1].btn
+    local p1 = first._points[1] or {}
     FIRST_X = p1[4]
     FIRST_Y = p1[5]
-    -- ultimo tasto della prima riga: la matrice e' CENTRATA, margini pari
-    local last = MW.matrixButtons[cols]
+    local last = MW.matrixOrder[cols].btn
     local rEdge = (last._points[1][4] or 0) + (last._w or 0)
     RIGHT_GAP = BAR_W - rEdge
     MATRIX_MW = cols * 74 + (cols - 1) * 6
@@ -4210,7 +4171,7 @@ check(bool(rt.eval("BAR_H == EXPECT_H")),
       "main bar height = padding + matrix only (icon row removed): %d px" % rt.eval("BAR_H"))
 check(bool(rt.eval("FIRST_Y == 4 * -1 and FIRST_X == 4")),
       "buttons sit 4px from the bar border on all sides (spacing reduced, was 12)")
-check(bool(rt.eval("RIGHT_GAP >= 4")), "matrix left-aligned: any extra width of the title row sits on the right")
+check(bool(rt.eval("RIGHT_GAP == 4")), "the fixed six-column matrix has 4px padding on both sides")
 
 # -- il click sul pulsante salva davvero (OnSaveRaid) ---------------------
 rt.execute("""
@@ -4226,9 +4187,13 @@ check(bool(rt.eval("SAVED_CALLS == 1")), "clicking SaveRaid calls OnSaveRaid (st
 # -- barretta stretta: il nome della fase sparisce, l'icona resta ---------
 rt.execute("""
     MW = RLSuite.mainWindow
+    local rf = RLSuite.raidFrame
     local layout = RLSuite.db.profile.layout
     layout.main = layout.main or {}
     local oldCols = layout.main.matrixCols
+    local rfWasShown = rf.frame:IsShown()
+    rf.frame:Show()
+    MW.titleBar:Show()
     layout.main.matrixCols = 1
     MW:ApplyLayout()
     NARROW_TEXT = MW.phaseText:IsShown()
@@ -4238,11 +4203,15 @@ rt.execute("""
     MW:ApplyLayout()
     WIDE_TEXT = MW.phaseText:IsShown()
     WIDE_W = MW.frame._w
+    if not rfWasShown then
+        rf.frame:Hide()
+        MW:SyncVisibilityWithRaidFrame()
+    end
 """)
 check(bool(rt.eval("NARROW_TEXT == true and NARROW_BTN == true")),
       "narrow bar: phase icon AND phase name stay (the name has a reserved slot)")
-check(bool(rt.eval("NARROW_W < WIDE_W")),
-      "panel width follows matrix columns: 1 column is narrower than 2 columns")
+check(bool(rt.eval("NARROW_W == WIDE_W and NARROW_W == 482")),
+      "the Raid Control matrix stays fixed at six columns regardless of stale profile values")
 
 # -- v1.11.57: ancoraggio fisso + larghezza = somma degli elementi --------
 rt.execute("""
@@ -4256,9 +4225,7 @@ rt.execute("""
     RF_M = RLSuite.raidFrame:LayoutMetrics()
     RF_LIVE_W = RLSuite.raidFrame.frame._w
     RF_SCALE = RLSuite.raidFrame.db.scale or 1
-    -- larghezza dei BUFF in colonne (matrice oltre il bordo destro del frame)
-    local cols = #(RLSuite.raidFrame._buffHdrBtns or {})
-    BUFFS_W = cols * RF_M.cellW
+    BUFF_WINDOW_SEPARATE = (RLSuite.raidFrame.buffPanelBtn == nil)
 """)
 check(bool(rt.eval("ANCH_P == 'TOPLEFT' and ANCH_RELP == 'BOTTOMLEFT'")),
       "button matrix panel opens BELOW the title bar (%s -> %s)" % (rt.eval("ANCH_P"), rt.eval("ANCH_RELP")))
@@ -4275,8 +4242,7 @@ check(bool(rt.eval("ANCH_X == 0")), "panel left is aligned with title bar left")
 check(bool(rt.eval("RFW == RF_LIVE_W and RF_LIVE_W == RF_M.W * RF_SCALE")),
       "right offset = Raid Frame width (%d px at scale %s)" % (rt.eval("RF_M.W * RF_SCALE"), rt.eval("RF_SCALE")))
 check(bool(rt.eval("TB_ANCH_X == RFW")), "the offset IS the Raid Frame width, on the LEFT side (no other constant)")
-check(bool(rt.eval("BUFFS_W > 0 and RFW < RF_M.rowWidth + BUFFS_W")),
-      "the buff columns are NOT part of that width (matrix %d px drawn beyond the frame)" % rt.eval("BUFFS_W"))
+check(bool(rt.eval("BUFF_WINDOW_SEPARATE == true")), "the compact Raid Buffs matrix no longer changes the Raid Frame width")
 check(bool(rt.eval("RF_M.W == RF_M.rowWidth")), "Raid Frame width = food/flask + player bar + CDs (no buffs)")
 
 # -- il Raid Frame cambia -> la barra si riposiziona da sola ---------------
@@ -4300,62 +4266,55 @@ check(bool(rt.eval("RFW_NEW == RFW + 40 and ANCH_X_NEW == (RFW + 40)")),
 check(bool(rt.eval("FOLLOWS == true")), "the panel keeps following the title bar when the bar moves")
 check(bool(rt.eval("ANCH_X_BACK == RFW")), "restoring the Raid Frame restores the bar position")
 
-# -- larghezza fissa = somma degli elementi -------------------------------
+# -- larghezza fissa: matrice Raid Control 1x6 e title bar autonoma -------
 rt.execute("""
     MW = RLSuite.mainWindow
     local layout = RLSuite.db.profile.layout
     layout.main = layout.main or {}
-    local map = { [1] = 1, [2] = 2, [3] = 3, [4] = 4 }
+    local oldCols, oldRows = layout.main.matrixCols, layout.main.matrixRows
     W_BY_COLS = {}
     for _, c in ipairs({ 1, 2, 3, 5, 8 }) do
         layout.main.matrixCols = c
+        layout.main.matrixRows = 8 - c
         MW:ApplyLayout()
         W_BY_COLS[c] = MW.frame._w
     end
-    -- riga della barretta: tutti gli elementi presenti e dentro il bordo
-    local tbW = MW.titleBar._w
+    MATRIX_FIXED = true
+    for _, w in pairs(W_BY_COLS) do if w ~= 482 then MATRIX_FIXED = false end end
+    MATRIX_FIXED = MATRIX_FIXED and MW.frame._h == 30
     local rc = MW.titleBar.raidControlBtn
-    TITLE_FITS = (MW.phaseText:IsShown() and rc ~= nil and rc:IsShown() and MW.phaseBtn:IsShown())
-    TITLE_W = tbW
-    TITLE_BAR_W = MW.frame._w
-    layout.main.matrixCols = 2
+    local phaseTextStart = 4 + MW.phaseBtn:GetWidth() + 6
+    local phaseTextEnd = phaseTextStart + MW._phaseLabelW
+    local saveStart = MW.saveRaidBtn._points[1][4]
+    local saveEnd = saveStart + MW.saveRaidBtn:GetWidth()
+    local controlStart = MW.titleBar:GetWidth() - 4 - rc:GetWidth()
+    TITLE_FITS = rc ~= nil and phaseTextEnd <= saveStart and saveEnd <= controlStart
+    TITLE_BAR_W = MW.titleBar:GetWidth()
+    layout.main.matrixCols, layout.main.matrixRows = oldCols, oldRows
     MW:ApplyLayout()
 """)
-rt.execute("""
-    local MWc = RLSuite.mainWindow
-    WFORM_OK = true
-    for c, w in pairs(W_BY_COLS) do
-        local matrixW = c * 74 + (c - 1) * 6
-        local expect = 2 * 4 + matrixW
-        if w ~= expect then WFORM_OK = false end
-    end
-""")
-check(bool(rt.eval("WFORM_OK == true")),
-      "every width = padding + widest element row (formula holds for 1..8 columns)")
-check(bool(rt.eval("W_BY_COLS[8] > W_BY_COLS[2] and W_BY_COLS[3] > W_BY_COLS[1]")),
-      "wider matrix -> wider bar (width = widest element row)")
-check(bool(rt.eval("TITLE_FITS == true")), "every title bar element always fits (phase icon + name + Raid Control)")
+check(bool(rt.eval("MATRIX_FIXED == true")),
+      "Raid Control stays 482x30 (one row, six columns) regardless of stale layout values")
+check(bool(rt.eval("TITLE_FITS == true")), "every title-bar element fits (phase icon + name + SaveRaid + Raid Control)")
 rt.execute("""
     local MWt = RLSuite.mainWindow
     local layout = RLSuite.db.profile.layout
     layout.main = layout.main or {}
-    local oldC = layout.main.matrixCols
-    local tw1, tw8
-    layout.main.matrixCols = 1; MWt:ApplyLayout(); tw1 = MWt.titleBar:GetWidth()
-    layout.main.matrixCols = 8; MWt:ApplyLayout(); tw8 = MWt.titleBar:GetWidth()
+    local oldC, oldR = layout.main.matrixCols, layout.main.matrixRows
+    layout.main.matrixCols, layout.main.matrixRows = 1, 1
+    MWt:ApplyLayout(); local tw1 = MWt.titleBar:GetWidth()
+    layout.main.matrixCols, layout.main.matrixRows = 8, 8
+    MWt:ApplyLayout(); local tw8 = MWt.titleBar:GetWidth()
     TITLE_CONST_W = (tw1 == tw8)
     TITLE_W_1 = tw1
-    layout.main.matrixCols = oldC
+    layout.main.matrixCols, layout.main.matrixRows = oldC, oldR
     MWt:ApplyLayout()
 """)
 check(bool(rt.eval("TITLE_CONST_W == true")),
-      "title bar keeps its own width whatever the matrix does (1 vs 8 columns: %d px)" % rt.eval("TITLE_W_1"))
+      "the title bar keeps its own width irrespective of the fixed matrix")
 rt.execute("""
-    -- larghezza attesa = PAD + max(matrice, riga barretta) + PAD
     local MW = RLSuite.mainWindow
-    local layout = RLSuite.db.profile.layout.main or {}
-    local cols = tonumber(layout.matrixCols) or 2
-    local matrixW = cols * 74 + (cols - 1) * 6
+    local matrixW = 6 * 74 + 5 * 6
     EXPECT_W = 2 * 4 + matrixW
     BAR_W = MW.frame._w
     local rcRef = MW.titleBar.raidControlBtn
@@ -4363,8 +4322,8 @@ rt.execute("""
     RC_TEXT_W = (rcRef and rcRef.GetStringWidth and rcRef:GetStringWidth()) or 84
     PHASE_RESERVE = MW._phaseLabelW
 """)
-check(bool(rt.eval("BAR_W == EXPECT_W")),
-      "bar width = padding + widest element row (matrix vs title row) = %d px" % rt.eval("BAR_W"))
+check(bool(rt.eval("BAR_W == EXPECT_W and BAR_W == 482")),
+      "bar width = 4px padding + six fixed cells + 4px padding")
 check(bool(rt.eval("RC_W >= RC_TEXT_W + 8")),
       "the Raid Control button is sized on its own text (%d px wide)" % rt.eval("RC_W"))
 check(bool(rt.eval("PHASE_RESERVE >= 40 and PHASE_RESERVE <= 90")),
@@ -4383,7 +4342,7 @@ rt.execute("""
     -- la barretta resta larga quanto i suoi elementi
     TITLE_W2 = MW.titleBar:GetWidth()
     TITLE_SUM = 4 + MW.phaseBtn:GetWidth() + 4 + MW._phaseLabelW + 4
-        + MW.titleBar.raidControlBtn:GetWidth() + 4
+        + MW.saveRaidBtn:GetWidth() + 4 + MW.titleBar.raidControlBtn:GetWidth() + 4
 """)
 check(bool(rt.eval("PANEL_TO_TITLE == true and PANEL_POINTS == 1")),
       "MAIN BAR panel is anchored to the title bar (%s)" % rt.eval("PANEL_ANCH"))
@@ -4820,8 +4779,9 @@ COMPB_HDR = function(key)
     end
     return nil, nil
 end
-RLSuite.raidFrame.buffMatrixOn = true
 RLSuite.raidFrame._matrixColsCache = nil
+local buffWindow = RLSuite.raidFrame:EnsureBuffWindow()
+buffWindow:Show()
 RLSuite.raidFrame:Rebuild()
 """)
 
@@ -4924,7 +4884,6 @@ check(bool(rt.eval("COMPB_REPLEN_SAT_9 == false and COMPB_REPLEN_RED_9 == true")
 
 # --- Focus Magic: una FM per mago + nomi nell'alert -----------------------
 rt.execute("""
-RLSuite.raidBuffColumns[#RLSuite.raidBuffColumns + 1] = { key = 'focusMagic', label = 'FM', icon = 'FMIcon', classes = { 'MAGE' }, beneficiaries = { 'MAGE', 'WARLOCK', 'PRIEST', 'DRUID', 'SHAMAN', 'PALADIN' }, scope = 'single', spells = { 54646 } }
 RLSuite.debugTanks = nil
 RLSuite.debugRaid = { slots = {
     [1] = { name = 'Pala',  class = 'PALADIN', isPlayer = false, subgroup = 1 },
@@ -4970,7 +4929,6 @@ local st2 = COMPB('focusMagic')
 COMPB_FM_SAT2 = st2.satisfied
 COMPB_FM_RED2 = (COMPB_HDR('focusMagic')._red:IsShown() == true)
 COMPB_FM_NAMES2 = #st2.missingProviders
-RLSuite.raidBuffColumns[#RLSuite.raidBuffColumns] = nil
 """)
 check(bool(rt.eval("COMPB_FM_LOGGED")), "FM: the combat log records caster->target for Focus Magic (SPELL_AURA_APPLIED)")
 check(bool(rt.eval("COMPB_FM_EXPECTED == 2")), "FM: expected auras = number of MAGES in the raid (2), not number of casters (6)")
@@ -5036,6 +4994,7 @@ COMPB_AURA = nil
 RLSuite:ResetDebugRaid()
 RLSuite.debugTanks = nil
 RLSuite.raidFrame.buffMatrixOn = false
+if RLSuite.raidFrame.buffWindow then RLSuite.raidFrame.buffWindow:Hide() end
 RLSuite.raidFrame._matrixColsCache = nil
 RLSuite.raidFrame:Rebuild()
 COMPB_RESTORED = (RF._BuffCellIconFor == COMPB_SAVED)
@@ -5046,11 +5005,8 @@ check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors
 
 rt.execute("""
 -- ================= v1.11.62: GRIGLIA IMMOBILE DEL RAID FRAME ==========
--- Il bug: a raid vuoto il roster si "ri-compattava" dal fondo e la barra
--- del player finiva IN CIMA al frame (e la strip del buff check si
--- agganciava all'header G1, che con G1 vuoto non c'e'). La griglia ora ha
--- un posto FISSO per ogni gruppo: la y di un player dipende SOLO dal suo
--- gruppo, qualunque sia il resto del roster.
+-- La y di ogni player dipende SOLO dal suo gruppo. Raid Buffs ora e' una
+-- finestra autonoma e non aggiunge una strip o un button al Raid Frame.
 _IM_GM = GetNumRaidMembers
 _IM_GR = GetRaidRosterInfo
 _IM_CTX = RLSuite.context
@@ -5074,25 +5030,13 @@ function IM_RowY(g)
     local p = sl and sl._points and sl._points[1]
     return p and p[5]
 end
-function IM_CellY(g)
-    local sl = IMRF.slots[(g - 1) * 5 + 1]
-    local cell = sl and sl._buffCells and sl._buffCells[1]
-    local p = cell and cell._points and cell._points[1]
-    return p and p[5]
-end
-function IM_HdrIcon()
-    local hb = IMRF._buffHdrBtns and IMRF._buffHdrBtns[1]
-    local p = hb and hb._points and hb._points[1]
-    return hb, p and p[5]
-end
 IM_FULL = {}
 for g = 1, 6 do for i = 1, 5 do IM_FULL[#IM_FULL + 1] = {name='P'..g..i, subgroup=g} end end
-
-IMRF.buffMatrixOn = false
+if IMRF.buffWindow and IMRF.buffWindow:IsShown() then IMRF.buffWindow:Hide() end
 IM_SetRoster({})
 IM_H_EMPTY = IMRF.frame._h
 IM_Y6_EMPTY = IM_RowY(6)
-IM_SetRoster({{name='Me', subgroup=4}})     -- "raid vuoto, mi sposto in un gruppo"
+IM_SetRoster({{name='Me', subgroup=4}})
 IM_H_ONE = IMRF.frame._h
 IM_Y4_ONE = IM_RowY(4)
 IM_SetRoster({{name='Me', subgroup=6}})
@@ -5104,19 +5048,18 @@ IM_Y5_FULL = IM_RowY(5)
 IM_Y4_FULL = IM_RowY(4)
 IM_Y1_FULL = IM_RowY(1)
 
--- buff check: matrice accesa, un solo player in G4 -> la strip resta in cima
-IMRF.buffMatrixOn = true
+-- Aprire la finestra autonoma non altera mai la griglia del Raid Frame.
 IM_SetRoster({{name='Me', subgroup=4}})
-local hb1, hy1 = IM_HdrIcon()
-IM_HDR_SHOWN_ONE = hb1 and hb1:IsShown() or false
-IM_HDR_Y_ONE = hy1
-IM_CELL4_ONE = IM_CellY(4)
-IM_SetRoster(IM_FULL)
-local hb2, hy2 = IM_HdrIcon()
-IM_HDR_Y_FULL = hy2
-IM_CELL4_FULL = IM_CellY(4)
-IMRF.buffMatrixOn = false
-IM_SetRoster({{name='Me', subgroup=6}})
+local yBeforeBuffWindow = IM_RowY(4)
+IMRF:ToggleBuffMatrix()
+IM_WINDOW_OPEN = IMRF.buffWindow:IsShown() and IMRF.buffWindow:GetParent() == UIParent
+IM_H_MAT_ON = IMRF.frame._h
+IM_Y4_MAT_ON = IM_RowY(4)
+IM_RF_BUFF_BTN = (IMRF.buffPanelBtn == nil and RLSuite.mainWindow.raidBuffBtn ~= nil)
+IMRF:ToggleBuffMatrix()
+IM_H_MAT_OFF = IMRF.frame._h
+IM_Y4_MAT_OFF = IM_RowY(4)
+IM_NO_GROUP_HEADERS = IMRF.buffWindow._groupHeaders == nil
 
 -- drag attivo (pre-boss): mostrare gli slot vuoti NON deve spostare niente
 RLSuite.context = 'preboss'
@@ -5131,30 +5074,16 @@ IMRF._rfDragSource = nil
 IMRF:RefreshDropTargets()
 IMRF.buffMatrixOn = false
 
--- toggle della matrice: non deve muovere NIENTE
-IM_SetRoster({{name='Me', subgroup=6}})
-IMRF.buffMatrixOn = false
-IMRF:Rebuild()
-IM_H_MAT_OFF = IMRF.frame._h
-IM_Y6_MAT_OFF = IM_RowY(6)
-IMRF.buffMatrixOn = true
-IMRF:Rebuild()
-IM_H_MAT_ON = IMRF.frame._h
-IM_Y6_MAT_ON = IM_RowY(6)
-IMRF.buffMatrixOn = false
+IM_GRID_STABLE = (IM_Y4_MAT_ON == yBeforeBuffWindow and IM_Y4_MAT_OFF == yBeforeBuffWindow)
+
 -- blocco Tanks riservato sempre: la barra MT non si muove col roster
 local mt1 = IMRF.tankSlots[1]
 local mp1 = mt1 and mt1._points and mt1._points[1]
 IM_MT_Y_ONE = mp1 and mp1[5]
 IM_SetRoster({})
-IM_BTN_EMPTY_SHOWN = (IMRF.buffPanelBtn and IMRF.buffPanelBtn:IsShown()) and true or false
-IM_SetRoster(IM_FULL)
 local mt2 = IMRF.tankSlots[1]
 local mp2 = mt2 and mt2._points and mt2._points[1]
 IM_MT_Y_FULL = mp2 and mp2[5]
-IM_BTN_FULL_SHOWN = (IMRF.buffPanelBtn and IMRF.buffPanelBtn:IsShown()) and true or false
-IMRF.buffMatrixOn = false
-IM_SetRoster({{name='Me', subgroup=6}})
 
 GetNumRaidMembers = _IM_GM
 GetRaidRosterInfo = _IM_GR
@@ -5165,21 +5094,17 @@ RLSuite:ResetDebugRaid()
 IMRF:Rebuild()
 """)
 
-
 check(bool(rt.eval("IM_H_EMPTY == IM_H_ONE and IM_H_ONE == IM_H_FULL")), "v1.11.62: il Raid Frame ha la STESSA altezza con raid vuoto, un player solo e raid pieno (%r/%r/%r)" % (rt.eval("IM_H_EMPTY"), rt.eval("IM_H_ONE"), rt.eval("IM_H_FULL")))
 check(bool(rt.eval("IM_Y6_ONE == IM_Y6_FULL and IM_Y6_EMPTY == IM_Y6_FULL")), "v1.11.62: la barra del player in G6 sta IN FONDO anche a raid vuoto (y=%r, raid pieno y=%r)" % (rt.eval("IM_Y6_ONE"), rt.eval("IM_Y6_FULL")))
 check(bool(rt.eval("IM_Y4_ONE == IM_Y4_FULL")), "v1.11.62: spostarsi in un gruppo a caso non manda la barra in cima (G4 solo: y=%r, raid pieno: y=%r)" % (rt.eval("IM_Y4_ONE"), rt.eval("IM_Y4_FULL")))
 check(bool(rt.eval("IM_Y4_FULL > IM_Y6_FULL and IM_Y1_FULL > IM_Y4_FULL")), "v1.11.62: i gruppi restano in ordine G1..G6 dall'alto verso il basso (mai ricompattati)")
 check(bool(rt.eval("(IM_Y5_FULL - IM_Y6_FULL) == IM_BAND and (IM_Y1_FULL - IM_Y5_FULL) == 4 * IM_BAND")), "v1.11.62: la distanza fra i blocchi dei gruppi e' costante (banda fissa, non dipende dal roster)")
-check(bool(rt.eval("IM_HDR_SHOWN_ONE == true")), "v1.11.62: con G1 vuoto le icone del buff check si vedono lo stesso (prima sparivano)")
-check(bool(rt.eval("IM_HDR_Y_ONE == IM_HDR_Y_FULL")), "v1.11.62: la strip del buff check resta in cima, stessa y con roster pieno o quasi vuoto (%r/%r)" % (rt.eval("IM_HDR_Y_ONE"), rt.eval("IM_HDR_Y_FULL")))
-check(bool(rt.eval("IM_CELL4_ONE == IM_CELL4_FULL")), "v1.11.62: le celle della matrice restano allineate alla riga del loro gruppo")
 check(bool(rt.eval("IM_DRAG_H == IM_H_FULL and IM_DRAG_Y6 == IM_Y6_FULL")), "v1.11.62: mostrare gli slot vuoti durante il drag non sposta le barre (slot visibili: %r)" % rt.eval("IM_DRAG_SHOWN"))
 check(bool(rt.eval("IM_DRAG_SHOWN >= 5")), "v1.11.62: durante il drag gli slot vuoti restano drop target (nessuna regressione)")
 
-check(bool(rt.eval("IM_H_MAT_OFF == IM_H_MAT_ON and IM_Y6_MAT_OFF == IM_Y6_MAT_ON")), "v1.11.62: accendere/spegnere il buff check non muove le barre")
+check(bool(rt.eval("IM_WINDOW_OPEN and IM_NO_GROUP_HEADERS and IM_RF_BUFF_BTN")), "v1.11.62: Raid Buffs opens as a standalone window from Raid Control, with no group headers")
+check(bool(rt.eval("IM_H_MAT_OFF == IM_H_MAT_ON and IM_GRID_STABLE")), "v1.11.62: opening/closing the standalone buff window never shifts Raid Frame bars")
 check(bool(rt.eval("IM_MT_Y_ONE == IM_MT_Y_FULL")), "v1.11.62: il blocco Tanks e' riservato sempre (barra MT ferma: %r / %r)" % (rt.eval("IM_MT_Y_ONE"), rt.eval("IM_MT_Y_FULL")))
-check(bool(rt.eval("IM_BTN_EMPTY_SHOWN == false and IM_BTN_FULL_SHOWN == true")), "v1.11.62: a roster vuoto il tasto 'Raid Buffs' resta nascosto e riappare col roster")
 
 rt.execute("""
 -- =====================================================================
@@ -6644,8 +6569,8 @@ RLSuite:DebugInviteAccept("Lightwall", "PALADIN")
 RLSuite:DebugInviteAccept("Drakbot", "WARRIOR")
 RLSuite:DebugInviteAccept("Ironclad", "WARRIOR")
 RLSuite:DebugInviteAccept("Zapdora", "MAGE")
-RFM.buffMatrixOn = true
 RFM:Rebuild()
+RFM:EnsureBuffWindow():Show()
 RFM:ApplyLayout()
 RFM._durStamp = (RFM._durStamp or 0) + 1      -- forza il ricalcolo della durability
 RFM:RefreshBuffMatrix()
@@ -6661,16 +6586,16 @@ V90.dur_key = cols[#cols].key
 V90.dur_kind = cols[#cols].kind
 V90.dur_icon = tostring(cols[#cols].icon)
 V90.dur_hdr = tostring(RFM._buffHdrBtns[#cols] and RFM._buffHdrBtns[#cols]._icon._texture)
-local function durTintSlot(slot)
-    local fs = slot and slot._buffCellTexts and slot._buffCellTexts[#cols]
+local function durTintRow(row)
+    local fs = row and row._cellTexts and row._cellTexts[#cols]
     return fs and fs._tc
 end
-local function findSlot(pred)
-    for _, slot in ipairs(RFM.slots) do if pred(slot) then return slot end end
+local function findBuffRow(pred)
+    for _, row in ipairs(RFM._buffWindowRows or {}) do if pred(row) then return row end end
 end
 -- Senza le API di inventario (caso "nessun dato") il proprio pg e' GRIGIO:
 -- non si accusa nessuno per un'informazione che non c'e'.
-V90.tint_nodata = durTintSlot(findSlot(function(sl) return sl.member and sl.member.isPlayer end))
+V90.tint_nodata = durTintRow(findBuffRow(function(row) return row.member and row.member.isPlayer end))
 -- Con le API: verde per chi ha l'attrezzatura a posto...
 GetInventoryItemLink = function() return "|Hitem:1|h[Item]|h" end
 GetInventoryItemBroken = function() return false end
@@ -6678,9 +6603,9 @@ GetInventoryItemDurability = function() return 100, 100 end
 RFM._durCache = nil
 RFM._durStamp = (RFM._durStamp or 0) + 1
 RFM:RefreshBuffMatrix()
-V90.tint_g1 = durTintSlot(findSlot(function(sl) return sl.member and sl.member.fake and sl.group == 1 end))
+V90.tint_g1 = durTintRow(findBuffRow(function(row) return row.member and row.member.fake and row.group == 1 end))
 -- ...e ROSSA per l'ultimo gruppo (simulazione debug: oggetti rotti)
-V90.tint_g2 = durTintSlot(findSlot(function(sl) return sl.member and sl.member.fake and sl.group == 2 end))
+V90.tint_g2 = durTintRow(findBuffRow(function(row) return row.member and row.member.fake and row.group == 2 end))
 -- stato della categoria: chi ha roba rotta finisce nell'elenco
 local st = RFM:BuffCoverage(cols[#cols])
 V90.dur_satisfied = st and st.satisfied
@@ -6898,7 +6823,7 @@ UnitInRange = nil
 
 check(bool(rt.eval("V90.cd_font == 10")), "v1.11.90: i timer dei cooldown usano font 10 (prima 8): si leggono")
 check(bool(rt.eval("V90.dur_key == 'durability' and V90.dur_kind == 'durability'")), "v1.11.90: la colonna Durability e' una colonna di servizio della matrice (kind = durability)")
-check(bool(rt.eval("V90.n_cols == 12")), "v1.11.90: 12 colonne (9 buff + 2 consumabili + Durability), la nuova e' l'ULTIMA a destra")
+check(bool(rt.eval("V90.n_cols == 13")), "v1.11.90: 13 colonne (10 buff incl. Focus Magic + 2 consumabili + Durability), Durability resta l'ultima")
 check(bool(rt.eval("V90.dur_icon:find('PaperDoll', 1, true) ~= nil")), "v1.11.90: la colonna durability usa l'icona dell'equipaggiamento del client")
 check(bool(rt.eval("V90.dur_hdr:find('PaperDoll', 1, true) ~= nil")), "v1.11.90: l'intestazione Durability usa quell'icona (non un file BCI)")
 check(bool(rt.eval("V90.tint_g1 ~= nil and V90.tint_g1[1] == 0.2 and V90.tint_g1[2] == 1")), "v1.11.107: FontString durability verde quando l'attrezzatura e' a posto")
@@ -7488,12 +7413,11 @@ local m = RF:LayoutMetrics()
 -- 1. Test Group Header text
 V108_HDR_TEXT = RF.groupHeaders[1]:GetText()
 
--- 2. Test Raid Buffs button size
-local btnW, btnH = RF.buffPanelBtn:GetWidth(), RF.buffPanelBtn:GetHeight()
+-- 2. The Raid Buffs button belongs to the fixed Raid Control matrix.
+local btnW, btnH = RLSuite.mainWindow.raidBuffBtn:GetWidth(), RLSuite.mainWindow.raidBuffBtn:GetHeight()
 V108_BTN_W = btnW
 V108_BTN_H = btnH
-V108_EXP_W = m.cdReserve
-V108_EXP_H = m.barHeight
+V108_EXP_W, V108_EXP_H = 74, 22
 
 -- 3. Test Role Icon exists on row
 local row1 = RF.slots[1]
@@ -7531,7 +7455,7 @@ V108_HAS_TOOLTIP = (RF.ShowPlayerTooltip ~= nil)
 ''')
 
 check(rt.eval("V108_HDR_TEXT:find('Group', 1, true) ~= nil"), "v1.11.108: Group header text is 'Group N'")
-check(rt.eval("V108_BTN_W == V108_EXP_W and V108_BTN_H == V108_EXP_H"), "v1.11.108: Raid Buffs button width equals 4 CD space and height equals barHeight")
+check(rt.eval("V108_BTN_W == V108_EXP_W and V108_BTN_H == V108_EXP_H"), "v1.11.108: Raid Buffs button keeps the 74x22 Raid Control matrix-cell size")
 check(bool(rt.eval("V108_HAS_ROLE_ICON")), "v1.11.108: Row has roleIcon slot to the left of HP bar")
 check(rt.eval("V108_FADED_ALPHA") == 0.30, "v1.11.108: Distant/unconnected/invisible unit correctly fades to distanceAlpha")
 check(rt.eval("V108_NAME_ALPHA") == 0.30, "v1.11.108: Player name text correctly fades along with bar")

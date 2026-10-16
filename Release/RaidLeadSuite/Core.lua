@@ -1143,6 +1143,11 @@ RLSuite.raidBuffColumns = {
       spells = { 48932, 48934, 47436 } },
     { key = "hp",          label = "HP",      fullName = "Health (HP)", icon = "Interface\\Icons\\Ability_Warrior_RallyingCry",
       classes = { "WARRIOR", "WARLOCK" }, spells = { 47440, 27267, 47982 } },
+    -- Focus Magic: una aura per mago (scope single); il relativo tracking
+    -- del caster via combat log e' gestito da RaidFrame.lua.
+    { key = "focusMagic",  label = "FM",      fullName = "Focus Magic", icon = "Interface\\Icons\\Spell_Arcane_MindMastery",
+      classes = { "MAGE" }, beneficiaries = BUFF_CLASSES_CASTER,
+      scope = "single", spells = { 54646 } },
     { key = "flask",       label = "Flask",   fullName = "Flask", icon = "Interface\\Icons\\INV_Alchemy_EndlessFlask_05",
       classes = {}, spells = {
         53755, 53760, 54212, 53758, 67016, 67017, 67018,
