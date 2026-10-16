@@ -672,6 +672,7 @@ function CFG:BuildOptionsTable()
         local legacy = p.raidframe and p.raidframe.appearance
         return {
             iconSize = tonumber(saved.iconSize) or 16,
+            headerIconSize = tonumber(saved.headerIconSize) or 20,
             spacing = tonumber(saved.spacing) or tonumber(legacy and legacy.iconSpacing) or 8,
             fontSize = tonumber(saved.fontSize) or 10,
         }
@@ -682,16 +683,20 @@ function CFG:BuildOptionsTable()
         self:ApplyAll()
     end
     local raidbuffs = {
-        iconSize = slider(L["Buff icon size"], L["Size of player buff icons; category headers are two pixels larger."],
+        iconSize = slider(L["Buff icon size"], L["Size of buff icons in the player rows."],
             1, 12, 24, 1,
             function() return getBuffSettings().iconSize end,
             function(_, v) setBuffSetting("iconSize", v) end),
+        headerIconSize = slider(L["Header icon size"], L["Size of category icons in the Raid Buffs header."],
+            2, 20, 60, 1,
+            function() return getBuffSettings().headerIconSize end,
+            function(_, v) setBuffSetting("headerIconSize", v) end),
         spacing = slider(L["Buff spacing"], L["Spacing between the buff columns and category groups."],
-            2, 0, 16, 1,
+            3, 0, 16, 1,
             function() return getBuffSettings().spacing end,
             function(_, v) setBuffSetting("spacing", v) end),
         fontSize = slider(L["Font size"], L["Font size for player names in the Raid Buffs window."],
-            3, 8, 20, 1,
+            4, 8, 20, 1,
             function() return getBuffSettings().fontSize end,
             function(_, v) setBuffSetting("fontSize", v) end),
     }

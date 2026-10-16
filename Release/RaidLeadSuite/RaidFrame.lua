@@ -94,9 +94,11 @@ local RF_TANK_COUNT = 2     -- Tanks group sopra G1: barra MT + barra OT
 -- Geometria della finestra autonoma "Raid Buffs" (tabella compatta):
 local RF_BP_NAME_W = 92
 local RF_BP_ICON_SIZE = 16
-local RF_BP_HEADER_ICON_EXTRA = 2
+local RF_BP_HEADER_ICON_SIZE = 20
 local RF_BP_MIN_ICON_SIZE = 12
 local RF_BP_MAX_ICON_SIZE = 24
+local RF_BP_MIN_HEADER_ICON_SIZE = 20
+local RF_BP_MAX_HEADER_ICON_SIZE = 60
 local RF_BP_MIN_FONT_SIZE = 8
 local RF_BP_MAX_FONT_SIZE = 20
 local RF_BP_HEADER_H = 24
@@ -3399,15 +3401,18 @@ function RF:GetBuffWindowSettings()
     local saved = profile.raidbuffs or {}
     local legacyApp = profile.raidframe and profile.raidframe.appearance or {}
     local iconSize = tonumber(saved.iconSize) or RF_BP_ICON_SIZE
+    local headerIconSize = tonumber(saved.headerIconSize) or RF_BP_HEADER_ICON_SIZE
     local spacing = tonumber(saved.spacing)
     if spacing == nil then spacing = tonumber(legacyApp.iconSpacing) or 8 end
     local fontSize = tonumber(saved.fontSize) or 10
 
     iconSize = math.floor(iconSize + 0.5)
+    headerIconSize = math.floor(headerIconSize + 0.5)
     spacing = math.floor(spacing + 0.5)
     fontSize = math.floor(fontSize + 0.5)
     return {
         iconSize = math.max(RF_BP_MIN_ICON_SIZE, math.min(RF_BP_MAX_ICON_SIZE, iconSize)),
+        headerIconSize = math.max(RF_BP_MIN_HEADER_ICON_SIZE, math.min(RF_BP_MAX_HEADER_ICON_SIZE, headerIconSize)),
         spacing = math.max(0, math.min(16, spacing)),
         fontSize = math.max(RF_BP_MIN_FONT_SIZE, math.min(RF_BP_MAX_FONT_SIZE, fontSize)),
     }
@@ -3497,7 +3502,7 @@ function RF:_BuffWindowLayoutSignature(entries, cols)
     local parts = {
         tostring(#entries), tostring(#cols), tostring(app.font or ""),
         tostring(settings.fontSize), tostring(settings.iconSize),
-        tostring(settings.spacing), tostring(app.fontOutline ~= false),
+        tostring(settings.headerIconSize), tostring(settings.spacing), tostring(app.fontOutline ~= false),
         tostring(bc.r or 0.5), tostring(bc.g or 0.5),
         tostring(bc.b or 0.5), tostring(bc.a or 0.35),
     }
@@ -3516,8 +3521,10 @@ function RF:_LayoutBuffWindow(entries, cols)
     local nameW = RF_BP_NAME_W
     local settings = self:GetBuffWindowSettings()
     local iconSize = settings.iconSize
-    local headerIconSize = iconSize + RF_BP_HEADER_ICON_EXTRA
-    local cellW = iconSize + settings.spacing
+    local headerIconSize = settings.headerIconSize
+    -- Keep the category artwork from overlapping adjacent columns; the row
+    -- icons remain centered in the same (wider when needed) column pitch.
+    local cellW = math.max(iconSize, headerIconSize) + settings.spacing
     local rowH = math.max(RF_BP_ROW_H, iconSize + 1, settings.fontSize + 4)
     local headerH = math.max(RF_BP_HEADER_H, headerIconSize + 4, settings.fontSize + 4)
     local titleH = RF_BP_TITLE_H

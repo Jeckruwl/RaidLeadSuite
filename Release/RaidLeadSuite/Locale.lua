@@ -215,7 +215,9 @@ do
     L["Tanks"] = true
     L["Raid Buffs"] = true
     L["Buff icon size"] = true
-    L["Size of player buff icons; category headers are two pixels larger."] = true
+    L["Size of buff icons in the player rows."] = true
+    L["Header icon size"] = true
+    L["Size of category icons in the Raid Buffs header."] = true
     L["Buff spacing"] = true
     L["Spacing between the buff columns and category groups."] = true
     L["Font size for player names in the Raid Buffs window."] = true

@@ -789,11 +789,11 @@ check(bool(rt.eval("RLSuite.minimapIcon.dragging == true")), "Shift + left drag 
 rt.execute("IsShiftKeyDown = function() return false end")  # runtime condiviso: ripristina Shift per gli scenari successivi
 
 # save raid + load raid round trip through the new profile
-rt.execute("RLSuite.db.profile.raidbuffs = { iconSize = 20, spacing = 4, fontSize = 14 }; SAVED_ID = RLSuite:SaveRaid('TestRaid')")
-rt.execute("RLSuite.db.profile.raidbuffs.iconSize = 16; RLSuite:LoadRaid(SAVED_ID)")
+rt.execute("RLSuite.db.profile.raidbuffs = { iconSize = 20, headerIconSize = 48, spacing = 4, fontSize = 14 }; SAVED_ID = RLSuite:SaveRaid('TestRaid')")
+rt.execute("RLSuite.db.profile.raidbuffs.iconSize = 16; RLSuite.db.profile.raidbuffs.headerIconSize = 20; RLSuite:LoadRaid(SAVED_ID)")
 check(g.SAVED_ID == 1, "SaveRaid returns id 1 on a fresh profile")
 check(rt.eval("#RLSuite.db.profile.savedRaids") == 1, "saved raid stored in db.profile.savedRaids")
-check(bool(rt.eval("RLSuite.db.profile.raidbuffs.iconSize == 20 and RLSuite.db.profile.raidbuffs.spacing == 4 and RLSuite.db.profile.raidbuffs.fontSize == 14")), "SaveRaid round-trip preserves standalone Raid Buffs settings")
+check(bool(rt.eval("RLSuite.db.profile.raidbuffs.iconSize == 20 and RLSuite.db.profile.raidbuffs.headerIconSize == 48 and RLSuite.db.profile.raidbuffs.spacing == 4 and RLSuite.db.profile.raidbuffs.fontSize == 14")), "SaveRaid round-trip preserves standalone Raid Buffs settings")
 rt.execute("RLSuite.db.profile.raidbuffs = {}")
 
 print()
@@ -2362,9 +2362,10 @@ rt.execute("""
 local o = RLSuite.config:BuildOptionsTable().args.raidbuffs.args
 local rf = RLSuite.raidFrame
 local s = rf:GetBuffWindowSettings()
-BUFF_OPTS = o.iconSize and o.spacing and o.fontSize
-BUFF_OPTION_DEFAULTS = s.iconSize == 16 and s.spacing == 8 and s.fontSize == 10
+BUFF_OPTS = o.iconSize and o.headerIconSize and o.spacing and o.fontSize
+BUFF_OPTION_DEFAULTS = s.iconSize == 16 and s.headerIconSize == 20 and s.spacing == 8 and s.fontSize == 10
 BUFF_OPTION_RANGES = o.iconSize.min == 12 and o.iconSize.max == 24
+    and o.headerIconSize.min == 20 and o.headerIconSize.max == 60
     and o.spacing.min == 0 and o.spacing.max == 16
     and o.fontSize.min == 8 and o.fontSize.max == 20
 local profile = RLSuite.db.profile
@@ -2373,8 +2374,15 @@ profile.raidbuffs.spacing = nil
 profile.raidframe.appearance.iconSpacing = 4
 BUFF_LEGACY_SPACING = rf:GetBuffWindowSettings().spacing == 4
 profile.raidbuffs.spacing, profile.raidframe.appearance.iconSpacing = savedSpacing, legacySpacing
+local savedHeader = profile.raidbuffs.headerIconSize
+profile.raidbuffs.headerIconSize = 1
+local minHeader = rf:GetBuffWindowSettings().headerIconSize
+profile.raidbuffs.headerIconSize = 80
+local maxHeader = rf:GetBuffWindowSettings().headerIconSize
+BUFF_HEADER_CLAMPS = minHeader == 20 and maxHeader == 60
+profile.raidbuffs.headerIconSize = savedHeader
 """)
-check(bool(rt.eval("BUFF_OPTS and BUFF_OPTION_DEFAULTS and BUFF_OPTION_RANGES and BUFF_LEGACY_SPACING")), "Raid Buffs Config exposes the expected settings, preserves legacy spacing, and clamps sensible ranges")
+check(bool(rt.eval("BUFF_OPTS and BUFF_OPTION_DEFAULTS and BUFF_OPTION_RANGES and BUFF_LEGACY_SPACING and BUFF_HEADER_CLAMPS")), "Raid Buffs Config exposes player/header icon sizes, preserves legacy spacing, and clamps header icons to 20-60")
 rt.execute("""
 local prof = RLSuite.db.profile.raidframe
 SAVED_FC = prof.appearance.fontColor
@@ -2549,12 +2557,12 @@ BP_ROW_COMPACT = RF._buffWindowRows[1]._h == 17
 BP_WINDOW_TITLE = RF.buffWindow._buffTitle:GetText() == 'Raid Buffs'
 BP_HDR_DUR = RF._buffHdrBtns[13]._icon._texture:find('PaperDoll', 1, true) ~= nil
 local buffSettings = RF:GetBuffWindowSettings()
-local expectedPitch = buffSettings.iconSize + buffSettings.spacing
+local expectedPitch = math.max(buffSettings.iconSize, buffSettings.headerIconSize) + buffSettings.spacing
 local rowCells = RF._buffWindowRows[1]._cells
 BP_ICON_GAPS = RF:_BuffColOffset(11, buffSettings.spacing) == buffSettings.spacing
     and RF:_BuffColOffset(13, buffSettings.spacing) == buffSettings.spacing * 2
 BP_WINDOW_PITCH = math.abs(rowCells[2]._points[1][4] - rowCells[1]._points[1][4] - expectedPitch) < 0.001
-BP_WINDOW_ICON_SIZE = RF._buffHdrBtns[1]._icon._w == buffSettings.iconSize + 2
+BP_WINDOW_ICON_SIZE = RF._buffHdrBtns[1]._icon._w == buffSettings.headerIconSize
     and rowCells[1]._w == buffSettings.iconSize
 BP_WINDOW_FONT_SIZE = RF._buffWindowRows[1]._name._fontArgs[2] == buffSettings.fontSize
 BP_WINDOW_NO_BORDER = RF.buffWindow._noOuterBorder == true
@@ -2576,33 +2584,42 @@ check(bool(rt.eval("BP_ICON_STATS and BP_ICON_STAM and BP_ICON_MP5 and BP_ICON_A
 check(bool(rt.eval("BP_ICON_SPECIALS and BP_HDR_DUR")), "Food, Flask, and Durability retain their own game icons")
 check(bool(rt.eval("BP_ICON_GAPS")), "buff/consumable/durability column spacing remains grouped")
 check(bool(rt.eval("BP_WINDOW_PITCH")), "standalone matrix honors the configured category-icon spacing")
-check(bool(rt.eval("BP_WINDOW_ICON_SIZE and BP_WINDOW_FONT_SIZE")), "Raid Buffs icon size and font size apply to the standalone rows")
+check(bool(rt.eval("BP_WINDOW_ICON_SIZE and BP_WINDOW_FONT_SIZE")), "Raid Buffs header icon size, player-row icon size, and font size apply")
 check(bool(rt.eval("BP_WINDOW_NO_BORDER")), "Raid Buffs window has no visible dialog border")
 rt.execute("""
 local profile = RLSuite.db.profile.raidbuffs
 local opts = RLSuite.config:BuildOptionsTable().args.raidbuffs.args
-local oldIcon, oldSpacing, oldFont = profile.iconSize, profile.spacing, profile.fontSize
+local oldIcon, oldHeader, oldSpacing, oldFont = profile.iconSize, profile.headerIconSize, profile.spacing, profile.fontSize
 opts.iconSize.set(nil, 20)
+opts.headerIconSize.set(nil, 40)
 opts.spacing.set(nil, 3)
 opts.fontSize.set(nil, 14)
 local RF = RLSuite.raidFrame
 local settings = RF:GetBuffWindowSettings()
 local cells = RF._buffWindowRows[1]._cells
-BUFF_CONFIG_APPLIED = settings.iconSize == 20 and settings.spacing == 3 and settings.fontSize == 14
-    and RF._buffHdrBtns[1]._icon._w == 22 and cells[1]._w == 20
+BUFF_CONFIG_APPLIED = settings.iconSize == 20 and settings.headerIconSize == 40
+    and settings.spacing == 3 and settings.fontSize == 14
+    and RF._buffHdrBtns[1]._icon._w == 40 and RF._buffHdrBtns[1]._w == 43 and cells[1]._w == 20
     and RF._buffWindowRows[1]._h == 21
-    and math.abs(cells[2]._points[1][4] - cells[1]._points[1][4] - 23) < 0.001
+    and math.abs(cells[2]._points[1][4] - cells[1]._points[1][4] - 43) < 0.001
     and RF._buffWindowRows[1]._name._fontArgs[2] == 14
+opts.headerIconSize.set(nil, 60)
+settings = RF:GetBuffWindowSettings()
+BUFF_HEADER_MAX_APPLIED = settings.headerIconSize == 60
+    and RF._buffHdrBtns[1]._icon._w == 60 and RF._buffHdrBtns[1]._w == 63
+    and RF._buffWindowHeaderBg._h == 64
+    and math.abs(cells[2]._points[1][4] - cells[1]._points[1][4] - 63) < 0.001
 opts.iconSize.set(nil, 16)
+opts.headerIconSize.set(nil, 20)
 opts.fontSize.set(nil, 18)
 settings = RF:GetBuffWindowSettings()
-BUFF_FONT_ROW_APPLIED = settings.iconSize == 16 and settings.fontSize == 18
+BUFF_FONT_ROW_APPLIED = settings.iconSize == 16 and settings.headerIconSize == 20 and settings.fontSize == 18
     and RF._buffWindowRows[1]._h == 22
     and RF._buffWindowRows[1]._name._fontArgs[2] == 18
-profile.iconSize, profile.spacing, profile.fontSize = oldIcon, oldSpacing, oldFont
+profile.iconSize, profile.headerIconSize, profile.spacing, profile.fontSize = oldIcon, oldHeader, oldSpacing, oldFont
 RLSuite.config:ApplyAll()
 """)
-check(bool(rt.eval("BUFF_CONFIG_APPLIED and BUFF_FONT_ROW_APPLIED")), "Raid Buffs Config sliders resize icons, spacing, row height, and name font immediately")
+check(bool(rt.eval("BUFF_CONFIG_APPLIED and BUFF_HEADER_MAX_APPLIED and BUFF_FONT_ROW_APPLIED")), "Raid Buffs header icons resize from 20 to 60 without overlap; row controls apply immediately")
 check(bool(rt.eval("BP_WINDOW_PARENT and BP_HDR_PARENT")), "window and category headers are separate from the Raid Frame")
 check(bool(rt.eval("BP_ROWS_FLAT and BP_PLAYER_ROW")), "roster rows are a single flat list with member names and no raid-group subdivisions")
 check(bool(rt.eval("BP_ROW_COMPACT")), "standalone roster rows use compact 17-pixel height")
@@ -2713,7 +2730,7 @@ SP_BG = bga ~= nil and math.abs(bga[1] - 1) < 0.01 and math.abs(bga[4] - 0.6) < 
 local settings = RF:GetBuffWindowSettings()
 local cells = RF._buffWindowRows[1]._cells
 SP_BUFF_SPACING = settings.spacing == 2
-    and math.abs(cells[2]._points[1][4] - cells[1]._points[1][4] - settings.iconSize - 2) < 0.001
+    and math.abs(cells[2]._points[1][4] - cells[1]._points[1][4] - math.max(settings.iconSize, settings.headerIconSize) - 2) < 0.001
 SP_WINDOW_STANDALONE = RF.buffWindow:GetParent() == UIParent and RF.buffWindow ~= RF.frame
 app.iconSpacing, app.rowSpacing, app.groupSpacing = oldIcon, oldRow, oldGroup
 app.groupHeaderFontSize, app.matrixBackdrop, buff.spacing = oldHeader, oldBackdrop, oldBuffSpacing
