@@ -58,6 +58,18 @@ do
     L["No item selected"] = true
     L["Select an item from the history first!"] = true
     L["Loot debug: %d items from %s"] = true
+    L["Bag pickup is not available on this client."] = true
+    L["Item not found in your bags."] = true
+    L["You have only %d of this item in your bags."] = true
+    L["Not enough empty trade slots for that quantity."] = true
+    L["This client cannot split item stacks for pickup."] = true
+    L["Set a positive quantity before picking up the item."] = true
+    L["Click to pick up %d PS from bags"] = true
+    L["Click to pick up 1 item from bags"] = true
+    L["Click to pick up %d items from bags"] = true
+    L["Click to pick up item"] = true
+    L["Set a positive U quantity before starting the RESS roll."] = true
+    L["Set a positive R quantity before starting the Raid RESS roll."] = true
 
     -- GroupMaking
     L["Composition"] = true
@@ -71,6 +83,10 @@ do
     L["AtlasLoot is not loaded."] = true
     L["Spammer started."] = true
     L["Spammer stopped."] = true
+    L["Spam interval"] = true
+    L["Interval between spam messages; choose 20 to 60 seconds in 5-second steps."] = true
+    L["%d seconds"] = true
+    L["Request specific Specs"] = true
     L["Channel #"] = true
     L["Explicit channel number; leave empty (or 0) to auto-detect by name."] = true
     L["Whisper from %s received."] = true
@@ -88,7 +104,6 @@ do
     L["Create/save the event first, then tick 'Link to RLS'."] = true
     L["Event linked: %s"] = true
     L["Event unlinked."] = true
-    L["No event linked yet."] = true
     L["Created by %s"] = true
     L["Names (one per line)"] = true
     L["Add player"] = true

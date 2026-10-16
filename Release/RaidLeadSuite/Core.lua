@@ -201,6 +201,8 @@ local defaults = {
             rerollDuration = 15,
             rarityFilter = "all",
             tradeWindow = 7200,
+            ressUserCount = 1,
+            ressRaidCount = 0,
             filters = { recipes = false, boe = false, gems = false, shards = false,
                         projectiles = false },
             ignoredItems = {},
@@ -431,13 +433,11 @@ function RLSuite:OnRaidRosterUpdate()
 end
 
 function RLSuite:OnPlayerRegenEnabled()
-    self.context = "preboss"
-    self:UpdatePhaseUI()
+    self:UpdateRaidContext()
 end
 
 function RLSuite:OnPlayerRegenDisabled()
-    self.context = "infight"
-    self:UpdatePhaseUI()
+    self:UpdateRaidContext()
 end
 
 -- Il target e' cambiato: se siamo in fight, la MacroBar deve passare al
@@ -2218,14 +2218,15 @@ function RLSuite:ApplyDebugMode()
 end
 
 function RLSuite:UpdateRaidContext()
-    local inRaid = self:InRaid()
-    local inCombat = UnitAffectingCombat("player")
-    if not inRaid then
-        self.context = "preraid"
-    elseif inCombat then
-        self.context = "infight"
+    -- PRERAID is a deliberate, manual phase: joining/leaving a group or
+    -- entering combat must not move it on. Once the user selects PREBOSS,
+    -- combat state may automatically switch only between PREBOSS/INFIGHT.
+    local current = self.context or "preraid"
+    if current ~= "preraid" then
+        local inCombat = UnitAffectingCombat and UnitAffectingCombat("player")
+        self.context = inCombat and "infight" or "preboss"
     else
-        self.context = "preboss"
+        self.context = "preraid"
     end
     self:UpdatePhaseUI()
     if self.mainWindow and self.mainWindow.SyncVisibilityWithRaidFrame then
@@ -2234,8 +2235,8 @@ function RLSuite:UpdateRaidContext()
 end
 
 -- Forza la fase dell'addon (preraid / preboss / infight) dai bottoni
--- della barra. Il contesto automatico torna a prevalere al prossimo
--- evento (roster/regen), come prima.
+-- della barra. PRERAID resta manuale; una volta passati a PREBOSS,
+-- gli eventi di combattimento alternano automaticamente PREBOSS/INFIGHT.
 function RLSuite:SetContextPhase(phase)
     if phase ~= "preraid" and phase ~= "preboss" and phase ~= "infight" then return end
     self.context = phase

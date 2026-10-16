@@ -259,9 +259,8 @@ function MW:CreateFrame()
     -- X di chiusura e icona SaveRaid). La Config si apre dalla minimappa
     -- (clic destro) o da /rls config.
 
-    -- ORDINE DEI TASTI DELLA MATRICE (richiesto): Pugger, Raid Frame,
-    -- MS, Macrobar, MT & OT, Loot, SaveRaid. I tab si creano in
-    -- quest'ordine e la griglia li dispone riga per riga (vedi matrixOrder).
+    -- Ordine fisso della matrice: Pugger, Macrobar, MT/OT, MS, Loot,
+    -- SaveRaid. I tab vengono creati qui e poi disposti tramite matrixOrder.
     self.tabDefs = {
         { key = "group",     label = "Pugger" },
         { key = "ms",        label = "MS" },
@@ -271,7 +270,7 @@ function MW:CreateFrame()
     self.tabs = {}
     self.currentTab = nil
 
-    -- Matrice colonne x righe configurabile: 5 tab
+    -- Cinque tab standard; la coppia MT/OT aggiunge una cella condivisa.
     self.matrixButtons = {}
     for i, def in ipairs(self.tabDefs) do
         local tab = CreateFrame("Button", "RLSuiteTab" .. def.key, f, "UIPanelButtonTemplate")
@@ -441,10 +440,8 @@ function MW:CreateFrame()
         GameTooltip:Show()
     end)
     self.saveRaidBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    -- ORDINE DELLE CELLE DELLA MATRICE: la coppia MT & OT occupa UNA cella e
-    -- sta al 5o posto (prima era "appesa" sotto Raid Frame, con i tasti
-    -- seguenti che scalavano di uno: con un ordine esplicito non serve piu'
-    -- nessun caso particolare).
+    -- Ordine delle celle nella matrice fissa: la coppia MT/OT condivide la
+    -- terza cella, tra Macrobar e MS; gli altri pulsanti occupano una cella ciascuno.
     self.matrixOrder = {
         { btn = self.tabs["group"] },
         { btn = self.tabs["macro"] },
@@ -481,23 +478,16 @@ function MW:ApplyLayout()
     local L = RLSuite.db and RLSuite.db.profile.layout and RLSuite.db.profile.layout.main
     if not self.frame then return end
     L = L or {}
-    local cols = math.max(1, math.min(8, tonumber(L.matrixCols) or 2))
-    local rows = math.max(1, math.min(8, tonumber(L.matrixRows) or 4))
+    local cols, rows = 6, 1
     -- Celle della matrice: una per tasto, una per la coppia MT & OT.
     local cells = self.matrixOrder
     if not cells or #cells == 0 then
         cells = {}
         for _, b in ipairs(self.matrixButtons or {}) do cells[#cells + 1] = { btn = b } end
     end
-    local nCells = #cells
-    if nCells > 0 then
-        rows = math.max(rows, math.ceil(nCells / cols))
-    end
-
-    -- Bottoni matrice: colonne x righe configurabili dalla Config.
-    -- La vecchia RIGA DI ICONE in alto non esiste piu': l'icona di fase sta
-    -- nella barretta del titolo e "SaveRaid" e' tornato un pulsante della
-    -- matrice. Quindi la barra e' PIU' BASSA di tutta quella riga.
+    -- Matrice fissa a sei colonne su una sola riga. La vecchia RIGA DI ICONE
+    -- in alto non esiste piu': l'icona di fase sta nella barretta del titolo
+    -- e "SaveRaid" e' tornato un pulsante della matrice.
     local bw, bh, gapX, gapY = 74, 22, 6, 4
     local PAD = 4
 
@@ -530,17 +520,12 @@ function MW:ApplyLayout()
         self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth(), -TITLE_BAR_H - 2)
     end
 
-    -- Bottoni matrice: colonne x righe configurabili dalla Config.
-    -- La coppia MT/OT sta SOTTO il tasto "Raid Frame" (cella
-    -- i_raidframe + colonne) se quella cella e' dentro la matrice: i
-    -- tasti seguenti scalano di una cella per lasciare il posto libero.
-    -- Altrimenti (colonne troppe larghe) la coppia finisce nella cella
-    -- subito dopo l'ultimo tasto, come prima.
+    -- Sei celle in una riga: la terza ospita la coppia MT/OT, tutte le
+    -- altre ospitano un pulsante standard.
     local x0 = PAD
     local topY = -PAD
-    -- POSIZIONAMENTO IN ORDINE: riga per riga, da sinistra a destra
-    -- (Pugger, Raid Frame / MS, Macrobar / MT & OT, Loot / SaveRaid
-    -- con 2 colonne). La cella della coppia MT & OT ospita i due mezzi tasti.
+    -- POSIZIONAMENTO FISSO da sinistra a destra: Pugger, Macrobar, MT/OT,
+    -- MS, Loot, SaveRaid. La coppia MT/OT condivide la terza cella.
     local halfGap = 4
     local halfW = (bw - halfGap) / 2
     for idx, c in ipairs(cells) do

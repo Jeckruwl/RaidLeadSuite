@@ -352,22 +352,13 @@ function CFG:BuildOptionsTable()
 
     -- --- Module Menu (ex General/Window): voce top-level a se' -------
     local main = self:Layout("main")
-    main.matrixCols = main.matrixCols or 2
-    main.matrixRows = main.matrixRows or 4
 
     local moduleMenu = {
-        -- Le tre opzioni della barra moduli (scala, colonne, righe)
-        -- applicano il layout SUBITO: ApplyAll rilancia
-        -- RLSuite.mainWindow:ApplyLayout() ad ogni cambio dello slider.
+        -- La matrice è fissa a una riga e sei colonne; solo la scala della
+        -- barra moduli resta configurabile.
         barScale = slider(L["Bar scale"], nil, 1, 0.70, 1.30, 0.05,
             function() return main.scale or 1 end,
             function(_, v) main.scale = v; self:ApplyAll() end),
-        matrixCols = slider(L["Columns"], L["Columns in the bar button matrix."], 2, 1, 8, 1,
-            function() return main.matrixCols end,
-            function(_, v) main.matrixCols = v; self:ApplyAll() end),
-        matrixRows = slider(L["Buttons per column"], nil, 3, 1, 8, 1,
-            function() return main.matrixRows end,
-            function(_, v) main.matrixRows = v; self:ApplyAll() end),
     }
 
     -- --- General / Debug -----------------------------------------
@@ -445,8 +436,30 @@ function CFG:BuildOptionsTable()
     end
     -- (lo slider Scale per-modulo e' eliminato: tutti i moduli seguono lo
     -- snapshot Scale in General)
+    local spamIntervalValues = {}
+    for seconds = 20, 60, 5 do
+        local key = tostring(seconds)
+        spamIntervalValues[key] = string.format(L["%d seconds"], seconds)
+    end
     local groupmaking = {
         spamDesc = { type = "description", name = L["Spam channels"] .. ":", order = 1, fontSize = "medium" },
+        spamInterval = select(L["Spam interval"], L["Interval between spam messages; choose 20 to 60 seconds in 5-second steps."], 2,
+            spamIntervalValues,
+            function()
+                local groupmaking = RLSuite.groupmaking
+                if groupmaking and groupmaking.GetSpamInterval then
+                    return tostring(groupmaking:GetSpamInterval())
+                end
+                return "60"
+            end,
+            function(_, value)
+                local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+                if not d then return end
+                d.spamInterval = tonumber(value) or 60
+                if RLSuite.groupmaking.ApplySpamInterval then
+                    RLSuite.groupmaking:ApplySpamInterval()
+                end
+            end),
     }
     -- Canali standard WoW (Guild, Yell) e numerati (General, global).
     -- Per i canali numerati: numero 0 o vuoto = risoluzione automatica da GetChannelName;
@@ -454,12 +467,12 @@ function CFG:BuildOptionsTable()
     -- Per Guild e Yell il campo numero non serve perche' non sono canali custom numerati.
     local _gmChans = { "General", "Guild", "Yell", "global" }
     for i, ch in ipairs(_gmChans) do
-        local tgl = toggle(L[ch], nil, 1 + i, gmSpamGet(ch), gmSpamSet(ch))
+        local tgl = toggle(L[ch], nil, 2 + i, gmSpamGet(ch), gmSpamSet(ch))
         local isNumbered = (ch ~= "Guild" and ch ~= "Yell")
         if isNumbered then
             tgl.width = "half"
             groupmaking["spam_" .. ch] = tgl
-            groupmaking["spamNum_" .. ch] = numinput(L["Channel #"], L["Explicit channel number; leave empty (or 0) to auto-detect by name."], 1 + i + 0.01,
+            groupmaking["spamNum_" .. ch] = numinput(L["Channel #"], L["Explicit channel number; leave empty (or 0) to auto-detect by name."], 2 + i + 0.01,
                 (function(c) return function()
                     local d = RLSuite.groupmaking and RLSuite.groupmaking.db
                     local n = d and d.spamChannelNums and tonumber(d.spamChannelNums[c])

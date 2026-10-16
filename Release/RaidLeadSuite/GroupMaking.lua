@@ -306,7 +306,10 @@ function GM:CreateMainWindow()
     self.aimEdit:SetPoint("RIGHT", self.reqBox, "RIGHT", -12, 0)
     self.aimEdit:SetAutoFocus(false)
     self.aimEdit:SetMaxLetters(250)
-    self.aimEdit:SetScript("OnTextChanged", function() self:SaveComp() end)
+    self.aimEdit:SetScript("OnTextChanged", function()
+        self:SaveComp()
+        self:UpdateMessagePreview()
+    end)
     self.aimEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
     self.aimEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
     RLSuite.utils:RegisterInsertLink(self.aimEdit, function()
@@ -324,7 +327,10 @@ function GM:CreateMainWindow()
     self.reservedEdit:SetPoint("TOPLEFT", reservedLabel, "BOTTOMLEFT", 4, -4)
     self.reservedEdit:SetAutoFocus(false)
     self.reservedEdit:SetMaxLetters(250)
-    self.reservedEdit:SetScript("OnTextChanged", function() self:SaveComp() end)
+    self.reservedEdit:SetScript("OnTextChanged", function()
+        self:SaveComp()
+        self:UpdateMessagePreview()
+    end)
     self.reservedEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
     self.reservedEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
     RLSuite.utils:RegisterInsertLink(self.reservedEdit, function()
@@ -354,7 +360,10 @@ function GM:CreateMainWindow()
     self.otherEdit:SetPoint("RIGHT", self.reqBox, "RIGHT", -12, 0)
     self.otherEdit:SetAutoFocus(false)
     self.otherEdit:SetMaxLetters(250)
-    self.otherEdit:SetScript("OnTextChanged", function() self:SaveComp() end)
+    self.otherEdit:SetScript("OnTextChanged", function()
+        self:SaveComp()
+        self:UpdateMessagePreview()
+    end)
     self.otherEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
     self.otherEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
     RLSuite.utils:RegisterInsertLink(self.otherEdit, function()
@@ -407,12 +416,12 @@ function GM:CreateMainWindow()
 
     local specsLbl = FontStr(f, "OVERLAY", 12)
     specsLbl:SetPoint("LEFT", self.showSpecsCheck, "RIGHT", 0, 0)
-    specsLbl:SetText("Show specs in message")
+    specsLbl:SetText(L["Request specific Specs"] or "Request specific Specs")
     specsLbl:SetTextColor(1, 0.82, 0)
     self.specsLbl = specsLbl -- usata da MinWidth() per la fila di bottoni
 
     -- InviteEngine (ex-Whisplist): il bottone sta a DESTRA della checkbox
-    -- "Show specs in message", come richiesto.
+    -- "Request specific Specs".
     self.whisplistBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.whisplistBtn)
     self.whisplistBtn:SetSize(100, 24)
@@ -621,7 +630,7 @@ end
 --  100   Preview Msg
 --    6
 --   24   checkbox
---    w   label "Show specs in message" (misurata via GetStringWidth)
+--    w   label "Request specific Specs" (misurata via GetStringWidth)
 --   10
 --  100   InviteEngine
 --   16   margine destro (simmetrico al sinistro)
@@ -631,7 +640,7 @@ function GM:MinWidth()
     if self.specsLbl and self.specsLbl.GetStringWidth then
         labelW = math.ceil(self.specsLbl:GetStringWidth() or 0)
     end
-    if labelW <= 0 then labelW = 140 end -- fallback per "Show specs in message"
+    if labelW <= 0 then labelW = 140 end -- fallback per "Request specific Specs"
     return 380 + labelW
 end
 
@@ -940,6 +949,50 @@ function GM:RaidShortName(raid)
     return RAID_SHORT[raid] or raid
 end
 
+local function PlainifySpamLinks(message)
+    message = tostring(message or "")
+    message = message:gsub("|H.-|h(.-)|h", function(displayText)
+        displayText = (displayText or "")
+            :gsub("|c%x%x%x%x%x%x%x%x", "")
+            :gsub("|r", "")
+        local unwrapped = displayText:match("^%[(.*)%]$")
+        if unwrapped then displayText = unwrapped end
+        return "[" .. displayText .. "]"
+    end)
+    return message:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+end
+
+local function TruncateUTF8(message, limit)
+    if #message <= limit then return message end
+    local cut = message:sub(1, limit)
+    local index = #cut
+    local byte = cut:byte(index)
+    while byte and byte >= 0x80 and byte < 0xC0 do
+        index = index - 1
+        byte = cut:byte(index)
+    end
+    if byte and byte >= 0xC0 then
+        local expected = byte >= 0xF0 and 4 or (byte >= 0xE0 and 3 or 2)
+        if #cut - index + 1 < expected then
+            cut = cut:sub(1, index - 1)
+        end
+    end
+    return cut
+end
+
+function GM:LimitSpamMessage(message)
+    message = tostring(message or "")
+    if #message > 255 then
+        -- Hyperlink payloads count toward WoW's chat limit. Keep the visible
+        -- name, in square brackets, but drop the link/color markup first.
+        message = PlainifySpamLinks(message)
+    end
+    if #message > 255 then
+        message = TruncateUTF8(message, 255)
+    end
+    return message
+end
+
 function GM:BuildSpamMessage()
     local raid = self.db.raid
     local legacyAchievement = PUGGER_LEGACY_ACHIEVEMENTS[raid]
@@ -953,8 +1006,8 @@ function GM:BuildSpamMessage()
     end
 
     local msg = "LFM " .. raidText
+    local diff = self.db.difficulty or "10"
     if not isLegacy then
-        local diff = self.db.difficulty or "10"
         msg = msg .. tostring(diff)
         if self.db.hc then msg = msg .. " HC" end
     end
@@ -967,7 +1020,8 @@ function GM:BuildSpamMessage()
     end
 
     local needed = {tank = 0, healer = 0, mdps = 0, rdps = 0}
-    local specLists = {tank = {}, healer = {}, mdps = {}, rdps = {}}
+    local unspecifiedNeeded = {tank = 0, healer = 0, mdps = 0, rdps = 0}
+    local specCounts, specOrder = {}, {}
     local hasComp = false
     local numSlots = tonumber(diff) or 10
     for i = 1, numSlots do
@@ -977,11 +1031,16 @@ function GM:BuildSpamMessage()
             if not slot.playerName then
                 local role = RLSuite.utils:NormalizeRole(slot.role, slot.class, slot.spec)
                 needed[role] = (needed[role] or 0) + 1
-                if specLists[role] then
-                    local specName = RLSuite.utils:SpecShortName(slot.class, slot.spec)
-                    if specName and specName ~= "" then
-                        table.insert(specLists[role], specName)
+                local specName = RLSuite.utils:SpecShortName(slot.class, slot.spec)
+                if specName and specName ~= "" then
+                    local upperSpec = string.upper(tostring(specName))
+                    if not specCounts[upperSpec] then
+                        specCounts[upperSpec] = 0
+                        specOrder[#specOrder + 1] = upperSpec
                     end
+                    specCounts[upperSpec] = specCounts[upperSpec] + 1
+                elseif unspecifiedNeeded[role] ~= nil then
+                    unspecifiedNeeded[role] = unspecifiedNeeded[role] + 1
                 end
             end
         end
@@ -997,30 +1056,20 @@ function GM:BuildSpamMessage()
         if n > 5 then return "rest" end
         return tostring(n)
     end
-    -- Spec duplicate nella comp ideale: nome UNA sola volta + numero
-    -- ("holy x2" invece di "holy, holy"), ordine di prima comparsa.
-    local function fmtSpecList(list)
-        local seen, order = {}, {}
-        for _, s in ipairs(list) do
-            if not seen[s] then
-                seen[s] = 0
-                table.insert(order, s)
-            end
-            seen[s] = seen[s] + 1
-        end
-        local parts = {}
-        for _, s in ipairs(order) do
-            local n = seen[s]
-            table.insert(parts, n > 1 and (s .. " x" .. n) or s)
-        end
-        return table.concat(parts, ", ")
-    end
     local roles = {}
     local showSpecs = self.db and self.db.showSpecsInMessage
     if showSpecs then
+        -- Con le richieste di spec attive, ogni voce è un conteggio esplicito
+        -- seguito dall'abbreviazione maiuscola (es. "1 BDK"), senza il ruolo.
+        for _, spec in ipairs(specOrder) do
+            table.insert(roles, tostring(specCounts[spec]) .. " " .. spec)
+        end
+        -- Slot senza una spec salvata non possono essere specificati: mantieni
+        -- il requisito del ruolo invece di ometterli dal messaggio.
         for _, def in ipairs(roleOrder) do
-            if needed[def.key] and needed[def.key] > 0 then
-                table.insert(roles, def.label .. "(" .. fmtSpecList(specLists[def.key]) .. ")")
+            local n = unspecifiedNeeded[def.key] or 0
+            if n > 0 then
+                table.insert(roles, tostring(n) .. " " .. def.label)
             end
         end
     else
@@ -1046,7 +1095,7 @@ function GM:BuildSpamMessage()
         msg = msg .. " | " .. otherText
     end
 
-    return msg
+    return self:LimitSpamMessage(msg)
 end
 
 function GM:UpdateMessagePreview()
@@ -1093,13 +1142,28 @@ function GM:ToggleSpam()
     end
 end
 
+function GM:GetSpamInterval()
+    local seconds = tonumber(self.db and self.db.spamInterval) or 60
+    seconds = math.floor((seconds + 2.5) / 5) * 5
+    if seconds < 20 then seconds = 20 end
+    if seconds > 60 then seconds = 60 end
+    return seconds
+end
+
+function GM:ApplySpamInterval()
+    if not self.spamActive then return end
+    if self.spamTimer then
+        self:CancelTimer(self.spamTimer, true)
+        self.spamTimer = nil
+    end
+    self.spamTimer = self:ScheduleRepeatingTimer("DoSpam", self:GetSpamInterval())
+end
+
 function GM:StartSpam()
     self.spamActive = true
     if self.spamBtn then self.spamBtn:SetText("Stop Spam") end
     self:DoSpam()
-    local interval = self.db.spamInterval or 60
-    if self.spamTimer then self:CancelTimer(self.spamTimer) end
-    self.spamTimer = self:ScheduleRepeatingTimer("DoSpam", interval)
+    self:ApplySpamInterval()
     -- NIENTE whisper fittizi automatici: li invia SOLO il tasto "Whisp
     -- test" della debug bar (GM:DebugWhisperBurst).
     RLSuite.utils:Print(L["Spammer started."])
@@ -2043,15 +2107,6 @@ function GM:BuildCalendarPage()
     self.ieCalMain:SetPoint("TOPRIGHT", self.ieCalSidebar, "TOPLEFT", -8, 0)
     self.ieCalMain:SetPoint("BOTTOMRIGHT", self.ieCalSidebar, "BOTTOMLEFT", -8, 0)
 
-    -- stato vuoto
-    self.ieCalEmptyLabel = FontStr(self.ieCalMain, "OVERLAY", 13)
-    self.ieCalEmptyLabel:SetPoint("TOP", self.ieCalMain, "TOP", 0, -30)
-    self.ieCalEmptyLabel:SetPoint("LEFT", self.ieCalMain, "LEFT", 2, 0)
-    self.ieCalEmptyLabel:SetPoint("RIGHT", self.ieCalMain, "RIGHT", -2, 0)
-    self.ieCalEmptyLabel:SetJustifyH("CENTER")
-    self.ieCalEmptyLabel:SetText(L["No event linked yet."])
-    self.ieCalEmptyLabel:SetTextColor(1, 0.82, 0)
-
     -- Titolo
     self.ieCalTitleEdit = CreateFrame("EditBox", "RLSuiteIECalTitle", self.ieCalMain, "InputBoxTemplate")
     self.ieCalTitleEdit:SetHeight(20)
@@ -2073,6 +2128,7 @@ function GM:BuildCalendarPage()
     -- Tipo
     self.ieCalTypeDD = RLSuite.utils:CreateDropdown(self.ieCalMain, "RLSuiteIECalType", 150, 20)
     self.ieCalTypeDD:SetPoint("TOPLEFT", self.ieCalMain, "TOPLEFT", 42, -26)
+    self:RefreshCalendarTypeDropdown(1)
 
     local typeLbl = FontStr(self.ieCalMain, "OVERLAY", 12)
     typeLbl:SetPoint("RIGHT", self.ieCalTypeDD, "LEFT", -6, 0)
@@ -2099,6 +2155,7 @@ function GM:BuildCalendarPage()
 
     self.ieCalMonthDD = RLSuite.utils:CreateDropdown(self.ieCalMain, "RLSuiteIECalMonth", 74, 20)
     self.ieCalMonthDD:SetPoint("LEFT", self.ieCalDayEdit, "RIGHT", 4, 0)
+    self:RefreshCalendarMonthDropdown(1)
 
     self.ieCalYearEdit = CreateFrame("EditBox", "RLSuiteIECalYear", self.ieCalMain, "InputBoxTemplate")
     self.ieCalYearEdit:SetSize(38, 20)
@@ -2474,7 +2531,7 @@ end
 function GM:UpdateLinkedCalendarEvent()
     local link = self.autoinvite and self.autoinvite.linkedEvent
     if not link or not link.title then
-        RLSuite.utils:Print(L["No event linked yet."])
+        RLSuite.utils:Print(L["No calendar event linked"])
         return
     end
     if not self.calDirty then return end
@@ -2718,9 +2775,9 @@ end
 function GM:RenderLinkedEvent()
     local link = self.autoinvite and self.autoinvite.linkedEvent
 
-    -- stato vuoto
+    -- Form vuoto: le dropdown restano inizializzate e apribili anche prima
+    -- di collegare un evento del calendario.
     if not link or not link.title then
-        if self.ieCalEmptyLabel then self.ieCalEmptyLabel:Show() end
         if self.ieCalTitleEdit then
             self._calRendering = true
             self.ieCalTitleEdit:SetText("")
@@ -2735,13 +2792,18 @@ function GM:RenderLinkedEvent()
             self.ieAutoMirrorDesc:SetText("")
             self._calRendering = false
         end
+        self:RefreshCalendarTypeDropdown(1)
+        local month = 1
+        if CalendarGetDate then
+            local ok, currentMonth = pcall(CalendarGetDate)
+            if ok and tonumber(currentMonth) then month = tonumber(currentMonth) end
+        end
+        self:RefreshCalendarMonthDropdown(month)
         self:ClearAutoinviteMirrorInvites()
         self:RenderClassSidebar()
         self:RefreshCalendarButtons()
         return
     end
-
-    if self.ieCalEmptyLabel then self.ieCalEmptyLabel:Hide() end
 
     -- Popola i campi solo se non ci sono modifiche pendenti (per non
     -- sovrascrivere le digitazioni dell'utente).
@@ -3117,7 +3179,7 @@ function GM:AddAutoName(name)
     self:RefreshAutoinviterStatus()
 end
 
--- Clic destro su un nome della lista = rimozione.
+-- Il tasto X bianco a destra della riga rimuove il nome dalla lista.
 function GM:RemoveAutoName(name)
     local names = self:AutoNameList()
     for i, n in ipairs(names) do
@@ -3150,7 +3212,7 @@ function GM:BuildAutoNameListUI()
         row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
         row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
         row:EnableMouse(true)
-        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        row:RegisterForClicks("LeftButtonUp")
 
         local text = FontStr(row, "OVERLAY", 12)
         text:SetPoint("LEFT", row, "LEFT", 4, 0)
@@ -3162,11 +3224,14 @@ function GM:BuildAutoNameListUI()
         row.name = name
 
         -- "x" in fondo alla barra: rimuove il giocatore dalla lista.
+        local playerName = name
         local xBtn = CreateFrame("Button", nil, row)
-        xBtn:SetSize(8, 8)
-        xBtn:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+        xBtn:SetSize(11, 11)
+        xBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+        xBtn:EnableMouse(true)
+        xBtn:RegisterForClicks("LeftButtonUp")
         xBtn:SetScript("OnClick", function()
-            self:RemoveAutoName(name)
+            self:RemoveAutoName(playerName)
         end)
         row.xBtn = xBtn
         -- X BIANCA dal TGA in media/ (formato BCI: rende sempre).
@@ -3175,12 +3240,6 @@ function GM:BuildAutoNameListUI()
         row:SetFrameLevel((row:GetFrameLevel() or 1) + 1)
         xBtn:SetFrameLevel(row:GetFrameLevel() + 2)
 
-        -- clic destro sull'intera riga = rimozione (compatibilita').
-        row:SetScript("OnClick", function(s, button)
-            if button == "RightButton" then
-                self:RemoveAutoName(s.name)
-            end
-        end)
         row:SetScript("OnEnter", function(s)
             s.text:SetTextColor(1, 0.82, 0)
         end)
@@ -3779,23 +3838,26 @@ function GM:CreateWhisperRow()
     row:SetHeight(24)
     row:EnableMouse(true)
     if row.SetMouseClickEnabled then row:SetMouseClickEnabled(true) end
-    row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    row:RegisterForClicks("LeftButtonUp")
 
     local text = FontStr(row, "OVERLAY", 12)
     text:SetPoint("LEFT", row, "LEFT", 6, 0)
-    text:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    text:SetPoint("RIGHT", row, "RIGHT", -22, 0)
     text:SetJustifyH("LEFT")
     row.text = text
 
-    row:SetScript("OnClick", function(s, button)
-        if button == "RightButton" then
-            -- Debug mode: il clic destro elimina il giocatore senza
-            -- inviare il messaggio di decline.
-            if RLSuite.DebugMode and RLSuite:DebugMode() then
-                self:QueueRemoveWhisperEntry(s.entry)
-            end
-            return
-        end
+    local xBtn = CreateFrame("Button", nil, row)
+    xBtn:SetSize(11, 11)
+    xBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+    xBtn:EnableMouse(true)
+    xBtn:RegisterForClicks("LeftButtonUp")
+    RLSuite.utils:ApplyIcon(xBtn, "media\\close.tga")
+    xBtn:SetScript("OnClick", function()
+        if row.entry then self:QueueRemoveWhisperEntry(row.entry) end
+    end)
+    row.xBtn = xBtn
+
+    row:SetScript("OnClick", function(s)
         self:SelectWhisperEntryByRef(s.entry)
     end)
     return row
@@ -3925,6 +3987,9 @@ function GM:UpdateWhisplist()
         -- "banda" della lista resta bassa e sottile — un eventuale menu a
         -- tendina aperto SOPRA la lista continua a ricevere i click.
         pinLvl(row, rowLvl)
+        if row.xBtn and row.xBtn.SetFrameLevel then
+            row.xBtn:SetFrameLevel((row:GetFrameLevel() or rowLvl) + 2)
+        end
         row.entry = entry
 
         local info = entry.name or "Unknown"
@@ -3970,9 +4035,9 @@ function GM:SelectWhisperEntryByRef(entry)
     end
 end
 
--- Rimozione "sicura" dal clic destro: i dati escono subito dalla lista,
--- la UI viene ricostruita al tick successivo. Ricostruire i frame dentro
--- il click distrugge il bottone cliccato e blocca i click successivi.
+-- Rimozione "sicura" dalla X: i dati escono subito dalla lista, la UI viene
+-- ricostruita al tick successivo. Ricostruire i frame dentro il click distrugge
+-- il bottone cliccato e blocca i click successivi.
 function GM:QueueRemoveWhisperEntry(entry)
     if not entry then return end
     local entries = self.whisperDB.entries or {}
