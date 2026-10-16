@@ -134,6 +134,7 @@ local CATEGORIES = {
         { value = "editor", text = "Macro Editor" },
     } },
     { value = "raidframe", text = "Raid Frame" },
+    { value = "raidbuffs", text = "Raid Buffs" },
     { value = "savedraids", text = "Saved Raids" },
     -- Lista ignora degli item di loot (v1.11.94): la voce va anche QUI,
     -- non solo nella tabella opzioni, altrimenti nel pannello non compare.
@@ -153,6 +154,7 @@ local NODES = {
     -- Raid Frame e' un nodo singolo: solo il contenuto Layout (checks,
     -- positions e alerts sono stati eliminati dal pannello).
     ["raidframe"]          = { "raidframe" },
+    ["raidbuffs"]          = { "raidbuffs" },
     ["savedraids"]         = { "savedraids" },
     ["loot"]               = { "loot" },
     ["debug"]              = { "debug" },
@@ -354,7 +356,7 @@ function CFG:BuildOptionsTable()
     local main = self:Layout("main")
 
     local moduleMenu = {
-        -- La matrice è fissa a una riga e sei colonne; solo la scala della
+        -- La matrice è fissa a una riga e sette colonne; solo la scala della
         -- barra moduli resta configurabile.
         barScale = slider(L["Bar scale"], nil, 1, 0.70, 1.30, 0.05,
             function() return main.scale or 1 end,
@@ -404,7 +406,7 @@ function CFG:BuildOptionsTable()
         end
     end
 
-    local savedraids = { type = "group", name = L["Saved Raids"], order = 6, args = savedArgs }
+    local savedraids = { type = "group", name = L["Saved Raids"], order = 7, args = savedArgs }
 
     -- --- Groupmaking ---------------------------------------------
     -- Canali per lo spam LFM (General/Trade/LFG/World e il custom "global")
@@ -613,9 +615,6 @@ function CFG:BuildOptionsTable()
         distanceAlpha = slider(L["Fade transparency"], L["Transparency of the bars beyond the distance."], 18, 0.20, 1.00, 0.05,
             function() return rf.appearance.distanceAlpha or 0.40 end,
             function(_, v) rf.appearance.distanceAlpha = v; self:ApplyAll() end),
-        iconSpacing = slider(L["Icon spacing"], L["Gap between the Raid Buffs matrix icons."], 12, 0, 16, 1,
-            function() return rf.appearance.iconSpacing or 8 end,
-            function(_, v) rf.appearance.iconSpacing = v; self:ApplyAll() end),
         rowSpacing = slider(L["Row spacing"], L["Gap between the player bars inside each group."], 13, -10, 12, 1,
             function() return rf.appearance.rowSpacing or 0 end,
             function(_, v) rf.appearance.rowSpacing = v; self:ApplyAll() end),
@@ -664,6 +663,38 @@ function CFG:BuildOptionsTable()
     -- Layout resta configurabile per il Raid Frame).
 
     local raidframe = raidLayout
+
+    -- --- Raid Buffs (standalone window) --------------------------
+    local function getBuffSettings()
+        local rf = RLSuite.raidFrame
+        if rf and rf.GetBuffWindowSettings then return rf:GetBuffWindowSettings() end
+        local saved = p.raidbuffs or {}
+        local legacy = p.raidframe and p.raidframe.appearance
+        return {
+            iconSize = tonumber(saved.iconSize) or 16,
+            spacing = tonumber(saved.spacing) or tonumber(legacy and legacy.iconSpacing) or 8,
+            fontSize = tonumber(saved.fontSize) or 10,
+        }
+    end
+    local function setBuffSetting(key, value)
+        p.raidbuffs = p.raidbuffs or {}
+        p.raidbuffs[key] = value
+        self:ApplyAll()
+    end
+    local raidbuffs = {
+        iconSize = slider(L["Buff icon size"], L["Size of player buff icons; category headers are two pixels larger."],
+            1, 12, 24, 1,
+            function() return getBuffSettings().iconSize end,
+            function(_, v) setBuffSetting("iconSize", v) end),
+        spacing = slider(L["Buff spacing"], L["Spacing between the buff columns and category groups."],
+            2, 0, 16, 1,
+            function() return getBuffSettings().spacing end,
+            function(_, v) setBuffSetting("spacing", v) end),
+        fontSize = slider(L["Font size"], L["Font size for player names in the Raid Buffs window."],
+            3, 8, 20, 1,
+            function() return getBuffSettings().fontSize end,
+            function(_, v) setBuffSetting("fontSize", v) end),
+    }
 
     -- --- Loot ----------------------------------------------------
     -- La LISTA IGNORA (item singoli) sta qui, modificabile a mano: una riga
@@ -728,9 +759,10 @@ function CFG:BuildOptionsTable()
             groupmaking = { type = "group", name = L["Pugger"], order = 3, args = groupmaking },
             macros = { type = "group", name = L["Macros"], order = 4, args = macros },
             raidframe = { type = "group", name = L["Raid Frame"], order = 5, args = raidframe },
+            raidbuffs = { type = "group", name = L["Raid Buffs"], order = 6, args = raidbuffs },
             savedraids = savedraids,
-            loot = { type = "group", name = L["Loot"], order = 7, args = loot },
-            debug = { type = "group", name = L["Debug"], order = 8, args = debug },
+            loot = { type = "group", name = L["Loot"], order = 8, args = loot },
+            debug = { type = "group", name = L["Debug"], order = 9, args = debug },
         },
     }
 end

@@ -789,10 +789,12 @@ check(bool(rt.eval("RLSuite.minimapIcon.dragging == true")), "Shift + left drag 
 rt.execute("IsShiftKeyDown = function() return false end")  # runtime condiviso: ripristina Shift per gli scenari successivi
 
 # save raid + load raid round trip through the new profile
-rt.execute("SAVED_ID = RLSuite:SaveRaid('TestRaid')")
-rt.execute("RLSuite:LoadRaid(SAVED_ID)")
+rt.execute("RLSuite.db.profile.raidbuffs = { iconSize = 20, spacing = 4, fontSize = 14 }; SAVED_ID = RLSuite:SaveRaid('TestRaid')")
+rt.execute("RLSuite.db.profile.raidbuffs.iconSize = 16; RLSuite:LoadRaid(SAVED_ID)")
 check(g.SAVED_ID == 1, "SaveRaid returns id 1 on a fresh profile")
 check(rt.eval("#RLSuite.db.profile.savedRaids") == 1, "saved raid stored in db.profile.savedRaids")
+check(bool(rt.eval("RLSuite.db.profile.raidbuffs.iconSize == 20 and RLSuite.db.profile.raidbuffs.spacing == 4 and RLSuite.db.profile.raidbuffs.fontSize == 14")), "SaveRaid round-trip preserves standalone Raid Buffs settings")
+rt.execute("RLSuite.db.profile.raidbuffs = {}")
 
 print()
 print("== Scenario B: legacy flat DB migration ==")
@@ -867,10 +869,11 @@ check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.ms == nil")), "MS Ma
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.loot ~= nil and RLSuite.config:BuildOptionsTable().args.loot.args.ignoreList ~= nil")), "v1.11.94: Loot is back on purpose, with the editable ignore list")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.args.save1load ~= nil")), "saved raids rendered as Load/Delete executes (dynamic)")
 
-# Ordering: Saved Raids, Loot, Debug in fondo.
-check(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.order") == 6, "Saved Raids is order 6")
-check(rt.eval("RLSuite.config:BuildOptionsTable().args.loot.order") == 7, "v1.11.94: Loot (lista ignora) is order 7")
-check(rt.eval("RLSuite.config:BuildOptionsTable().args.debug.order") == 8, "Debug is the last entry (order 8)")
+# Ordering: Raid Buffs, Saved Raids, Loot, Debug in fondo.
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.raidbuffs.order") == 6, "Raid Buffs Config is order 6")
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.order") == 7, "Saved Raids is order 7")
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.loot.order") == 8, "v1.11.94: Loot (lista ignora) is order 8")
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.debug.order") == 9, "Debug is the last entry (order 9)")
 
 # --- 1.11.17 user-requested removals ---
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.general.args.scale ~= nil and RLSuite.config:BuildOptionsTable().args.general.args.font ~= nil")), "General = font + global Scale slider only")
@@ -890,9 +893,9 @@ check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.macros.args.layout.a
 rt.execute("RLSuite.config:OpenMacroEditorPanel(); HUD_COUNT = 0; for _, c in ipairs(ALLFRAMES) do if c._text == 'HUD on/off' then HUD_COUNT = HUD_COUNT + 1 end end")
 check(rt.eval("HUD_COUNT") == 0, "Macro editor 'Show HUD' (HUD on/off) button removed")
 
-# The navigation tree lists the reformed 7 categories, with the Macro Editor as a node.
+# The navigation tree lists the reformed categories, including standalone Raid Buffs.
 rt.execute("local t = RLSuite.config.tree.tree; CATS = {}; for _,n in ipairs(t) do CATS[n.value] = n end")
-check(bool(rt.eval("CATS.general ~= nil and CATS.modulemenu ~= nil and CATS.savedraids ~= nil and CATS.groupmaking ~= nil and CATS.macros ~= nil and CATS.raidframe ~= nil and CATS.debug ~= nil and CATS.ms == nil")), "tree lists the categories (8, MS still absent)")
+check(bool(rt.eval("CATS.general ~= nil and CATS.modulemenu ~= nil and CATS.savedraids ~= nil and CATS.groupmaking ~= nil and CATS.macros ~= nil and CATS.raidframe ~= nil and CATS.raidbuffs ~= nil and CATS.debug ~= nil and CATS.ms == nil")), "tree lists the categories including Raid Buffs (9, MS still absent)")
 check(bool(rt.eval("CATS.loot ~= nil")), "v1.11.95: the tree lists 'Loot' too (it was only in the options table, so the panel hid it)")
 check(bool(rt.eval("CATS.macros.children[1].value == 'layout' and CATS.macros.children[2].value == 'editor'")), "Macros node has Bar Layout + Macro Editor children")
 check(bool(rt.eval("CATS.general.children == nil")), "General is a flat leaf (no children)")
@@ -2351,9 +2354,27 @@ check(bool(rt.eval("RLSuite.raidFrame.rows[1].member.name == 'F5'")), "roster re
 
 # --- F.3 FONT COLOR option + TANKS group + RAID BUFFS matrix panel ---
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.fontColor ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.fontColor.type == 'color'")), "Layout -> Font color picker present")
-for key, label in [("iconSpacing","Icon spacing"),("rowSpacing","Row spacing"),("groupSpacing","Group spacing"),("groupHeaderFontSize","Group header font size")]:
+for key, label in [("rowSpacing","Row spacing"),("groupSpacing","Group spacing"),("groupHeaderFontSize","Group header font size")]:
     check(bool(rt.eval(f"RLSuite.config:BuildOptionsTable().args.raidframe.args.{key} ~= nil")), f"Layout -> {label} slider present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.iconSpacing == nil")), "Raid Frame no longer owns the standalone buff spacing option")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.matrixBackdrop ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.matrixBackdrop.type == 'color'")), "Layout -> Buff check backdrop color picker (color+alpha) present")
+rt.execute("""
+local o = RLSuite.config:BuildOptionsTable().args.raidbuffs.args
+local rf = RLSuite.raidFrame
+local s = rf:GetBuffWindowSettings()
+BUFF_OPTS = o.iconSize and o.spacing and o.fontSize
+BUFF_OPTION_DEFAULTS = s.iconSize == 16 and s.spacing == 8 and s.fontSize == 10
+BUFF_OPTION_RANGES = o.iconSize.min == 12 and o.iconSize.max == 24
+    and o.spacing.min == 0 and o.spacing.max == 16
+    and o.fontSize.min == 8 and o.fontSize.max == 20
+local profile = RLSuite.db.profile
+local savedSpacing, legacySpacing = profile.raidbuffs.spacing, profile.raidframe.appearance.iconSpacing
+profile.raidbuffs.spacing = nil
+profile.raidframe.appearance.iconSpacing = 4
+BUFF_LEGACY_SPACING = rf:GetBuffWindowSettings().spacing == 4
+profile.raidbuffs.spacing, profile.raidframe.appearance.iconSpacing = savedSpacing, legacySpacing
+""")
+check(bool(rt.eval("BUFF_OPTS and BUFF_OPTION_DEFAULTS and BUFF_OPTION_RANGES and BUFF_LEGACY_SPACING")), "Raid Buffs Config exposes the expected settings, preserves legacy spacing, and clamps sensible ranges")
 rt.execute("""
 local prof = RLSuite.db.profile.raidframe
 SAVED_FC = prof.appearance.fontColor
@@ -2444,7 +2465,7 @@ check(bool(rt.eval("TANK_TBAR_FAKE")), "debug/fake tanks leave the target bar em
 # Raid Buffs standalone matrix panel (Method style)
 check(bool(rt.eval("RLSuite.mainWindow.raidBuffBtn ~= nil and RLSuite.mainWindow.raidBuffBtn:GetText() == 'Raid Buffs'")), "Raid Buffs button is in the Raid Control matrix")
 check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn == nil")), "Raid Frame no longer contains the Raid Buffs button")
-check(bool(rt.eval("RLSuite.mainWindow.matrixOrder[6].btn == RLSuite.mainWindow.raidBuffBtn and RLSuite.mainWindow.saveRaidBtn:GetParent() == RLSuite.mainWindow.titleBar")), "Raid Buffs uses the sixth fixed matrix cell; SaveRaid remains available in the title bar")
+check(bool(rt.eval("RLSuite.mainWindow.matrixOrder[6].btn == RLSuite.mainWindow.saveRaidBtn and RLSuite.mainWindow.matrixOrder[7].btn == RLSuite.mainWindow.raidBuffBtn and RLSuite.mainWindow.saveRaidBtn:GetParent() == RLSuite.mainWindow.frame")), "SaveRaid retains its former sixth matrix cell and Raid Buffs adds the seventh")
 check(bool(rt.eval("(function() local n,d=0,0 for _,c in ipairs(RLSuite.raidFrame:_MatrixCols()) do n=n+1 if c.kind=='durability' then d=d+1 end end return n==13 and d==1 end)()")), "13 columns: 10 buff categories including Focus Magic, 2 consumables, and Durability")
 rt.execute("""
 local function colHas(key, id)
@@ -2527,12 +2548,17 @@ BP_ROW_COMPACT = RF._buffWindowRows[1]._h == 17
     and RF._buffWindowRows[1]._h < RF:LayoutMetrics().rowHeight
 BP_WINDOW_TITLE = RF.buffWindow._buffTitle:GetText() == 'Raid Buffs'
 BP_HDR_DUR = RF._buffHdrBtns[13]._icon._texture:find('PaperDoll', 1, true) ~= nil
-local iconSpacing = tonumber(RF.db.appearance.iconSpacing) or 8
-local expectedPitch = math.max(18, 16 + iconSpacing)
+local buffSettings = RF:GetBuffWindowSettings()
+local expectedPitch = buffSettings.iconSize + buffSettings.spacing
 local rowCells = RF._buffWindowRows[1]._cells
-BP_ICON_GAPS = RF:_BuffColOffset(11, iconSpacing) == iconSpacing
-    and RF:_BuffColOffset(13, iconSpacing) == iconSpacing * 2
+BP_ICON_GAPS = RF:_BuffColOffset(11, buffSettings.spacing) == buffSettings.spacing
+    and RF:_BuffColOffset(13, buffSettings.spacing) == buffSettings.spacing * 2
 BP_WINDOW_PITCH = math.abs(rowCells[2]._points[1][4] - rowCells[1]._points[1][4] - expectedPitch) < 0.001
+BP_WINDOW_ICON_SIZE = RF._buffHdrBtns[1]._icon._w == buffSettings.iconSize + 2
+    and rowCells[1]._w == buffSettings.iconSize
+BP_WINDOW_FONT_SIZE = RF._buffWindowRows[1]._name._fontArgs[2] == buffSettings.fontSize
+BP_WINDOW_NO_BORDER = RF.buffWindow._noOuterBorder == true
+    and RF.buffWindow._backdropBorderColor[4] == 0
 local playerIndex, staminaIndex, statsIndex
 for i, entry in ipairs(entries) do
     if entry.member.unit == 'player' then playerIndex = i end
@@ -2550,6 +2576,33 @@ check(bool(rt.eval("BP_ICON_STATS and BP_ICON_STAM and BP_ICON_MP5 and BP_ICON_A
 check(bool(rt.eval("BP_ICON_SPECIALS and BP_HDR_DUR")), "Food, Flask, and Durability retain their own game icons")
 check(bool(rt.eval("BP_ICON_GAPS")), "buff/consumable/durability column spacing remains grouped")
 check(bool(rt.eval("BP_WINDOW_PITCH")), "standalone matrix honors the configured category-icon spacing")
+check(bool(rt.eval("BP_WINDOW_ICON_SIZE and BP_WINDOW_FONT_SIZE")), "Raid Buffs icon size and font size apply to the standalone rows")
+check(bool(rt.eval("BP_WINDOW_NO_BORDER")), "Raid Buffs window has no visible dialog border")
+rt.execute("""
+local profile = RLSuite.db.profile.raidbuffs
+local opts = RLSuite.config:BuildOptionsTable().args.raidbuffs.args
+local oldIcon, oldSpacing, oldFont = profile.iconSize, profile.spacing, profile.fontSize
+opts.iconSize.set(nil, 20)
+opts.spacing.set(nil, 3)
+opts.fontSize.set(nil, 14)
+local RF = RLSuite.raidFrame
+local settings = RF:GetBuffWindowSettings()
+local cells = RF._buffWindowRows[1]._cells
+BUFF_CONFIG_APPLIED = settings.iconSize == 20 and settings.spacing == 3 and settings.fontSize == 14
+    and RF._buffHdrBtns[1]._icon._w == 22 and cells[1]._w == 20
+    and RF._buffWindowRows[1]._h == 21
+    and math.abs(cells[2]._points[1][4] - cells[1]._points[1][4] - 23) < 0.001
+    and RF._buffWindowRows[1]._name._fontArgs[2] == 14
+opts.iconSize.set(nil, 16)
+opts.fontSize.set(nil, 18)
+settings = RF:GetBuffWindowSettings()
+BUFF_FONT_ROW_APPLIED = settings.iconSize == 16 and settings.fontSize == 18
+    and RF._buffWindowRows[1]._h == 22
+    and RF._buffWindowRows[1]._name._fontArgs[2] == 18
+profile.iconSize, profile.spacing, profile.fontSize = oldIcon, oldSpacing, oldFont
+RLSuite.config:ApplyAll()
+""")
+check(bool(rt.eval("BUFF_CONFIG_APPLIED and BUFF_FONT_ROW_APPLIED")), "Raid Buffs Config sliders resize icons, spacing, row height, and name font immediately")
 check(bool(rt.eval("BP_WINDOW_PARENT and BP_HDR_PARENT")), "window and category headers are separate from the Raid Frame")
 check(bool(rt.eval("BP_ROWS_FLAT and BP_PLAYER_ROW")), "roster rows are a single flat list with member names and no raid-group subdivisions")
 check(bool(rt.eval("BP_ROW_COMPACT")), "standalone roster rows use compact 17-pixel height")
@@ -2642,8 +2695,11 @@ check(bool(rt.eval("BP_ROW_BG")), "compact player rows retain their semi-transpa
 rt.execute("""
 local RF = RLSuite.raidFrame
 local app = RLSuite.db.profile.raidframe.appearance
-local beforeY = RF.slots[1]._points[1][5]
+local buff = RLSuite.db.profile.raidbuffs
+local oldIcon, oldRow, oldGroup = app.iconSpacing, app.rowSpacing, app.groupSpacing
+local oldHeader, oldBackdrop, oldBuffSpacing = app.groupHeaderFontSize, app.matrixBackdrop, buff.spacing
 app.iconSpacing, app.rowSpacing, app.groupSpacing = 2, 6, 20
+buff.spacing = 2
 app.groupHeaderFontSize = 14
 app.matrixBackdrop = { r = 1, g = 0, b = 0, a = 0.6 }
 RF:ApplyLayout()
@@ -2654,14 +2710,19 @@ SP_GHFONT = RF.groupHeaders[1]._fontArgs ~= nil and RF.groupHeaders[1]._fontArgs
 SP_TKH = RF.tankHeader._fontArgs ~= nil and RF.tankHeader._fontArgs[2] == 14
 local bga = RF._buffWindowRows[1]._bg._texRGBA
 SP_BG = bga ~= nil and math.abs(bga[1] - 1) < 0.01 and math.abs(bga[4] - 0.6) < 0.01
+local settings = RF:GetBuffWindowSettings()
+local cells = RF._buffWindowRows[1]._cells
+SP_BUFF_SPACING = settings.spacing == 2
+    and math.abs(cells[2]._points[1][4] - cells[1]._points[1][4] - settings.iconSize - 2) < 0.001
 SP_WINDOW_STANDALONE = RF.buffWindow:GetParent() == UIParent and RF.buffWindow ~= RF.frame
-app.iconSpacing, app.rowSpacing, app.groupSpacing = nil, nil, nil
-app.groupHeaderFontSize, app.matrixBackdrop = nil, nil
+app.iconSpacing, app.rowSpacing, app.groupSpacing = oldIcon, oldRow, oldGroup
+app.groupHeaderFontSize, app.matrixBackdrop, buff.spacing = oldHeader, oldBackdrop, oldBuffSpacing
 RF:ApplyLayout()
 SP_DEF = RF:LayoutMetrics().cellW == 24
 """)
 check(bool(rt.eval("SP_CELLW and SP_ROWS and SP_GHFONT and SP_TKH")), "Raid Frame layout options still control its group/header spacing and typography")
 check(bool(rt.eval("SP_BG")), "Buff check backdrop color option recolors standalone player rows")
+check(bool(rt.eval("SP_BUFF_SPACING")), "Raid Buffs spacing setting updates the standalone column pitch")
 check(bool(rt.eval("SP_WINDOW_STANDALONE")), "Raid Buffs stays outside the Raid Frame while its layout options change")
 check(bool(rt.eval("SP_DEF")), "Raid Frame spacing options restore to defaults")
 
@@ -2967,9 +3028,9 @@ check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors
 print()
 print("== Scenario G: main bar MT/OT + realtime config, loot pickup stack, debug-off clear, WL gold drag, real-raid join ==")
 
-# --- G.1 Raid Control keeps its fixed one-row, six-column matrix ----------
+# --- G.1 Raid Control keeps its fixed one-row, seven-column matrix --------
 rt.execute("RLSuite.mainWindow:ApplyLayout(); MW_FIXED_W = RLSuite.mainWindow.frame._w; MW_FIXED_H = RLSuite.mainWindow.frame._h; MW_FIXED_CELLS = #RLSuite.mainWindow.matrixOrder")
-check(bool(rt.eval("MW_FIXED_CELLS == 6 and MW_FIXED_W == 482 and MW_FIXED_H == 30")), "Raid Control remains a fixed 1x6 matrix (482x30 including padding)")
+check(bool(rt.eval("MW_FIXED_CELLS == 7 and MW_FIXED_W == 562 and MW_FIXED_H == 30")), "Raid Control remains a fixed 1x7 matrix (562x30 including padding)")
 
 # --- G.2 MT / OT: two small buttons sharing ONE matrix cell ---
 check(bool(rt.eval("RLSuite.mainWindow.mtBtn ~= nil and RLSuite.mainWindow.otBtn ~= nil")), "MT / OT buttons exist on the main bar")
@@ -2983,7 +3044,7 @@ LOOTXOF, LOOTYOF = select(4, mw.tabs['loot']:GetPoint(1)), select(5, mw.tabs['lo
 """)
 rt.execute("""
 -- posizione attesa dal NUOVO ordine esplicito delle celle (senza raidframe)
-local cols = 6
+local cols = 7
 local function cellXY(idx)
     local col = (idx - 1) % cols
     local row = math.floor((idx - 1) / cols)
@@ -2994,7 +3055,7 @@ CELL_LOOT_X, CELL_LOOT_Y = cellXY(5)  -- Loot = 5a cella
 """)
 rt.execute("""
 -- ORDINE RICHIESTO, letto dalle celle vere della matrice:
---   Pugger, Macrobar, MT & OT, MS, Loot, Raid Buffs
+--   Pugger, Macrobar, MT & OT, MS, Loot, SaveRaid, Raid Buffs
 local MWo = RLSuite.mainWindow
 local names = {}
 for _, c in ipairs(MWo.matrixOrder or {}) do
@@ -3011,13 +3072,13 @@ end
 BAR_ORDER = table.concat(names, " | ")
 BAR_CELLS = #(MWo.matrixOrder or {})
 -- posizioni reali: riga per riga, da sinistra a destra
-local cols = 6
+local cols = 7
 local function cellXY(idx)
     local col = (idx - 1) % cols
     local row = math.floor((idx - 1) / cols)
     return 4 + col * (74 + 6), -4 - row * (22 + 4)
 end
-local EXPECT = { "Pugger", "Macrobar", "MT & OT", "MS", "Loot", "Raid Buffs" }
+local EXPECT = { "Pugger", "Macrobar", "MT & OT", "MS", "Loot", "SaveRaid", "Raid Buffs" }
 BAR_ORDER_OK = true
 for i, want in ipairs(EXPECT) do
     local c = MWo.matrixOrder[i]
@@ -3041,8 +3102,8 @@ for i, c in ipairs(MWo.matrixOrder) do
 end
 BAR_POS_OK = posOK
 """)
-check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 6")), "Raid Control order is Pugger, Macrobar, MT & OT, MS, Loot, Raid Buffs (%s)" % rt.eval("BAR_ORDER"))
-check(bool(rt.eval("BAR_POS_OK == true")), "each button really sits in its fixed cell (Raid Buffs is cell six)")
+check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 7")), "Raid Control order is Pugger, Macrobar, MT & OT, MS, Loot, SaveRaid, Raid Buffs (%s)" % rt.eval("BAR_ORDER"))
+check(bool(rt.eval("BAR_POS_OK == true")), "each button really sits in its fixed cell (SaveRaid is cell six; Raid Buffs is seven)")
 check(bool(rt.eval("MTXOF == CELL_MT_X and MTYOF == CELL_MT_Y")), "MT / OT pair occupies the 3rd cell of the matrix")
 check(bool(rt.eval("LOOTXOF == CELL_LOOT_X and LOOTYOF == CELL_LOOT_Y")), "Loot sits in its own 5th cell")
 # --- I tasti MT/OT sono ora SECURE macro buttons: SetPartyAssignment e' PROTETTA ---
@@ -4090,13 +4151,13 @@ rt.execute("""
     PT = RLSuite.mainWindow.phaseText
     RC = TB.raidControlBtn
     SUM_W = 4 + PB:GetWidth() + 4 + RLSuite.mainWindow._phaseLabelW + 4
-        + RLSuite.mainWindow.saveRaidBtn:GetWidth() + 4 + RC:GetWidth() + 4
+        + RC:GetWidth() + 4
 """)
 check(bool(rt.eval("TB_P1[1] == 'TOPLEFT' and TB_P1[3] == 'TOPLEFT' and TB_P1[2] == UIParent")),
       "title bar is the anchor: TOPLEFT of the screen at x = Raid Frame width (%s)" % rt.eval("TB_P1[4]"))
 check(rt.eval("TB_P1[5]") == 0, "title bar touches the top edge exactly (y = 0)")
 check(bool(rt.eval("TB_W == TB_TITLE_W and TB_W == SUM_W")),
-      "TITLE BAR WIDTH = SUM OF ITS ELEMENTS (phase icon+name, SaveRaid, Raid Control) = %d px" % rt.eval("TB_W"))
+      "TITLE BAR WIDTH = SUM OF ITS ELEMENTS (phase icon+name, Raid Control) = %d px" % rt.eval("TB_W"))
 check(bool(rt.eval("TB_POINTS == 1")), "single anchor: the width is fixed, not derived from the panel")
 check(bool(rt.eval("TB.title ~= nil and tostring(TB.title:GetText()):find('RLS') == nil")),
       "no more 'RLS' text in the title bar")
@@ -4121,10 +4182,10 @@ rt.execute("""
     SAVE_H = SAVE_BTN._h
     SAVE_IS_MATRIX = false
     SAVE_IS_TITLE = (SAVE_BTN:GetParent() == MW.titleBar)
-    RAID_BUFFS_CELL = nil
+    SAVE_CELL, RAID_BUFFS_CELL = nil, nil
     for i, c in ipairs(MW.matrixOrder or {}) do
         if c.btn == MW.raidBuffBtn then RAID_BUFFS_CELL = i end
-        if c.btn == SAVE_BTN then SAVE_IS_MATRIX = true end
+        if c.btn == SAVE_BTN then SAVE_IS_MATRIX = true; SAVE_CELL = i end
     end
     SAVE_HAS_ICON = (SAVE_BTN.icon ~= nil)
 """)
@@ -4136,7 +4197,7 @@ rt.execute("""
     -- barretta piu' larga (con l'icona da 16 sarebbe 6 px piu' stretta)
     local MWp = RLSuite.mainWindow
     local rcW = MWp.titleBar.raidControlBtn:GetWidth()
-    GROWTH_OLD = 4 + 16 + 4 + MWp._phaseLabelW + 4 + 74 + 4 + rcW + 4
+    GROWTH_OLD = 4 + 16 + 4 + MWp._phaseLabelW + 4 + rcW + 4
     BAR_GROWTH = MWp.titleBar:GetWidth() - GROWTH_OLD
     PHASE_GAP_PX = select(4, MWp.phaseText:GetPoint(1))
 """)
@@ -4147,13 +4208,13 @@ check(bool(rt.eval("PH_LABEL == 'Pre-raid' or PH_LABEL == 'Pre-boss' or PH_LABEL
       "phase name shows the current phase ('%s')" % rt.eval("PH_LABEL"))
 check(bool(rt.eval("SAVE_TXT == 'SaveRaid'")), "SaveRaid is a TEXT BUTTON showing 'SaveRaid'")
 check(bool(rt.eval("SAVE_W == 74 and SAVE_H == 22")), "SaveRaid button has the same size as the matrix buttons (74x22)")
-check(bool(rt.eval("SAVE_IS_MATRIX == false and SAVE_IS_TITLE == true and RAID_BUFFS_CELL == 6")), "SaveRaid stays in the title bar and Raid Buffs occupies matrix cell six")
+check(bool(rt.eval("SAVE_IS_MATRIX == true and SAVE_IS_TITLE == false and SAVE_CELL == 6 and RAID_BUFFS_CELL == 7")), "SaveRaid remains in matrix cell six and Raid Buffs occupies cell seven")
 check(bool(rt.eval("SAVE_HAS_ICON == false")), "SaveRaid is no longer an icon button")
 
 # -- la barra e' piu' bassa e i tasti sono ADERENTI al bordo (PAD ridotto)
 rt.execute("""
     MW = RLSuite.mainWindow
-    local cols, rows = 6, 1
+    local cols, rows = 7, 1
     PADU = 4
     EXPECT_H = 2 * PADU + rows * 22 + (rows - 1) * 4
     BAR_H = MW.frame._h
@@ -4171,7 +4232,7 @@ check(bool(rt.eval("BAR_H == EXPECT_H")),
       "main bar height = padding + matrix only (icon row removed): %d px" % rt.eval("BAR_H"))
 check(bool(rt.eval("FIRST_Y == 4 * -1 and FIRST_X == 4")),
       "buttons sit 4px from the bar border on all sides (spacing reduced, was 12)")
-check(bool(rt.eval("RIGHT_GAP == 4")), "the fixed six-column matrix has 4px padding on both sides")
+check(bool(rt.eval("RIGHT_GAP == 4")), "the fixed seven-column matrix has 4px padding on both sides")
 
 # -- il click sul pulsante salva davvero (OnSaveRaid) ---------------------
 rt.execute("""
@@ -4210,8 +4271,8 @@ rt.execute("""
 """)
 check(bool(rt.eval("NARROW_TEXT == true and NARROW_BTN == true")),
       "narrow bar: phase icon AND phase name stay (the name has a reserved slot)")
-check(bool(rt.eval("NARROW_W == WIDE_W and NARROW_W == 482")),
-      "the Raid Control matrix stays fixed at six columns regardless of stale profile values")
+check(bool(rt.eval("NARROW_W == WIDE_W and NARROW_W == 562")),
+      "the Raid Control matrix stays fixed at seven columns regardless of stale profile values")
 
 # -- v1.11.57: ancoraggio fisso + larghezza = somma degli elementi --------
 rt.execute("""
@@ -4266,7 +4327,7 @@ check(bool(rt.eval("RFW_NEW == RFW + 40 and ANCH_X_NEW == (RFW + 40)")),
 check(bool(rt.eval("FOLLOWS == true")), "the panel keeps following the title bar when the bar moves")
 check(bool(rt.eval("ANCH_X_BACK == RFW")), "restoring the Raid Frame restores the bar position")
 
-# -- larghezza fissa: matrice Raid Control 1x6 e title bar autonoma -------
+# -- larghezza fissa: matrice Raid Control 1x7 e title bar autonoma -------
 rt.execute("""
     MW = RLSuite.mainWindow
     local layout = RLSuite.db.profile.layout
@@ -4280,22 +4341,20 @@ rt.execute("""
         W_BY_COLS[c] = MW.frame._w
     end
     MATRIX_FIXED = true
-    for _, w in pairs(W_BY_COLS) do if w ~= 482 then MATRIX_FIXED = false end end
+    for _, w in pairs(W_BY_COLS) do if w ~= 562 then MATRIX_FIXED = false end end
     MATRIX_FIXED = MATRIX_FIXED and MW.frame._h == 30
     local rc = MW.titleBar.raidControlBtn
     local phaseTextStart = 4 + MW.phaseBtn:GetWidth() + 6
     local phaseTextEnd = phaseTextStart + MW._phaseLabelW
-    local saveStart = MW.saveRaidBtn._points[1][4]
-    local saveEnd = saveStart + MW.saveRaidBtn:GetWidth()
     local controlStart = MW.titleBar:GetWidth() - 4 - rc:GetWidth()
-    TITLE_FITS = rc ~= nil and phaseTextEnd <= saveStart and saveEnd <= controlStart
+    TITLE_FITS = rc ~= nil and phaseTextEnd <= controlStart
     TITLE_BAR_W = MW.titleBar:GetWidth()
     layout.main.matrixCols, layout.main.matrixRows = oldCols, oldRows
     MW:ApplyLayout()
 """)
 check(bool(rt.eval("MATRIX_FIXED == true")),
-      "Raid Control stays 482x30 (one row, six columns) regardless of stale layout values")
-check(bool(rt.eval("TITLE_FITS == true")), "every title-bar element fits (phase icon + name + SaveRaid + Raid Control)")
+      "Raid Control stays 562x30 (one row, seven columns) regardless of stale layout values")
+check(bool(rt.eval("TITLE_FITS == true")), "the phase icon and name fit beside Raid Control in the title bar")
 rt.execute("""
     local MWt = RLSuite.mainWindow
     local layout = RLSuite.db.profile.layout
@@ -4314,7 +4373,7 @@ check(bool(rt.eval("TITLE_CONST_W == true")),
       "the title bar keeps its own width irrespective of the fixed matrix")
 rt.execute("""
     local MW = RLSuite.mainWindow
-    local matrixW = 6 * 74 + 5 * 6
+    local matrixW = 7 * 74 + 6 * 6
     EXPECT_W = 2 * 4 + matrixW
     BAR_W = MW.frame._w
     local rcRef = MW.titleBar.raidControlBtn
@@ -4322,8 +4381,8 @@ rt.execute("""
     RC_TEXT_W = (rcRef and rcRef.GetStringWidth and rcRef:GetStringWidth()) or 84
     PHASE_RESERVE = MW._phaseLabelW
 """)
-check(bool(rt.eval("BAR_W == EXPECT_W and BAR_W == 482")),
-      "bar width = 4px padding + six fixed cells + 4px padding")
+check(bool(rt.eval("BAR_W == EXPECT_W and BAR_W == 562")),
+      "bar width = 4px padding + seven fixed cells + 4px padding")
 check(bool(rt.eval("RC_W >= RC_TEXT_W + 8")),
       "the Raid Control button is sized on its own text (%d px wide)" % rt.eval("RC_W"))
 check(bool(rt.eval("PHASE_RESERVE >= 40 and PHASE_RESERVE <= 90")),
@@ -4342,7 +4401,7 @@ rt.execute("""
     -- la barretta resta larga quanto i suoi elementi
     TITLE_W2 = MW.titleBar:GetWidth()
     TITLE_SUM = 4 + MW.phaseBtn:GetWidth() + 4 + MW._phaseLabelW + 4
-        + MW.saveRaidBtn:GetWidth() + 4 + MW.titleBar.raidControlBtn:GetWidth() + 4
+        + MW.titleBar.raidControlBtn:GetWidth() + 4
 """)
 check(bool(rt.eval("PANEL_TO_TITLE == true and PANEL_POINTS == 1")),
       "MAIN BAR panel is anchored to the title bar (%s)" % rt.eval("PANEL_ANCH"))

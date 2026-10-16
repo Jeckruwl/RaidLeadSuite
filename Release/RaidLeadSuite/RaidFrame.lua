@@ -93,8 +93,12 @@ local RF_GROUP_GAP = 8
 local RF_TANK_COUNT = 2     -- Tanks group sopra G1: barra MT + barra OT
 -- Geometria della finestra autonoma "Raid Buffs" (tabella compatta):
 local RF_BP_NAME_W = 92
-local RF_BP_ICON_SIZE = 18
-local RF_BP_CELL_ICON_SIZE = 16
+local RF_BP_ICON_SIZE = 16
+local RF_BP_HEADER_ICON_EXTRA = 2
+local RF_BP_MIN_ICON_SIZE = 12
+local RF_BP_MAX_ICON_SIZE = 24
+local RF_BP_MIN_FONT_SIZE = 8
+local RF_BP_MAX_FONT_SIZE = 20
 local RF_BP_HEADER_H = 24
 local RF_BP_ROW_H = 17
 local RF_BP_TITLE_H = 24
@@ -3387,6 +3391,28 @@ function RF:ApplyDistanceFade(row)
     end
 end
 
+-- Settings dedicati alla finestra Raid Buffs. I profili precedenti avevano
+-- solo raidframe.appearance.iconSpacing: lo usiamo come fallback finche' il
+-- nuovo campo spacing non viene impostato dalla Config.
+function RF:GetBuffWindowSettings()
+    local profile = (RLSuite.db and RLSuite.db.profile) or {}
+    local saved = profile.raidbuffs or {}
+    local legacyApp = profile.raidframe and profile.raidframe.appearance or {}
+    local iconSize = tonumber(saved.iconSize) or RF_BP_ICON_SIZE
+    local spacing = tonumber(saved.spacing)
+    if spacing == nil then spacing = tonumber(legacyApp.iconSpacing) or 8 end
+    local fontSize = tonumber(saved.fontSize) or 10
+
+    iconSize = math.floor(iconSize + 0.5)
+    spacing = math.floor(spacing + 0.5)
+    fontSize = math.floor(fontSize + 0.5)
+    return {
+        iconSize = math.max(RF_BP_MIN_ICON_SIZE, math.min(RF_BP_MAX_ICON_SIZE, iconSize)),
+        spacing = math.max(0, math.min(16, spacing)),
+        fontSize = math.max(RF_BP_MIN_FONT_SIZE, math.min(RF_BP_MAX_FONT_SIZE, fontSize)),
+    }
+end
+
 -- Finestra autonoma della matrice Raid Buffs. Le righe sono una lista
 -- continua del roster (nessuna intestazione G1..G6); i dati e i controlli
 -- restano quelli condivisi con il Raid Frame.
@@ -3398,6 +3424,10 @@ function RF:EnsureBuffWindow()
     f:Hide()
     self.buffWindow = f
     RLSuite.utils:MakeUniversalWindow(f, "raidbuffs")
+    -- Keep the universal dragging/layer behavior, but hide the dialog-style
+    -- outer border around this compact matrix window.
+    f._noOuterBorder = true
+    RLSuite.utils:SkinFrame(f)
     RLSuite.utils:ApplySavedPos(f, "raidbuffs")
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -3462,11 +3492,12 @@ end
 
 function RF:_BuffWindowLayoutSignature(entries, cols)
     local app = (self.db and self.db.appearance) or {}
+    local settings = self:GetBuffWindowSettings()
     local bc = app.matrixBackdrop or {}
     local parts = {
         tostring(#entries), tostring(#cols), tostring(app.font or ""),
-        tostring(app.fontSize or 10), tostring(app.fontOutline ~= false),
-        tostring(app.iconSpacing or 8),
+        tostring(settings.fontSize), tostring(settings.iconSize),
+        tostring(settings.spacing), tostring(app.fontOutline ~= false),
         tostring(bc.r or 0.5), tostring(bc.g or 0.5),
         tostring(bc.b or 0.5), tostring(bc.a or 0.35),
     }
@@ -3483,15 +3514,14 @@ function RF:_LayoutBuffWindow(entries, cols)
     local f = self:EnsureBuffWindow()
     local pad = RF_BP_PAD
     local nameW = RF_BP_NAME_W
-    local app = (self.db and self.db.appearance) or {}
-    local iconSpacing = tonumber(app.iconSpacing)
-    if iconSpacing == nil then iconSpacing = 8 end
-    iconSpacing = math.max(0, math.min(16, iconSpacing))
-    local cellW = math.max(RF_BP_ICON_SIZE, RF_BP_CELL_ICON_SIZE + iconSpacing)
-    local rowH = RF_BP_ROW_H
-    local headerH = RF_BP_HEADER_H
+    local settings = self:GetBuffWindowSettings()
+    local iconSize = settings.iconSize
+    local headerIconSize = iconSize + RF_BP_HEADER_ICON_EXTRA
+    local cellW = iconSize + settings.spacing
+    local rowH = math.max(RF_BP_ROW_H, iconSize + 1, settings.fontSize + 4)
+    local headerH = math.max(RF_BP_HEADER_H, headerIconSize + 4, settings.fontSize + 4)
     local titleH = RF_BP_TITLE_H
-    local gap = iconSpacing
+    local gap = settings.spacing
     local colW = (#cols * cellW) + self:_BuffColOffset(#cols, gap)
     local width = (pad * 2) + nameW + colW
     local visibleRows = math.max(#entries, 1)
@@ -3522,10 +3552,16 @@ function RF:_LayoutBuffWindow(entries, cols)
     hdrBg:SetSize(width - pad * 2, headerH)
     hdrBg:Show()
 
+    local app = (self.db and self.db.appearance) or {}
+    local fontFile = app.font or RLSuite.utils:GetUIFont()
+    local fontSize = settings.fontSize
+    local flags = app.fontOutline == false and "" or "OUTLINE"
+
     local nameHeader = self._buffWindowPlayerHeader
     nameHeader:ClearAllPoints()
     nameHeader:SetPoint("LEFT", f, "TOPLEFT", pad + 5, -(headerY + headerH / 2))
     nameHeader:SetWidth(nameW - 10)
+    nameHeader:SetFont(fontFile, fontSize, flags)
 
     for c, col in ipairs(cols) do
         local btn = self:_MatrixHeaderBtn(c)
@@ -3537,12 +3573,9 @@ function RF:_LayoutBuffWindow(entries, cols)
         btn._icon:SetTexture(self:_BuffHeaderIconPath(col, c))
         btn._icon:ClearAllPoints()
         btn._icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
-        btn._icon:SetSize(RF_BP_ICON_SIZE, RF_BP_ICON_SIZE)
+        btn._icon:SetSize(headerIconSize, headerIconSize)
     end
 
-    local fontFile = (self.db and self.db.appearance and self.db.appearance.font) or RLSuite.utils:GetUIFont()
-    local fontSize = (self.db and self.db.appearance and self.db.appearance.fontSize) or 10
-    local flags = (self.db and self.db.appearance and self.db.appearance.fontOutline == false) and "" or "OUTLINE"
     for i, entry in ipairs(entries) do
         local row = self:_BuffWindowRow(i)
         local y = rowsTop + (i - 1) * rowH
@@ -3569,7 +3602,7 @@ function RF:_LayoutBuffWindow(entries, cols)
                 row._cells[c] = tex
             end
             tex:ClearAllPoints()
-            tex:SetSize(RF_BP_CELL_ICON_SIZE, RF_BP_CELL_ICON_SIZE)
+            tex:SetSize(iconSize, iconSize)
             tex:SetPoint("CENTER", row, "TOPLEFT", x + cellW / 2, -rowH / 2)
 
             local text = row._cellTexts[c]

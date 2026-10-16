@@ -181,7 +181,7 @@ local defaults = {
                 barWidth = 180,
                 iconSize = 16,
                 nameFontSize = 11,
-                iconSpacing = 8,        -- gap tra le icone della matrice Raid Buffs
+                iconSpacing = 8,        -- legacy spacing fallback for Raid Buffs profiles
                 rowSpacing = 0,         -- gap tra le barre dentro i gruppi
                 groupSpacing = 8,       -- gap tra i gruppi
                 groupHeaderFontSize = 10,
@@ -194,6 +194,9 @@ local defaults = {
             },
             alerts = {},
         },
+        -- Standalone Raid Buffs window controls. Empty defaults preserve old
+        -- profiles' Raid Frame iconSpacing as the initial buff-spacing value.
+        raidbuffs = {},
         mschanges = {},
         loot = {
             history = {},
@@ -2289,11 +2292,11 @@ end
 -- ============================================================
 -- Saved Raids (SaveRaid)
 -- Salva: Comp (groupmaking + whisplist), MacroBar e i pannelli di
--- Config esclusa la categoria General (quindi scale delle finestre e
--- impostazioni macrobar/raidframe, non aspetto/font/finestra/debug).
+-- Config esclusa la categoria General (quindi scale e impostazioni di
+-- macrobar, Raid Frame e finestra Raid Buffs; non aspetto/font globali).
 -- ============================================================
 
-local SAVED_RAID_BRANCHES = { "groupmaking", "whisplist", "macrobar", "raidframe" }
+local SAVED_RAID_BRANCHES = { "groupmaking", "whisplist", "macrobar", "raidframe", "raidbuffs" }
 local SAVED_RAID_LAYOUT_KEYS = { "groupmaking", "raidframe", "ms", "loot", "config" }
 
 function RLSuite:SaveRaid(title)

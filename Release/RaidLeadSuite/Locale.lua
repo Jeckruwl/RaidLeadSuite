@@ -214,6 +214,11 @@ do
     L["Missing food buff"] = true
     L["Tanks"] = true
     L["Raid Buffs"] = true
+    L["Buff icon size"] = true
+    L["Size of player buff icons; category headers are two pixels larger."] = true
+    L["Buff spacing"] = true
+    L["Spacing between the buff columns and category groups."] = true
+    L["Font size for player names in the Raid Buffs window."] = true
     L["Font color"] = true
     L["Icon spacing"] = true
     L["Gap between the Raid Buffs matrix icons."] = true

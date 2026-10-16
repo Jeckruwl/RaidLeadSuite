@@ -256,11 +256,11 @@ function MW:CreateFrame()
     MW_UpdateArrowDir()
 
     -- Niente titolo dentro la finestra: i bottoni restano nella matrice;
-    -- fase, SaveRaid e Raid Control sono nella title bar. La Config si apre
-    -- dalla minimappa (clic destro) o da /rls config.
+    -- fase e Raid Control sono nella title bar. La Config si apre dalla
+    -- minimappa (clic destro) o da /rls config.
 
     -- Ordine fisso della matrice: Pugger, Macrobar, MT/OT, MS, Loot,
-    -- Raid Buffs. SaveRaid resta disponibile come pulsante nella title bar.
+    -- SaveRaid, Raid Buffs.
     self.tabDefs = {
         { key = "group",     label = "Pugger" },
         { key = "ms",        label = "MS" },
@@ -424,7 +424,7 @@ function MW:CreateFrame()
     -- Config: accessibile dal clic destro sull'icona della minimappa e da
     -- /rls config (niente piu' icona rotellina nella barra principale).
 
-    -- Raid Buffs: tasto della sesta cella della matrice Raid Control.
+    -- Raid Buffs: tasto della settima cella della matrice Raid Control.
     -- Apre una finestra autonoma; non appartiene al Raid Frame.
     self.raidBuffBtn = CreateFrame("Button", "RLSuiteRaidBuffsBtn", f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.raidBuffBtn)
@@ -442,9 +442,9 @@ function MW:CreateFrame()
     end)
     self.raidBuffBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- SaveRaid resta un pulsante testuale ma si sposta nella title bar per
-    -- mantenere la matrice dei moduli fissa a una riga e sei colonne.
-    self.saveRaidBtn = CreateFrame("Button", "RLSuiteSaveRaidBtn", tb, "UIPanelButtonTemplate")
+    -- SaveRaid resta nella sua cella originale della matrice; Raid Buffs
+    -- aggiunge una settima cella alla stessa riga.
+    self.saveRaidBtn = CreateFrame("Button", "RLSuiteSaveRaidBtn", f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.saveRaidBtn)
     self.saveRaidBtn:SetSize(74, 22)
     self.saveRaidBtn:SetText("SaveRaid")
@@ -458,14 +458,15 @@ function MW:CreateFrame()
     end)
     self.saveRaidBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- Ordine delle sei celle: la coppia MT/OT condivide la terza; Raid Buffs
-    -- occupa la sesta. SaveRaid e' nella title bar, fuori da questa griglia.
+    -- Ordine delle sette celle: SaveRaid mantiene la sesta posizione; Raid
+    -- Buffs aggiunge la settima. MT/OT condivide la terza cella.
     self.matrixOrder = {
         { btn = self.tabs["group"] },
         { btn = self.tabs["macro"] },
         { role = true },
         { btn = self.tabs["ms"] },
         { btn = self.tabs["loot"] },
+        { btn = self.saveRaidBtn },
         { btn = self.raidBuffBtn },
     }
     self.matrixButtons = {}
@@ -494,15 +495,15 @@ function MW:ApplyLayout()
     local L = RLSuite.db and RLSuite.db.profile.layout and RLSuite.db.profile.layout.main
     if not self.frame then return end
     L = L or {}
-    local cols, rows = 6, 1
+    local cols, rows = 7, 1
     -- Celle della matrice: una per tasto, una per la coppia MT & OT.
     local cells = self.matrixOrder
     if not cells or #cells == 0 then
         cells = {}
         for _, b in ipairs(self.matrixButtons or {}) do cells[#cells + 1] = { btn = b } end
     end
-    -- Matrice fissa a sei colonne su una sola riga. Raid Buffs ha la sesta
-    -- cella; SaveRaid resta un pulsante testuale nella title bar.
+    -- Matrice fissa a sette colonne su una sola riga: SaveRaid resta nella
+    -- sesta cella e Raid Buffs occupa la settima.
     local bw, bh, gapX, gapY = 74, 22, 6, 4
     local PAD = 4
 
@@ -512,10 +513,9 @@ function MW:ApplyLayout()
     local tbPad, tbGap = 4, 4
     local phaseIconW = PHASE_ICON
     local phaseNameW = self._phaseLabelW or 58
-    local saveRaidW = (self.saveRaidBtn and self.saveRaidBtn:GetWidth()) or 74
     local rcBtnRef = self.raidControlBtn or (self.titleBar and self.titleBar.raidControlBtn)
     local rcW = (rcBtnRef and rcBtnRef:GetWidth()) or 96
-    local titleW = tbPad + phaseIconW + tbGap + phaseNameW + tbGap + saveRaidW + tbGap + rcW + tbPad
+    local titleW = tbPad + phaseIconW + tbGap + phaseNameW + tbGap + rcW + tbPad
     self._titleRowW = titleW
 
     local contentW = matrixW
@@ -536,12 +536,12 @@ function MW:ApplyLayout()
         self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth(), -TITLE_BAR_H - 2)
     end
 
-    -- Sei celle in una riga: la terza ospita la coppia MT/OT, tutte le
+    -- Sette celle in una riga: la terza ospita la coppia MT/OT, tutte le
     -- altre ospitano un pulsante standard.
     local x0 = PAD
     local topY = -PAD
     -- POSIZIONAMENTO FISSO da sinistra a destra: Pugger, Macrobar, MT/OT,
-    -- MS, Loot, Raid Buffs. La coppia MT/OT condivide la terza cella.
+    -- MS, Loot, SaveRaid, Raid Buffs. MT/OT condivide la terza cella.
     local halfGap = 4
     local halfW = (bw - halfGap) / 2
     for idx, c in ipairs(cells) do
@@ -587,12 +587,6 @@ function MW:ApplyLayout()
         else
             self.phaseText:Hide()
         end
-    end
-    if self.saveRaidBtn and self.titleBar then
-        self.saveRaidBtn:ClearAllPoints()
-        self.saveRaidBtn:SetSize(saveRaidW, TITLE_BAR_H - 4)
-        self.saveRaidBtn:SetPoint("LEFT", self.titleBar, "LEFT",
-            tbPad + phaseIconW + tbGap + phaseNameW + tbGap, 0)
     end
     if self.raidControlBtn and self.titleBar then
         self.raidControlBtn:ClearAllPoints()
