@@ -267,9 +267,9 @@ end
 
 function RF:OnCombatLog(event, ...)
     -- 3.3.5: timestamp, subEvent, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, ...
-    local _, subEvent, _, sourceName, _, _, destName, _, spellId = ...
+    local _, subEvent, sourceGUID, sourceName, _, _, destName, _, spellId = ...
     if subEvent == "SPELL_CAST_SUCCESS" then
-        self:OnSpellCast(sourceName, spellId)
+        self:OnSpellCast(sourceName, spellId, sourceGUID)
     elseif subEvent == "SPELL_AURA_APPLIED" and spellId == RF_FM_SPELL and sourceName then
         -- Focus Magic: l'aura vive sul BERSAGLIO, la FONTE e' il mago che
         -- l'ha lanciata. E' l'unico modo per dire NELL'ALERT quale mago non
@@ -1008,9 +1008,11 @@ function RF:ApplySlotCDs(slot, class)
                 local meta = RLSuite.abilityByName and RLSuite.abilityByName[ability]
                 cd:SetTexture((meta and meta.icon) or "Interface\\Icons\\INV_Misc_QuestionMark")
                 cd.ability = ability
+                cd.category = meta and meta.category
                 cd:Show()
             else
                 cd.ability = nil
+                cd.category = nil
                 cd:Hide()
             end
         end
@@ -1722,15 +1724,60 @@ function RF:GetAbilityRemaining(playerName, unit, ability)
     return 0
 end
 
-function RF:OnSpellCast(sourceName, spellId)
+local function RF_CooldownNameKey(name)
+    if not name then return nil end
+    return tostring(name):match("^([^-]+)") or tostring(name)
+end
+
+-- Pet abilities (notably Warlock Spell Lock) arrive in the combat log under
+-- the pet's name. Resolve that unit back to the roster owner so its cooldown
+-- appears on the player's Raid Frame row.
+function RF:ResolvePetOwner(petName, petGUID)
+    if not (petName and UnitName) then return nil end
+    local wanted = RF_CooldownNameKey(petName)
+    local function ownerFor(petUnit, ownerUnit)
+        local unitGUID = UnitGUID and UnitGUID(petUnit)
+        if petGUID and unitGUID then
+            if unitGUID == petGUID then return UnitName(ownerUnit) end
+            return nil
+        end
+        local unitPet = UnitName(petUnit)
+        if unitPet and RF_CooldownNameKey(unitPet) == wanted then
+            return UnitName(ownerUnit)
+        end
+    end
+
+    local owner = ownerFor("pet", "player")
+    if owner then return RF_CooldownNameKey(owner) end
+
+    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    for i = 1, raidCount do
+        owner = ownerFor("raidpet" .. i, "raid" .. i)
+        if owner then return RF_CooldownNameKey(owner) end
+    end
+
+    local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    for i = 1, partyCount do
+        owner = ownerFor("partypet" .. i, "party" .. i)
+        if owner then return RF_CooldownNameKey(owner) end
+    end
+    return nil
+end
+
+function RF:OnSpellCast(sourceName, spellId, sourceGUID)
     if not sourceName or not spellId then return end
     local ability = RLSuite.abilityBySpellId and RLSuite.abilityBySpellId[spellId]
     if not ability then return end
     local meta = RLSuite.abilityByName and RLSuite.abilityByName[ability]
     if not meta or not meta.cd then return end
+
+    local trackerName = sourceName
+    if meta.source == "pet" then
+        trackerName = self:ResolvePetOwner(sourceName, sourceGUID) or sourceName
+    end
     self.cdTracker = self.cdTracker or {}
-    self.cdTracker[sourceName] = self.cdTracker[sourceName] or {}
-    self.cdTracker[sourceName][ability] = GetTime() + meta.cd
+    self.cdTracker[trackerName] = self.cdTracker[trackerName] or {}
+    self.cdTracker[trackerName][ability] = GetTime() + meta.cd
 end
 
 -- ------------------------------------------------------------------

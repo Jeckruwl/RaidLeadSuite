@@ -2107,6 +2107,81 @@ rt.execute("E5_ROW = RLSuite.raidFrame.rows and RLSuite.raidFrame.rows[1] or nil
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar ~= nil and E5_ROW.bar.nameText ~= nil and E5_ROW.bar.hpText == nil")), "row has one HP bar with the name inside (no %% text)")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.flaskIcon == nil and E5_ROW.foodIcon == nil")), "v1.11.107: row has no left flask / food icons (moved to buff matrix)")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.cdIcons ~= nil and #E5_ROW.cdIcons > 0")), "row has class key CDs on the right")
+rt.execute("""
+local expected = {
+    {"RWD", "Raid Wide Defensive"},
+    {"T-STD", "Target Single Target Defensive"},
+    {"S-STD", "Self Single Target Defensive"},
+    {"BR", "Battle Res"},
+    {"RWO", "Raid Wide Offensive"},
+    {"T-STO", "Target Single Target Offensive"},
+    {"Threat", "Taunt & Aggro (Threat)"},
+    {"INT", "Interrupt"},
+    {"CC", "Crowd Control"},
+}
+local names, covered = {}, {}
+local valid, classCount, maxAbilities = true, 0, 0
+for i, category in ipairs(RLSuite.cooldownCategories or {}) do
+    names[category.code] = category.name
+    if not expected[i] or category.code ~= expected[i][1] or category.name ~= expected[i][2] then valid = false end
+end
+for class, abilities in pairs(RLSuite.keyAbilities or {}) do
+    classCount = classCount + 1
+    maxAbilities = math.max(maxAbilities, #abilities)
+    local seen = {}
+    if #abilities > 4 then valid = false end
+    for _, ability in ipairs(abilities) do
+        local meta = RLSuite.abilityByName[ability]
+        if seen[ability] or not meta or not meta.cd or not names[meta.category] then valid = false end
+        seen[ability] = true
+        if meta and meta.category then covered[meta.category] = true end
+    end
+end
+for _, category in ipairs(expected) do
+    if not names[category[1]] or not covered[category[1]] then valid = false end
+end
+CD_WATCHLIST_VALID = valid and #RLSuite.cooldownCategories == 9 and classCount == 10 and maxAbilities == 4
+local RF, row = RLSuite.raidFrame, E5_ROW
+local restoreClass = row._cdClass or row.class or "WARRIOR"
+local iconsValid = true
+for class, abilities in pairs(RLSuite.keyAbilities) do
+    RF:ApplySlotCDs(row, class)
+    for i, ability in ipairs(abilities) do
+        local icon = row.cdIcons[i]
+        local meta = RLSuite.abilityByName[ability]
+        if not icon or icon.ability ~= ability or icon.category ~= meta.category then iconsValid = false end
+    end
+end
+RF:ApplySlotCDs(row, restoreClass)
+CD_CLASS_ICONS_VALID = iconsValid
+local shamans = RLSuite.keyAbilities.SHAMAN or {}
+local bloodlustIds = RLSuite.abilitySpellIdByName["Bloodlust/Heroism"] or {}
+CD_BLOODLUST_MERGED = shamans[1] == "Bloodlust/Heroism"
+    and RLSuite.abilityBySpellId[2825] == shamans[1] and RLSuite.abilityBySpellId[32182] == shamans[1]
+    and #bloodlustIds == 2
+""")
+check(bool(rt.eval("CD_WATCHLIST_VALID")), "fight cooldown watchlist classifies all nine categories and stays within four Raid Frame icons per class")
+check(bool(rt.eval("CD_CLASS_ICONS_VALID and E5_ROW.cdIcons[1].category == RLSuite.abilityByName[E5_ROW.cdIcons[1].ability].category")), "every class's four cooldown icons match its curated abilities and primary categories")
+check(bool(rt.eval("CD_BLOODLUST_MERGED")), "Heroism and Bloodlust share one Shaman cooldown icon and tracker")
+rt.execute("""
+local RF = RLSuite.raidFrame
+local oldName, oldGUID, oldRaid, oldParty, oldTracker = UnitName, UnitGUID, GetNumRaidMembers, GetNumPartyMembers, RF.cdTracker
+local units = { player = "RaidLead", raid1 = "RaidLead", raidpet1 = "Felhunter",
+    raid2 = "WarlockUser", raidpet2 = "Felhunter" }
+local guids = { raidpet1 = "PET-GUID-1", raidpet2 = "PET-GUID-2" }
+UnitName = function(unit) return units[unit] end
+UnitGUID = function(unit) return guids[unit] end
+GetNumRaidMembers = function() return 2 end
+GetNumPartyMembers = function() return 0 end
+RF.cdTracker = {}
+local before = GetTime()
+RF:OnCombatLog("COMBAT_LOG_EVENT_UNFILTERED", 0, "SPELL_CAST_SUCCESS",
+    "PET-GUID-2", "Felhunter", 0, "TARGET", "TrainingDummy", 0, 19647)
+local expiry = RF.cdTracker.WarlockUser and RF.cdTracker.WarlockUser["Spell Lock"]
+CD_PET_INTERRUPT_TRACKED = expiry ~= nil and expiry >= before + 23.9 and expiry <= before + 24.1
+UnitName, UnitGUID, GetNumRaidMembers, GetNumPartyMembers, RF.cdTracker = oldName, oldGUID, oldRaid, oldParty, oldTracker
+""")
+check(bool(rt.eval("CD_PET_INTERRUPT_TRACKED")), "Warlock pet Spell Lock cooldown is attributed to its owner's Raid Frame row")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar:GetWidth() == RLSuite.db.profile.raidframe.appearance.barWidth")), "player HP bar uses the configured bar width")
 
 # --- buff/debuff/ability bars: RIMOSSE (redesign in corso), restano SOLO flask+food per riga ---
