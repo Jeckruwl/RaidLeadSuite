@@ -1249,9 +1249,8 @@ function LM:StartRoll(rollType, quantity)
 
     if isRess then
         local phase = rollType == "RESS_USER" and "USER" or "RAID"
-        local marker = phase == "USER" and "U" or "R"
         RLSuite.utils:SendChat(self:RollItemText(reservedItem) .. " RESERVED", "RAID_WARNING")
-        RLSuite.utils:SendChat("ROLLING " .. tostring(tonumber(quantity) or 0) .. "=" .. marker
+        RLSuite.utils:SendChat("ROLLING " .. tostring(tonumber(quantity) or 0)
             .. " " .. self:RollItemText(rollItem) .. " " .. phase
             .. " You have " .. LM_ROLL_DURATION .. "s", "RAID_WARNING")
     else
