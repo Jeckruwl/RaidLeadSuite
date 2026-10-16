@@ -439,11 +439,10 @@ function CFG:BuildOptionsTable()
     local spamIntervalValues = {}
     for seconds = 20, 60, 5 do
         local key = tostring(seconds)
-        spamIntervalValues[key] = string.format(L["%d seconds"], seconds)
+        spamIntervalValues[key] = string.format(L["%ds"], seconds)
     end
     local groupmaking = {
-        spamDesc = { type = "description", name = L["Spam channels"] .. ":", order = 1, fontSize = "medium" },
-        spamInterval = select(L["Spam interval"], L["Interval between spam messages; choose 20 to 60 seconds in 5-second steps."], 2,
+        spamInterval = select(L["Spam interval"], L["Interval between spam messages; choose 20 to 60 seconds in 5-second steps."], 1,
             spamIntervalValues,
             function()
                 local groupmaking = RLSuite.groupmaking
@@ -460,6 +459,7 @@ function CFG:BuildOptionsTable()
                     RLSuite.groupmaking:ApplySpamInterval()
                 end
             end),
+        spamDesc = { type = "description", name = L["Spam channels"] .. ":", order = 2, fontSize = "medium" },
     }
     -- Canali standard WoW (Guild, Yell) e numerati (General, global).
     -- Per i canali numerati: numero 0 o vuoto = risoluzione automatica da GetChannelName;
@@ -468,9 +468,11 @@ function CFG:BuildOptionsTable()
     local _gmChans = { "General", "Guild", "Yell", "global" }
     for i, ch in ipairs(_gmChans) do
         local tgl = toggle(L[ch], nil, 2 + i, gmSpamGet(ch), gmSpamSet(ch))
+        -- Tutte le checkbox e i due campi numerici usano mezza larghezza:
+        -- Guild e Yell non riservano spazio per un numero di canale.
+        tgl.width = "half"
         local isNumbered = (ch ~= "Guild" and ch ~= "Yell")
         if isNumbered then
-            tgl.width = "half"
             groupmaking["spam_" .. ch] = tgl
             groupmaking["spamNum_" .. ch] = numinput(L["Channel #"], L["Explicit channel number; leave empty (or 0) to auto-detect by name."], 2 + i + 0.01,
                 (function(c) return function()
@@ -486,7 +488,6 @@ function CFG:BuildOptionsTable()
                     d.spamChannelNums[c] = (n and n > 0) and n or nil
                 end end)(ch))
         else
-            tgl.width = "normal"
             groupmaking["spam_" .. ch] = tgl
         end
     end

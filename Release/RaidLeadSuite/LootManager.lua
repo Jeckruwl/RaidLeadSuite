@@ -18,6 +18,9 @@ local LM_FIXED_WIDTH = 460
 local LM_TABLE_HEIGHT = 220 -- viewport esatto: cinque righe da max due linee
 local LM_BASE_HEIGHT = 458  -- elementi fissi + tabella + due righe comandi
 local LM_RESS_MAX_COUNT = 999
+local LM_PRIMORDIAL_SARONITE_ID = 49908
+local LM_PRIMORDIAL_SARONITE_FALLBACK_LINK =
+    "|cffa335ee|Hitem:49908:0:0:0:0:0:0:0:80|h[Primordial Saronite]|h|r"
 
 local function ClampRessCount(value, default)
     local count = tonumber(value)
@@ -1177,6 +1180,18 @@ function LM:GetRessQuantity(phase)
     return count
 end
 
+function LM:GetPrimordialSaroniteItem()
+    local info = GetItemInfo and { GetItemInfo(LM_PRIMORDIAL_SARONITE_ID) } or {}
+    return {
+        id = LM_PRIMORDIAL_SARONITE_ID,
+        itemLink = info[2] or LM_PRIMORDIAL_SARONITE_FALLBACK_LINK,
+        itemName = info[1] or "Primordial Saronite",
+        itemTexture = info[10] or "Interface\\Icons\\INV_Misc_QuestionMark",
+        quality = tonumber(info[3]) or 4,
+        itemType = "ORB",
+    }
+end
+
 function LM:StartRessRoll()
     if not self.selectedItem then
         RLSuite.utils:Print(L["Select an item from the history first!"])
@@ -1199,12 +1214,12 @@ function LM:StartRessRoll()
     self:StartRoll("RESS_" .. phase, quantity)
 end
 
-function LM:CompleteRessRoll(success, item, rollType)
+function LM:CompleteRessRoll(success, reservedItem, rollType)
     if rollType ~= "RESS_USER" and rollType ~= "RESS_RAID" then return end
     local phase = rollType == "RESS_USER" and "USER" or "RAID"
     local sequence = self.ressSequence
-    if not sequence or sequence.item ~= item then
-        sequence = { item = item, step = phase }
+    if not sequence or sequence.item ~= reservedItem then
+        sequence = { item = reservedItem, step = phase }
         self.ressSequence = sequence
     end
     sequence.step = success and (phase == "USER" and "RAID" or "DONE") or phase
@@ -1216,8 +1231,12 @@ function LM:StartRoll(rollType, quantity)
         return
     end
 
+    local isRess = rollType == "RESS_USER" or rollType == "RESS_RAID"
+    local reservedItem = isRess and self.selectedItem or nil
+    local rollItem = isRess and self:GetPrimordialSaroniteItem() or self.selectedItem
     self.currentRoll = {
-        item = self.selectedItem,
+        item = rollItem,
+        reservedItem = reservedItem,
         type = rollType,
         quantity = tonumber(quantity),
         rolls = {},
@@ -1228,14 +1247,24 @@ function LM:StartRoll(rollType, quantity)
         active = true,
     }
 
-    -- MS Changes resta un'informazione separata nel pannello e viene
-    -- annunciata SOLO dal suo pulsante: i tasti Roll non la premettono più.
-    local msg = self:RollLabel(false) .. " " .. self:RollItemText(self.selectedItem)
-        .. " You have " .. LM_ROLL_DURATION .. "s"
-    RLSuite.utils:SendChat(msg, "RAID_WARNING")
-    -- barra-timer in DBM/BigWigs se installati (durata fissa del roll)
-    RLSuite.utils:StartDbmTimer(LM_ROLL_DURATION, self:RollLabel(false) .. " " .. self:RollItemText(self.selectedItem),
-        self.selectedItem.itemTexture)
+    if isRess then
+        local phase = rollType == "RESS_USER" and "USER" or "RAID"
+        local marker = phase == "USER" and "U" or "R"
+        RLSuite.utils:SendChat(self:RollItemText(reservedItem) .. " RESERVED", "RAID_WARNING")
+        RLSuite.utils:SendChat("ROLLING " .. tostring(tonumber(quantity) or 0) .. "=" .. marker
+            .. " " .. self:RollItemText(rollItem) .. " " .. phase
+            .. " You have " .. LM_ROLL_DURATION .. "s", "RAID_WARNING")
+    else
+        -- MS Changes resta un'informazione separata nel pannello e viene
+        -- annunciata SOLO dal suo pulsante: i tasti Roll non la premettono più.
+        local msg = self:RollLabel(false) .. " " .. self:RollItemText(rollItem)
+            .. " You have " .. LM_ROLL_DURATION .. "s"
+        RLSuite.utils:SendChat(msg, "RAID_WARNING")
+    end
+
+    -- barra-timer in DBM/BigWigs se installati (durata fissa del roll).
+    RLSuite.utils:StartDbmTimer(LM_ROLL_DURATION,
+        self:RollLabel(false) .. " " .. self:RollItemText(rollItem), rollItem.itemTexture)
 
     if RLSuite.DebugMode and RLSuite:DebugMode() then
         local me = UnitName("player") or "You"
@@ -1347,7 +1376,8 @@ function LM:AnnounceWinner()
 
     if #self.currentRoll.rolls == 0 then
         RLSuite.utils:SendChat("No rolls received for " .. self:RollItemText(self.currentRoll.item), "RAID_WARNING")
-        self:CompleteRessRoll(false, self.currentRoll.item, self.currentRoll.type)
+        self:CompleteRessRoll(false, self.currentRoll.reservedItem or self.currentRoll.item,
+            self.currentRoll.type)
         self:ResetButtons()
         self:UnregisterEvent("CHAT_MSG_SYSTEM")
         return
@@ -1378,10 +1408,10 @@ function LM:AnnounceWinner()
         RLSuite.utils:SendChat((winner.name or "?") .. " wins " .. self:RollItemText(rollItem)
             .. " with " .. (winner.roll or 0) .. "! Please trade.", "RAID_WARNING")
         rollItem.assignedTo = winner.name
-        self:CompleteRessRoll(true, rollItem, rollType)
+        self:CompleteRessRoll(true, self.currentRoll.reservedItem or rollItem, rollType)
         self:ShowTradeWindow(rollItem, self.currentRoll.quantity)
-        -- Mantieni l'item selezionato dopo il roll User: il click successivo
-        -- su RESS deve poter avviare il roll Raid dello stesso pezzo.
+        -- Mantieni la prenotazione selezionata dopo il roll User: il click
+        -- successivo su RESS avvia il passaggio Raid per la stessa prenotazione.
         if rollType ~= "RESS_USER" then self:ClearSelection() end
         self:UpdateHistory()
     end
@@ -1464,7 +1494,8 @@ function LM:ProcessReroll()
 
     if #validRolls == 0 then
         RLSuite.utils:SendChat("No valid rerolls for " .. self:RollItemText(self.currentRoll.item) .. "!", "RAID_WARNING")
-        self:CompleteRessRoll(false, self.currentRoll.item, self.currentRoll.type)
+        self:CompleteRessRoll(false, self.currentRoll.reservedItem or self.currentRoll.item,
+            self.currentRoll.type)
         self.currentRoll.rerollWinners = nil
         self:ResetButtons()
         self:UnregisterEvent("CHAT_MSG_SYSTEM")
@@ -1479,7 +1510,7 @@ function LM:ProcessReroll()
         .. self:RollItemText(rollItem) .. " with " .. (winner.roll or 0)
         .. "! Please trade.", "RAID_WARNING")
     rollItem.assignedTo = winner.name
-    self:CompleteRessRoll(true, rollItem, rollType)
+    self:CompleteRessRoll(true, self.currentRoll.reservedItem or rollItem, rollType)
     self:ShowTradeWindow(rollItem, self.currentRoll.quantity)
     if rollType ~= "RESS_USER" then self:ClearSelection() end
     self:UpdateHistory()
@@ -1515,7 +1546,6 @@ end
 local LM_TRADE_ICON = 32     -- lato dell'icona cliccabile
 local LM_TRADE_PAD = 6       -- padding sopra/sotto l'icona
 local LM_TRADE_GAP = 6       -- spazio verticale tra una finestra e l'altra
-local LM_PRIMORDIAL_SARONITE_ID = 49908
 
 local function LootLinkItemID(itemLink)
     return tonumber(string.match(itemLink or "", "item:(%d+)"))

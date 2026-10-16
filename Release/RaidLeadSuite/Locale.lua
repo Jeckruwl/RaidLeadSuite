@@ -85,7 +85,7 @@ do
     L["Spammer stopped."] = true
     L["Spam interval"] = true
     L["Interval between spam messages; choose 20 to 60 seconds in 5-second steps."] = true
-    L["%d seconds"] = true
+    L["%ds"] = true
     L["Request specific Specs"] = true
     L["Channel #"] = true
     L["Explicit channel number; leave empty (or 0) to auto-detect by name."] = true
