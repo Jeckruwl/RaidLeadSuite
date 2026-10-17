@@ -168,6 +168,8 @@ local defaults = {
             showFlask = true,
             showFood = true,
             showGroupHeaders = true,
+            numberOfGroups = 8,
+            groupsPerRow = 1,
             locked = true,
             scale = 1.0,
             width = 380,
@@ -178,14 +180,15 @@ local defaults = {
             y = 0,
             alpha = 1.0,            -- overall HUD transparency
             appearance = {
-                barWidth = 180,
+                barWidth = 100,
+                barHeight = 20,
                 iconSize = 16,
                 nameFontSize = 11,
                 iconSpacing = 8,        -- legacy spacing fallback for Raid Buffs profiles
-                rowSpacing = 0,         -- gap tra le barre dentro i gruppi
-                groupSpacing = 8,       -- gap tra i gruppi
+                horizontalSpacing = -1, -- gap fra gruppi affiancati
+                rowSpacing = -1,        -- vertical spacing fra le barre nel gruppo
+                groupSpacing = 5,       -- gap fra le righe di gruppi
                 groupHeaderFontSize = 10,
-                matrixBackdrop = { r = 0.5, g = 0.5, b = 0.5, a = 0.35 },
                 fontColor = { r = 1, g = 1, b = 1, a = 1 },
                 border = true,
                 font = "Fonts\\FRIZQT__.TTF",
@@ -195,7 +198,7 @@ local defaults = {
             alerts = {},
         },
         -- Standalone Raid Buffs window controls. Empty defaults preserve old
-        -- profiles' Raid Frame iconSpacing as the initial buff-spacing value.
+        -- profiles' Raid Frame iconSpacing/backdrop until first saved change.
         raidbuffs = {},
         cdwatcher = {
             layoutMode = "macro",
@@ -298,6 +301,10 @@ function RLSuite:OnInitialize()
         MergeLegacy(self.db.profile, legacy)
     end
 
+    -- The matrix backdrop belongs to the standalone Raid Buffs window, not
+    -- the Raid Frame. Move the saved value without discarding old profiles.
+    self:MigrateRaidBuffBackdrop()
+
     -- Folder name is the addon name. Canonical: RaidLeadSuite (RLSuite kept
     -- for backward compatibility). AceAddon stores it on baseName.
     self.addonFolder = self.baseName or "RaidLeadSuite"
@@ -314,6 +321,18 @@ function RLSuite:OnInitialize()
     end
 end
 
+function RLSuite:MigrateRaidBuffBackdrop()
+    local profile = self.db and self.db.profile
+    if not profile then return end
+    profile.raidbuffs = profile.raidbuffs or {}
+    local appearance = profile.raidframe and profile.raidframe.appearance
+    if appearance and appearance.matrixBackdrop ~= nil then
+        if profile.raidbuffs.matrixBackdrop == nil then
+            profile.raidbuffs.matrixBackdrop = appearance.matrixBackdrop
+        end
+        appearance.matrixBackdrop = nil
+    end
+end
 
 -- ------------------------------------------------------------------
 -- Durability Addon Communication via AceComm-3.0
@@ -1397,8 +1416,8 @@ end
 -- senza dover "ricompattare" la lista. DebugRoster() restituisce una vista
 -- DENSA (senza buchi) per chi vuole solo la lista dei membri (Raid Frame).
 -- ============================================================
-local DEBUG_MAX_SLOTS = 30
-local DEBUG_MAX_GROUPS = 6
+local DEBUG_MAX_SLOTS = 40
+local DEBUG_MAX_GROUPS = 8
 
 -- Vista DENSA del roster simulato (gli slot vuoti vengono saltati): usata
 -- dal Raid Frame, dai test e ovunque serva una lista compatta dei membri.
@@ -1412,7 +1431,7 @@ function RLSuite:DebugRoster()
     return list
 end
 
--- Array sparso degli slot (1..30): la fonte di verita' per la disposizione
+-- Array sparso degli slot (1..40): la fonte di verita' per la disposizione
 -- dei gruppi. Lo slot i-esimo sta nella colonna floor((i-1)/5)+1, riga
 -- (i-1)%5+1.
 function RLSuite:DebugRaidSlots()

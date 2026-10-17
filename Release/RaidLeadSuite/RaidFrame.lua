@@ -9,7 +9,7 @@
 --              by the raid; greyed when present, flashing border when missing)
 --   below  : pre-boss alert buff bar / in-fight alert debuff bar
 --
--- The player bars are divided into the 6 raid groups (G1..G6, 5 players
+-- The player bars are divided into up to 8 raid groups (G1..G8, 5 players
 -- each), in pre-boss phase empty slots are shown as drop targets and
 -- players can be rearranged by drag & drop (like the InviteEngine raid
 -- group panel).
@@ -68,7 +68,7 @@ local function RowBodyPoller(s, elapsed)
     end
 end
 
-local RF_GROUPS = 6
+local RF_GROUPS = 8 -- maximum displayable raid groups (G1..G8)
 local RF_PER_GROUP = 5
 -- DURABILITY: slot di equipaggiamento controllati (4 = camicia e 19 = tabard
 -- non hanno durability). Per gli ALTRI player il client espone solo "oggetto
@@ -142,8 +142,8 @@ LibStub("AceTimer-3.0"):Embed(RF)
 function RF:Init()
     self.db = RLSuite.db.profile.raidframe
     self.rows = {}          -- populated slots, dense (for tests + UpdateAll)
-    self.slots = {}         -- 30 slot frames (6 groups x 5 players)
-    self.groupHeaders = {}  -- 6 group labels (G1..G6)
+    self.slots = {}         -- 40 slot frames (8 groups x 5 players)
+    self.groupHeaders = {}  -- 8 group labels (G1..G8)
     self:CreateFrame()
     self:RegisterEvents()
     self:ApplyLayout()
@@ -233,7 +233,7 @@ function RF:CreateFrame()
         end
     end)
 
-    -- Groups + slots (G1..G6) live in this container.
+    -- Groups + slots (G1..G8) live in this container.
     self.content = CreateFrame("Frame", nil, f)
     self.content:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
     self:_InitDragPoller()
@@ -302,11 +302,12 @@ function RF:GetRoster()
     return list
 end
 
--- Raid roster divided into the 6 groups: groups[g][s] = member or nil.
+-- Raid roster divided into up to 8 groups: groups[g][s] = member or nil.
 -- Debug mode reads the sparse simulated slots (slot -> group/row); real
 -- mode reads GetRaidRosterInfo's subgroup, ordered by raid index.
 function RF:GetGroupedRoster()
-    local groups = { {}, {}, {}, {}, {}, {} }
+    local groups = {}
+    for g = 1, RF_GROUPS do groups[g] = {} end
     if RLSuite.DebugMode and RLSuite:DebugMode() then
         local slots = RLSuite:DebugRaidSlots()
         for i = 1, RF_GROUPS * RF_PER_GROUP do
@@ -329,7 +330,8 @@ function RF:GetGroupedRoster()
     end
 
     local num = GetNumRaidMembers() or 0
-    local groupCount = { 0, 0, 0, 0, 0, 0 }
+    local groupCount = {}
+    for g = 1, RF_GROUPS do groupCount[g] = 0 end
     for i = 1, num do
         local name, rank, subgroup, _, _, _, _, _, _, role, isML = GetRaidRosterInfo(i)
         if name then
@@ -362,38 +364,61 @@ end
 function RF:LayoutMetrics()
     local db = self.db or {}
     local app = db.appearance or {}
-    local iconSize = app.iconSize or 16
-    local barHeight = iconSize -- barre: altezza AUTOMATICA = icon size (non piu' configurabile)
-    local barWidth = app.barWidth or 180
-    local nameFontSize = app.nameFontSize or 11
-    -- Spacing configurabili (Config -> Raid Frame -> Layout)
-    local iconSpacing = app.iconSpacing or 8            -- gap tra le icone della matrice
-    local rowSpacing = app.rowSpacing or 0              -- gap tra le barre nei gruppi
-    local groupSpacing = app.groupSpacing or 8          -- gap tra i gruppi
-    local groupHeaderH = (app.groupHeaderFontSize or 10) + 4
-    local cellW = math.max(12, iconSize + iconSpacing)  -- passo colonne matrice
+    local function clamp(value, low, high, fallback)
+        value = tonumber(value) or fallback
+        value = math.floor(value + 0.5)
+        return math.max(low, math.min(high, value))
+    end
+
+    local numberOfGroups = clamp(db.numberOfGroups, 1, RF_GROUPS, RF_GROUPS)
+    local groupsPerRow = clamp(db.groupsPerRow, 1, RF_GROUPS, 1)
+    groupsPerRow = math.min(groupsPerRow, numberOfGroups)
+    local groupRows = math.ceil(numberOfGroups / groupsPerRow)
+    local barHeight = clamp(app.barHeight, 10, 500, tonumber(app.iconSize) or 20)
+    local barWidth = clamp(app.barWidth, 10, 500, 100)
+    local iconSize = math.min(clamp(app.iconSize, 10, 24, 16), barHeight)
+    local nameFontSize = clamp(app.nameFontSize, 8, 32, 11)
+    -- Spacing configurabili (Config -> Raid Frame -> Size and Positions).
+    local iconSpacing = tonumber(app.iconSpacing) or 8 -- legacy Raid Buffs fallback
+    local verticalSpacing = clamp(app.rowSpacing, -1, 50, -1)
+    local horizontalSpacing = clamp(app.horizontalSpacing, -1, 50, -1)
+    local groupSpacing = clamp(app.groupSpacing, 0, 50, 5)
+    local groupHeaderFontSize = clamp(app.groupHeaderFontSize, 8, 16, 10)
+    local showGroupHeaders = db.showGroupHeaders ~= false
+    local groupHeaderH = showGroupHeaders and (groupHeaderFontSize + 4) or 0
+    local cellW = math.max(12, iconSize + iconSpacing) -- passo colonne matrice
     local abw = 0 -- buff bar / ability bar rimosse (redesign in corso)
     local gap = 0
-    -- L'AREA DELLE COLONNE MATRICE NON E' COPERTA DALLA FINESTRA: la window
-    -- finisce al bordo destro delle barre e TUTTA la grafica matrice (icone,
-    -- strip, backdrop) viene disegnata OLTRE il bordo destro. Cosi' la zona
-    -- buff e' COMPLETAMENTE CLICK-THROUGH, a matrice aperta o chiusa.
     -- Layout per row: [roleIcon (iconSize)] [HP bar = barWidth]
     -- [target reserve used only by the MT/OT target bars]. CD monitoring and
     -- its display now live in the standalone CD Watcher module.
     local roleReserve = iconSize + 4
     local targetReserve = 4 * iconSize + 3 * 2 + 4
     local rowWidth = roleReserve + barWidth + targetReserve + 4
-    local W = rowWidth + abw + gap
-    local rowHeight = math.max(barHeight, iconSize) + 4
+    local rowHeight = barHeight
+    local groupBlockH = groupHeaderH + (RF_PER_GROUP * rowHeight)
+        + ((RF_PER_GROUP - 1) * verticalSpacing)
+    local tankBlockH = groupHeaderH + (RF_TANK_COUNT * rowHeight)
+        + (RF_TANK_COUNT * verticalSpacing)
+    local gridHeight = (groupRows * groupBlockH)
+        + ((groupRows - 1) * groupSpacing)
+    local W = (groupsPerRow * rowWidth)
+        + ((groupsPerRow - 1) * horizontalSpacing) + abw + gap
+    local rowsH = tankBlockH + gridHeight
     return {
         W = W, abw = abw, rowWidth = rowWidth,
         roleReserve = roleReserve, targetReserve = targetReserve,
         barWidth = barWidth, barHeight = barHeight,
         iconSize = iconSize, nameFontSize = nameFontSize,
         rowHeight = rowHeight,
-        iconSpacing = iconSpacing, rowSpacing = rowSpacing,
+        iconSpacing = iconSpacing, rowSpacing = verticalSpacing,
+        verticalSpacing = verticalSpacing, horizontalSpacing = horizontalSpacing,
         groupSpacing = groupSpacing, groupHeaderH = groupHeaderH,
+        groupHeaderFontSize = groupHeaderFontSize,
+        showGroupHeaders = showGroupHeaders,
+        groupCount = numberOfGroups, groupsPerRow = groupsPerRow,
+        groupRows = groupRows, groupBlockH = groupBlockH,
+        tankBlockH = tankBlockH, gridHeight = gridHeight, rowsH = rowsH,
         cellW = cellW,
     }
 end
@@ -1114,40 +1139,44 @@ function RF:RefreshDropTargets()
     local dragging = self:IsDragEnabled() and self._rfDragSource ~= nil
     -- Flag di "drag in corso" che SOPRAVVIVE alla pulizia di _rfDragSource:
     -- nel drop l'hit-test di SlotAtCursor viene fatto DOPO che la sorgente e'
-    -- stata azzerata, quindi non puo' dipendere da lei (era il motivo per cui
-    -- in combat il rilascio su uno slot vuoto non faceva nulla: riga nascosta
-    -- + sorgente gia' nulla = nessun bersaglio trovato).
+    -- stata azzerata, quindi non puo' dipendere da lei.
     self._dropActive = dragging and true or nil
+    local metrics = self:LayoutMetrics()
     for g = 1, RF_GROUPS do
+        local activeGroup = g <= metrics.groupCount
         local anyMember = false
         for s = 1, RF_PER_GROUP do
             local slot = self.slots and self.slots[(g - 1) * RF_PER_GROUP + s]
             if slot then
-                if slot.member then
-                    anyMember = true
-                elseif dragging then
-                    -- NIENTE bordo "dialog" sulla RIGA: la rendono visibile e
-                    -- cliccabile i PIANI (v1.11.75), che in combat non possono
-                    -- essere bloccati; la riga resta col suo spazio riservato.
-                    slot:SetBackdrop(nil)
-                    slot:Show()
-                else
+                if not activeGroup then
                     slot:SetBackdrop(nil)
                     slot:Hide()
-                end
-                -- Piano di rilascio: attivo durante il drag sugli ALTRI slot
-                -- (mai sulla sorgente: li' non si puo' rilasciare).
-                if dragging and slot ~= self._rfDragSource then
-                    self:StyleDropPlane(slot, slot.member and "occupied" or "empty")
-                else
                     self:HideDropPlane(slot)
+                else
+                    if slot.member then
+                        anyMember = true
+                    elseif dragging then
+                        -- NIENTE bordo "dialog" sulla RIGA: la rendono visibile e
+                        -- cliccabile i PIANI (v1.11.75), che in combat non possono
+                        -- essere bloccati; la riga resta col suo spazio riservato.
+                        slot:SetBackdrop(nil)
+                        slot:Show()
+                    else
+                        slot:SetBackdrop(nil)
+                        slot:Hide()
+                    end
+                    -- Piano di rilascio: attivo durante il drag sugli ALTRI slot.
+                    if dragging and slot ~= self._rfDragSource then
+                        self:StyleDropPlane(slot, slot.member and "occupied" or "empty")
+                    else
+                        self:HideDropPlane(slot)
+                    end
                 end
             end
         end
         local hdr = self.groupHeaders and self.groupHeaders[g]
         if hdr then
-            local showHeaders = (self.db and self.db.showGroupHeaders ~= false)
-            if showHeaders and (anyMember or dragging) then
+            if activeGroup and metrics.showGroupHeaders and (anyMember or dragging) then
                 hdr:Show()
             else
                 hdr:Hide()
@@ -1256,7 +1285,7 @@ function RF:Rebuild()
     for g = 1, RF_GROUPS do
         for s = 1, RF_PER_GROUP do
             local slot = self.slots[(g - 1) * RF_PER_GROUP + s]
-            local member = groups[g][s]
+            local member = g <= m.groupCount and groups[g] and groups[g][s] or nil
             local ok, err
             if member then
                 ok, err = pcall(self.FillSlot, self, slot, member)
@@ -2229,9 +2258,10 @@ function RF:MemberRowAtCursor(tol)
     if not GetCursorPosition then return nil end
     local x, y = GetCursorPosition()
     if not x or not y then return nil end
+    local maxGroup = self:LayoutMetrics().groupCount
     local best, bestD = nil, nil
     for _, slot in ipairs(self.slots or {}) do
-        if slot and slot.member then
+        if slot and slot.member and (not slot.group or slot.group <= maxGroup) then
             local d = self:_RectDistance(slot, x, y)
             if d and (not bestD or d < bestD) then best, bestD = slot, d end
         end
@@ -2248,8 +2278,10 @@ function RF:_SlotUnderCursor(list, x, y, requireMember)
     -- non deve poter decidere se un drop riesce (in combat la riga poteva
     -- restare invisibile -> SlotAtCursor nil -> nessun rilascio).
     local dragging = self._dropActive or self._rfDragSource ~= nil
+    local maxGroup = self:LayoutMetrics().groupCount
     for _, slot in ipairs(list) do
-        if slot and (slot:IsShown() or (dragging and slot.dropPlane ~= nil)) then
+        local activeGroup = not slot or not slot.group or slot.group <= 0 or slot.group <= maxGroup
+        if slot and activeGroup and (slot:IsShown() or (dragging and slot.dropPlane ~= nil)) then
             -- SCALA: GetLeft/GetBottom/... sono nello spazio della scala
             -- EFFETTIVA DELLO SLOT, non di UIParent. Se la finestra RF ha
             -- una scala propria (config "Scale"), il cursore va riportato in
@@ -2281,8 +2313,9 @@ end
 -- gesto a vuoto dice SUBITO se il cursore e' in un buco o fuori dalle barre.
 function RF:NearestMemberInfo(x, y)
     local best, bestD = nil, nil
+    local maxGroup = self:LayoutMetrics().groupCount
     for _, slot in ipairs(self.slots or {}) do
-        if slot and slot.member then
+        if slot and slot.member and (not slot.group or slot.group <= maxGroup) then
             local d = self:_RectDistance(slot, x, y)
             if d and (not bestD or d < bestD) then best, bestD = slot, d end
         end
@@ -2383,14 +2416,12 @@ function RF:ApplyLayout()
     -- Trasparenza complessiva dell'HUD (Config -> Raid Frame -> Layout).
     self.frame:SetAlpha(db.alpha or 1)
 
-    -- GRIGLIA IMMOBILE: le posizioni delle barre non dipendono dal roster.
-    -- Restano riservati il blocco Tanks e i sei blocchi G1..G6; la matrice
-    -- Raid Buffs e' una finestra autonoma e non aggiunge righe all'HUD.
-    local y = 0
-    -- Font size configurabile delle intestazioni di gruppo (G1..G6, Tanks).
+    -- Griglia deterministica: i gruppi sono distribuiti nelle colonne
+    -- configurate, mentre le righe dei membri restano ordinate all'interno
+    -- di ogni gruppo. Il blocco Tanks e' riservato sopra la griglia.
     local ghApp = (self.db and self.db.appearance) or {}
     local ghFont = ghApp.font or "Fonts\\FRIZQT__.TTF"
-    local ghSize = ghApp.groupHeaderFontSize or 10
+    local ghSize = m.groupHeaderFontSize
     local ghFlags = (ghApp.fontOutline ~= false) and "OUTLINE" or ""
     if self.tankHeader and self.tankHeader.SetFont then
         self.tankHeader:SetFont(ghFont, ghSize, ghFlags)
@@ -2399,54 +2430,84 @@ function RF:ApplyLayout()
         local gh = self.groupHeaders and self.groupHeaders[g]
         if gh and gh.SetFont then gh:SetFont(ghFont, ghSize, ghFlags) end
     end
-    -- BLOCCO TANKS (SOPRA G1): header + barre MT/OT (sempre 2, piene o
-    -- vuote). SPAZIO RISERVATO SEMPRE: la griglia non si muove quando il
-    -- roster appare/sparisce (prima il blocco c'era solo con un roster).
+
+    local y = 0
+    local rosterActive = self.rows and #self.rows > 0
+    local dragging = self:IsDragEnabled() and self._rfDragSource ~= nil
+    -- BLOCCO TANKS (sopra G1): la posizione resta fissa anche a roster vuoto.
     if self.tankHeader then
         self.tankHeader:ClearAllPoints()
         self.tankHeader:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
         self.tankHeader:SetWidth(m.rowWidth)
+        if m.showGroupHeaders and rosterActive then
+            self.tankHeader:Show()
+        else
+            self.tankHeader:Hide()
+        end
         y = y - m.groupHeaderH
         for ti = 1, RF_TANK_COUNT do
-            local t = self.tankSlots and self.tankSlots[ti]
-            if t then
-                t:ClearAllPoints()
-                t:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
-                self:LayoutSlotGeometry(t, m)
-                y = y - m.rowHeight - m.rowSpacing
+            local tank = self.tankSlots and self.tankSlots[ti]
+            if tank then
+                tank:ClearAllPoints()
+                tank:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
+                self:LayoutSlotGeometry(tank, m)
+                y = y - m.rowHeight - m.verticalSpacing
             end
         end
     end
+    local groupGridTop = y
     for g = 1, RF_GROUPS do
-        local hdr = self.groupHeaders and self.groupHeaders[g]
-        if hdr then
-            hdr:ClearAllPoints()
-            hdr:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
-            hdr:SetWidth(m.rowWidth)
-        end
-        -- Header del gruppo: riga sua, riservata sempre.
-        y = y - m.groupHeaderH
-        -- 5 RIGHE DEL GRUPPO: lo spazio e' RISERVATO SEMPRE (le righe vuote
-        -- restano invisibili ma ognuna al suo posto: niente ri-compattamento).
-        for s = 1, RF_PER_GROUP do
-            local slot = self.slots and self.slots[(g - 1) * RF_PER_GROUP + s]
-            if slot then
-                slot:ClearAllPoints()
-                slot:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
-                self:LayoutSlotGeometry(slot, m)
+        local header = self.groupHeaders and self.groupHeaders[g]
+        local groupActive = g <= m.groupCount
+        if groupActive then
+            local groupRow = math.floor((g - 1) / m.groupsPerRow)
+            local groupColumn = (g - 1) % m.groupsPerRow
+            local x = groupColumn * (m.rowWidth + m.horizontalSpacing)
+            local groupTop = groupGridTop - groupRow * (m.groupBlockH + m.groupSpacing)
+            if header then
+                header:ClearAllPoints()
+                header:SetPoint("TOPLEFT", self.content, "TOPLEFT", x + 2, groupTop)
+                header:SetWidth(m.rowWidth)
+                local anyMember = false
+                for s = 1, RF_PER_GROUP do
+                    local slot = self.slots and self.slots[(g - 1) * RF_PER_GROUP + s]
+                    if slot and slot.member then anyMember = true; break end
+                end
+                if m.showGroupHeaders and (anyMember or dragging) then
+                    header:Show()
+                else
+                    header:Hide()
+                end
             end
-            y = y - m.rowHeight - m.rowSpacing
+            local memberY = groupTop - m.groupHeaderH
+            for s = 1, RF_PER_GROUP do
+                local slot = self.slots and self.slots[(g - 1) * RF_PER_GROUP + s]
+                if slot then
+                    slot:ClearAllPoints()
+                    slot:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, memberY)
+                    self:LayoutSlotGeometry(slot, m)
+                end
+                memberY = memberY - m.rowHeight
+                if s < RF_PER_GROUP then memberY = memberY - m.verticalSpacing end
+            end
+        else
+            if header then header:Hide() end
+            for s = 1, RF_PER_GROUP do
+                local slot = self.slots and self.slots[(g - 1) * RF_PER_GROUP + s]
+                if slot then
+                    slot:Hide()
+                    self:HideDropPlane(slot)
+                end
+            end
         end
-        if g < RF_GROUPS then y = y - m.groupSpacing end
     end
-    -- Altezza della griglia = COSTANTE (non dipende dal roster): la finestra
-    -- non cambia mai dimensione, quindi non si sposta mai.
-    local rowsH = -y
 
+    -- Dimensioni indipendenti dal roster: pannello stabile da 1 a 40 player.
+    local rowsH = m.rowsH
     self.content:ClearAllPoints()
     self.content:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, 0)
-    self.content:SetSize(m.rowWidth, rowsH)
-
+    self.content:SetSize(m.W, rowsH)
+    self.frame:SetWidth(m.W)
     self.frame:SetHeight(math.max(20, rowsH))
 
     -- Colore del font dei nomi (Config -> Raid Frame -> Layout -> Font color).
@@ -3263,7 +3324,7 @@ function RF:ApplyDistanceFade(row)
     local app = (self.db and self.db.appearance) or {}
     -- Compatibilita' coi profili esistenti: qualunque vecchia soglia non-zero
     -- abilita il nuovo unico controllo "fuori area visibile (~100 yd)".
-    local enabled = (tonumber(app.distanceFade) or 0) > 0
+    local enabled = app.distanceFade == true or (tonumber(app.distanceFade) or 0) > 0
     local alpha = 1
     if enabled then
         local d = self:UnitDistanceYards(row.unit)
@@ -3294,6 +3355,8 @@ function RF:GetBuffWindowSettings()
     local spacing = tonumber(saved.spacing)
     if spacing == nil then spacing = tonumber(legacyApp.iconSpacing) or 8 end
     local fontSize = tonumber(saved.fontSize) or 10
+    local matrixBackdrop = saved.matrixBackdrop or legacyApp.matrixBackdrop
+        or { r = 0.5, g = 0.5, b = 0.5, a = 0.35 }
 
     iconSize = math.floor(iconSize + 0.5)
     headerIconSize = math.floor(headerIconSize + 0.5)
@@ -3304,6 +3367,7 @@ function RF:GetBuffWindowSettings()
         headerIconSize = math.max(RF_BP_MIN_HEADER_ICON_SIZE, math.min(RF_BP_MAX_HEADER_ICON_SIZE, headerIconSize)),
         spacing = math.max(0, math.min(16, spacing)),
         fontSize = math.max(RF_BP_MIN_FONT_SIZE, math.min(RF_BP_MAX_FONT_SIZE, fontSize)),
+        matrixBackdrop = matrixBackdrop,
     }
 end
 
@@ -3354,7 +3418,7 @@ function RF:EnsureBuffWindow()
     return f
 end
 
--- Flatten dei sei gruppi solo per costruire la tabella: il campo group resta
+-- Flatten degli otto gruppi solo per costruire la tabella: il campo group resta
 -- nei dati per i check che ne hanno bisogno, ma non viene mostrato come riga.
 function RF:_BuffMatrixEntries()
     local entries = {}
@@ -3387,7 +3451,7 @@ end
 function RF:_BuffWindowLayoutSignature(entries, cols)
     local app = (self.db and self.db.appearance) or {}
     local settings = self:GetBuffWindowSettings()
-    local bc = app.matrixBackdrop or {}
+    local bc = settings.matrixBackdrop or {}
     local parts = {
         tostring(#entries), tostring(#cols), tostring(app.font or ""),
         tostring(settings.fontSize), tostring(settings.iconSize),
@@ -3440,7 +3504,7 @@ function RF:_LayoutBuffWindow(entries, cols)
         f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -pad, -6)
     end
 
-    local bc = (self.db and self.db.appearance and self.db.appearance.matrixBackdrop) or {}
+    local bc = settings.matrixBackdrop or {}
     local hdrBg = self._buffWindowHeaderBg
     hdrBg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
     hdrBg:ClearAllPoints()

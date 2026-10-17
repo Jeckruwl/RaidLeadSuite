@@ -2080,7 +2080,7 @@ rt.execute("RLSuite.raidFrame.Toggle = RLSuite.raidFrame._origToggle")
 # --- old settings window moved to Config ---
 check(bool(rt.eval("RLSuite.mainWindow.tabPanels == nil")), "old Raid Frame settings window removed from the tab bar")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.behavior == nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.alerts == nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.pos == nil")), "Raid Frame: Checks / Alert Messages / Position tabs removed")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.layout == nil")), "Raid Frame options flattened: only Layout controls, directly on the group")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance ~= nil")), "Raid Frame options are organized into Size and Positions and Appearance panels")
 
 # --- Raid Frame config: right panel shows a tab window (one tab per sub-item) ---
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.childGroups == nil")), "Raid Frame group no longer splits into tabs (Layout only)")
@@ -2090,13 +2090,79 @@ rt.execute("RLSuite.config:SelectNode('raidframe')")
 check(bool(rt.eval("RLSuite.config.currentNode == 'raidframe'")), "selecting Raid Frame node renders without error")
 check(bool(rt.eval("LAST_ERROR == nil or LAST_ERROR == None")), "no error rendering the Raid Frame tab window")
 
-# --- Layout tab controls ---
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.iconSize ~= nil")), "Layout -> Icon size present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.barHeight == nil")), "Layout -> Player bar height option removed: bar height is AUTOMATIC from icon size")
-check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().barHeight == RLSuite.raidFrame:LayoutMetrics().iconSize")), "player bar height follows icon size automatically (barHeight == iconSize)")
-check(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.rowSpacing.min") == -10, "Row spacing slider goes below zero, down to -10 (bars may overlap)")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.barWidth ~= nil")), "Layout -> Player bar width present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.nameFontSize ~= nil")), "Layout -> Name font size present")
+# --- Raid Frame Size and Positions + Appearance controls ---
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args.iconSize ~= nil")), "Appearance -> Icon size retained")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.height ~= nil")), "Size and Positions -> Height is configurable")
+check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().barHeight == RLSuite.db.profile.raidframe.appearance.barHeight")), "player bar height follows the configured Height value")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.verticalSpacing.min == -1 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.verticalSpacing.max == 50")), "Vertical Spacing slider matches the requested -1..50 range")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.width.min == 10 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.width.max == 500")), "Width slider matches the requested 10..500 range")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.height.min == 10 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.height.max == 500")), "Height slider matches the requested 10..500 range")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.numberOfGroups.min == 1 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.numberOfGroups.max == 8")), "Number of Groups slider matches the requested 1..8 range")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.groupsPerRow.min == 1 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.groupsPerRow.max == 8")), "Groups Per Row/Column slider matches the requested 1..8 range")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.horizontalSpacing.min == -1 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.horizontalSpacing.max == 50")), "Horizontal Spacing slider matches the requested -1..50 range")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.groupSpacing.min == 0 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.groupSpacing.max == 50")), "Group Spacing slider matches the requested 0..50 range")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args.nameFontSize ~= nil")), "Appearance -> Name font size retained")
+rt.execute("""
+local rf = RLSuite.raidFrame
+local options = RLSuite.config:BuildOptionsTable().args.raidframe
+local size = options.args.sizeAndPositions.args
+local appearance = options.args.appearance.args
+local profile = RLSuite.db.profile.raidframe
+local app = profile.appearance
+RFG_DEFAULT_VALUES = size.width.get() == 100 and size.height.get() == 20
+    and size.numberOfGroups.get() == 8 and size.groupsPerRow.get() == 1
+    and size.horizontalSpacing.get() == -1 and size.verticalSpacing.get() == -1
+    and size.groupSpacing.get() == 5
+local saved = {
+    groups = profile.numberOfGroups, perRow = profile.groupsPerRow,
+    width = app.barWidth, height = app.barHeight,
+    horizontal = app.horizontalSpacing, vertical = app.rowSpacing,
+    groupSpacing = app.groupSpacing, headers = profile.showGroupHeaders,
+    fade = app.distanceFade, fadeAlpha = app.distanceAlpha,
+}
+size.numberOfGroups.set(nil, 4)
+size.groupsPerRow.set(nil, 2)
+size.width.set(nil, 125)
+size.height.set(nil, 24)
+size.horizontalSpacing.set(nil, 10)
+size.verticalSpacing.set(nil, 3)
+size.groupSpacing.set(nil, 7)
+rf:ApplyLayout()
+local m = rf:LayoutMetrics()
+RFG_LAYOUT = m.groupCount == 4 and m.groupsPerRow == 2 and m.groupRows == 2
+    and math.abs(rf.frame:GetWidth() - (2 * m.rowWidth + 10)) < 0.001
+    and math.abs(rf.slots[6]._points[1][4] - (m.rowWidth + 10)) < 0.001
+    and math.abs((rf.slots[1]._points[1][5] - rf.slots[2]._points[1][5]) - 27) < 0.001
+    and math.abs((rf.groupHeaders[1]._points[1][5] - rf.groupHeaders[3]._points[1][5]) - (m.groupBlockH + 7)) < 0.001
+    and rf.slots[1].bar:GetWidth() == 125 and rf.slots[1].bar:GetHeight() == 24
+    and rf.groupHeaders[5]:IsShown() == false
+appearance.showGroupHeaders.set(nil, false)
+RFG_HEADERS_HIDDEN = rf.groupHeaders[1]:IsShown() == false and rf.tankHeader:IsShown() == false
+    and rf:LayoutMetrics().groupHeaderH == 0
+appearance.showGroupHeaders.set(nil, true)
+local oldVisible, oldConnected = UnitIsVisible, UnitIsConnected
+local row, oldUnit = rf.rows[1], rf.rows[1].unit
+app.distanceAlpha = 0.35
+appearance.distanceFade.set(nil, true)
+UnitIsConnected = function() return true end
+UnitIsVisible = function() return false end
+row.unit = "raidFadeTest"
+rf:ApplyDistanceFade(row)
+RFG_DISTANCE_FADE = appearance.distanceFade.get() == true and row._fadeAlpha == 0.35
+row.unit = oldUnit
+UnitIsVisible, UnitIsConnected = oldVisible, oldConnected
+rf:ApplyDistanceFade(row)
+profile.numberOfGroups, profile.groupsPerRow = saved.groups, saved.perRow
+app.barWidth, app.barHeight = saved.width, saved.height
+app.horizontalSpacing, app.rowSpacing, app.groupSpacing = saved.horizontal, saved.vertical, saved.groupSpacing
+profile.showGroupHeaders = saved.headers
+app.distanceFade, app.distanceAlpha = saved.fade, saved.fadeAlpha
+rf:Rebuild()
+""")
+check(bool(rt.eval("RFG_DEFAULT_VALUES")), "Size and Positions controls start at Width 100, Height 20, Groups 8, Per Row 1, and screenshot spacing defaults")
+check(bool(rt.eval("RFG_LAYOUT")), "Width, Height, group count, groups per row, and all three spacing controls affect the Raid Frame geometry")
+check(bool(rt.eval("RFG_HEADERS_HIDDEN")), "Show group headers checkbox hides group and Tanks headers and collapses their reserved height")
+check(bool(rt.eval("RFG_DISTANCE_FADE")), "Distance fade checkbox activates the out-of-sight fade")
 
 # --- clean HUD: no backdrop / border / close button ---
 check(bool(rt.eval("RLSuite.raidFrame.frame:GetBackdrop() == nil")), "HUD has no backdrop")
@@ -2128,12 +2194,26 @@ rt.execute("RLSuite:ResetDebugRaid()")
 rt.execute("RLSuite.db.profile.debug = true; RLSuite:ApplyDebugMode()")
 rt.execute("for i=1,5 do RLSuite:DebugInviteAccept('F'..i, 'WARRIOR') end")
 
-# --- bars divided into 6 groups (G1..G6, 5 players each) ---
-check(bool(rt.eval("#RLSuite.raidFrame.slots == 30")), "Raid Frame builds 30 slots (6 groups x 5 players)")
-check(bool(rt.eval("#RLSuite.raidFrame.groupHeaders == 6")), "Raid Frame has 6 group headers (G1..G6)")
+# --- bars divided into up to 8 groups (G1..G8, 5 players each) ---
+check(bool(rt.eval("#RLSuite.raidFrame.slots == 40")), "Raid Frame builds 40 slots (8 groups x 5 players)")
+check(bool(rt.eval("#RLSuite.raidFrame.groupHeaders == 8")), "Raid Frame has 8 group headers (G1..G8)")
 check(bool(rt.eval("#RLSuite.raidFrame.rows == 6")), "6 players render 6 populated rows")
 check(bool(rt.eval("RLSuite.raidFrame.slots[1].member ~= nil and RLSuite.raidFrame.slots[1].member.name == 'Testplayer'")), "player sits in G1 slot 1")
 check(bool(rt.eval("RLSuite.raidFrame.slots[6].member ~= nil and RLSuite.raidFrame.slots[6].member.name == 'F5'")), "6th member lands in G2 slot 1 (groups fill in order)")
+rt.execute("""
+local RF = RLSuite.raidFrame
+local debugSlots = RLSuite:DebugRaidSlots()
+local oldLast = debugSlots[40]
+debugSlots[40] = { name = 'G8Last', class = 'WARRIOR', isPlayer = false, subgroup = 8 }
+RLSuite:DebugSyncSubgroups()
+RF:Rebuild()
+RF_GROUP8 = RF.slots[40].member ~= nil and RF.slots[40].member.name == 'G8Last'
+    and RF.slots[40].group == 8 and RF.groupHeaders[8]:IsShown()
+debugSlots[40] = oldLast
+RLSuite:DebugSyncSubgroups()
+RF:Rebuild()
+""")
+check(bool(rt.eval("RF_GROUP8")), "Raid Frame renders the 40th raid slot in group 8")
 
 # --- pre-boss: empty slots + empty headers hidden by default; drag enabled ---
 check(bool(rt.eval("RLSuite.raidFrame:IsDragEnabled() == true")), "drag & drop enabled in pre-boss (debug)")
@@ -2353,18 +2433,22 @@ check(bool(rt.eval("WF_NOTFED")), "no Well Fed on the unit: food icon shows miss
 check(bool(rt.eval("WF_LOCALE")), "localized client: Well Fed matched via localized name (locale-safe)")
 check(bool(rt.eval("RLSuite.raidFrame.rows[1].member.name == 'F5'")), "roster restored after Well Fed test")
 
-# --- F.3 FONT COLOR option + TANKS group + RAID BUFFS matrix panel ---
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.fontColor ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.fontColor.type == 'color'")), "Layout -> Font color picker present")
-for key, label in [("rowSpacing","Row spacing"),("groupSpacing","Group spacing"),("groupHeaderFontSize","Group header font size")]:
-    check(bool(rt.eval(f"RLSuite.config:BuildOptionsTable().args.raidframe.args.{key} ~= nil")), f"Layout -> {label} slider present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.iconSpacing == nil")), "Raid Frame no longer owns the standalone buff spacing option")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.matrixBackdrop ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.matrixBackdrop.type == 'color'")), "Layout -> Buff check backdrop color picker (color+alpha) present")
+# --- F.3 Appearance options + TANKS group + RAID BUFFS matrix panel ---
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args.fontColor ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args.fontColor.type == 'color'")), "Appearance -> Font color picker present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args.groupHeaderFontSize ~= nil")), "Appearance -> Group header font size present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args.showGroupHeaders.type == 'toggle'")), "Appearance -> Show group headers is a checkbox")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args.distanceFade.type == 'toggle'")), "Appearance -> Distance fade is a checkbox")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.verticalSpacing ~= nil and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.groupSpacing ~= nil")), "Size and Positions -> player and group spacing controls present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.iconSpacing == nil")), "Raid Frame no longer owns the standalone buff spacing option")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.matrixBackdrop == nil and RLSuite.config:BuildOptionsTable().args.raidbuffs.args.matrixBackdrop.type == 'color'")), "Buff check backdrop color picker moved to Raid Buffs")
 rt.execute("""
 local o = RLSuite.config:BuildOptionsTable().args.raidbuffs.args
 local rf = RLSuite.raidFrame
 local s = rf:GetBuffWindowSettings()
-BUFF_OPTS = o.iconSize and o.headerIconSize and o.spacing and o.fontSize
+BUFF_OPTS = o.iconSize and o.headerIconSize and o.spacing and o.fontSize and o.matrixBackdrop
 BUFF_OPTION_DEFAULTS = s.iconSize == 16 and s.headerIconSize == 20 and s.spacing == 8 and s.fontSize == 10
+BUFF_BACKDROP_DEFAULTS = s.matrixBackdrop.r == 0.5 and s.matrixBackdrop.g == 0.5
+    and s.matrixBackdrop.b == 0.5 and s.matrixBackdrop.a == 0.35
 BUFF_OPTION_RANGES = o.iconSize.min == 12 and o.iconSize.max == 24
     and o.headerIconSize.min == 20 and o.headerIconSize.max == 60
     and o.spacing.min == 0 and o.spacing.max == 16
@@ -2375,6 +2459,19 @@ profile.raidbuffs.spacing = nil
 profile.raidframe.appearance.iconSpacing = 4
 BUFF_LEGACY_SPACING = rf:GetBuffWindowSettings().spacing == 4
 profile.raidbuffs.spacing, profile.raidframe.appearance.iconSpacing = savedSpacing, legacySpacing
+local savedOldBackdrop, savedNewBackdrop = profile.raidframe.appearance.matrixBackdrop, profile.raidbuffs.matrixBackdrop
+profile.raidframe.appearance.matrixBackdrop = { r = 0.1, g = 0.2, b = 0.3, a = 0.4 }
+profile.raidbuffs.matrixBackdrop = nil
+RLSuite:MigrateRaidBuffBackdrop()
+BUFF_BACKDROP_MIGRATED = profile.raidframe.appearance.matrixBackdrop == nil
+    and profile.raidbuffs.matrixBackdrop.r == 0.1 and profile.raidbuffs.matrixBackdrop.a == 0.4
+profile.raidframe.appearance.matrixBackdrop, profile.raidbuffs.matrixBackdrop = savedOldBackdrop, savedNewBackdrop
+local savedBuffBackdrop = profile.raidbuffs.matrixBackdrop
+o.matrixBackdrop.set(nil, 0.2, 0.3, 0.4, 0.6)
+local appliedBackdrop = rf:GetBuffWindowSettings().matrixBackdrop
+BUFF_BACKDROP_SET = appliedBackdrop.r == 0.2 and appliedBackdrop.g == 0.3
+    and appliedBackdrop.b == 0.4 and appliedBackdrop.a == 0.6
+profile.raidbuffs.matrixBackdrop = savedBuffBackdrop
 local savedHeader = profile.raidbuffs.headerIconSize
 profile.raidbuffs.headerIconSize = 1
 local minHeader = rf:GetBuffWindowSettings().headerIconSize
@@ -2383,7 +2480,7 @@ local maxHeader = rf:GetBuffWindowSettings().headerIconSize
 BUFF_HEADER_CLAMPS = minHeader == 20 and maxHeader == 60
 profile.raidbuffs.headerIconSize = savedHeader
 """)
-check(bool(rt.eval("BUFF_OPTS and BUFF_OPTION_DEFAULTS and BUFF_OPTION_RANGES and BUFF_LEGACY_SPACING and BUFF_HEADER_CLAMPS")), "Raid Buffs Config exposes player/header icon sizes, preserves legacy spacing, and clamps header icons to 20-60")
+check(bool(rt.eval("BUFF_OPTS and BUFF_OPTION_DEFAULTS and BUFF_BACKDROP_DEFAULTS and BUFF_OPTION_RANGES and BUFF_LEGACY_SPACING and BUFF_HEADER_CLAMPS and BUFF_BACKDROP_MIGRATED and BUFF_BACKDROP_SET")), "Raid Buffs Config exposes backdrop color, preserves legacy values, migrates the old backdrop setting, and clamps header icons to 20-60")
 rt.execute("""
 local prof = RLSuite.db.profile.raidframe
 SAVED_FC = prof.appearance.fontColor
@@ -3588,11 +3685,11 @@ local RF = RLSuite.raidFrame
 local app = RLSuite.db.profile.raidframe.appearance
 local buff = RLSuite.db.profile.raidbuffs
 local oldIcon, oldRow, oldGroup = app.iconSpacing, app.rowSpacing, app.groupSpacing
-local oldHeader, oldBackdrop, oldBuffSpacing = app.groupHeaderFontSize, app.matrixBackdrop, buff.spacing
+local oldHeader, oldBackdrop, oldBuffSpacing = app.groupHeaderFontSize, buff.matrixBackdrop, buff.spacing
 app.iconSpacing, app.rowSpacing, app.groupSpacing = 2, 6, 20
 buff.spacing = 2
 app.groupHeaderFontSize = 14
-app.matrixBackdrop = { r = 1, g = 0, b = 0, a = 0.6 }
+buff.matrixBackdrop = { r = 1, g = 0, b = 0, a = 0.6 }
 RF:ApplyLayout()
 local m = RF:LayoutMetrics()
 SP_CELLW = m.cellW == m.iconSize + 2
@@ -3607,7 +3704,7 @@ SP_BUFF_SPACING = settings.spacing == 2
     and math.abs(cells[2]._points[1][4] - cells[1]._points[1][4] - math.max(settings.iconSize, settings.headerIconSize) - 2) < 0.001
 SP_WINDOW_STANDALONE = RF.buffWindow:GetParent() == UIParent and RF.buffWindow ~= RF.frame
 app.iconSpacing, app.rowSpacing, app.groupSpacing = oldIcon, oldRow, oldGroup
-app.groupHeaderFontSize, app.matrixBackdrop, buff.spacing = oldHeader, oldBackdrop, oldBuffSpacing
+app.groupHeaderFontSize, buff.matrixBackdrop, buff.spacing = oldHeader, oldBackdrop, oldBuffSpacing
 RF:ApplyLayout()
 SP_DEF = RF:LayoutMetrics().cellW == 24
 """)
@@ -3890,13 +3987,13 @@ RLSuite.raidFrame:FillSlot(row, SAVED_MEMBER_G)
 """)
 check(bool(rt.eval("RLSuite.raidFrame.rows[1].member.name == 'F5'")), "roster restored after secure-layer test")
 
-# --- F.3 Raid Frame layout options: font / outline / bar texture / opacity ---
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.font ~= nil")), "Layout -> Font type present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.fontOutline ~= nil")), "Layout -> Font outline toggle present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.barTexture ~= nil")), "Layout -> Bar texture present")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.alpha ~= nil")), "Layout -> Opacity slider present")
+# --- F.3 Raid Frame appearance options: font / outline / bar texture / opacity ---
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args.font ~= nil")), "Appearance -> Font type present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args.fontOutline ~= nil")), "Appearance -> Font outline toggle present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args.barTexture ~= nil")), "Appearance -> Bar texture present")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args.alpha ~= nil")), "Appearance -> Opacity slider present")
 rt.execute(r"""
-local o = RLSuite.config:BuildOptionsTable().args.raidframe.args
+local o = RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args
 o.barTexture.set(nil, 'Interface\\Buttons\\WHITE8x8')
 o.font.set(nil, 'Fonts\\MORPHEUS.TTF')
 o.fontOutline.set(nil, false)
@@ -3907,7 +4004,7 @@ check(bool(rt.eval(r"RLSuite.raidFrame.rows[1].bar.nameText._fontArgs[1] == 'Fon
 check(bool(rt.eval("RLSuite.raidFrame.rows[1].bar.nameText._fontArgs[3] == ''")), "font outline toggle removes the outline")
 check(rt.eval("RLSuite.raidFrame.frame._alpha") == 0.8, "opacity option applied to the whole HUD")
 rt.execute(r"""
-local o = RLSuite.config:BuildOptionsTable().args.raidframe.args
+local o = RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args
 o.barTexture.set(nil, 'Interface\\TargetingFrame\\UI-StatusBar')
 o.font.set(nil, 'Fonts\\FRIZQT__.TTF')
 o.fontOutline.set(nil, true)
@@ -5203,7 +5300,7 @@ rt.execute("""
     MW = RLSuite.mainWindow
     local app = RLSuite.raidFrame.db.appearance
     local old = app.barWidth
-    app.barWidth = 220
+    app.barWidth = old + 40
     RLSuite.raidFrame:ApplyLayout()
     local _, _, _, xNew = MW.titleBar:GetPoint(1)
     RFW_NEW = MW:RaidFrameWidth()
@@ -5964,7 +6061,7 @@ _IM_CTX = RLSuite.context
 RLSuite.db.profile.debug = false
 IMRF = RLSuite.raidFrame
 IM_M = IMRF:LayoutMetrics()
-IM_BAND = IM_M.groupHeaderH + 5 * (IM_M.rowHeight + IM_M.rowSpacing) + IM_M.groupSpacing
+IM_BAND = IM_M.groupHeaderH + 5 * IM_M.rowHeight + 4 * IM_M.rowSpacing + IM_M.groupSpacing
 function IM_SetRoster(list)
     IM_RAID = list
     GetNumRaidMembers = function() return #IM_RAID end
@@ -6048,7 +6145,7 @@ IMRF:Rebuild()
 check(bool(rt.eval("IM_H_EMPTY == IM_H_ONE and IM_H_ONE == IM_H_FULL")), "v1.11.62: il Raid Frame ha la STESSA altezza con raid vuoto, un player solo e raid pieno (%r/%r/%r)" % (rt.eval("IM_H_EMPTY"), rt.eval("IM_H_ONE"), rt.eval("IM_H_FULL")))
 check(bool(rt.eval("IM_Y6_ONE == IM_Y6_FULL and IM_Y6_EMPTY == IM_Y6_FULL")), "v1.11.62: la barra del player in G6 sta IN FONDO anche a raid vuoto (y=%r, raid pieno y=%r)" % (rt.eval("IM_Y6_ONE"), rt.eval("IM_Y6_FULL")))
 check(bool(rt.eval("IM_Y4_ONE == IM_Y4_FULL")), "v1.11.62: spostarsi in un gruppo a caso non manda la barra in cima (G4 solo: y=%r, raid pieno: y=%r)" % (rt.eval("IM_Y4_ONE"), rt.eval("IM_Y4_FULL")))
-check(bool(rt.eval("IM_Y4_FULL > IM_Y6_FULL and IM_Y1_FULL > IM_Y4_FULL")), "v1.11.62: i gruppi restano in ordine G1..G6 dall'alto verso il basso (mai ricompattati)")
+check(bool(rt.eval("IM_Y4_FULL > IM_Y6_FULL and IM_Y1_FULL > IM_Y4_FULL")), "v1.11.62: i gruppi restano in ordine G1..G8 dall'alto verso il basso (mai ricompattati)")
 check(bool(rt.eval("(IM_Y5_FULL - IM_Y6_FULL) == IM_BAND and (IM_Y1_FULL - IM_Y5_FULL) == 4 * IM_BAND")), "v1.11.62: la distanza fra i blocchi dei gruppi e' costante (banda fissa, non dipende dal roster)")
 check(bool(rt.eval("IM_DRAG_H == IM_H_FULL and IM_DRAG_Y6 == IM_Y6_FULL")), "v1.11.62: mostrare gli slot vuoti durante il drag non sposta le barre (slot visibili: %r)" % rt.eval("IM_DRAG_SHOWN"))
 check(bool(rt.eval("IM_DRAG_SHOWN >= 5")), "v1.11.62: durante il drag gli slot vuoti restano drop target (nessuna regressione)")
@@ -6228,7 +6325,7 @@ RLSuite:ResetDebugRaid()
 """)
 
 
-check(bool(rt.eval("UW_P6_PLANES.n == 30 and UW_P6_PLANES.hidden == 30 and UW_P6_PLANES.mouseoff == 30 and UW_P6_TANK_PLANE == true")), "v1.11.75: ogni slot di gruppo ha un PIANO di rilascio, nascosto e col mouse spento fuori dal drag (le barre tank no: non sono drop target)")
+check(bool(rt.eval("UW_P6_PLANES.n == 40 and UW_P6_PLANES.hidden == 40 and UW_P6_PLANES.mouseoff == 40 and UW_P6_TANK_PLANE == true")), "v1.11.75: ogni slot di gruppo ha un PIANO di rilascio, nascosto e col mouse spento fuori dal drag (le barre tank no: non sono drop target)")
 check(bool(rt.eval("UW_P6_DST_ROW_SHOWN == false and UW_P6_STARTED == true")), "v1.11.75: anche con le righe BLOCCATE (Show/Hide no-op, come in combat) il drag parte lo stesso")
 check(bool(rt.eval("UW_P6_DST_PLANE == 'empty' and UW_P6_SRC_PLANE == 'hidden'")), "v1.11.75: durante il drag lo slot VUOTO si vede (piano 'empty') e sulla sorgente non c'e' nessun piano")
 check(bool(rt.eval("UW_P6_HIT == true and UW_P6_GOLD == 'gold' and UW_P6_GOLD_N == 1")), "v1.11.75: il bordo dorato segue il cursore anche su una riga invisibile: un solo piano dorato (quello sotto il cursore)")
@@ -8547,9 +8644,9 @@ _G.ElvUI = { { media = {
     font = 'Interface\\\\AddOns\\\\ElvUI\\\\Media\\\\Fonts\\\\Expressway.ttf',
 } } }
 local opts = RLSuite.config:BuildOptionsTable()
-local rfOpts = opts.args.raidframe.args
-local texValues = rfOpts.barTexture.values()
-local fontValues = rfOpts.font.values()
+local rfOpts = opts.args.raidframe.args.appearance.args
+local texValues = rfOpts.barTexture.values
+local fontValues = rfOpts.font.values
 V141_ELV_TEX = texValues['Interface\\\\AddOns\\\\ElvUI\\\\Media\\\\Textures\\\\NormTex']
 V141_ELV_FONT = fontValues['Interface\\\\AddOns\\\\ElvUI\\\\Media\\\\Fonts\\\\Expressway.ttf']
 _G.ElvUI = oldElvUI

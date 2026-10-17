@@ -356,9 +356,12 @@ do
     L["Row spacing"] = true
     L["Gap between the player bars inside each group."] = true
     L["Group spacing"] = true
+    L["Group Spacing"] = true
     L["Gap between the groups (Tanks, G1..G6)."] = true
     L["Group header font size"] = true
     L["Font size of the group labels (Tanks, G1..G6)."] = true
+    L["Font size of the group labels (Tanks, G1..G8)."] = true
+    L["Show or hide the group headers (Tanks, Group 1..Group 8)."] = true
     L["Buff check backdrop"] = true
     L["Backdrop color and transparency of the Raid Buffs matrix rows."] = true
     L["Buff check: %s - OK on everyone"] = true
@@ -424,6 +427,18 @@ do
 
     -- Config
     L["Appearance"] = true
+    L["Size and Positions"] = true
+    L["Number of Groups"] = true
+    L["Groups Per Row/Column"] = true
+    L["Horizontal Spacing"] = true
+    L["Vertical Spacing"] = true
+    L["Width of each player health bar in pixels."] = true
+    L["Height of each player health bar in pixels."] = true
+    L["Number of raid groups displayed by the Raid Frame."] = true
+    L["Number of raid groups arranged across each row."] = true
+    L["Gap between raid groups arranged side by side."] = true
+    L["Gap between player bars inside each group."] = true
+    L["Gap between rows of raid groups."] = true
     L["Window"] = true
     L["General Appearance"] = true
     L["Presets and background/border colors. Does not change functionality."] = true

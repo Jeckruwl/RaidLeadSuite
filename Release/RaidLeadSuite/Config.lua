@@ -585,82 +585,61 @@ function CFG:BuildOptionsTable()
     -- --- Raid Frame ----------------------------------------------
     local rf = p.raidframe
     rf.appearance = rf.appearance or {}
-    rf.width = rf.width or 380
-    rf.scale = rf.scale or 1
-    rf.appearance.barWidth = rf.appearance.barWidth or 180
+    rf.numberOfGroups = rf.numberOfGroups or 8
+    rf.groupsPerRow = rf.groupsPerRow or 1
+    rf.appearance.barWidth = rf.appearance.barWidth or 100
+    rf.appearance.barHeight = rf.appearance.barHeight or 20
     rf.appearance.nameFontSize = rf.appearance.nameFontSize or 11
 
-    local raidLayout = {
+    local function applyGroupSettings()
+        self:ApplyAll()
+        if RLSuite.raidFrame and RLSuite.raidFrame.Rebuild then
+            RLSuite.raidFrame:Rebuild()
+        end
+    end
+
+    local sizePositions = {
         anchors = toggle(L["Toggle Anchors"], L["Show anchor points for dragging."], 0,
             function() return RLSuite.db.profile.anchorMode == true end,
             function(_, v) RLSuite:ApplyAnchorMode(v) end),
-        iconSize = slider(L["Icon size"], nil, 1, 10, 24, 1,
-            function() return rf.appearance.iconSize or 16 end,
-            function(_, v) rf.appearance.iconSize = v; self:ApplyAll() end),
-        barWidth = slider(L["Player bar width"], nil, 3, 100, 300, 5,
-            function() return rf.appearance.barWidth or 180 end,
+        width = slider(L["Width"], L["Width of each player health bar in pixels."], 1, 10, 500, 1,
+            function() return rf.appearance.barWidth or 100 end,
             function(_, v) rf.appearance.barWidth = v; self:ApplyAll() end),
-        nameFontSize = slider(L["Name font size"], nil, 4, 8, 16, 1,
-            function() return rf.appearance.nameFontSize or 11 end,
-            function(_, v) rf.appearance.nameFontSize = v; self:ApplyAll() end),
-        font = select(L["Font"], L["Font used for Raid Frame names, headers and cooldowns. Includes media registered by ElvUI/LibSharedMedia."], 7,
-            function() return mediaValues("font", rf.appearance.font) end,
-            function() return rf.appearance.font or "Fonts\\FRIZQT__.TTF" end,
-            function(_, v) rf.appearance.font = v; self:ApplyAll() end),
-        fontOutline = toggle(L["Font outline"], L["Draw the player name with an outline."], 8,
-            function() return rf.appearance.fontOutline ~= false end,
-            function(_, v) rf.appearance.fontOutline = v; self:ApplyAll() end),
-        barTexture = select(L["Bar texture"], L["Texture of the player HP bars. Includes statusbar textures registered by ElvUI/LibSharedMedia."], 9,
-            function() return mediaValues("statusbar", rf.appearance.barTexture) end,
+        height = slider(L["Height"], L["Height of each player health bar in pixels."], 2, 10, 500, 1,
+            function() return rf.appearance.barHeight or 20 end,
+            function(_, v) rf.appearance.barHeight = v; self:ApplyAll() end),
+        numberOfGroups = slider(L["Number of Groups"], L["Number of raid groups displayed by the Raid Frame."], 3, 1, 8, 1,
+            function() return math.max(1, math.min(8, tonumber(rf.numberOfGroups) or 8)) end,
+            function(_, v) rf.numberOfGroups = v; applyGroupSettings() end),
+        groupsPerRow = slider(L["Groups Per Row/Column"], L["Number of raid groups arranged across each row."], 4, 1, 8, 1,
+            function() return math.max(1, math.min(8, tonumber(rf.groupsPerRow) or 1)) end,
+            function(_, v) rf.groupsPerRow = v; applyGroupSettings() end),
+        horizontalSpacing = slider(L["Horizontal Spacing"], L["Gap between raid groups arranged side by side."], 5, -1, 50, 1,
+            function() return rf.appearance.horizontalSpacing or -1 end,
+            function(_, v) rf.appearance.horizontalSpacing = v; self:ApplyAll() end),
+        verticalSpacing = slider(L["Vertical Spacing"], L["Gap between player bars inside each group."], 6, -1, 50, 1,
+            function() return rf.appearance.rowSpacing or -1 end,
+            function(_, v) rf.appearance.rowSpacing = v; self:ApplyAll() end),
+        groupSpacing = slider(L["Group Spacing"], L["Gap between rows of raid groups."], 7, 0, 50, 1,
+            function() return rf.appearance.groupSpacing or 5 end,
+            function(_, v) rf.appearance.groupSpacing = v; self:ApplyAll() end),
+    }
+
+    local fontValues = mediaValues("font", rf.appearance.font or "Fonts\\FRIZQT__.TTF")
+    local barTextureValues = mediaValues("statusbar", rf.appearance.barTexture or "Interface\\TargetingFrame\\UI-StatusBar")
+    local raidAppearance = {
+        barTexture = select(L["Bar texture"], L["Texture of the player HP bars. Includes statusbar textures registered by ElvUI/LibSharedMedia."], 1, barTextureValues,
             function() return rf.appearance.barTexture or "Interface\\TargetingFrame\\UI-StatusBar" end,
             function(_, v) rf.appearance.barTexture = v; self:ApplyAll() end),
-        alpha = slider(L["Opacity"], L["Overall transparency of the Raid Frame HUD."], 10, 0.30, 1.00, 0.05,
+        alpha = slider(L["Opacity"], L["Overall transparency of the Raid Frame HUD."], 2, 0.30, 1.00, 0.05,
             function() return rf.alpha or 1 end,
             function(_, v) rf.alpha = v; self:ApplyAll() end),
-        distanceFade = select(L["Distance fade"], L["Fade player bars only when the client can no longer see the unit (approximately 100 yards or outside the visible area)."], 17, {
-            ["0"] = L["Off"],
-            ["100"] = "Out of sight (~100 yards)",
-        },
-            -- Migrazione trasparente: ogni vecchia soglia 10-40 diventa il
-            -- nuovo unico modo, senza lasciare la select su un valore sparito.
-            function() return ((tonumber(rf.appearance.distanceFade) or 0) > 0) and "100" or "0" end,
-            function(_, v) rf.appearance.distanceFade = tonumber(v) or 0; self:ApplyAll() end),
-        distanceAlpha = slider(L["Fade transparency"], L["Transparency of the bars beyond the distance."], 18, 0.20, 1.00, 0.05,
-            function() return rf.appearance.distanceAlpha or 0.40 end,
-            function(_, v) rf.appearance.distanceAlpha = v; self:ApplyAll() end),
-        rowSpacing = slider(L["Row spacing"], L["Gap between the player bars inside each group."], 13, -10, 12, 1,
-            function() return rf.appearance.rowSpacing or 0 end,
-            function(_, v) rf.appearance.rowSpacing = v; self:ApplyAll() end),
-        groupSpacing = slider(L["Group spacing"], L["Gap between the groups (Tanks, G1..G6)."], 14, 0, 24, 1,
-            function() return rf.appearance.groupSpacing or 8 end,
-            function(_, v) rf.appearance.groupSpacing = v; self:ApplyAll() end),
-        groupHeaderFontSize = slider(L["Group header font size"], L["Font size of the group labels (Tanks, G1..G6)."], 15, 8, 16, 1,
-            function() return rf.appearance.groupHeaderFontSize or 10 end,
-            function(_, v) rf.appearance.groupHeaderFontSize = v; self:ApplyAll() end),
-        showGroupHeaders = toggle(L["Show group headers"], L["Show or hide the Group headers (Group 1..Group 6)."], 16,
-            function() return rf.showGroupHeaders ~= false end,
-            function(_, v) rf.showGroupHeaders = v; self:ApplyAll() end),
-        matrixBackdrop = {
-            name = L["Buff check backdrop"],
-            desc = L["Backdrop color and transparency of the Raid Buffs matrix rows."],
-            type = "color",
-            hasAlpha = true,
-            order = 16,
-            get = function()
-                local c = rf.appearance.matrixBackdrop or { r = 0.5, g = 0.5, b = 0.5, a = 0.35 }
-                return c.r or 0.5, c.g or 0.5, c.b or 0.5, c.a or 0.35
-            end,
-            set = function(_, r, g, b, a)
-                rf.appearance.matrixBackdrop = { r = r, g = g, b = b, a = a }
-                self:ApplyAll()
-            end,
-        },
         fontColor = {
             name = L["Font color"],
             desc = L["Color of the player name on the bars."],
             type = "color",
             hasAlpha = false,
-            order = 11,
+            order = 3,
             get = function()
                 local c = rf.appearance.fontColor or { r = 1, g = 1, b = 1 }
                 return c.r or 1, c.g or 1, c.b or 1
@@ -670,12 +649,45 @@ function CFG:BuildOptionsTable()
                 self:ApplyAll()
             end,
         },
+        groupHeaderFontSize = slider(L["Group header font size"], L["Font size of the group labels (Tanks, G1..G8)."], 4, 8, 16, 1,
+            function() return rf.appearance.groupHeaderFontSize or 10 end,
+            function(_, v) rf.appearance.groupHeaderFontSize = v; self:ApplyAll() end),
+        showGroupHeaders = toggle(L["Show group headers"], L["Show or hide the group headers (Tanks, Group 1..Group 8)."], 5,
+            function() return rf.showGroupHeaders ~= false end,
+            function(_, v) rf.showGroupHeaders = v; self:ApplyAll() end),
+        distanceFade = toggle(L["Distance fade"], L["Fade player bars only when the client can no longer see the unit (approximately 100 yards or outside the visible area)."], 6,
+            function()
+                return rf.appearance.distanceFade == true or (tonumber(rf.appearance.distanceFade) or 0) > 0
+            end,
+            function(_, v) rf.appearance.distanceFade = v; self:ApplyAll() end),
+        nameFontSize = slider(L["Name font size"], nil, 7, 8, 16, 1,
+            function() return rf.appearance.nameFontSize or 11 end,
+            function(_, v) rf.appearance.nameFontSize = v; self:ApplyAll() end),
+        font = select(L["Font"], L["Font used for Raid Frame names, headers and cooldowns. Includes media registered by ElvUI/LibSharedMedia."], 8, fontValues,
+            function() return rf.appearance.font or "Fonts\\FRIZQT__.TTF" end,
+            function(_, v) rf.appearance.font = v; self:ApplyAll() end),
+        fontOutline = toggle(L["Font outline"], L["Draw the player name with an outline."], 9,
+            function() return rf.appearance.fontOutline ~= false end,
+            function(_, v) rf.appearance.fontOutline = v; self:ApplyAll() end),
+        iconSize = slider(L["Icon size"], nil, 10, 10, 24, 1,
+            function() return rf.appearance.iconSize or 16 end,
+            function(_, v) rf.appearance.iconSize = v; self:ApplyAll() end),
+        distanceAlpha = slider(L["Fade transparency"], L["Transparency of the bars beyond the distance."], 11, 0.20, 1.00, 0.05,
+            function() return rf.appearance.distanceAlpha or 0.40 end,
+            function(_, v) rf.appearance.distanceAlpha = v; self:ApplyAll() end),
     }
 
-    -- Checks, Alert Messages e Position: eliminati dal pannello (solo
-    -- Layout resta configurabile per il Raid Frame).
-
-    local raidframe = raidLayout
+    -- Checks, Alert Messages e Position restano fuori dal pannello Raid Frame.
+    local raidframe = {
+        sizeAndPositions = {
+            type = "group", name = L["Size and Positions"], order = 1, inline = true,
+            args = sizePositions,
+        },
+        appearance = {
+            type = "group", name = L["Appearance"], order = 2, inline = true,
+            args = raidAppearance,
+        },
+    }
 
     -- --- Raid Buffs (standalone window) --------------------------
     local function getBuffSettings()
@@ -688,6 +700,8 @@ function CFG:BuildOptionsTable()
             headerIconSize = tonumber(saved.headerIconSize) or 20,
             spacing = tonumber(saved.spacing) or tonumber(legacy and legacy.iconSpacing) or 8,
             fontSize = tonumber(saved.fontSize) or 10,
+            matrixBackdrop = saved.matrixBackdrop or (legacy and legacy.matrixBackdrop)
+                or { r = 0.5, g = 0.5, b = 0.5, a = 0.35 },
         }
     end
     local function setBuffSetting(key, value)
@@ -712,6 +726,20 @@ function CFG:BuildOptionsTable()
             4, 8, 20, 1,
             function() return getBuffSettings().fontSize end,
             function(_, v) setBuffSetting("fontSize", v) end),
+        matrixBackdrop = {
+            name = L["Buff check backdrop"],
+            desc = L["Backdrop color and transparency of the Raid Buffs matrix rows."],
+            type = "color",
+            hasAlpha = true,
+            order = 5,
+            get = function()
+                local c = getBuffSettings().matrixBackdrop or { r = 0.5, g = 0.5, b = 0.5, a = 0.35 }
+                return c.r or 0.5, c.g or 0.5, c.b or 0.5, c.a or 0.35
+            end,
+            set = function(_, r, g, b, a)
+                setBuffSetting("matrixBackdrop", { r = r, g = g, b = b, a = a })
+            end,
+        },
     }
 
     -- --- CD Watcher: bar appearance + general behavior ------------
