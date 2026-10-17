@@ -16,7 +16,25 @@ local LM_ROW_MIN_H = 26   -- altezza minima (una sola riga di testo)
 local LM_ROLL_DURATION = 15
 local LM_FIXED_WIDTH = 460
 local LM_TABLE_HEIGHT = 220 -- viewport esatto: cinque righe da max due linee
-local LM_BASE_HEIGHT = 428  -- elementi fissi + tabella + una riga MS Changes
+local LM_BASE_HEIGHT = 458  -- elementi fissi + tabella + due righe comandi
+local LM_RESS_MAX_COUNT = 999
+local LM_PRIMORDIAL_SARONITE_ID = 49908
+local LM_PRIMORDIAL_SARONITE_FALLBACK_LINK =
+    "|cffa335ee|Hitem:49908:0:0:0:0:0:0:0:80|h[Primordial Saronite]|h|r"
+
+local function ClampRessCount(value, default)
+    local count = tonumber(value)
+    if count == nil then count = default or 0 end
+    count = math.floor(count)
+    if count < 0 then count = 0 end
+    if count > LM_RESS_MAX_COUNT then count = LM_RESS_MAX_COUNT end
+    return count
+end
+
+local function IsPoorOrCommon(quality)
+    quality = tonumber(quality)
+    return quality == 0 or quality == 1
+end
 
 -- Non-overlapping roll/reroll countdowns (AceTimer named timers):
 -- restarting a roll cancels the previous timer instead of stacking a
@@ -31,11 +49,27 @@ function LM:Init()
     self.history = self.db.history or {}
     self.db.history = self.history
     self.db.filters = self.db.filters or {}
+    self.db.ressUserCount = ClampRessCount(self.db.ressUserCount, 1)
+    self.db.ressRaidCount = ClampRessCount(self.db.ressRaidCount, 0)
+    if IsPoorOrCommon(self.db.rarityFilter) then self.db.rarityFilter = "all" end
+    -- Purga anche lo storico salvato dalle versioni precedenti, quando la
+    -- rarità è già disponibile: Poor/Common non devono rimanere nel manager.
+    for i = #self.history, 1, -1 do
+        local entry = self.history[i]
+        local quality = entry and tonumber(entry.quality)
+        if quality == nil and entry and entry.itemLink and GetItemInfo then
+            local _, _, itemQuality = GetItemInfo(entry.itemLink)
+            quality = tonumber(itemQuality)
+            if quality ~= nil then entry.quality = quality end
+        end
+        if IsPoorOrCommon(quality) then table.remove(self.history, i) end
+    end
     -- LISTA IGNORA (item singoli): { { id = 12345, name = "Nome" }, ... }.
     -- Un item in lista non viene piu' ne' catturato ne' mostrato.
     self.db.ignoredItems = self.db.ignoredItems or {}
     self._ignoredSet = nil
     self.currentRoll = nil
+    self.ressSequence = nil
     self.preMessage = ""
     self:CreateFrame()
     -- Loot da item in borsa (Sack of Frosty Treasures & co.): viene sempre
@@ -133,8 +167,6 @@ function LM:CreateFrame()
     filterFS:SetPoint("RIGHT", self.rarityDropdown, "LEFT", -8, 0)
     RLSuite.utils:SetupDropdown(self.rarityDropdown, {
         { text = "All", value = "all" },
-        { text = "Poor", value = 0 },
-        { text = "Common", value = 1 },
         { text = "Uncommon", value = 2 },
         { text = "Rare", value = 3 },
         { text = "Epic", value = 4 },
@@ -231,46 +263,98 @@ function LM:CreateFrame()
 
     self.selectedItemText = self.selBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     self.selectedItemText:SetPoint("LEFT", self.selectedItemIcon, "RIGHT", 8, 0)
-    self.selectedItemText:SetPoint("RIGHT", self.selBox, "RIGHT", -8, 0)
     self.selectedItemText:SetJustifyH("LEFT")
     self.selectedItemText:SetText(L["No item selected"])
 
+    -- Quantità riservate per User (U) e Raid (R). I valori sono persistenti;
+    -- U parte da 1, R vuoto significa che non è previsto un secondo roll.
+    local function createRessCountField(key, labelText, rightAnchor, rightPoint, xOffset, savedKey)
+        local edit = CreateFrame("EditBox", "RLSuiteLootRess" .. key .. "Count", self.selBox, "InputBoxTemplate")
+        edit:SetSize(34, 20)
+        edit:SetPoint("RIGHT", rightAnchor, rightPoint, xOffset, 0)
+
+        local label = self.selBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("RIGHT", edit, "LEFT", -3, 0)
+        label:SetText(labelText)
+        label:SetTextColor(1, 0.82, 0)
+        edit:SetAutoFocus(false)
+        edit:SetMaxLetters(3)
+        if edit.SetNumeric then edit:SetNumeric(true) end
+        if edit.SetJustifyH then edit:SetJustifyH("CENTER") end
+        edit:SetTextInsets(2, 2, 0, 0)
+        local saved = ClampRessCount(self.db[savedKey], key == "U" and 1 or 0)
+        edit:SetText(saved > 0 and tostring(saved) or "")
+        edit:SetScript("OnTextChanged", function(s, userInput)
+            if userInput then self.db[savedKey] = ClampRessCount(s:GetText(), 0) end
+        end)
+        edit:SetScript("OnEditFocusLost", function(s)
+            local count = ClampRessCount(s:GetText(), 0)
+            self.db[savedKey] = count
+            s:SetText(count > 0 and tostring(count) or "")
+        end)
+        edit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
+        edit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+        return label, edit
+    end
+
+    self.ressRaidLabel, self.ressRaidCountEdit = createRessCountField(
+        "R", "R", self.selBox, "RIGHT", -8, "ressRaidCount")
+    self.ressUserLabel, self.ressUserCountEdit = createRessCountField(
+        "U", "U", self.ressRaidLabel, "LEFT", -8, "ressUserCount")
+    self.selectedItemText:ClearAllPoints()
+    self.selectedItemText:SetPoint("LEFT", self.selectedItemIcon, "RIGHT", 8, 0)
+    self.selectedItemText:SetPoint("RIGHT", self.ressUserLabel, "LEFT", -6, 0)
+
+    -- I cinque comandi di roll stanno su una riga; Announce MS occupa, sotto,
+    -- la larghezza complessiva della stessa fila.
+    local buttonWidth, buttonGap = 80, 5
+    local commandRowWidth = buttonWidth * 5 + buttonGap * 4
+    local commandRowLeft = (LM_FIXED_WIDTH - commandRowWidth) / 2
+    local commandRowBottom = 40
+
     self.rollMSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rollMSBtn)
-    self.rollMSBtn:SetSize(70, 24)
-    self.rollMSBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 8, 10)
+    self.rollMSBtn:SetSize(buttonWidth, 24)
+    self.rollMSBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", commandRowLeft, commandRowBottom)
     self.rollMSBtn:SetText("Roll MS")
     self.rollMSBtn:SetScript("OnClick", function() self:StartRoll("MS") end)
 
     self.rollOSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rollOSBtn)
-    self.rollOSBtn:SetSize(70, 24)
-    self.rollOSBtn:SetPoint("LEFT", self.rollMSBtn, "RIGHT", 6, 0)
+    self.rollOSBtn:SetSize(buttonWidth, 24)
+    self.rollOSBtn:SetPoint("LEFT", self.rollMSBtn, "RIGHT", buttonGap, 0)
     self.rollOSBtn:SetText("Roll OS")
     self.rollOSBtn:SetScript("OnClick", function() self:StartRoll("OS") end)
 
     self.rollOtherBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rollOtherBtn)
-    self.rollOtherBtn:SetSize(70, 24)
-    self.rollOtherBtn:SetPoint("LEFT", self.rollOSBtn, "RIGHT", 6, 0)
+    self.rollOtherBtn:SetSize(buttonWidth, 24)
+    self.rollOtherBtn:SetPoint("LEFT", self.rollOSBtn, "RIGHT", buttonGap, 0)
     self.rollOtherBtn:SetText("Roll FFA")
     self.rollOtherBtn:SetScript("OnClick", function() self:StartRoll("FFA") end)
 
     self.rerollBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rerollBtn)
-    self.rerollBtn:SetSize(70, 24)
-    self.rerollBtn:SetPoint("LEFT", self.rollOtherBtn, "RIGHT", 6, 0)
+    self.rerollBtn:SetSize(buttonWidth, 24)
+    self.rerollBtn:SetPoint("LEFT", self.rollOtherBtn, "RIGHT", buttonGap, 0)
     self.rerollBtn:SetText("Reroll")
     self.rerollBtn:Disable()
     self.rerollBtn:SetScript("OnClick", function() self:DoReroll() end)
 
-    -- Stesso tasto dell'MS Manager: annuncia le MS changes in raid (e le
-    -- pre-pone al messaggio di roll come preMessage). Utile mentre si lootano.
+    self.rollRessBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.rollRessBtn)
+    self.rollRessBtn:SetSize(buttonWidth, 24)
+    self.rollRessBtn:SetPoint("LEFT", self.rerollBtn, "RIGHT", buttonGap, 0)
+    self.rollRessBtn:SetText("Roll RESS")
+    self.rollRessBtn:SetScript("OnClick", function() self:StartRessRoll() end)
+
+    -- Stesso comando dell'MS Manager, spostato sotto i roll e largo quanto
+    -- l'intera fila dei comandi.
     self.announceMSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.announceMSBtn)
-    self.announceMSBtn:SetSize(140, 24)
-    self.announceMSBtn:SetPoint("LEFT", self.rerollBtn, "RIGHT", 6, 0)
-    self.announceMSBtn:SetText("Announce MSCh")
+    self.announceMSBtn:SetSize(commandRowWidth, 24)
+    self.announceMSBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", commandRowLeft, 10)
+    self.announceMSBtn:SetText("Announce MS")
     self.announceMSBtn:SetScript("OnClick", function()
         RLSuite.msManager:GenerateMessage()
     end)
@@ -755,14 +839,17 @@ function LM:IgnoreRowItem(entry)
 end
 
 function LM:AddToHistory(itemLink, itemName, itemTexture, quality)
-    -- Filtro in cattura: categorie ignorate MAI registrate.
-    if self:IsCategoryIgnored(self:LootCategory(itemLink, itemName)) then return end
-    -- Item nella LISTA IGNORA (ctrl+click su una riga): mai piu' registrato.
-    if self:IsItemIgnored(itemLink) then return end
     if quality == nil and itemLink then
         local _, _, q = GetItemInfo(itemLink)
         quality = q
     end
+    quality = tonumber(quality)
+    -- Poor/Common vengono scartati prima di qualunque altra classificazione.
+    if IsPoorOrCommon(quality) then return end
+    -- Filtro in cattura: categorie ignorate MAI registrate.
+    if self:IsCategoryIgnored(self:LootCategory(itemLink, itemName)) then return end
+    -- Item nella LISTA IGNORA (ctrl+click su una riga): mai piu' registrato.
+    if self:IsItemIgnored(itemLink) then return end
     -- Niente DUPLICATI: in raid vero lo stesso pezzo arriva due volte
     -- (announce + ricezione). Entro 4s dallo stesso link = stesso evento.
     local now = time()
@@ -815,7 +902,7 @@ end
 
 function LM:EntryQuality(entry)
     if not entry then return -1 end
-    if entry.quality ~= nil then return entry.quality end
+    if entry.quality ~= nil then return tonumber(entry.quality) or -1 end
     if entry.itemLink then
         local _, _, q = GetItemInfo(entry.itemLink)
         if q ~= nil then
@@ -834,8 +921,9 @@ function LM:MatchesFilter(entry)
     if self:IsCategoryIgnored(self:EntryCategory(entry)) then return false end
     -- Lista ignora: l'item non compare nemmeno se era gia' in storico.
     if self:IsItemIgnored(entry.itemLink) then return false end
-    if f == nil or f == "all" then return true end
     local q = self:EntryQuality(entry)
+    if IsPoorOrCommon(q) then return false end
+    if f == nil or f == "all" then return true end
     return q >= tonumber(f)
 end
 
@@ -1029,6 +1117,7 @@ function LM:UpdateHistory()
 end
 
 function LM:SelectItem(entry)
+    if self.selectedItem ~= entry then self.ressSequence = nil end
     self.selectedItem = entry
     if self.selectedItemIcon then
         self.selectedItemIcon:SetTexture(entry.itemTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
@@ -1042,6 +1131,7 @@ end
 -- finestre pickup aperte non bloccano la preparazione del roll seguente.
 function LM:ClearSelection()
     self.selectedItem = nil
+    self.ressSequence = nil
     if self.selectedItemIcon then
         self.selectedItemIcon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
     end
@@ -1069,6 +1159,8 @@ function LM:RollLabel(reroll)
     if reroll then return "REROLL" end
     local rollType = self.currentRoll and self.currentRoll.type or "MS"
     if rollType == "FFA" or rollType == "OTHER" then return "ROLL FFA" end
+    if rollType == "RESS_USER" then return "ROLL RESS USER" end
+    if rollType == "RESS_RAID" then return "ROLL RESS RAID" end
     return "ROLL " .. tostring(rollType or "MS")
 end
 
@@ -1078,15 +1170,75 @@ function LM:RollCountdownWarning(_, seconds)
     RLSuite.utils:SendChat(msg, "RAID_WARNING")
 end
 
-function LM:StartRoll(rollType)
+function LM:GetRessQuantity(phase)
+    local key = phase == "RAID" and "ressRaidCount" or "ressUserCount"
+    local edit = phase == "RAID" and self.ressRaidCountEdit or self.ressUserCountEdit
+    local value = edit and edit.GetText and edit:GetText()
+    if value == nil then value = self.db and self.db[key] end
+    local count = ClampRessCount(value, 0)
+    if self.db then self.db[key] = count end
+    return count
+end
+
+function LM:GetPrimordialSaroniteItem()
+    local info = GetItemInfo and { GetItemInfo(LM_PRIMORDIAL_SARONITE_ID) } or {}
+    return {
+        id = LM_PRIMORDIAL_SARONITE_ID,
+        itemLink = info[2] or LM_PRIMORDIAL_SARONITE_FALLBACK_LINK,
+        itemName = info[1] or "Primordial Saronite",
+        itemTexture = info[10] or "Interface\\Icons\\INV_Misc_QuestionMark",
+        quality = tonumber(info[3]) or 4,
+        itemType = "ORB",
+    }
+end
+
+function LM:StartRessRoll()
+    if not self.selectedItem then
+        RLSuite.utils:Print(L["Select an item from the history first!"])
+        return
+    end
+    if not self.ressSequence or self.ressSequence.item ~= self.selectedItem then
+        self.ressSequence = { item = self.selectedItem, step = "USER" }
+    elseif self.ressSequence.step == "DONE" then
+        self.ressSequence.step = "USER"
+    end
+
+    local phase = self.ressSequence.step or "USER"
+    local quantity = self:GetRessQuantity(phase)
+    if quantity <= 0 then
+        RLSuite.utils:Print(phase == "USER"
+            and L["Set a positive U quantity before starting the RESS roll."]
+            or L["Set a positive R quantity before starting the Raid RESS roll."])
+        return
+    end
+    self:StartRoll("RESS_" .. phase, quantity)
+end
+
+function LM:CompleteRessRoll(success, reservedItem, rollType)
+    if rollType ~= "RESS_USER" and rollType ~= "RESS_RAID" then return end
+    local phase = rollType == "RESS_USER" and "USER" or "RAID"
+    local sequence = self.ressSequence
+    if not sequence or sequence.item ~= reservedItem then
+        sequence = { item = reservedItem, step = phase }
+        self.ressSequence = sequence
+    end
+    sequence.step = success and (phase == "USER" and "RAID" or "DONE") or phase
+end
+
+function LM:StartRoll(rollType, quantity)
     if not self.selectedItem then
         RLSuite.utils:Print(L["Select an item from the history first!"])
         return
     end
 
+    local isRess = rollType == "RESS_USER" or rollType == "RESS_RAID"
+    local reservedItem = isRess and self.selectedItem or nil
+    local rollItem = isRess and self:GetPrimordialSaroniteItem() or self.selectedItem
     self.currentRoll = {
-        item = self.selectedItem,
+        item = rollItem,
+        reservedItem = reservedItem,
         type = rollType,
+        quantity = tonumber(quantity),
         rolls = {},
         -- seen[NomeGiocatore] = primo roll: chi rolla due volte viene ignorato
         -- (vale SOLO il primo roll, come chiesto dal raid leader).
@@ -1095,14 +1247,23 @@ function LM:StartRoll(rollType)
         active = true,
     }
 
-    -- MS Changes resta un'informazione separata nel pannello e viene
-    -- annunciata SOLO dal suo pulsante: i tasti Roll non la premettono più.
-    local msg = self:RollLabel(false) .. " " .. self:RollItemText(self.selectedItem)
-        .. " You have " .. LM_ROLL_DURATION .. "s"
-    RLSuite.utils:SendChat(msg, "RAID_WARNING")
-    -- barra-timer in DBM/BigWigs se installati (durata fissa del roll)
-    RLSuite.utils:StartDbmTimer(LM_ROLL_DURATION, self:RollLabel(false) .. " " .. self:RollItemText(self.selectedItem),
-        self.selectedItem.itemTexture)
+    if isRess then
+        local phase = rollType == "RESS_USER" and "USER" or "RAID"
+        RLSuite.utils:SendChat(self:RollItemText(reservedItem) .. " RESERVED", "RAID_WARNING")
+        RLSuite.utils:SendChat("ROLLING " .. tostring(tonumber(quantity) or 0)
+            .. " " .. self:RollItemText(rollItem) .. " " .. phase
+            .. " You have " .. LM_ROLL_DURATION .. "s", "RAID_WARNING")
+    else
+        -- MS Changes resta un'informazione separata nel pannello e viene
+        -- annunciata SOLO dal suo pulsante: i tasti Roll non la premettono più.
+        local msg = self:RollLabel(false) .. " " .. self:RollItemText(rollItem)
+            .. " You have " .. LM_ROLL_DURATION .. "s"
+        RLSuite.utils:SendChat(msg, "RAID_WARNING")
+    end
+
+    -- barra-timer in DBM/BigWigs se installati (durata fissa del roll).
+    RLSuite.utils:StartDbmTimer(LM_ROLL_DURATION,
+        self:RollLabel(false) .. " " .. self:RollItemText(rollItem), rollItem.itemTexture)
 
     if RLSuite.DebugMode and RLSuite:DebugMode() then
         local me = UnitName("player") or "You"
@@ -1118,6 +1279,7 @@ function LM:StartRoll(rollType)
     if self.rollMSBtn then self.rollMSBtn:Disable() end
     if self.rollOSBtn then self.rollOSBtn:Disable() end
     if self.rollOtherBtn then self.rollOtherBtn:Disable() end
+    if self.rollRessBtn then self.rollRessBtn:Disable() end
 
     -- Non-overlapping: cancel any previous roll/reroll countdown.
     self:CancelRollTimers()
@@ -1213,6 +1375,8 @@ function LM:AnnounceWinner()
 
     if #self.currentRoll.rolls == 0 then
         RLSuite.utils:SendChat("No rolls received for " .. self:RollItemText(self.currentRoll.item), "RAID_WARNING")
+        self:CompleteRessRoll(false, self.currentRoll.reservedItem or self.currentRoll.item,
+            self.currentRoll.type)
         self:ResetButtons()
         self:UnregisterEvent("CHAT_MSG_SYSTEM")
         return
@@ -1238,13 +1402,16 @@ function LM:AnnounceWinner()
         RLSuite.utils:SendChat("Tie for " .. self:RollItemText(self.currentRoll.item)
             .. "! Reroll between: " .. table.concat(names, ", "), "RAID_WARNING")
     else
-        RLSuite.utils:SendChat((winner.name or "?") .. " wins " .. self:RollItemText(self.currentRoll.item)
+        local rollItem = self.currentRoll.item
+        local rollType = self.currentRoll.type
+        RLSuite.utils:SendChat((winner.name or "?") .. " wins " .. self:RollItemText(rollItem)
             .. " with " .. (winner.roll or 0) .. "! Please trade.", "RAID_WARNING")
-        self.currentRoll.item.assignedTo = winner.name
-        self:ShowTradeWindow(self.currentRoll.item)
-        -- La riga "selected item" torna vuota: con la finestra pickup aperta
-        -- si puo' subito selezionare e rollare un altro pezzo.
-        self:ClearSelection()
+        rollItem.assignedTo = winner.name
+        self:CompleteRessRoll(true, self.currentRoll.reservedItem or rollItem, rollType)
+        self:ShowTradeWindow(rollItem, self.currentRoll.quantity)
+        -- Mantieni la prenotazione selezionata dopo il roll User: il click
+        -- successivo su RESS avvia il passaggio Raid per la stessa prenotazione.
+        if rollType ~= "RESS_USER" then self:ClearSelection() end
         self:UpdateHistory()
     end
 
@@ -1274,6 +1441,7 @@ function LM:DoReroll()
     self.currentRoll.seen = {}
     self.currentRoll.active = true
     if self.rerollBtn then self.rerollBtn:Disable() end
+    self:RegisterEvent("CHAT_MSG_SYSTEM", "OnSystemRollMessage")
 
     -- In debug i fittizi rerollano anche loro (come nello StartRoll),
     -- altrimenti il pareggio di test si fermava a "No valid rerolls!".
@@ -1325,34 +1493,47 @@ function LM:ProcessReroll()
 
     if #validRolls == 0 then
         RLSuite.utils:SendChat("No valid rerolls for " .. self:RollItemText(self.currentRoll.item) .. "!", "RAID_WARNING")
+        self:CompleteRessRoll(false, self.currentRoll.reservedItem or self.currentRoll.item,
+            self.currentRoll.type)
+        self.currentRoll.rerollWinners = nil
+        self:ResetButtons()
+        self:UnregisterEvent("CHAT_MSG_SYSTEM")
         return
     end
 
     table.sort(validRolls, function(a, b) return a.roll > b.roll end)
     local winner = validRolls[1]
+    local rollItem = self.currentRoll.item
+    local rollType = self.currentRoll.type
     RLSuite.utils:SendChat((winner.name or "?") .. " wins the reroll for "
-        .. self:RollItemText(self.currentRoll.item) .. " with " .. (winner.roll or 0)
+        .. self:RollItemText(rollItem) .. " with " .. (winner.roll or 0)
         .. "! Please trade.", "RAID_WARNING")
-    self.currentRoll.item.assignedTo = winner.name
-    self:ShowTradeWindow(self.currentRoll.item)
-    self:ClearSelection()
+    rollItem.assignedTo = winner.name
+    self:CompleteRessRoll(true, self.currentRoll.reservedItem or rollItem, rollType)
+    self:ShowTradeWindow(rollItem, self.currentRoll.quantity)
+    if rollType ~= "RESS_USER" then self:ClearSelection() end
     self:UpdateHistory()
+    self.currentRoll.rerollWinners = nil
+    self:ResetButtons()
+    self:UnregisterEvent("CHAT_MSG_SYSTEM")
 end
 
 function LM:ResetButtons()
-    if self.rollMSBtn then self.rollMSBtn:Enable() end
-    if self.rollOSBtn then self.rollOSBtn:Enable() end
-    if self.rollOtherBtn then self.rollOtherBtn:Enable() end
-    if self.rerollBtn then
-        -- MAI disabilitare un reroll pendente: in caso di pareggio il
-        -- ResetButtons() finale di AnnounceWinner cancellava subito il
-        -- tasto appena abilitato (il bug "pari e il reroll non parte").
-        local pending = self.currentRoll and self.currentRoll.rerollWinners
-        if pending and #pending > 1 then
-            self.rerollBtn:Enable()
-        else
-            self.rerollBtn:Disable()
-        end
+    local pending = self.currentRoll and self.currentRoll.rerollWinners
+    if pending and #pending > 1 then
+        -- Durante uno spareggio non avviare un secondo roll: l'unica azione
+        -- valida è il reroll dei giocatori in parità.
+        if self.rollMSBtn then self.rollMSBtn:Disable() end
+        if self.rollOSBtn then self.rollOSBtn:Disable() end
+        if self.rollOtherBtn then self.rollOtherBtn:Disable() end
+        if self.rollRessBtn then self.rollRessBtn:Disable() end
+        if self.rerollBtn then self.rerollBtn:Enable() end
+    else
+        if self.rollMSBtn then self.rollMSBtn:Enable() end
+        if self.rollOSBtn then self.rollOSBtn:Enable() end
+        if self.rollOtherBtn then self.rollOtherBtn:Enable() end
+        if self.rollRessBtn then self.rollRessBtn:Enable() end
+        if self.rerollBtn then self.rerollBtn:Disable() end
     end
 end
 
@@ -1365,7 +1546,115 @@ local LM_TRADE_ICON = 32     -- lato dell'icona cliccabile
 local LM_TRADE_PAD = 6       -- padding sopra/sotto l'icona
 local LM_TRADE_GAP = 6       -- spazio verticale tra una finestra e l'altra
 
-function LM:ShowTradeWindow(item)
+local function LootLinkItemID(itemLink)
+    return tonumber(string.match(itemLink or "", "item:(%d+)"))
+end
+
+function LM:IsPrimordialSaronite(item)
+    local itemID = item and LootLinkItemID(item.itemLink)
+    if itemID == LM_PRIMORDIAL_SARONITE_ID then return true end
+    local name = string.lower((item and item.itemName) or "")
+    return string.find(name, "primordial saronite", 1, true) ~= nil
+end
+
+-- Sposta nelle trade slots esattamente la quantità scelta. Se la quantità
+-- supera uno stack, ripartisce i pezzi su più slot (senza spostare parziali
+-- quando inventario o slot trade non bastano).
+function LM:PickupFromBags(item, quantity)
+    if not item or not GetContainerNumSlots or not GetContainerItemLink
+        or not GetContainerItemInfo or not PickupContainerItem or not ClickTradeButton then
+        RLSuite.utils:Print(L["Bag pickup is not available on this client."])
+        return false
+    end
+
+    local targetID = LootLinkItemID(item.itemLink)
+    local stacks = {}
+    for bag = 0, 4 do
+        local slots = GetContainerNumSlots(bag) or 0
+        for slot = 1, slots do
+            local link = GetContainerItemLink(bag, slot)
+            if link then
+                local itemID = LootLinkItemID(link)
+                local matches = (targetID and itemID == targetID)
+                    or (not targetID and item.itemLink and link == item.itemLink)
+                if matches then
+                    local _, count, locked = GetContainerItemInfo(bag, slot)
+                    count = tonumber(count) or 1
+                    if not locked and count > 0 then
+                        stacks[#stacks + 1] = { bag = bag, slot = slot, count = count }
+                    end
+                end
+            end
+        end
+    end
+    if #stacks == 0 then
+        RLSuite.utils:Print(L["Item not found in your bags."])
+        return false
+    end
+
+    local plan = {}
+    if quantity ~= nil then
+        quantity = ClampRessCount(quantity, 0)
+        if quantity < 1 then
+            RLSuite.utils:Print(L["Set a positive quantity before picking up the item."])
+            return false
+        end
+        local available = 0
+        for _, stack in ipairs(stacks) do available = available + stack.count end
+        if available < quantity then
+            RLSuite.utils:Print(string.format(L["You have only %d of this item in your bags."], available))
+            return false
+        end
+        local remaining = quantity
+        for _, stack in ipairs(stacks) do
+            local amount = math.min(stack.count, remaining)
+            plan[#plan + 1] = { bag = stack.bag, slot = stack.slot, count = stack.count, amount = amount }
+            remaining = remaining - amount
+            if remaining <= 0 then break end
+        end
+    else
+        local stack = stacks[1]
+        plan[1] = { bag = stack.bag, slot = stack.slot, count = stack.count, amount = stack.count }
+    end
+
+    local freeTradeSlots = {}
+    for tradeSlot = 1, 6 do
+        local occupied = false
+        if GetTradePlayerItemInfo then
+            local ok, slotName = pcall(GetTradePlayerItemInfo, tradeSlot)
+            if ok and slotName and slotName ~= "" then occupied = true end
+        end
+        if not occupied and GetTradePlayerItemLink then
+            local ok, slotLink = pcall(GetTradePlayerItemLink, tradeSlot)
+            if ok and slotLink then occupied = true end
+        end
+        if not occupied then freeTradeSlots[#freeTradeSlots + 1] = tradeSlot end
+    end
+    if #freeTradeSlots < #plan then
+        RLSuite.utils:Print(L["Not enough empty trade slots for that quantity."])
+        return false
+    end
+    if not SplitContainerItem then
+        for _, part in ipairs(plan) do
+            if part.amount < part.count then
+                RLSuite.utils:Print(L["This client cannot split item stacks for pickup."])
+                return false
+            end
+        end
+    end
+
+    for i, part in ipairs(plan) do
+        if part.amount < part.count then
+            SplitContainerItem(part.bag, part.slot, part.amount)
+        else
+            PickupContainerItem(part.bag, part.slot)
+        end
+        ClickTradeButton(freeTradeSlots[i])
+    end
+    return true
+end
+
+function LM:ShowTradeWindow(item, quantity)
     if not item then return end
     self.tradeWindows = self.tradeWindows or {}
     -- nome globale univoco (le finestre possono convivere, una per vincita)
@@ -1399,7 +1688,18 @@ function LM:ShowTradeWindow(item)
     text:SetPoint("RIGHT", f, "RIGHT", -34, 0) -- lascia spazio alla X
     text:SetJustifyH("LEFT")
     text:SetWordWrap(true)
-    text:SetText("Click to pick up item")
+    f.pickupQuantity = quantity and ClampRessCount(quantity, 0) or nil
+    if f.pickupQuantity and f.pickupQuantity > 0 then
+        if self:IsPrimordialSaronite(item) then
+            text:SetText(string.format(L["Click to pick up %d PS from bags"], f.pickupQuantity))
+        elseif f.pickupQuantity == 1 then
+            text:SetText(L["Click to pick up 1 item from bags"])
+        else
+            text:SetText(string.format(L["Click to pick up %d items from bags"], f.pickupQuantity))
+        end
+    else
+        text:SetText(L["Click to pick up item"])
+    end
     f.text = text
 
     local giveTo = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -1417,38 +1717,12 @@ function LM:ShowTradeWindow(item)
     f.pickBtn = btn
     btn:SetScript("OnClick", function()
         if TradeFrame and TradeFrame:IsShown() then
-            local foundBag, foundSlot = nil, nil
-            local targetId = item.itemLink and tonumber(string.match(item.itemLink, "item:(%d+)"))
-            if GetContainerNumSlots and GetContainerItemLink then
-                for bag = 0, 4 do
-                    local slots = GetContainerNumSlots(bag) or 0
-                    for slot = 1, slots do
-                        local link = GetContainerItemLink(bag, slot)
-                        if link then
-                            local id = tonumber(string.match(link, "item:(%d+)"))
-                            if (targetId and id == targetId) or (link == item.itemLink) then
-                                foundBag, foundSlot = bag, slot
-                                break
-                            end
-                        end
-                    end
-                    if foundBag then break end
-                end
+            if self:PickupFromBags(item, f.pickupQuantity) then
+                self:CloseTradeWindow(f)
             end
-            if foundBag and foundSlot and PickupContainerItem then
-                PickupContainerItem(foundBag, foundSlot)
-            elseif item.itemLink and PickupItem then
-                PickupItem(item.itemLink)
-            end
-            if ClickTradeButton then
-                ClickTradeButton(1)
-            end
-            self:CloseTradeWindow(f)
         else
-            -- NIENTE pickup senza trade aperto: un item sul cursore trasforma
-            -- OGNI click dell'interfaccia in un'azione del cursore e la lista
-            -- loot smette di rispondere (il bug "finestra pickup = lista
-            -- bloccata"). Il pezzo si prende solo quando il trade e' aperto.
+            -- NIENTE pickup senza trade aperto: il pezzo si prende solo dopo
+            -- aver aperto lo scambio con il vincitore.
             RLSuite.utils:Print(L["Open the trade with the winner first, then click the item icon."])
         end
     end)
@@ -1519,6 +1793,7 @@ function LM:ClearHistory()
     end
     self.history = (self.db and self.db.history) or {}
     self.selectedItem = nil
+    self.ressSequence = nil
     self:CancelRollTimers()
     if self.UnregisterEvent then
         self:UnregisterEvent("CHAT_MSG_SYSTEM")

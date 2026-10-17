@@ -255,13 +255,12 @@ function MW:CreateFrame()
     self.raidControlBtn = rcBtn    -- usato da ApplyLayout per la larghezza
     MW_UpdateArrowDir()
 
-    -- Niente titolo dentro la finestra: i bottoni restano (matrice + fase +
-    -- X di chiusura e icona SaveRaid). La Config si apre dalla minimappa
-    -- (clic destro) o da /rls config.
+    -- Niente titolo dentro la finestra: i bottoni restano nella matrice;
+    -- fase e Raid Control sono nella title bar. La Config si apre dalla
+    -- minimappa (clic destro) o da /rls config.
 
-    -- ORDINE DEI TASTI DELLA MATRICE (richiesto): Pugger, Raid Frame,
-    -- MS, Macrobar, MT & OT, Loot, SaveRaid. I tab si creano in
-    -- quest'ordine e la griglia li dispone riga per riga (vedi matrixOrder).
+    -- Ordine fisso della matrice: Pugger, Macrobar, MT/OT, MS, Loot,
+    -- SaveRaid, Raid Buffs, CD Watcher.
     self.tabDefs = {
         { key = "group",     label = "Pugger" },
         { key = "ms",        label = "MS" },
@@ -271,7 +270,7 @@ function MW:CreateFrame()
     self.tabs = {}
     self.currentTab = nil
 
-    -- Matrice colonne x righe configurabile: 5 tab
+    -- Tab standard; MT/OT, Raid Buffs e CD Watcher sono controlli della matrice.
     self.matrixButtons = {}
     for i, def in ipairs(self.tabDefs) do
         local tab = CreateFrame("Button", "RLSuiteTab" .. def.key, f, "UIPanelButtonTemplate")
@@ -359,8 +358,8 @@ function MW:CreateFrame()
     mtPairTooltip(self.mtBtn, "Main Tank (MT)", "Assign/remove your current target as Main Tank.")
     mtPairTooltip(self.otBtn, "Main Assist (OT)", "Assign/remove your current target as Main Assist.")
 
-    -- Icona fase singola: accanto all'icona SaveRaid, cambia in base alla
-    -- fase (occhio LFG animato / clessidra / spade da combattimento).
+    -- Icona fase singola nella title bar, accanto al pulsante SaveRaid;
+    -- cambia in base alla fase (occhio LFG animato / clessidra / spade).
     -- Clic = passa alla fase successiva.
     self.phaseDefs = {
         preraid = { label = "Pre-raid",
@@ -425,12 +424,46 @@ function MW:CreateFrame()
     -- Config: accessibile dal clic destro sull'icona della minimappa e da
     -- /rls config (niente piu' icona rotellina nella barra principale).
 
-    -- SaveRaid: TORNA A ESSERE UN PULSANTE (non un'icona): stesso stile e
-    -- stessa taglia dei tasti della matrice, entra nella griglia come settimo
-    -- tasto (la riga di icone in alto non esiste piu').
+    -- Raid Buffs: tasto della settima cella della matrice Raid Control.
+    -- Apre una finestra autonoma; non appartiene al Raid Frame.
+    self.raidBuffBtn = CreateFrame("Button", "RLSuiteRaidBuffsBtn", f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.raidBuffBtn)
+    self.raidBuffBtn:SetSize(74, 22)
+    self.raidBuffBtn:SetText(L["Raid Buffs"])
+    self.raidBuffBtn:SetScript("OnClick", function()
+        local rf = RLSuite.raidFrame
+        if rf and rf.ToggleBuffMatrix then rf:ToggleBuffMatrix() end
+    end)
+    self.raidBuffBtn:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L["Raid Buffs"])
+        GameTooltip:AddLine(L["Open or close the standalone raid-buff matrix."], 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    self.raidBuffBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    -- CD Watcher: ottava cella della matrice Raid Control.
+    self.cdWatcherBtn = CreateFrame("Button", "RLSuiteCDWatcherBtn", f, "UIPanelButtonTemplate")
+    RLSuite.utils:SkinButton(self.cdWatcherBtn)
+    self.cdWatcherBtn:SetSize(74, 22)
+    self.cdWatcherBtn:SetText(L["CD Watcher"])
+    self.cdWatcherBtn:SetScript("OnClick", function()
+        local watcher = RLSuite.cdwatcher
+        if watcher and watcher.Toggle then watcher:Toggle() end
+    end)
+    self.cdWatcherBtn:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L["CD Watcher"])
+        GameTooltip:AddLine(L["Open or close the cooldown watcher window."], 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    self.cdWatcherBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    -- SaveRaid resta nella sua cella originale; Raid Buffs e CD Watcher
+    -- aggiungono rispettivamente la settima e l'ottava cella.
     self.saveRaidBtn = CreateFrame("Button", "RLSuiteSaveRaidBtn", f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.saveRaidBtn)
-    self.saveRaidBtn:SetSize(90, 22)
+    self.saveRaidBtn:SetSize(74, 22)
     self.saveRaidBtn:SetText("SaveRaid")
     self.saveRaidBtn:RegisterForClicks("LeftButtonUp")
     self.saveRaidBtn:SetScript("OnClick", function() self:OnSaveRaid() end)
@@ -441,20 +474,19 @@ function MW:CreateFrame()
         GameTooltip:Show()
     end)
     self.saveRaidBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    -- ORDINE DELLE CELLE DELLA MATRICE: la coppia MT & OT occupa UNA cella e
-    -- sta al 5o posto (prima era "appesa" sotto Raid Frame, con i tasti
-    -- seguenti che scalavano di uno: con un ordine esplicito non serve piu'
-    -- nessun caso particolare).
+
+    -- Ordine delle otto celle: SaveRaid resta sesto, Raid Buffs settimo,
+    -- CD Watcher ottavo. MT/OT condivide la terza cella.
     self.matrixOrder = {
         { btn = self.tabs["group"] },
         { btn = self.tabs["macro"] },
-        { role = true },                    -- MT & OT nella stessa cella
+        { role = true },
         { btn = self.tabs["ms"] },
         { btn = self.tabs["loot"] },
         { btn = self.saveRaidBtn },
+        { btn = self.raidBuffBtn },
+        { btn = self.cdWatcherBtn },
     }
-    -- Elenco piatto dei BOTTONI (senza la cella della coppia): comodo per i
-    -- controlli e per chi conta i tasti.
     self.matrixButtons = {}
     for _, c in ipairs(self.matrixOrder) do
         if c.btn then self.matrixButtons[#self.matrixButtons + 1] = c.btn end
@@ -463,9 +495,9 @@ function MW:CreateFrame()
     self:ApplyLayout()
 end
 
--- Larghezza del RAID FRAME (HUD) come la vede l'utente: icone food/flask +
--- barra giocatore + barre CD. La matrice dei buff NON e' compresa: le colonne
--- dei buff sono disegnate OLTRE il bordo destro del frame (RaidFrame.lua:
+-- Larghezza del RAID FRAME (HUD) come la vede l'utente: barra giocatore e
+-- riserva per le barre target MT/OT. Il CD Watcher e la matrice buff sono
+-- finestre autonome, non comprese. Le colonne buff sono disegnate OLTRE il bordo destro (RaidFrame.lua:
 -- matrix a x = rowWidth + 4), quindi m.W e' gia' "senza buff".
 -- Ritorna la larghezza EFFETTIVA a schermo (metrica x scala del frame).
 function MW:RaidFrameWidth()
@@ -481,23 +513,15 @@ function MW:ApplyLayout()
     local L = RLSuite.db and RLSuite.db.profile.layout and RLSuite.db.profile.layout.main
     if not self.frame then return end
     L = L or {}
-    local cols = math.max(1, math.min(8, tonumber(L.matrixCols) or 2))
-    local rows = math.max(1, math.min(8, tonumber(L.matrixRows) or 4))
+    local cols, rows = 8, 1
     -- Celle della matrice: una per tasto, una per la coppia MT & OT.
     local cells = self.matrixOrder
     if not cells or #cells == 0 then
         cells = {}
         for _, b in ipairs(self.matrixButtons or {}) do cells[#cells + 1] = { btn = b } end
     end
-    local nCells = #cells
-    if nCells > 0 then
-        rows = math.max(rows, math.ceil(nCells / cols))
-    end
-
-    -- Bottoni matrice: colonne x righe configurabili dalla Config.
-    -- La vecchia RIGA DI ICONE in alto non esiste piu': l'icona di fase sta
-    -- nella barretta del titolo e "SaveRaid" e' tornato un pulsante della
-    -- matrice. Quindi la barra e' PIU' BASSA di tutta quella riga.
+    -- Matrice fissa a otto colonne su una sola riga: SaveRaid resta nella
+    -- sesta cella, Raid Buffs nella settima e CD Watcher nell'ottava.
     local bw, bh, gapX, gapY = 74, 22, 6, 4
     local PAD = 4
 
@@ -530,17 +554,12 @@ function MW:ApplyLayout()
         self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth(), -TITLE_BAR_H - 2)
     end
 
-    -- Bottoni matrice: colonne x righe configurabili dalla Config.
-    -- La coppia MT/OT sta SOTTO il tasto "Raid Frame" (cella
-    -- i_raidframe + colonne) se quella cella e' dentro la matrice: i
-    -- tasti seguenti scalano di una cella per lasciare il posto libero.
-    -- Altrimenti (colonne troppe larghe) la coppia finisce nella cella
-    -- subito dopo l'ultimo tasto, come prima.
+    -- Otto celle in una riga: la terza ospita la coppia MT/OT, tutte le
+    -- altre ospitano un pulsante standard.
     local x0 = PAD
     local topY = -PAD
-    -- POSIZIONAMENTO IN ORDINE: riga per riga, da sinistra a destra
-    -- (Pugger, Raid Frame / MS, Macrobar / MT & OT, Loot / SaveRaid
-    -- con 2 colonne). La cella della coppia MT & OT ospita i due mezzi tasti.
+    -- POSIZIONAMENTO FISSO da sinistra a destra: Pugger, Macrobar, MT/OT,
+    -- MS, Loot, SaveRaid, Raid Buffs, CD Watcher. MT/OT condivide la terza cella.
     local halfGap = 4
     local halfW = (bw - halfGap) / 2
     for idx, c in ipairs(cells) do

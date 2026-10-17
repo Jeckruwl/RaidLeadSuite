@@ -181,7 +181,7 @@ local defaults = {
                 barWidth = 180,
                 iconSize = 16,
                 nameFontSize = 11,
-                iconSpacing = 8,        -- gap tra le icone della matrice Raid Buffs
+                iconSpacing = 8,        -- legacy spacing fallback for Raid Buffs profiles
                 rowSpacing = 0,         -- gap tra le barre dentro i gruppi
                 groupSpacing = 8,       -- gap tra i gruppi
                 groupHeaderFontSize = 10,
@@ -194,6 +194,9 @@ local defaults = {
             },
             alerts = {},
         },
+        -- Standalone Raid Buffs window controls. Empty defaults preserve old
+        -- profiles' Raid Frame iconSpacing as the initial buff-spacing value.
+        raidbuffs = {},
         mschanges = {},
         loot = {
             history = {},
@@ -201,6 +204,8 @@ local defaults = {
             rerollDuration = 15,
             rarityFilter = "all",
             tradeWindow = 7200,
+            ressUserCount = 1,
+            ressRaidCount = 0,
             filters = { recipes = false, boe = false, gems = false, shards = false,
                         projectiles = false },
             ignoredItems = {},
@@ -431,13 +436,11 @@ function RLSuite:OnRaidRosterUpdate()
 end
 
 function RLSuite:OnPlayerRegenEnabled()
-    self.context = "preboss"
-    self:UpdatePhaseUI()
+    self:UpdateRaidContext()
 end
 
 function RLSuite:OnPlayerRegenDisabled()
-    self.context = "infight"
-    self:UpdatePhaseUI()
+    self:UpdateRaidContext()
 end
 
 -- Il target e' cambiato: se siamo in fight, la MacroBar deve passare al
@@ -1143,6 +1146,11 @@ RLSuite.raidBuffColumns = {
       spells = { 48932, 48934, 47436 } },
     { key = "hp",          label = "HP",      fullName = "Health (HP)", icon = "Interface\\Icons\\Ability_Warrior_RallyingCry",
       classes = { "WARRIOR", "WARLOCK" }, spells = { 47440, 27267, 47982 } },
+    -- Focus Magic: una aura per mago (scope single); il relativo tracking
+    -- del caster via combat log e' gestito da RaidFrame.lua.
+    { key = "focusMagic",  label = "FM",      fullName = "Focus Magic", icon = "Interface\\Icons\\Spell_Arcane_MindMastery",
+      classes = { "MAGE" }, beneficiaries = BUFF_CLASSES_CASTER,
+      scope = "single", spells = { 54646 } },
     { key = "flask",       label = "Flask",   fullName = "Flask", icon = "Interface\\Icons\\INV_Alchemy_EndlessFlask_05",
       classes = {}, spells = {
         53755, 53760, 54212, 53758, 67016, 67017, 67018,
@@ -2218,14 +2226,15 @@ function RLSuite:ApplyDebugMode()
 end
 
 function RLSuite:UpdateRaidContext()
-    local inRaid = self:InRaid()
-    local inCombat = UnitAffectingCombat("player")
-    if not inRaid then
-        self.context = "preraid"
-    elseif inCombat then
-        self.context = "infight"
+    -- PRERAID is a deliberate, manual phase: joining/leaving a group or
+    -- entering combat must not move it on. Once the user selects PREBOSS,
+    -- combat state may automatically switch only between PREBOSS/INFIGHT.
+    local current = self.context or "preraid"
+    if current ~= "preraid" then
+        local inCombat = UnitAffectingCombat and UnitAffectingCombat("player")
+        self.context = inCombat and "infight" or "preboss"
     else
-        self.context = "preboss"
+        self.context = "preraid"
     end
     self:UpdatePhaseUI()
     if self.mainWindow and self.mainWindow.SyncVisibilityWithRaidFrame then
@@ -2234,8 +2243,8 @@ function RLSuite:UpdateRaidContext()
 end
 
 -- Forza la fase dell'addon (preraid / preboss / infight) dai bottoni
--- della barra. Il contesto automatico torna a prevalere al prossimo
--- evento (roster/regen), come prima.
+-- della barra. PRERAID resta manuale; una volta passati a PREBOSS,
+-- gli eventi di combattimento alternano automaticamente PREBOSS/INFIGHT.
 function RLSuite:SetContextPhase(phase)
     if phase ~= "preraid" and phase ~= "preboss" and phase ~= "infight" then return end
     self.context = phase
@@ -2283,11 +2292,11 @@ end
 -- ============================================================
 -- Saved Raids (SaveRaid)
 -- Salva: Comp (groupmaking + whisplist), MacroBar e i pannelli di
--- Config esclusa la categoria General (quindi scale delle finestre e
--- impostazioni macrobar/raidframe, non aspetto/font/finestra/debug).
+-- Config esclusa la categoria General (quindi scale e impostazioni di
+-- macrobar, Raid Frame e finestra Raid Buffs; non aspetto/font globali).
 -- ============================================================
 
-local SAVED_RAID_BRANCHES = { "groupmaking", "whisplist", "macrobar", "raidframe" }
+local SAVED_RAID_BRANCHES = { "groupmaking", "whisplist", "macrobar", "raidframe", "raidbuffs" }
 local SAVED_RAID_LAYOUT_KEYS = { "groupmaking", "raidframe", "ms", "loot", "config" }
 
 function RLSuite:SaveRaid(title)
@@ -2497,6 +2506,7 @@ function RLSuite:InitModules()
     if self.lootManager and self.lootManager.Init then self.lootManager:Init() end
     if self.config and self.config.Init then self.config:Init() end
     if self.mainWindow and self.mainWindow.Init then self.mainWindow:Init() end
+    if self.cdwatcher and self.cdwatcher.Init then self.cdwatcher:Init() end
     if self.config and self.config.ApplyTheme then
         self.config:ApplyTheme(self.db.profile.appearance and self.db.profile.appearance.theme)
     end

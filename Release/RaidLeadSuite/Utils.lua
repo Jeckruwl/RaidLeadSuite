@@ -916,6 +916,8 @@ function Utils:AllWindows()
         if fr then table.insert(list, fr) end
     end
     add(RLSuite.mainWindow and RLSuite.mainWindow.frame)
+    add(RLSuite.raidFrame and RLSuite.raidFrame.buffWindow)
+    add(RLSuite.cdwatcher and RLSuite.cdwatcher.frame)
     add(RLSuite.macrobar and RLSuite.macrobar.keypadFrame)
     add(RLSuite.macrobar and RLSuite.macrobar.editFrame)
     -- Il Raid Frame HUD non viene mai skinnato: nessuno sfondo/bordo.

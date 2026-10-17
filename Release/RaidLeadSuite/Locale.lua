@@ -58,6 +58,18 @@ do
     L["No item selected"] = true
     L["Select an item from the history first!"] = true
     L["Loot debug: %d items from %s"] = true
+    L["Bag pickup is not available on this client."] = true
+    L["Item not found in your bags."] = true
+    L["You have only %d of this item in your bags."] = true
+    L["Not enough empty trade slots for that quantity."] = true
+    L["This client cannot split item stacks for pickup."] = true
+    L["Set a positive quantity before picking up the item."] = true
+    L["Click to pick up %d PS from bags"] = true
+    L["Click to pick up 1 item from bags"] = true
+    L["Click to pick up %d items from bags"] = true
+    L["Click to pick up item"] = true
+    L["Set a positive U quantity before starting the RESS roll."] = true
+    L["Set a positive R quantity before starting the Raid RESS roll."] = true
 
     -- GroupMaking
     L["Composition"] = true
@@ -71,6 +83,10 @@ do
     L["AtlasLoot is not loaded."] = true
     L["Spammer started."] = true
     L["Spammer stopped."] = true
+    L["Spam interval"] = true
+    L["Interval between spam messages; choose 20 to 60 seconds in 5-second steps."] = true
+    L["%ds"] = true
+    L["Request specific Specs"] = true
     L["Channel #"] = true
     L["Explicit channel number; leave empty (or 0) to auto-detect by name."] = true
     L["Whisper from %s received."] = true
@@ -88,7 +104,6 @@ do
     L["Create/save the event first, then tick 'Link to RLS'."] = true
     L["Event linked: %s"] = true
     L["Event unlinked."] = true
-    L["No event linked yet."] = true
     L["Created by %s"] = true
     L["Names (one per line)"] = true
     L["Add player"] = true
@@ -199,6 +214,15 @@ do
     L["Missing food buff"] = true
     L["Tanks"] = true
     L["Raid Buffs"] = true
+    L["CD Watcher"] = true
+    L["Open or close the cooldown watcher window."] = true
+    L["Buff icon size"] = true
+    L["Size of buff icons in the player rows."] = true
+    L["Header icon size"] = true
+    L["Size of category icons in the Raid Buffs header."] = true
+    L["Buff spacing"] = true
+    L["Spacing between the buff columns and category groups."] = true
+    L["Font size for player names in the Raid Buffs window."] = true
     L["Font color"] = true
     L["Icon spacing"] = true
     L["Gap between the Raid Buffs matrix icons."] = true
@@ -223,7 +247,7 @@ do
     L["Buff headers: media/BUFFCATICONS/BCI_<0..24>.tga"] = true
     L["Raid frame not initialized yet."] = true
     L["Color of the player name on the bars."] = true
-    L["Open the raid buffs matrix panel."] = true
+    L["Open or close the standalone raid-buff matrix."] = true
     L["Main tank"] = true
     L["Main assist"] = true
     L["Cannot assign Main Tank / Main Assist while in combat."] = true
@@ -290,7 +314,6 @@ do
     L["Default window height"] = true
     L["Bar scale"] = true
     L["Button matrix (bar only)"] = true
-    L["How many columns and buttons per column to use for the bar buttons. SaveRaid is a normal button of the matrix; the phase icon (with the phase name) sits in the title bar and cycles to the next phase on click."] = true
     L["Columns"] = true
     L["Buttons per column"] = true
     L["HUD anchors (ElvUI style)"] = true

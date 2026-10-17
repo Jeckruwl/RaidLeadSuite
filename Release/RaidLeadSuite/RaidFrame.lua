@@ -5,7 +5,6 @@
 -- itself. One horizontal StatusBar per player with the player name inside
 -- the bar; the fill is the HP% and the bar color is the class color.
 --   left   : flask / Well Fed icons (shown when the player is missing them)
---   right  : class key cooldowns (combat-log tracked)
 --   far right : vertical ability-check bar (ability per buff/debuff covered
 --              by the raid; greyed when present, flashing border when missing)
 --   below  : pre-boss alert buff bar / in-fight alert debuff bar
@@ -71,10 +70,6 @@ end
 
 local RF_GROUPS = 6
 local RF_PER_GROUP = 5
-local RF_MAX_CDS = 4
--- Font dei timer dei cooldown nelle icone a destra della barra (era 8: si
--- leggeva male). Il nome del player resta a nameFontSize, configurabile.
-local RF_CD_FONT = 11
 -- DURABILITY: slot di equipaggiamento controllati (4 = camicia e 19 = tabard
 -- non hanno durability). Per gli ALTRI player il client espone solo "oggetto
 -- rotto" (GetInventoryItemBroken); la percentuale esatta si legge solo sul
@@ -91,18 +86,27 @@ local RF_DRAG_SNAP = 10
 local RF_HEADER_H = 14
 local RF_GROUP_GAP = 8
 local RF_TANK_COUNT = 2     -- Tanks group sopra G1: barra MT + barra OT
--- Geometria del pannello "Raid Buffs" (matrice categorie x giocatori):
-local RF_BP_NAME_W = 84     -- colonna nome (class color)
-local RF_BP_CELL_W = 24      -- passo colonne DEFAULT (iconSize + iconSpacing)
-local RF_BP_HEADER_H = 16  -- non piu' usato: l'header 45° usa RF_MATRIX_HDR_H
-local RF_MATRIX_HDR_H = 80 -- DEPRECATA (era la strip dei testi a 45°): ora l'altezza della testata-icone = cellW + 4
+-- Geometria della finestra autonoma "Raid Buffs" (tabella compatta):
+local RF_BP_NAME_W = 92
+local RF_BP_ICON_SIZE = 16
+local RF_BP_HEADER_ICON_SIZE = 20
+local RF_BP_MIN_ICON_SIZE = 12
+local RF_BP_MAX_ICON_SIZE = 24
+local RF_BP_MIN_HEADER_ICON_SIZE = 20
+local RF_BP_MAX_HEADER_ICON_SIZE = 60
+local RF_BP_MIN_FONT_SIZE = 8
+local RF_BP_MAX_FONT_SIZE = 20
+local RF_BP_HEADER_H = 24
+local RF_BP_ROW_H = 17
+local RF_BP_TITLE_H = 24
+local RF_BP_PAD = 8
 -- Ordine di IMPORTANZA delle colonne della matrice (i buff piu' importanti
 -- a sinistra): benedizioni/stats e stamina prima, utility e % danno dopo.
 local RF_BP_PRIORITY = {
     stats = 1, stamina = 2, wild = 3, intellect = 4, spirit = 5, shadow = 6,
-    mp5 = 7, atkpower = 8, hp = 9, flask = 10, wellfed = 11, durability = 12,
+    mp5 = 7, atkpower = 8, hp = 9, focusMagic = 10,
+    flask = 11, wellfed = 12, durability = 13,
 }
-local RF_BP_BTN_W = 72
 
 -- --- Check buff CONSAPEVOLE DELLA COMPOSIZIONE -----------------------
 -- Colori dell'icona di intestazione di una categoria della matrice:
@@ -140,7 +144,6 @@ function RF:Init()
     self.rows = {}          -- populated slots, dense (for tests + UpdateAll)
     self.slots = {}         -- 30 slot frames (6 groups x 5 players)
     self.groupHeaders = {}  -- 6 group labels (G1..G6)
-    self.cdTracker = {}
     self:CreateFrame()
     self:RegisterEvents()
     self:ApplyLayout()
@@ -257,11 +260,10 @@ function RF:OnUnitEvent(event, unit)
 end
 
 function RF:OnCombatLog(event, ...)
-    -- 3.3.5: timestamp, subEvent, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, ...
+    -- Il tracking dei cooldown e' gestito da CD Watcher; qui resta solo
+    -- l'attribuzione di Focus Magic alla fonte nel combat log.
     local _, subEvent, _, sourceName, _, _, destName, _, spellId = ...
-    if subEvent == "SPELL_CAST_SUCCESS" then
-        self:OnSpellCast(sourceName, spellId)
-    elseif subEvent == "SPELL_AURA_APPLIED" and spellId == RF_FM_SPELL and sourceName then
+    if subEvent == "SPELL_AURA_APPLIED" and spellId == RF_FM_SPELL and sourceName then
         -- Focus Magic: l'aura vive sul BERSAGLIO, la FONTE e' il mago che
         -- l'ha lanciata. E' l'unico modo per dire NELL'ALERT quale mago non
         -- l'ha ancora dato (contare le aure non basta a fare i nomi).
@@ -376,15 +378,17 @@ function RF:LayoutMetrics()
     -- finisce al bordo destro delle barre e TUTTA la grafica matrice (icone,
     -- strip, backdrop) viene disegnata OLTRE il bordo destro. Cosi' la zona
     -- buff e' COMPLETAMENTE CLICK-THROUGH, a matrice aperta o chiusa.
-    -- Layout per row: [roleIcon (iconSize)] [HP bar = barWidth] [4 CDs]
+    -- Layout per row: [roleIcon (iconSize)] [HP bar = barWidth]
+    -- [target reserve used only by the MT/OT target bars]. CD monitoring and
+    -- its display now live in the standalone CD Watcher module.
     local roleReserve = iconSize + 4
-    local cdReserve = 4 * iconSize + 3 * 2 + 4
-    local rowWidth = roleReserve + barWidth + cdReserve + 4
+    local targetReserve = 4 * iconSize + 3 * 2 + 4
+    local rowWidth = roleReserve + barWidth + targetReserve + 4
     local W = rowWidth + abw + gap
     local rowHeight = math.max(barHeight, iconSize) + 4
     return {
         W = W, abw = abw, rowWidth = rowWidth,
-        roleReserve = roleReserve, cdReserve = cdReserve,
+        roleReserve = roleReserve, targetReserve = targetReserve,
         barWidth = barWidth, barHeight = barHeight,
         iconSize = iconSize, nameFontSize = nameFontSize,
         rowHeight = rowHeight,
@@ -435,20 +439,6 @@ function RF:EnsureTanks()
     for _, t in ipairs(self.tankSlots) do
         t.slot = nil   -- fuori dalla geometria di drop dei gruppi
     end
-    -- Bottone "Raid Buffs": A DESTRA DELLA BARRA OT (secondo slot tank).
-    -- Apre/chiude la matrice E la riga d'intestazione delle icone.
-    local btn = CreateFrame("Button", "RLSuiteRaidBuffsBtn", self.content)
-    btn:SetSize(RF_BP_BTN_W, RF_HEADER_H)
-    btn:EnableMouse(true)
-    RLSuite.utils:SkinButton(btn)
-    local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    lbl:SetPoint("CENTER", btn, "CENTER", 0, 0)
-    lbl:SetText(L["Raid Buffs"])
-    lbl:SetTextColor(1, 0.82, 0)
-    btn.label = lbl
-    btn:SetScript("OnClick", function() RF:ToggleBuffMatrix() end)
-    btn:Hide()
-    self.buffPanelBtn = btn
 end
 
 -- HANDLER CONDIVISI fra la riga-Button e l'overlay SECURE (la zona
@@ -643,8 +633,8 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
         tag:Hide()
         row.tankTag = tag
         row.tankTagText = tankTag -- per le tracce di debug ("barra MT/OT")
-        -- Barra TARGET del tank: al posto dei CD del player, a destra della
-        -- barra HP. Mostra nome + HP% del bersaglio attuale del tank.
+        -- Barra TARGET del tank a destra della barra HP; mostra nome + HP%
+        -- del bersaglio attuale del tank.
         local tbar = CreateFrame("StatusBar", nil, row)
         tbar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
         tbar:SetMinMaxValues(0, 100)
@@ -689,30 +679,6 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
     bar.nameText = nameFS
 
     -- Niente percentuale HP: la barra mostra solo il nome del player.
-
-    -- Class key cooldowns (up to 4, pooled; filled per class in ApplySlotCDs).
-    -- Anche questi FUORI dalla riga: le texture stanno su un supporto figlio
-    -- di content, sopra le righe (content+21), cosi' restano visibili anche
-    -- quando la riga non si mostra (stesso motivo della barra HP).
-    row.cdIcons = {}
-    local cdHolder = CreateFrame("Frame", nil, self.content)
-    cdHolder:SetFrameLevel((self.content.GetFrameLevel and self.content:GetFrameLevel() or 1) + 21)
-    cdHolder:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-    cdHolder:SetSize(1, 1)
-    cdHolder:EnableMouse(false)
-    row.cdHolder = cdHolder
-    for j = 1, RF_MAX_CDS do
-        local cd = cdHolder:CreateTexture(nil, "OVERLAY")
-        cd:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        cd:Hide() -- le barre tank non li usano mai (restano spenti)
-        local timer = cdHolder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        timer:SetPoint("CENTER", cd, "CENTER", 0, 0)
-        timer:SetFont("Fonts\\FRIZQT__.TTF", RF_CD_FONT, "OUTLINE")
-        timer:SetText("")
-        cd.timer = timer
-        row.cdIcons[j] = cd
-    end
-    row._cdClass = nil
 
     -- Drag player SHIFT+SINISTRO = gestito INTERAMENTE A MANO
     -- (OnMouseDown/Up + watchdog su frame dedicato), come il move HUD.
@@ -952,10 +918,10 @@ function RF:LayoutSlotGeometry(slot, m)
             slot.tankTag:SetPoint("LEFT", slot, "LEFT", 0, 0)
             slot.tankTag:SetJustifyH("CENTER")
         end
-        -- Barra TARGET dove prima c'erano i CD (solo tank).
+        -- Barra target accanto alla barra HP per le righe MT/OT.
         if slot.targetBar then
             slot.targetBar:ClearAllPoints()
-            local targetBarW = m.cdReserve or (m.rowWidth - roleReserve - m.barWidth)
+            local targetBarW = m.targetReserve or (m.rowWidth - roleReserve - m.barWidth - 4)
             slot.targetBar:SetSize(targetBarW, m.barHeight)
             slot.targetBar:SetPoint("TOPLEFT", slot.bar, "TOPRIGHT", 4, 0)
             local tex = self.db and self.db.appearance and self.db.appearance.barTexture
@@ -978,46 +944,6 @@ function RF:LayoutSlotGeometry(slot, m)
         local flags = (app.fontOutline == false) and "" or "OUTLINE"
         if slot.bar.nameText then
             slot.bar.nameText:SetFont(fontFile, m.nameFontSize, flags)
-        end
-        for j, cd in ipairs(slot.cdIcons or {}) do
-            if cd and cd.timer then
-                cd.timer:SetFont(fontFile, RF_CD_FONT, flags)
-            end
-        end
-    end
-    for j, cd in ipairs(slot.cdIcons or {}) do
-        if slot.isTank then
-            -- Barre tank: MAI i CD del player a destra; al loro posto la
-            -- barra target del tank (slot.targetBar).
-            cd:Hide()
-        else
-            cd:ClearAllPoints()
-            cd:SetSize(iconSize, iconSize)
-            cd:SetPoint("LEFT", slot.bar, "RIGHT", 4 + (j - 1) * (iconSize + 2), 0)
-        end
-    end
-end
-
-function RF:ApplySlotCDs(slot, class)
-    if slot.isTank then
-        for _, cd in ipairs(slot.cdIcons or {}) do cd:Hide() end
-        return
-    end
-    slot._cdClass = class
-    local abilities = RLSuite.keyAbilities[class] or {}
-    for j = 1, RF_MAX_CDS do
-        local cd = slot.cdIcons and slot.cdIcons[j]
-        if cd then
-            local ability = abilities[j]
-            if ability then
-                local meta = RLSuite.abilityByName and RLSuite.abilityByName[ability]
-                cd:SetTexture((meta and meta.icon) or "Interface\\Icons\\INV_Misc_QuestionMark")
-                cd.ability = ability
-                cd:Show()
-            else
-                cd.ability = nil
-                cd:Hide()
-            end
         end
     end
 end
@@ -1061,10 +987,6 @@ function RF:FillSlot(slot, member)
         slot.targetBar:Show()
     end
 
-    -- I CD si rimettono SEMPRE (non solo al cambio di classe): ClearSlot li
-    -- spegne, quindi svuotare e riempire lo stesso slot lasciava i CD spenti.
-    self:ApplySlotCDs(slot, member.class)
-
     self:UpdateRow(slot)
 end
 
@@ -1097,9 +1019,6 @@ function RF:ClearSlot(slot)
     end
     self:SetConsumable(slot.flaskIcon, "off")
     self:SetConsumable(slot.foodIcon, "off")
-    for _, cd in ipairs(slot.cdIcons or {}) do
-        cd:Hide()
-    end
 
     -- Slot vuoto = invisibile (in QUALSIASI fase). Riemerge come drop
     -- target SOLO mentre un player e' in trascinamento (RefreshDropTargets,
@@ -1292,11 +1211,9 @@ function RF:RebuildTanks()
     self:_SetupTankSlot(self.tankSlots[2], otInfo, active)
     if active then
         self.tankHeader:Show()
-        if self.buffPanelBtn then self.buffPanelBtn:Show() end
     else
         self.tankHeader:Hide()
-        if self.buffPanelBtn then self.buffPanelBtn:Hide() end
-        -- la matrice buff si spegne da sola: righe assenti => nessuna cella/header
+        -- La finestra autonoma si chiude da sola quando il roster si svuota.
         self:RefreshBuffMatrix()
     end
 end
@@ -1625,21 +1542,6 @@ function RF:UpdateRow(row)
 
     self:UpdateConsumables(row)
     self:UpdateRoleIcon(row)
-
-    for _, cd in ipairs(row.cdIcons) do
-        if cd and cd.ability then
-            local remaining = self:GetAbilityRemaining(row.name, unit, cd.ability)
-            if remaining and remaining > 0 then
-                cd:SetVertexColor(0.35, 0.35, 0.35)
-                if cd.timer then
-                    cd.timer:SetText(RLSuite.utils:FormatCD(remaining))
-                end
-            else
-                cd:SetVertexColor(1, 1, 1)
-                if cd.timer then cd.timer:SetText("") end
-            end
-        end
-    end
 end
 
 function RF:UpdateConsumables(row)
@@ -1705,39 +1607,6 @@ function RF:SetConsumable(btn, state)
             btn.icon:SetVertexColor(1, 1, 1)
         end
     end
-end
-
--- GetSpellCooldown only works for the player. Raid members are tracked via combat log + known CD.
--- Queries are made by spellId (locale-safe): the name form of GetSpellCooldown
--- requires the spell to be in the player's spellbook and uses localized names.
-function RF:GetAbilityRemaining(playerName, unit, ability)
-    if unit and UnitIsUnit(unit, "player") then
-        local ids = RLSuite.abilitySpellIdByName and RLSuite.abilitySpellIdByName[ability]
-        for _, spellId in ipairs(ids or {}) do
-            local start, duration = GetSpellCooldown(spellId)
-            if start and duration and duration > 1.5 then
-                local rem = start + duration - GetTime()
-                if rem > 0 then return rem end
-            end
-        end
-    end
-    local expire = self.cdTracker and self.cdTracker[playerName] and self.cdTracker[playerName][ability]
-    if expire then
-        local rem = expire - GetTime()
-        if rem > 0 then return rem end
-    end
-    return 0
-end
-
-function RF:OnSpellCast(sourceName, spellId)
-    if not sourceName or not spellId then return end
-    local ability = RLSuite.abilityBySpellId and RLSuite.abilityBySpellId[spellId]
-    if not ability then return end
-    local meta = RLSuite.abilityByName and RLSuite.abilityByName[ability]
-    if not meta or not meta.cd then return end
-    self.cdTracker = self.cdTracker or {}
-    self.cdTracker[sourceName] = self.cdTracker[sourceName] or {}
-    self.cdTracker[sourceName][ability] = GetTime() + meta.cd
 end
 
 -- ------------------------------------------------------------------
@@ -2500,43 +2369,10 @@ function RF:ApplyLayout()
     -- Trasparenza complessiva dell'HUD (Config -> Raid Frame -> Layout).
     self.frame:SetAlpha(db.alpha or 1)
 
-    -- GRIGLIA IMMOBILE (v1.11.62): le posizioni delle barre NON dipendono
-    -- dal roster. Ogni gruppo ha SEMPRE il suo blocco (header + 5 righe), il
-    -- blocco Tanks (header + MT/OT) e la zona strip in alto sono riservati
-    -- sempre, anche se il gruppo e' vuoto o il raid e' vuoto. Cosi' chi sta
-    -- in G6 sta IN FONDO anche a raid vuoto, la griglia non si ri-compatta
-    -- mai e il buff check resta allineato alle righe.
+    -- GRIGLIA IMMOBILE: le posizioni delle barre non dipendono dal roster.
+    -- Restano riservati il blocco Tanks e i sei blocchi G1..G6; la matrice
+    -- Raid Buffs e' una finestra autonoma e non aggiunge righe all'HUD.
     local y = 0
-    -- MATRICE "Raid Buffs" attiva? Riga d'intestazione IN CIMA con i nomi
-    -- sintetici delle categorie, poi il resto (Tanks compreso) scende.
-    local matrixOn = self.buffMatrixOn and self.rows and self.rows[1] ~= nil
-    -- La RIGA D'INTESTAZIONE e' PERMANENTE: fuori dal pannello toggle,
-    -- visibile INDIPENDENTEMENTE dal tasto "Raid Buffs" finche' c'e' un
-    -- roster. Il tasto accende/spegne SOLO le icone dei player.
-    local headersOn = self.rows and self.rows[1] ~= nil
-    local mCols = headersOn and self:_MatrixCols() or nil
-    -- Altezza della zona strip (icone di intestazione della matrice):
-    -- RISERVATA SEMPRE nel blocco G1, a matrice accesa o spenta.
-    local stripH = m.cellW + 4
-    if headersOn then
-        -- Testata a ICONE CUSTOM (BCI_<c-1>.tga): creazione/refresh qui; la
-        -- POSIZIONE vera viene fatta nel loop dei gruppi, ALL'ALTEZZA DELL'
-        -- HEADER G1 (vedi sotto). UNA SetTexture diretta sui tga dell'utente:
-        -- niente blp, niente fallback, niente detection.
-        for c, col in ipairs(mCols) do
-            local btn = self:_MatrixHeaderBtn(c)
-            btn._col = col
-            btn._icon:SetTexture(self:_BuffHeaderIconPath(col, c))
-            btn._icon:ClearAllPoints()
-            btn._icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
-            btn._icon:SetSize(m.cellW, m.cellW) -- size = iconSize + iconSpacing, FISSO
-            -- NIENTE Show qui: la riga d'intestazione nasceva permanente, ora
-            -- si mostra/nasconde col tasto "Raid Buffs" (RefreshBuffMatrix).
-        end
-    end
-    -- Se la matrice e' spenta, anche lo sfondo della strip si nasconde.
-    if self._buffHdrBg and not matrixOn then self._buffHdrBg:Hide() end
-
     -- Font size configurabile delle intestazioni di gruppo (G1..G6, Tanks).
     local ghApp = (self.db and self.db.appearance) or {}
     local ghFont = ghApp.font or "Fonts\\FRIZQT__.TTF"
@@ -2552,25 +2388,11 @@ function RF:ApplyLayout()
     -- BLOCCO TANKS (SOPRA G1): header + barre MT/OT (sempre 2, piene o
     -- vuote). SPAZIO RISERVATO SEMPRE: la griglia non si muove quando il
     -- roster appare/sparisce (prima il blocco c'era solo con un roster).
-    local tankBlockHeight = m.groupHeaderH + 2 * (m.rowHeight + m.rowSpacing)
-    local mwHeight = 0
-    local mw = RLSuite.mainWindow
-    if mw and mw.frame and mw.frame:IsShown() then
-        local tbH = (mw.titleBar and mw.titleBar:GetHeight()) or 26
-        local mfH = mw.frame:GetHeight() or 0
-        mwHeight = tbH + 2 + mfH
-    end
-    local tankToStripSpacing = 0
-    if mwHeight > tankBlockHeight then
-        tankToStripSpacing = mwHeight - tankBlockHeight
-    end
-
     if self.tankHeader then
         self.tankHeader:ClearAllPoints()
         self.tankHeader:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
         self.tankHeader:SetWidth(m.rowWidth)
         y = y - m.groupHeaderH
-        local otSlot = nil
         for ti = 1, RF_TANK_COUNT do
             local t = self.tankSlots and self.tankSlots[ti]
             if t then
@@ -2578,86 +2400,18 @@ function RF:ApplyLayout()
                 t:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
                 self:LayoutSlotGeometry(t, m)
                 y = y - m.rowHeight - m.rowSpacing
-                if ti == 2 then otSlot = t end -- OT = seconda barra tank
             end
         end
-        y = y - tankToStripSpacing
-
-        -- Bottone "Raid Buffs": sotto le barre target dei tank, allineato
-        -- come l'header G1: bordo INFERIORE = fondo della zona strip, bordo
-        -- DESTRO = fine barra. (Show/Hide li decide RebuildTanks.)
-        if self.buffPanelBtn and otSlot then
-            local btnW = m.cdReserve or (4 * m.iconSize + 6)
-            local btnH = m.barHeight or m.rowHeight
-            self.buffPanelBtn:SetSize(btnW, btnH)
-            self.buffPanelBtn:ClearAllPoints()
-            if headersOn then
-                self.buffPanelBtn:SetPoint("BOTTOMRIGHT", self.content, "TOPLEFT",
-                    m.rowWidth, y - stripH)
-            elseif otSlot.targetBar then
-                self.buffPanelBtn:SetPoint("TOPRIGHT", otSlot.targetBar, "BOTTOMRIGHT", 0, 0)
-            else
-                self.buffPanelBtn:SetPoint("BOTTOMRIGHT", self.content, "TOPLEFT",
-                    m.rowWidth, y)
-            end
-            -- Show/Hide NON qui: lo decide RebuildTanks (spento a roster vuoto).
-        end
-    elseif self.buffPanelBtn then
-        self.buffPanelBtn:Hide()
-        y = y - tankToStripSpacing
     end
-    -- ZONA STRIP tra Tanks e G1: SEMPRE riservata (cellW+4 = dimensione delle
-    -- icone d'intestazione), a matrice accesa o spenta, con o senza roster.
-    local stripTop = y
-    y = y - stripH
     for g = 1, RF_GROUPS do
         local hdr = self.groupHeaders and self.groupHeaders[g]
         if hdr then
             hdr:ClearAllPoints()
-            if g == 1 then
-                -- Header G1: ATTACCATO IN BASSO alla sua zona strip (stessa
-                -- linea a matrice accesa e spenta).
-                hdr:SetPoint("BOTTOMLEFT", self.content, "TOPLEFT", 2, stripTop - stripH)
-            else
-                hdr:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
-            end
+            hdr:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
             hdr:SetWidth(m.rowWidth)
         end
-        if g == 1 then
-            -- Icone di intestazione + sfondo della strip: DENTRO la zona
-            -- riservata (non spostano niente quando si accendono).
-            if matrixOn and mCols then
-                local totalColsW = (#mCols * m.cellW) + self:_BuffColOffset(#mCols, m.iconSpacing) + 6
-                for c = 1, #mCols do
-                    local btn = self._buffHdrBtns and self._buffHdrBtns[c]
-                    if btn then
-                        local extraGap = self:_BuffColOffset(c, m.iconSpacing)
-                        btn:ClearAllPoints()
-                        btn:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
-                            m.rowWidth + 4 + (c - 1) * m.cellW + extraGap, stripTop)
-                        btn:SetSize(m.cellW, stripH)
-                    end
-                end
-                -- Backdrop UNICO della strip: valore del backdrop barre
-                -- (appearance.matrixBackdrop, Config -> Raid Frame).
-                local bg = self._buffHdrBg
-                if not bg then
-                    bg = self.frame:CreateTexture(nil, "BACKGROUND")
-                    self._buffHdrBg = bg
-                end
-                local bc = (self.db and self.db.appearance and self.db.appearance.matrixBackdrop) or {}
-                bg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
-                bg:ClearAllPoints()
-                bg:SetPoint("TOPLEFT", self.frame, "TOPLEFT", m.rowWidth + 2, stripTop)
-                bg:SetSize(totalColsW, stripH)
-                bg:Show()
-            elseif self._buffHdrBg then
-                self._buffHdrBg:Hide()
-            end
-        else
-            -- Header del gruppo: riga sua, riservata sempre.
-            y = y - m.groupHeaderH
-        end
+        -- Header del gruppo: riga sua, riservata sempre.
+        y = y - m.groupHeaderH
         -- 5 RIGHE DEL GRUPPO: lo spazio e' RISERVATO SEMPRE (le righe vuote
         -- restano invisibili ma ognuna al suo posto: niente ri-compattamento).
         for s = 1, RF_PER_GROUP do
@@ -2666,9 +2420,6 @@ function RF:ApplyLayout()
                 slot:ClearAllPoints()
                 slot:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
                 self:LayoutSlotGeometry(slot, m)
-                if matrixOn and slot.member and slot:IsShown() then
-                    self:_LayoutMatrixRow(slot, m, y, mCols)
-                end
             end
             y = y - m.rowHeight - m.rowSpacing
         end
@@ -2711,15 +2462,10 @@ function RF:Update()
 end
 
 -- ------------------------------------------------------------------
--- MATRICE "Raid Buffs" (stile Method Raid Tools) INTEGRATA nel Raid
--- Frame: si attiva col tasto "Raid Buffs" (Riga header Tanks). Le icone
--- di ogni categoria stanno LUNGO LA RIGA del player nei gruppi; una riga
--- di intestazione coi nomi sintetici delle categorie appare in cima.
--- Niente pannello separato, niente colonne Flask/Well Fed (le icone
--- consumabili per-riga le controllano gia').
+-- MATRICE "Raid Buffs" autonoma (stile Method Raid Tools): una finestra
+-- separata con intestazioni a icona e righe roster compatte, non divise in
+-- gruppi. La tabella usa tutte le categorie definite in Core.lua.
 -- ------------------------------------------------------------------
--- Colonne MATRICE visibili: le 21 categorie MENO Flask e Well Fed
--- (gia' controllate dalle icone consumabili per-riga nel Raid Frame).
 function RF:_MatrixCols()
     if self._matrixColsCache then return self._matrixColsCache end
     local out = {}
@@ -2737,22 +2483,33 @@ function RF:_MatrixCols()
     return out
 end
 
--- Intestazione matrice: UN BOTTONE per colonna con l'ICONA CUSTOM della
--- categoria (media/BUFFCATICONS/BCI_<c-1>.tga, i file caricati dall'utente).
--- Ordine = colonne da sinistra a destra; size = iconSize + iconSpacing.
--- Hover: l'icona si accende; click: raid warning per quella categoria.
+-- Gli indici dei file BCI conservano l'ordine storico delle 25 categorie;
+-- la matrice visibile puo' ometterne alcune, quindi l'indice non coincide
+-- necessariamente con la posizione corrente della colonna. Le icone di
+-- consumabili e durability restano texture di gioco (non BCI).
+local RF_BUFF_ICON_INDEX = {
+    stats = 0, stamina = 1, wild = 2, intellect = 3, spirit = 4, shadow = 5,
+    armor = 6, mp5 = 7, atkpower = 8, apIncrease = 9, hp = 10, strAgi = 11,
+    spellPower = 12, spellHaste = 13, meleeHaste = 14, meleeCrit = 15,
+    spellCrit = 16, focusMagic = 17, damage = 18, haste = 19,
+    dmgReduction = 20, healReceived = 21, physReduction = 22,
+    replen = 23, retAura = 24,
+}
+
+-- Header matrix: icona custom per categoria. c resta 1-based per la UI;
+-- _BuffHeaderIconPath sceglie l'indice BCI esplicito della categoria.
 function RF:_BuffCatIconPath(c)
     return RLSuite:AddonTexture("media\\BUFFCATICONS\\BCI_" .. (c - 1) .. ".tga")
 end
 
--- Icona di intestazione di una colonna: le categorie di buff usano i tga
--- caricati dall'utente (BCI_<c-1>.tga, indici INVARIATI perche' la durability
--- sta in fondo), le colonne di servizio usano la loro icona di gioco.
+-- Le intestazioni sono a gruppi: buff di classe, consumabili, durability.
+-- Il pannello separato conserva i due divisori orizzontali, ma le righe roster
+-- non hanno piu' sottosezioni per gruppo.
 function RF:_BuffColOffset(c, iconSpacing)
-    local gap = iconSpacing or 8
+    local gap = iconSpacing or 4
     local extra = 0
-    if c >= 10 then extra = extra + gap end
-    if c >= 12 then extra = extra + gap end
+    if c >= 11 then extra = extra + gap end -- prima colonna consumabili
+    if c >= 13 then extra = extra + gap end -- durability
     return extra
 end
 
@@ -2760,16 +2517,17 @@ function RF:_BuffHeaderIconPath(col, c)
     if col and (col.kind == "durability" or col.key == "flask" or col.key == "wellfed") then
         return col.icon
     end
-    return self:_BuffCatIconPath(c)
+    local index = col and RF_BUFF_ICON_INDEX[col.key]
+    if index == nil then index = (c or 1) - 1 end
+    return self:_BuffCatIconPath(index + 1)
 end
 
 function RF:_MatrixHeaderBtn(c)
     self._buffHdrBtns = self._buffHdrBtns or {}
     local btn = self._buffHdrBtns[c]
     if not btn then
-        -- TIRATI FUORI DAL PANNELLO: figli della WINDOW, non di content: la
-        -- riga d'intestazione resta SEMPRE visibile, per sempre.
-        btn = CreateFrame("Button", nil, self.frame)
+        -- Le intestazioni appartengono alla finestra autonoma, non all'HUD.
+        btn = CreateFrame("Button", nil, self:EnsureBuffWindow())
         local tex = btn:CreateTexture(nil, "OVERLAY")
         tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         tex:SetPoint("CENTER", btn, "CENTER", 0, 0)
@@ -2840,7 +2598,7 @@ end
 -- le icone sono texture interne del gioco, si caricano per definizione).
 function RF:DiagnoseBuffCatIcons()
     local p = function(t) RLSuite.utils:Print(t) end
-    p(L["Buff headers: per-category game icons (no custom files)"])
+    p(L["Buff headers: per-category icons"])
     local cols = self._matrixColsCache or self:_MatrixCols()
     for c = 1, #cols do
         local btn = self._buffHdrBtns and self._buffHdrBtns[c]
@@ -3506,134 +3264,302 @@ function RF:ApplyDistanceFade(row)
         if row.roleIcon and row.roleIcon.SetAlpha then row.roleIcon:SetAlpha(alpha) end
         if row.flaskIcon and row.flaskIcon.SetAlpha then row.flaskIcon:SetAlpha(alpha) end
         if row.foodIcon and row.foodIcon.SetAlpha then row.foodIcon:SetAlpha(alpha) end
-        if row.cdHolder and row.cdHolder.SetAlpha then row.cdHolder:SetAlpha(alpha) end
         if row.tankTag and row.tankTag.SetAlpha then row.tankTag:SetAlpha(alpha) end
     end
 end
 
--- Toggle dal tasto "Raid Buffs": la matrice appare solo se cliccata.
-function RF:ToggleBuffMatrix()
-    self.buffMatrixOn = not (self.buffMatrixOn == true)
-    self:ApplyLayout()
-    self:RefreshBuffMatrix()
+-- Settings dedicati alla finestra Raid Buffs. I profili precedenti avevano
+-- solo raidframe.appearance.iconSpacing: lo usiamo come fallback finche' il
+-- nuovo campo spacing non viene impostato dalla Config.
+function RF:GetBuffWindowSettings()
+    local profile = (RLSuite.db and RLSuite.db.profile) or {}
+    local saved = profile.raidbuffs or {}
+    local legacyApp = profile.raidframe and profile.raidframe.appearance or {}
+    local iconSize = tonumber(saved.iconSize) or RF_BP_ICON_SIZE
+    local headerIconSize = tonumber(saved.headerIconSize) or RF_BP_HEADER_ICON_SIZE
+    local spacing = tonumber(saved.spacing)
+    if spacing == nil then spacing = tonumber(legacyApp.iconSpacing) or 8 end
+    local fontSize = tonumber(saved.fontSize) or 10
+
+    iconSize = math.floor(iconSize + 0.5)
+    headerIconSize = math.floor(headerIconSize + 0.5)
+    spacing = math.floor(spacing + 0.5)
+    fontSize = math.floor(fontSize + 0.5)
+    return {
+        iconSize = math.max(RF_BP_MIN_ICON_SIZE, math.min(RF_BP_MAX_ICON_SIZE, iconSize)),
+        headerIconSize = math.max(RF_BP_MIN_HEADER_ICON_SIZE, math.min(RF_BP_MAX_HEADER_ICON_SIZE, headerIconSize)),
+        spacing = math.max(0, math.min(16, spacing)),
+        fontSize = math.max(RF_BP_MIN_FONT_SIZE, math.min(RF_BP_MAX_FONT_SIZE, fontSize)),
+    }
 end
 
--- Celle-icona LUNGO LA RIGA del player: texture figlie di content (come le
--- icone consumabili), oltre il bordo destro della riga, centrate in altezza.
-function RF:_MatrixCell(slot, c)
-    slot._buffCells = slot._buffCells or {}
-    local tex = slot._buffCells[c]
-    if not tex then
-        tex = self.content:CreateTexture(nil, "ARTWORK")
-        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        slot._buffCells[c] = tex
-    end
-    return tex
+-- Finestra autonoma della matrice Raid Buffs. Le righe sono una lista
+-- continua del roster (nessuna intestazione G1..G6); i dati e i controlli
+-- restano quelli condivisi con il Raid Frame.
+function RF:EnsureBuffWindow()
+    if self.buffWindow then return self.buffWindow end
+
+    local f = CreateFrame("Frame", "RLSuiteRaidBuffsWindow", UIParent)
+    f:SetSize(400, 120)
+    f:Hide()
+    self.buffWindow = f
+    RLSuite.utils:MakeUniversalWindow(f, "raidbuffs")
+    -- Keep the universal dragging/layer behavior, but hide the dialog-style
+    -- outer border around this compact matrix window.
+    f._noOuterBorder = true
+    RLSuite.utils:SkinFrame(f)
+    RLSuite.utils:ApplySavedPos(f, "raidbuffs")
+
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("LEFT", f, "TOPLEFT", RF_BP_PAD, -RF_BP_TITLE_H / 2)
+    title:SetText(L["Raid Buffs"])
+    title:SetTextColor(1, 0.82, 0)
+    f._buffTitle = title
+
+    local close = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
+    close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -RF_BP_PAD, -6)
+    f.closeBtn = close
+
+    self._buffWindowHeaderBg = f:CreateTexture(nil, "BACKGROUND")
+    self._buffWindowHeaderBg:Hide()
+    self._buffWindowPlayerHeader = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self._buffWindowPlayerHeader:SetText(L["Player"])
+    self._buffWindowPlayerHeader:SetJustifyH("LEFT")
+
+    f:SetScript("OnShow", function()
+        RF.buffMatrixOn = true
+        RF:RefreshBuffMatrix()
+    end)
+    f:SetScript("OnHide", function()
+        RF.buffMatrixOn = false
+        RF._buffTipCol = nil
+        RF:HideBuffCatTip()
+        for _, btn in ipairs(RF._buffHdrBtns or {}) do btn:Hide() end
+        for _, row in ipairs(RF._buffWindowRows or {}) do row:Hide() end
+    end)
+    return f
 end
 
-function RF:_MatrixCellText(slot, c)
-    slot._buffCellTexts = slot._buffCellTexts or {}
-    local fs = slot._buffCellTexts[c]
-    if not fs then
-        fs = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        local fontFile = (self.db and self.db.appearance and self.db.appearance.font) or RLSuite.utils:GetUIFont()
-        local flags = (self.db and self.db.appearance and self.db.appearance.fontOutline == false) and "" or "OUTLINE"
-        fs:SetFont(fontFile, 10, flags)
-        fs:SetJustifyH("CENTER")
-        slot._buffCellTexts[c] = fs
+-- Flatten dei sei gruppi solo per costruire la tabella: il campo group resta
+-- nei dati per i check che ne hanno bisogno, ma non viene mostrato come riga.
+function RF:_BuffMatrixEntries()
+    local entries = {}
+    local groups = self:GetGroupedRoster()
+    for g = 1, RF_GROUPS do
+        for s = 1, RF_PER_GROUP do
+            local member = groups[g] and groups[g][s]
+            if member then entries[#entries + 1] = { member = member, group = g } end
+        end
     end
-    return fs
+    return entries
 end
 
-function RF:_LayoutMatrixRow(slot, m, y, mCols)
-    -- Backdrop UNO PER RIGA (non tutta la finestra): striscia grigia
-    -- semi-trasparente dietro le icone di QUESTO player, tra il bordo destro
-    -- della barra+cd e la fine dell'area colonne.
-    local bg = slot._matrixBg
-    if not bg then
-        bg = self.content:CreateTexture(nil, "BACKGROUND")
-        slot._matrixBg = bg
+function RF:_BuffWindowRow(index)
+    self._buffWindowRows = self._buffWindowRows or {}
+    local row = self._buffWindowRows[index]
+    if row then return row end
+
+    row = CreateFrame("Frame", nil, self:EnsureBuffWindow())
+    row._bg = row:CreateTexture(nil, "BACKGROUND")
+    row._name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    row._name:SetJustifyH("LEFT")
+    row._cells = {}
+    row._cellTexts = {}
+    row:Hide()
+    self._buffWindowRows[index] = row
+    return row
+end
+
+function RF:_BuffWindowLayoutSignature(entries, cols)
+    local app = (self.db and self.db.appearance) or {}
+    local settings = self:GetBuffWindowSettings()
+    local bc = app.matrixBackdrop or {}
+    local parts = {
+        tostring(#entries), tostring(#cols), tostring(app.font or ""),
+        tostring(settings.fontSize), tostring(settings.iconSize),
+        tostring(settings.headerIconSize), tostring(settings.spacing), tostring(app.fontOutline ~= false),
+        tostring(bc.r or 0.5), tostring(bc.g or 0.5),
+        tostring(bc.b or 0.5), tostring(bc.a or 0.35),
+    }
+    for _, col in ipairs(cols) do parts[#parts + 1] = tostring(col.key) end
+    for _, entry in ipairs(entries) do
+        local member = entry.member or {}
+        parts[#parts + 1] = tostring(member.name or "?")
+        parts[#parts + 1] = tostring(member.class or "")
     end
+    return table.concat(parts, "|")
+end
+
+function RF:_LayoutBuffWindow(entries, cols)
+    local f = self:EnsureBuffWindow()
+    local pad = RF_BP_PAD
+    local nameW = RF_BP_NAME_W
+    local settings = self:GetBuffWindowSettings()
+    local iconSize = settings.iconSize
+    local headerIconSize = settings.headerIconSize
+    -- Keep the category artwork from overlapping adjacent columns; the row
+    -- icons remain centered in the same (wider when needed) column pitch.
+    local cellW = math.max(iconSize, headerIconSize) + settings.spacing
+    local rowH = math.max(RF_BP_ROW_H, iconSize + 1, settings.fontSize + 4)
+    local headerH = math.max(RF_BP_HEADER_H, headerIconSize + 4, settings.fontSize + 4)
+    local titleH = RF_BP_TITLE_H
+    local gap = settings.spacing
+    local colW = (#cols * cellW) + self:_BuffColOffset(#cols, gap)
+    local width = (pad * 2) + nameW + colW
+    local visibleRows = math.max(#entries, 1)
+    local headerY = pad + titleH + 4
+    local rowsTop = headerY + headerH
+    local height = rowsTop + (visibleRows * rowH) + pad
+
+    f:SetSize(width, height)
+    if RLSuite.utils and RLSuite.utils.ClampWindowToScreen then
+        RLSuite.utils:ClampWindowToScreen(f)
+    end
+
+    local title = f._buffTitle
+    if title then
+        title:ClearAllPoints()
+        title:SetPoint("LEFT", f, "TOPLEFT", pad, -titleH / 2)
+    end
+    if f.closeBtn then
+        f.closeBtn:ClearAllPoints()
+        f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -pad, -6)
+    end
+
     local bc = (self.db and self.db.appearance and self.db.appearance.matrixBackdrop) or {}
-    local totalColsW = (#mCols * m.cellW) + self:_BuffColOffset(#mCols, m.iconSpacing) + 6
-    bg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
-    bg:ClearAllPoints()
-    bg:SetPoint("TOPLEFT", self.content, "TOPLEFT", m.rowWidth + 2, y - 1)
-    bg:SetSize(totalColsW, m.rowHeight - 2)
-    bg:Show()
-    for c = 1, #mCols do
-        local tex = self:_MatrixCell(slot, c)
-        local extraGap = self:_BuffColOffset(c, m.iconSpacing)
-        local posX = m.rowWidth + 4 + (c - 1) * m.cellW + extraGap + (m.cellW - m.iconSize) / 2
-        local posY = y - (m.rowHeight - m.iconSize) / 2
-        if tex then
+    local hdrBg = self._buffWindowHeaderBg
+    hdrBg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
+    hdrBg:ClearAllPoints()
+    hdrBg:SetPoint("TOPLEFT", f, "TOPLEFT", pad, -headerY)
+    hdrBg:SetSize(width - pad * 2, headerH)
+    hdrBg:Show()
+
+    local app = (self.db and self.db.appearance) or {}
+    local fontFile = app.font or RLSuite.utils:GetUIFont()
+    local fontSize = settings.fontSize
+    local flags = app.fontOutline == false and "" or "OUTLINE"
+
+    local nameHeader = self._buffWindowPlayerHeader
+    nameHeader:ClearAllPoints()
+    nameHeader:SetPoint("LEFT", f, "TOPLEFT", pad + 5, -(headerY + headerH / 2))
+    nameHeader:SetWidth(nameW - 10)
+    nameHeader:SetFont(fontFile, fontSize, flags)
+
+    for c, col in ipairs(cols) do
+        local btn = self:_MatrixHeaderBtn(c)
+        local x = pad + nameW + (c - 1) * cellW + self:_BuffColOffset(c, gap)
+        btn._col = col
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", f, "TOPLEFT", x, -headerY)
+        btn:SetSize(cellW, headerH)
+        btn._icon:SetTexture(self:_BuffHeaderIconPath(col, c))
+        btn._icon:ClearAllPoints()
+        btn._icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+        btn._icon:SetSize(headerIconSize, headerIconSize)
+    end
+
+    for i, entry in ipairs(entries) do
+        local row = self:_BuffWindowRow(i)
+        local y = rowsTop + (i - 1) * rowH
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", f, "TOPLEFT", pad, -y)
+        row:SetSize(width - pad * 2, rowH)
+        row._bg:SetTexture(bc.r or 0.5, bc.g or 0.5, bc.b or 0.5, bc.a or 0.35)
+        row._bg:ClearAllPoints()
+        row._bg:SetAllPoints(row)
+        row._name:ClearAllPoints()
+        row._name:SetPoint("LEFT", row, "LEFT", 5, 0)
+        row._name:SetWidth(nameW - 10)
+        row._name:SetFont(fontFile, fontSize, flags)
+        row._name:SetText(entry.member.name or "?")
+        local r, g, b = RLSuite.utils:GetClassColor(entry.member.class)
+        row._name:SetTextColor(r, g, b, 1)
+
+        for c = 1, #cols do
+            local x = nameW + (c - 1) * cellW + self:_BuffColOffset(c, gap)
+            local tex = row._cells[c]
+            if not tex then
+                tex = row:CreateTexture(nil, "ARTWORK")
+                tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                row._cells[c] = tex
+            end
             tex:ClearAllPoints()
-            tex:SetSize(m.iconSize, m.iconSize)
-            tex:SetPoint("TOPLEFT", self.content, "TOPLEFT", posX, posY)
+            tex:SetSize(iconSize, iconSize)
+            tex:SetPoint("CENTER", row, "TOPLEFT", x + cellW / 2, -rowH / 2)
+
+            local text = row._cellTexts[c]
+            if not text then
+                text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                text:SetJustifyH("CENTER")
+                row._cellTexts[c] = text
+            end
+            text:ClearAllPoints()
+            text:SetPoint("CENTER", row, "TOPLEFT", x + cellW / 2, -rowH / 2)
+            text:SetFont(fontFile, math.min(fontSize, 9), flags)
         end
-        local fs = self:_MatrixCellText(slot, c)
-        if fs then
-            fs:ClearAllPoints()
-            fs:SetPoint("CENTER", self.content, "TOPLEFT", posX + m.iconSize / 2, posY - m.iconSize / 2)
-        end
+    end
+    for i = #entries + 1, #(self._buffWindowRows or {}) do
+        self._buffWindowRows[i]:Hide()
     end
 end
 
--- Riempie la matrice: icona del buff attivo del player per categoria,
--- nascosta quando manca / matrice spenta / riga senza unita' reale.
+-- Toggle dal tasto Raid Buffs nella matrice di Raid Control.
+function RF:ToggleBuffMatrix()
+    local f = self:EnsureBuffWindow()
+    if f:IsShown() then
+        f:Hide()
+    else
+        f:Show()
+    end
+end
+
+-- Aggiorna la finestra separata usando gli stessi controlli classe/aura,
+-- tooltip e avvisi della vecchia matrice integrata.
 function RF:RefreshBuffMatrix()
-    -- Le letture di durability costano (19 slot x membro): si rifanno ogni
-    -- RF_DUR_REFRESH passate, non a ogni tick da 0,5s.
     self._durPass = (self._durPass or 0) + 1
     if self._durPass >= RF_DUR_REFRESH then
         self._durPass = 0
         self._durStamp = (self._durStamp or 0) + 1
     end
-    local on = self.buffMatrixOn and self.rows and self.rows[1] ~= nil
-    local cols = on and self:_MatrixCols() or nil
-    local headersOn = self.rows and self.rows[1] ~= nil
-    -- Aggregati per il check consapevole della composizione: si riempiono
-    -- nella STESSA passata che disegna le celle (una UnitBuff sola per cella).
-    -- I membri sono presi dagli slot dei gruppi: le barre MT/OT non fanno
-    -- parte di self.slots, quindi nessun doppio conteggio.
-    local aggs
-    if on and cols then
-        aggs = {}
-        local entries = {}
-        for _, slot in ipairs(self.slots or {}) do
-            if slot.member and slot:IsShown() then
-                entries[#entries + 1] = { member = slot.member, group = slot.group }
-            end
-        end
-        for c = 1, #cols do aggs[c] = self:_BuffAggNew(cols[c], entries) end
-        -- Debug: le aure dei finti si generano dalla composizione UNA volta
-        -- per passata (la firma evita di rifarlo a ogni cella).
-        if RLSuite.DebugMode and RLSuite:DebugMode() then self:_DebugRosterBuffSets() end
+
+    local f = self.buffWindow
+    if not (f and f:IsShown() and self.buffMatrixOn) then return end
+
+    local entries = self:_BuffMatrixEntries()
+    if #entries == 0 then
+        f:Hide()
+        return
     end
-    for _, slot in ipairs(self.slots or {}) do
-        for c = 1, #(slot._buffCells or {}) do
-            local tex = slot._buffCells[c]
-            local fs = slot._buffCellTexts and slot._buffCellTexts[c]
-            local icon, _, tr, tg, tb, has
-            local col = cols and cols[c]
-            if on and slot:IsShown() and slot.member and col then
-                icon, _, tr, tg, tb, has = self:_BuffCellIconFor(slot.member, col, slot.group)
-            end
-            if col and col.kind == "durability" then
+    local cols = self:_MatrixCols()
+    local layoutSig = self:_BuffWindowLayoutSignature(entries, cols)
+    if self._buffWindowLayoutSig ~= layoutSig then
+        self._buffWindowLayoutSig = layoutSig
+        self:_LayoutBuffWindow(entries, cols)
+    end
+
+    local aggs = {}
+    for c = 1, #cols do aggs[c] = self:_BuffAggNew(cols[c], entries) end
+    if RLSuite.DebugMode and RLSuite:DebugMode() then self:_DebugRosterBuffSets() end
+
+    for i, entry in ipairs(entries) do
+        local row = self:_BuffWindowRow(i)
+        row.member = entry.member
+        row.group = entry.group
+        row:Show()
+        for c, col in ipairs(cols) do
+            local tex = row._cells[c]
+            local text = row._cellTexts[c]
+            local icon, _, tr, tg, tb, has = self:_BuffCellIconFor(entry.member, col, entry.group)
+            if col.kind == "durability" then
                 if tex then tex:Hide() end
-                if not fs then fs = self:_MatrixCellText(slot, c) end
-                if on and slot:IsShown() and slot.member then
-                    local st = self:MemberDurability(slot.member, slot.group)
-                    local txt = self:_DurCellText(st)
-                    local dr, dg, db = self:_DurColor(st)
-                    fs:SetText(txt)
-                    fs:SetTextColor(dr, dg, db, 1)
-                    fs:Show()
-                else
-                    if fs then fs:Hide() end
-                end
+                local st = self:MemberDurability(entry.member, entry.group)
+                local value = self:_DurCellText(st)
+                local vr, vg, vb = self:_DurColor(st)
+                text:SetText(value)
+                text:SetTextColor(vr, vg, vb, 1)
+                text:Show()
             else
-                if fs then fs:Hide() end
+                if text then text:Hide() end
                 if icon then
                     tex:SetTexture(icon)
                     tex:SetVertexColor(tr or 1, tg or 1, tb or 1)
@@ -3641,43 +3567,21 @@ function RF:RefreshBuffMatrix()
                 else
                     tex:Hide()
                 end
-            end
-            if aggs and aggs[c] and slot.member and cols and cols[c] and slot:IsShown() then
                 if has == nil then has = (icon ~= nil) end
-                self:_BuffAggAdd(aggs[c], slot.member, slot.group, has)
             end
+            self:_BuffAggAdd(aggs[c], entry.member, entry.group, has)
         end
     end
-    -- Backdrop PER RIGA: visibile solo a matrice accesa, quando la riga
-    -- e' visibile e occupata. Nascosto altrimenti (toglie il tasto "Raid
-    -- Buffs" solo le icone e queste strisce, MAI l'intestazione).
-    for _, slot in ipairs(self.slots or {}) do
-        local bg = slot._matrixBg
-        if bg then
-            if on and slot:IsShown() and slot.member then
-                bg:Show()
-            else
-                bg:Hide()
-            end
-        end
-    end
-    -- LA RIGA D'INTESTAZIONE si accende/spegne COL TASTO "Raid Buffs":
-    -- stessa visibility della matrice. La zona strip e' RISERVATA SEMPRE
-    -- nella griglia fissa (v1.11.62): le icone si mostrano quando c'e' un
-    -- roster, ANCHE se G1 e' vuoto. Prima erano agganciate all'header G1 e
-    -- con G1 vuoto il check spariva (raid con pochi gruppi usati).
-    local stripReady = self.rows and self.rows[1] ~= nil
-    for c, btn in ipairs(self._buffHdrBtns or {}) do
-        if on and stripReady and RLSuite.raidBuffColumns and self:_MatrixCols()[c] then
+
+    for c = 1, #cols do
+        local btn = self._buffHdrBtns and self._buffHdrBtns[c]
+        if btn then
             btn:Show()
-            -- Stato della categoria (dall'aggregato di questa passata): grigio
-            -- se non disponibile con la composizione, rosso se non soddisfatta.
-            if aggs and aggs[c] then
-                self:ApplyBuffHeaderStatus(btn, self:_BuffStatusFromAgg(aggs[c]))
-            end
-        else
-            btn:Hide()
+            self:ApplyBuffHeaderStatus(btn, self:_BuffStatusFromAgg(aggs[c]))
         end
+    end
+    for c = #cols + 1, #(self._buffHdrBtns or {}) do
+        self._buffHdrBtns[c]:Hide()
     end
 end
 

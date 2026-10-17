@@ -30,6 +30,7 @@ RaidProfile.lua
 MacroBar.lua
 GroupMaking.lua
 RaidFrame.lua
+cdwatcher.lua
 MSManager.lua
 LootManager.lua
 Config.lua

@@ -134,6 +134,8 @@ local CATEGORIES = {
         { value = "editor", text = "Macro Editor" },
     } },
     { value = "raidframe", text = "Raid Frame" },
+    { value = "raidbuffs", text = "Raid Buffs" },
+    { value = "cdwatcher", text = "CD Watcher" },
     { value = "savedraids", text = "Saved Raids" },
     -- Lista ignora degli item di loot (v1.11.94): la voce va anche QUI,
     -- non solo nella tabella opzioni, altrimenti nel pannello non compare.
@@ -153,6 +155,8 @@ local NODES = {
     -- Raid Frame e' un nodo singolo: solo il contenuto Layout (checks,
     -- positions e alerts sono stati eliminati dal pannello).
     ["raidframe"]          = { "raidframe" },
+    ["raidbuffs"]          = { "raidbuffs" },
+    ["cdwatcher"]          = { "cdwatcher" },
     ["savedraids"]         = { "savedraids" },
     ["loot"]               = { "loot" },
     ["debug"]              = { "debug" },
@@ -352,22 +356,13 @@ function CFG:BuildOptionsTable()
 
     -- --- Module Menu (ex General/Window): voce top-level a se' -------
     local main = self:Layout("main")
-    main.matrixCols = main.matrixCols or 2
-    main.matrixRows = main.matrixRows or 4
 
     local moduleMenu = {
-        -- Le tre opzioni della barra moduli (scala, colonne, righe)
-        -- applicano il layout SUBITO: ApplyAll rilancia
-        -- RLSuite.mainWindow:ApplyLayout() ad ogni cambio dello slider.
+        -- La matrice è fissa a una riga e otto colonne; solo la scala della
+        -- barra moduli resta configurabile.
         barScale = slider(L["Bar scale"], nil, 1, 0.70, 1.30, 0.05,
             function() return main.scale or 1 end,
             function(_, v) main.scale = v; self:ApplyAll() end),
-        matrixCols = slider(L["Columns"], L["Columns in the bar button matrix."], 2, 1, 8, 1,
-            function() return main.matrixCols end,
-            function(_, v) main.matrixCols = v; self:ApplyAll() end),
-        matrixRows = slider(L["Buttons per column"], nil, 3, 1, 8, 1,
-            function() return main.matrixRows end,
-            function(_, v) main.matrixRows = v; self:ApplyAll() end),
     }
 
     -- --- General / Debug -----------------------------------------
@@ -413,7 +408,7 @@ function CFG:BuildOptionsTable()
         end
     end
 
-    local savedraids = { type = "group", name = L["Saved Raids"], order = 6, args = savedArgs }
+    local savedraids = { type = "group", name = L["Saved Raids"], order = 8, args = savedArgs }
 
     -- --- Groupmaking ---------------------------------------------
     -- Canali per lo spam LFM (General/Trade/LFG/World e il custom "global")
@@ -445,21 +440,46 @@ function CFG:BuildOptionsTable()
     end
     -- (lo slider Scale per-modulo e' eliminato: tutti i moduli seguono lo
     -- snapshot Scale in General)
+    local spamIntervalValues = {}
+    for seconds = 20, 60, 5 do
+        local key = tostring(seconds)
+        spamIntervalValues[key] = string.format(L["%ds"], seconds)
+    end
     local groupmaking = {
-        spamDesc = { type = "description", name = L["Spam channels"] .. ":", order = 1, fontSize = "medium" },
+        spamInterval = select(L["Spam interval"], L["Interval between spam messages; choose 20 to 60 seconds in 5-second steps."], 1,
+            spamIntervalValues,
+            function()
+                local groupmaking = RLSuite.groupmaking
+                if groupmaking and groupmaking.GetSpamInterval then
+                    return tostring(groupmaking:GetSpamInterval())
+                end
+                return "60"
+            end,
+            function(_, value)
+                local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+                if not d then return end
+                d.spamInterval = tonumber(value) or 60
+                if RLSuite.groupmaking.ApplySpamInterval then
+                    RLSuite.groupmaking:ApplySpamInterval()
+                end
+            end),
+        spamDesc = { type = "description", name = L["Spam channels"] .. ":", order = 2, fontSize = "medium" },
     }
     -- Canali standard WoW (Guild, Yell) e numerati (General, global).
     -- Per i canali numerati: numero 0 o vuoto = risoluzione automatica da GetChannelName;
     -- un numero esplicito > 0 ha la precedenza.
     -- Per Guild e Yell il campo numero non serve perche' non sono canali custom numerati.
-    local _gmChans = { "General", "Guild", "Yell", "global" }
+    -- Ordinamento visuale richiesto nella riga: global, General, Yell, Guild.
+    local _gmChans = { "global", "General", "Yell", "Guild" }
     for i, ch in ipairs(_gmChans) do
-        local tgl = toggle(L[ch], nil, 1 + i, gmSpamGet(ch), gmSpamSet(ch))
+        local tgl = toggle(L[ch], nil, 2 + i, gmSpamGet(ch), gmSpamSet(ch))
+        -- Tutte le checkbox e i due campi numerici usano mezza larghezza:
+        -- Guild e Yell non riservano spazio per un numero di canale.
+        tgl.width = "half"
         local isNumbered = (ch ~= "Guild" and ch ~= "Yell")
         if isNumbered then
-            tgl.width = "half"
             groupmaking["spam_" .. ch] = tgl
-            groupmaking["spamNum_" .. ch] = numinput(L["Channel #"], L["Explicit channel number; leave empty (or 0) to auto-detect by name."], 1 + i + 0.01,
+            groupmaking["spamNum_" .. ch] = numinput(L["Channel #"], L["Explicit channel number; leave empty (or 0) to auto-detect by name."], 2 + i + 0.01,
                 (function(c) return function()
                     local d = RLSuite.groupmaking and RLSuite.groupmaking.db
                     local n = d and d.spamChannelNums and tonumber(d.spamChannelNums[c])
@@ -473,7 +493,6 @@ function CFG:BuildOptionsTable()
                     d.spamChannelNums[c] = (n and n > 0) and n or nil
                 end end)(ch))
         else
-            tgl.width = "normal"
             groupmaking["spam_" .. ch] = tgl
         end
     end
@@ -598,9 +617,6 @@ function CFG:BuildOptionsTable()
         distanceAlpha = slider(L["Fade transparency"], L["Transparency of the bars beyond the distance."], 18, 0.20, 1.00, 0.05,
             function() return rf.appearance.distanceAlpha or 0.40 end,
             function(_, v) rf.appearance.distanceAlpha = v; self:ApplyAll() end),
-        iconSpacing = slider(L["Icon spacing"], L["Gap between the Raid Buffs matrix icons."], 12, 0, 16, 1,
-            function() return rf.appearance.iconSpacing or 8 end,
-            function(_, v) rf.appearance.iconSpacing = v; self:ApplyAll() end),
         rowSpacing = slider(L["Row spacing"], L["Gap between the player bars inside each group."], 13, -10, 12, 1,
             function() return rf.appearance.rowSpacing or 0 end,
             function(_, v) rf.appearance.rowSpacing = v; self:ApplyAll() end),
@@ -649,6 +665,43 @@ function CFG:BuildOptionsTable()
     -- Layout resta configurabile per il Raid Frame).
 
     local raidframe = raidLayout
+
+    -- --- Raid Buffs (standalone window) --------------------------
+    local function getBuffSettings()
+        local rf = RLSuite.raidFrame
+        if rf and rf.GetBuffWindowSettings then return rf:GetBuffWindowSettings() end
+        local saved = p.raidbuffs or {}
+        local legacy = p.raidframe and p.raidframe.appearance
+        return {
+            iconSize = tonumber(saved.iconSize) or 16,
+            headerIconSize = tonumber(saved.headerIconSize) or 20,
+            spacing = tonumber(saved.spacing) or tonumber(legacy and legacy.iconSpacing) or 8,
+            fontSize = tonumber(saved.fontSize) or 10,
+        }
+    end
+    local function setBuffSetting(key, value)
+        p.raidbuffs = p.raidbuffs or {}
+        p.raidbuffs[key] = value
+        self:ApplyAll()
+    end
+    local raidbuffs = {
+        iconSize = slider(L["Buff icon size"], L["Size of buff icons in the player rows."],
+            1, 12, 24, 1,
+            function() return getBuffSettings().iconSize end,
+            function(_, v) setBuffSetting("iconSize", v) end),
+        headerIconSize = slider(L["Header icon size"], L["Size of category icons in the Raid Buffs header."],
+            2, 20, 60, 1,
+            function() return getBuffSettings().headerIconSize end,
+            function(_, v) setBuffSetting("headerIconSize", v) end),
+        spacing = slider(L["Buff spacing"], L["Spacing between the buff columns and category groups."],
+            3, 0, 16, 1,
+            function() return getBuffSettings().spacing end,
+            function(_, v) setBuffSetting("spacing", v) end),
+        fontSize = slider(L["Font size"], L["Font size for player names in the Raid Buffs window."],
+            4, 8, 20, 1,
+            function() return getBuffSettings().fontSize end,
+            function(_, v) setBuffSetting("fontSize", v) end),
+    }
 
     -- --- Loot ----------------------------------------------------
     -- La LISTA IGNORA (item singoli) sta qui, modificabile a mano: una riga
@@ -713,9 +766,11 @@ function CFG:BuildOptionsTable()
             groupmaking = { type = "group", name = L["Pugger"], order = 3, args = groupmaking },
             macros = { type = "group", name = L["Macros"], order = 4, args = macros },
             raidframe = { type = "group", name = L["Raid Frame"], order = 5, args = raidframe },
+            raidbuffs = { type = "group", name = L["Raid Buffs"], order = 6, args = raidbuffs },
+            cdwatcher = { type = "group", name = L["CD Watcher"], order = 7, args = {} },
             savedraids = savedraids,
-            loot = { type = "group", name = L["Loot"], order = 7, args = loot },
-            debug = { type = "group", name = L["Debug"], order = 8, args = debug },
+            loot = { type = "group", name = L["Loot"], order = 9, args = loot },
+            debug = { type = "group", name = L["Debug"], order = 10, args = debug },
         },
     }
 end
