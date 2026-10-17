@@ -85,7 +85,8 @@ local RF_OUT_OF_SIGHT = 999       -- sentinella: unita' non visibile al client
 local RF_DRAG_SNAP = 10
 local RF_HEADER_H = 14
 local RF_GROUP_GAP = 8
-local RF_TANK_COUNT = 2     -- Tanks group separato sotto la matrice: MT + OT
+local RF_TANK_COUNT = 2     -- Tanks group in una finestra indipendente: MT + OT
+local RF_TANK_FRAME_GAP = 8
 -- Geometria della finestra autonoma "Raid Buffs" (tabella compatta):
 local RF_BP_NAME_W = 92
 local RF_BP_ICON_SIZE = 16
@@ -164,12 +165,14 @@ function RF:Toggle(force)
     end
     if self.frame:IsShown() then
         self.frame:Hide()
+        if self.tankFrame then self.tankFrame:Hide() end
     else
         if self.db and self.db.enabled == false then
             RLSuite.utils:Print(L["Raid Frame is disabled in Config."])
             return
         end
         self.frame:Show()
+        if self.tankFrame then self.tankFrame:Show() end
         self:Update()
     end
 end
@@ -183,6 +186,56 @@ function RF:PersistAnchor(fr, db)
         db.relPoint = relPoint
         db.x = x
         db.y = y
+    end
+end
+
+function RF:PersistTankAnchor(fr)
+    local db = self.db
+    if not (fr and fr.GetPoint and db) then return end
+    local point, relativeTo, relPoint, x, y = fr:GetPoint()
+    if not point then return end
+
+    local saved = db.tankWindow or {}
+    if relativeTo == UIParent then
+        saved.point, saved.relPoint = point, relPoint or point
+        saved.x, saved.y = x or 0, y or 0
+    else
+        -- Alla prima apertura il frame e' ancorato sotto la matrice; dopo
+        -- averlo spostato lo sganciamo e persistiamo coordinate UIParent.
+        local left = fr.GetLeft and fr:GetLeft()
+        local top = fr.GetTop and fr:GetTop()
+        local screenHeight = UIParent and UIParent.GetHeight and UIParent:GetHeight()
+        if type(left) == "number" and type(top) == "number" and type(screenHeight) == "number" then
+            saved.point, saved.relPoint = "TOPLEFT", "TOPLEFT"
+            saved.x, saved.y = left, top - screenHeight
+        else
+            return
+        end
+    end
+    db.tankWindow = saved
+    fr:ClearAllPoints()
+    fr:SetPoint(saved.point, UIParent, saved.relPoint or saved.point, saved.x or 0, saved.y or 0)
+end
+
+function RF:CanMoveWindow()
+    return self.db and ((not self.db.locked)
+        or (RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.anchorMode == true))
+end
+
+function RF:StartMovingWindow(fr)
+    if not (fr and not fr._rlsMoving and self:CanMoveWindow()) then return end
+    fr._rlsMoving = true
+    fr:StartMoving()
+end
+
+function RF:StopMovingWindow(fr)
+    if not (fr and fr._rlsMoving) then return end
+    fr._rlsMoving = false
+    fr:StopMovingOrSizing()
+    if fr == self.tankFrame then
+        self:PersistTankAnchor(fr)
+    else
+        self:PersistAnchor(fr, self.db)
     end
 end
 
@@ -223,11 +276,13 @@ function RF:CreateFrame()
     self.frame = f
 
     f:HookScript("OnShow", function()
+        if RF.tankFrame then RF.tankFrame:Show() end
         if RLSuite.mainWindow and RLSuite.mainWindow.SyncVisibilityWithRaidFrame then
             RLSuite.mainWindow:SyncVisibilityWithRaidFrame()
         end
     end)
     f:HookScript("OnHide", function()
+        if RF.tankFrame then RF.tankFrame:Hide() end
         if RLSuite.mainWindow and RLSuite.mainWindow.SyncVisibilityWithRaidFrame then
             RLSuite.mainWindow:SyncVisibilityWithRaidFrame()
         end
@@ -236,8 +291,42 @@ function RF:CreateFrame()
     -- Groups + slots (G1..G8) live in this container.
     self.content = CreateFrame("Frame", nil, f)
     self.content:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    self:CreateTankWindow()
     self:_InitDragPoller()
 
+end
+
+function RF:CreateTankWindow()
+    if self.tankFrame then return self.tankFrame end
+    local db = self.db or {}
+    local saved = db.tankWindow
+    local f = CreateFrame("Frame", "RLSuiteRaidTanksFrame", UIParent)
+    f:SetSize(140, 80)
+    f:SetFrameStrata("MEDIUM")
+    if self.frame and self.frame.GetFrameLevel then
+        f:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 10)
+    end
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    if saved and saved.point then
+        f:SetPoint(saved.point, UIParent, saved.relPoint or saved.point, saved.x or 0, saved.y or 0)
+    else
+        f:SetPoint("TOPLEFT", self.frame, "BOTTOMLEFT", 0, -RF_TANK_FRAME_GAP)
+    end
+    RLSuite.utils:ClampWindow(f)
+    f:SetScript("OnMouseDown", function(frame, button)
+        if button == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() then
+            RF:StartMovingWindow(frame)
+        end
+    end)
+    f:SetScript("OnMouseUp", function(frame, button)
+        if button == "RightButton" then RF:StopMovingWindow(frame) end
+    end)
+    f:Hide()
+    self.tankFrame = f
+    self.tankContent = CreateFrame("Frame", nil, f)
+    self.tankContent:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    return f
 end
 
 function RF:RegisterEvents()
@@ -403,13 +492,13 @@ function RF:LayoutMetrics()
     local groupBlockH = groupHeaderH + (RF_PER_GROUP * rowHeight)
         + ((RF_PER_GROUP - 1) * verticalSpacing)
     local tankBlockH = groupHeaderH + (RF_TANK_COUNT * tankRowHeight)
-        + (RF_TANK_COUNT * verticalSpacing)
+        + ((RF_TANK_COUNT - 1) * verticalSpacing)
     local gridHeight = (groupRows * groupBlockH)
         + ((groupRows - 1) * groupSpacing)
     local gridWidth = (groupsPerRow * rowWidth)
         + ((groupsPerRow - 1) * horizontalSpacing) + abw + gap
     local W = gridWidth
-    local rowsH = gridHeight + groupSpacing + tankBlockH
+    local rowsH = gridHeight
     return {
         W = W, abw = abw, rowWidth = rowWidth, gridWidth = gridWidth,
         tankRowWidth = tankRowWidth, tankRowHeight = tankRowHeight,
@@ -454,20 +543,22 @@ function RF:EnsureSlots()
     self:EnsureTanks()
 end
 
--- Gruppo "Tanks" (sotto la matrice): header dorato + 2 barre MT/OT. Le barre sono
--- slot normali SENZA icone consumabili (al loro posto il tag MT/OT) e non
--- fanno parte di self.slots: niente drag player su di esse.
+-- Gruppo Tanks in una finestra autonoma, distinta dalla matrice Raid Frame.
+-- Le barre MT/OT non fanno parte di self.slots e non sono drop target.
 function RF:EnsureTanks()
-    if self.tankHeader then return end
-    local hdr = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    hdr:SetText(L["Tanks"])
-    hdr:SetTextColor(1, 0.82, 0)
-    hdr:SetJustifyH("LEFT")
-    hdr:Hide()
-    self.tankHeader = hdr
-    self.tankSlots = {}
-    self.tankSlots[1] = self:CreateSlotFrame("MT", 0, "MT")
-    self.tankSlots[2] = self:CreateSlotFrame("OT", 0, "OT")
+    if not self.tankFrame then self:CreateTankWindow() end
+    if self.tankSlots and self.tankSlots[1] then return end
+    if not self.tankHeader then
+        local hdr = self.tankContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        hdr:SetText(L["Tanks"])
+        hdr:SetTextColor(1, 0.82, 0)
+        hdr:SetJustifyH("LEFT")
+        hdr:Hide()
+        self.tankHeader = hdr
+    end
+    self.tankSlots = self.tankSlots or {}
+    self.tankSlots[1] = self:CreateSlotFrame("MT", 0, "MT", self.tankContent)
+    self.tankSlots[2] = self:CreateSlotFrame("OT", 0, "OT", self.tankContent)
     for _, t in ipairs(self.tankSlots) do
         t.slot = nil   -- fuori dalla geometria di drop dei gruppi
     end
@@ -544,11 +635,8 @@ end
 
 local function RowBodyOnMouseDown(self2, button)
         if button == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() then
-            local f = RF.frame
-            if f and (not RF.db.locked or RLSuite.db.profile.anchorMode == true) then
-                f._rlsMoving = true
-                f:StartMoving()
-            end
+            local f = self2.isTank and RF.tankFrame or RF.frame
+            RF:StartMovingWindow(f)
             self2._pressBtn = nil
             return -- gesto con shift: mai trattato come click-icona
         end
@@ -587,12 +675,8 @@ end
 
 local function RowBodyOnMouseUp(self2, button)
         if button == "RightButton" then
-            local f = RF.frame
-            if f and f._rlsMoving then
-                f._rlsMoving = false
-                f:StopMovingOrSizing()
-                RF:PersistAnchor(f, RF.db)
-            end
+            local f = self2.isTank and RF.tankFrame or RF.frame
+            RF:StopMovingWindow(f)
         end
         -- Completamento drag player MANUALE: al release, slot sotto il
         -- cursore → move/swap. Serve anche se lo shift e' gia' rilasciato.
@@ -616,8 +700,9 @@ local function RowBodyOnMouseUp(self2, button)
         RF:RowPlainClick(self2, button)
 end
 
-function RF:CreateSlotFrame(slotIndex, group, tankTag)
-    local row = CreateFrame("Button", "RLSuiteRaidRow" .. slotIndex, self.content)
+function RF:CreateSlotFrame(slotIndex, group, tankTag, parent)
+    parent = parent or self.content
+    local row = CreateFrame("Button", "RLSuiteRaidRow" .. slotIndex, parent)
     row.slot = slotIndex
     row.group = group
     row.member = nil
@@ -632,8 +717,8 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
 
     -- Stato OFFLINE sopra la barra HP: il fondo rosso resta volutamente
     -- leggibile mentre la barra sottostante subisce il normale fade offline.
-    local offlineOverlay = CreateFrame("Frame", nil, self.content)
-    offlineOverlay:SetFrameLevel((self.content.GetFrameLevel and self.content:GetFrameLevel() or 1) + 23)
+    local offlineOverlay = CreateFrame("Frame", nil, parent)
+    offlineOverlay:SetFrameLevel((parent.GetFrameLevel and parent:GetFrameLevel() or 1) + 23)
     offlineOverlay:EnableMouse(false)
     local offlineBg = offlineOverlay:CreateTexture(nil, "BACKGROUND")
     offlineBg:SetAllPoints(offlineOverlay)
@@ -674,8 +759,8 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
     -- figli invisibili) la barra spariva mentre le icone restavano: la
     -- grafica del player NON deve dipendere dalla visibilita' della riga,
     -- perche' la riga serve solo come zona di click.
-    local bar = CreateFrame("StatusBar", nil, self.content)
-    bar:SetFrameLevel((self.content.GetFrameLevel and self.content:GetFrameLevel() or 1) + 20)
+    local bar = CreateFrame("StatusBar", nil, parent)
+    bar:SetFrameLevel((parent.GetFrameLevel and parent:GetFrameLevel() or 1) + 20)
     bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     bar:SetMinMaxValues(0, 100)
     bar:SetValue(0)
@@ -737,9 +822,9 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
     -- SOTTO le icone consumabili (content+30) → le icone mantengono le loro
     -- zone. Gli handler Lua condivisi coprono TUTTO il resto (Shift+destro
     -- sposta HUD, Shift+sinistro drag player, hit-test icone, tracce di debug).
-    local sec = CreateFrame("Button", nil, self.content, "SecureActionButtonTemplate")
+    local sec = CreateFrame("Button", nil, parent, "SecureActionButtonTemplate")
     sec:SetAllPoints(row)
-    sec:SetFrameLevel((self.content.GetFrameLevel and self.content:GetFrameLevel() or 1) + 5)
+    sec:SetFrameLevel((parent.GetFrameLevel and parent:GetFrameLevel() or 1) + 5)
     sec:RegisterForClicks("LeftButtonDown")
     sec:SetAttribute("type1", "target")
     sec:Hide() -- mostrato quando la riga ha un'unit reale (vedi FillSlot)
@@ -778,9 +863,9 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
     -- compreso) poteva restare invisibile -> niente bordo, niente hit-test,
     -- drop a vuoto. Le barre dei tank non sono drop target: nessun piano.
     if not row.isTank then
-        local plane = CreateFrame("Frame", nil, self.content)
+        local plane = CreateFrame("Frame", nil, parent)
         plane:SetAllPoints(row)
-        plane:SetFrameLevel((self.content.GetFrameLevel and self.content:GetFrameLevel() or 1) + 40)
+        plane:SetFrameLevel((parent.GetFrameLevel and parent:GetFrameLevel() or 1) + 40)
         plane:SetBackdrop(RF_DROP_GLOW_BACKDROP)
         plane:SetBackdropColor(0, 0, 0, 0)
         plane:SetBackdropBorderColor(0.55, 0.55, 0.55, 0.55)
@@ -1263,7 +1348,7 @@ function RF:RebuildTanks()
         self.tankHeader:Show()
     else
         self.tankHeader:Hide()
-        -- La finestra autonoma si chiude da sola quando il roster si svuota.
+        -- La visibilita' del frame Tanks segue UpdateVisibility del Raid Frame.
         self:RefreshBuffMatrix()
     end
 end
@@ -1341,23 +1426,21 @@ end
 
 function RF:UpdateVisibility()
     if not self.frame then return end
-    if RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.anchorMode == true then
+    local anchorMode = RLSuite.db and RLSuite.db.profile and RLSuite.db.profile.anchorMode == true
+    if anchorMode then
         if not self.frame:IsShown() then self.frame:Show() end
-        return
-    end
-    local inRaid = (RLSuite.InRaid and RLSuite:InRaid()) or (GetNumRaidMembers and GetNumRaidMembers() > 0)
-    if inRaid then
-        if self.db and self.db.enabled ~= false then
-            if not self.frame:IsShown() then
+    else
+        local inRaid = (RLSuite.InRaid and RLSuite:InRaid()) or (GetNumRaidMembers and GetNumRaidMembers() > 0)
+        if inRaid then
+            if self.db and self.db.enabled ~= false and not self.frame:IsShown() then
                 self.frame:Show()
             end
+        elseif not (RLSuite.DebugMode and RLSuite:DebugMode()) then
+            if self.frame:IsShown() then self.frame:Hide() end
         end
-    else
-        if not (RLSuite.DebugMode and RLSuite:DebugMode()) then
-            if self.frame:IsShown() then
-                self.frame:Hide()
-            end
-        end
+    end
+    if self.tankFrame then
+        if self.frame:IsShown() then self.tankFrame:Show() else self.tankFrame:Hide() end
     end
 end
 
@@ -2437,12 +2520,16 @@ function RF:ApplyLayout()
         RLSuite.mainWindow:ApplyLayout()
     end
     self.frame:SetScale(db.scale or 1)
+    if self.tankFrame then
+        self.tankFrame:SetScale(db.scale or 1)
+        self.tankFrame:SetAlpha(db.alpha or 1)
+    end
     -- Trasparenza complessiva dell'HUD (Config -> Raid Frame -> Layout).
     self.frame:SetAlpha(db.alpha or 1)
 
     -- Griglia deterministica: i gruppi sono distribuiti nelle colonne
     -- configurate, mentre le righe dei membri restano ordinate all'interno
-    -- di ogni gruppo. Il blocco Tanks e' posizionato sotto la griglia.
+    -- di ogni gruppo. Il frame Tanks viene disposto separatamente piu' sotto.
     local ghApp = (self.db and self.db.appearance) or {}
     local ghFont = ghApp.font or "Fonts\\FRIZQT__.TTF"
     local ghSize = m.groupHeaderFontSize
@@ -2504,37 +2591,44 @@ function RF:ApplyLayout()
         end
     end
 
-    -- Tanks e' una sezione autonoma sotto tutte le righe della matrice raid.
-    -- Il gap usa Group Spacing; non sposta ne' ridimensiona i gruppi sopra.
-    local tankTop = -m.gridHeight - m.groupSpacing
-    if self.tankHeader then
-        self.tankHeader:ClearAllPoints()
-        self.tankHeader:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, tankTop)
-        self.tankHeader:SetWidth(m.tankRowWidth)
-        if m.showGroupHeaders and rosterActive then
-            self.tankHeader:Show()
-        else
-            self.tankHeader:Hide()
+    -- La matrice Raid occupa solo la propria finestra; Tanks ha container,
+    -- geometria e hitbox separati, con posizione salvabile indipendentemente.
+    if self.tankFrame then
+        self.tankFrame:SetWidth(m.tankRowWidth)
+        self.tankFrame:SetHeight(math.max(20, m.tankBlockH))
+        if self.tankContent then
+            self.tankContent:ClearAllPoints()
+            self.tankContent:SetPoint("TOPLEFT", self.tankFrame, "TOPLEFT", 0, 0)
+            self.tankContent:SetSize(m.tankRowWidth, m.tankBlockH)
         end
-        local tankY = tankTop - m.groupHeaderH
-        for ti = 1, RF_TANK_COUNT do
-            local tank = self.tankSlots and self.tankSlots[ti]
-            if tank then
-                tank:ClearAllPoints()
-                tank:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, tankY)
-                self:LayoutSlotGeometry(tank, m)
-                tankY = tankY - (m.tankRowHeight or m.rowHeight) - m.verticalSpacing
+        if self.tankHeader then
+            self.tankHeader:ClearAllPoints()
+            self.tankHeader:SetPoint("TOPLEFT", self.tankContent, "TOPLEFT", 2, 0)
+            self.tankHeader:SetWidth(m.tankRowWidth)
+            if m.showGroupHeaders and rosterActive then
+                self.tankHeader:Show()
+            else
+                self.tankHeader:Hide()
+            end
+            local tankY = -m.groupHeaderH
+            for ti = 1, RF_TANK_COUNT do
+                local tank = self.tankSlots and self.tankSlots[ti]
+                if tank then
+                    tank:ClearAllPoints()
+                    tank:SetPoint("TOPLEFT", self.tankContent, "TOPLEFT", 0, tankY)
+                    self:LayoutSlotGeometry(tank, m)
+                    tankY = tankY - (m.tankRowHeight or m.rowHeight) - m.verticalSpacing
+                end
             end
         end
     end
 
-    -- Dimensioni indipendenti dal roster: pannello stabile da 1 a 40 player.
-    local rowsH = m.rowsH
+    -- Dimensioni della sola matrice raid, indipendenti dal roster: da 1 a 40 player.
     self.content:ClearAllPoints()
     self.content:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 0, 0)
-    self.content:SetSize(m.W, rowsH)
+    self.content:SetSize(m.W, m.gridHeight)
     self.frame:SetWidth(m.W)
-    self.frame:SetHeight(math.max(20, rowsH))
+    self.frame:SetHeight(math.max(20, m.gridHeight))
 
     -- Colore del font dei nomi (Config -> Raid Frame -> Layout -> Font color).
     local fc = db.appearance and db.appearance.fontColor

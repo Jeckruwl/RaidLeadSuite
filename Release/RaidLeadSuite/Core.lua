@@ -2514,7 +2514,7 @@ function RLSuite:ApplySavedRaidToUI()
 end
 
 -- ============================================================
--- Anchors stile ElvUI per le HUD (Raid Frame + MacroBar)
+-- Anchors stile ElvUI per le HUD (Raid Frame, Tanks separati + MacroBar)
 -- ============================================================
 function RLSuite:ApplyAnchorMode(on)
     self.db.profile.anchorMode = on and true or false
@@ -2525,6 +2525,14 @@ function RLSuite:ApplyAnchorMode(on)
             if not self.raidFrame.frame:IsShown() then
                 self.raidFrame.frame:Show()
                 if self.raidFrame.ApplyLayout then self.raidFrame:ApplyLayout() end
+            end
+        end
+        if self.raidFrame.tankFrame then
+            u:SetAnchorVisual(self.raidFrame.tankFrame, self.db.profile.anchorMode)
+            if self.db.profile.anchorMode and self.db.profile.raidframe and self.db.profile.raidframe.enabled ~= false then
+                self.raidFrame.tankFrame:Show()
+            elseif not self.raidFrame.frame:IsShown() then
+                self.raidFrame.tankFrame:Hide()
             end
         end
     end

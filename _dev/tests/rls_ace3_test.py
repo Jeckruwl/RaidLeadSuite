@@ -2508,10 +2508,50 @@ FC_BACK = (RLSuite.raidFrame.rows[1].bar.nameText._tc[1] == 1 and RLSuite.raidFr
 check(bool(rt.eval("FC_RED")), "font color option applies to the player name on the bars")
 check(bool(rt.eval("FC_BACK")), "font color restores to the default white")
 
-# Tanks group is separate and placed below the group matrix (MT + OT bars)
-check(rt.eval("RLSuite.raidFrame.tankHeader:GetText()") == "Tanks", "Tanks group header named exactly 'Tanks'")
+# Tanks owns a separate top-level window, initially anchored below the Raid matrix
+check(rt.eval("RLSuite.raidFrame.tankHeader:GetText()") == "Tanks", "Tanks window header named exactly 'Tanks'")
+rt.execute("""
+local rf = RLSuite.raidFrame
+local p = rf.tankFrame._points[1]
+local m = rf:LayoutMetrics()
+TANK_WINDOW_SEPARATE = rf.tankFrame ~= rf.frame and rf.tankFrame:GetParent() == UIParent
+    and rf.tankContent:GetParent() == rf.tankFrame
+    and rf.tankHeader:GetParent() == rf.tankContent
+    and rf.tankSlots[1]:GetParent() == rf.tankContent
+    and rf.slots[40]:GetParent() == rf.content
+TANK_WINDOW_BELOW = p[1] == 'TOPLEFT' and p[2] == rf.frame and p[3] == 'BOTTOMLEFT' and p[5] < 0
+local lastTankY = rf.tankSlots[2]._points[1][5]
+TANK_WINDOW_SIZES = rf.frame._h == m.gridHeight and rf.tankFrame._h == m.tankBlockH
+    and lastTankY - m.tankRowHeight >= -m.tankBlockH
+TANK_VISIBILITY_SYNC = rf.tankFrame:IsShown() == rf.frame:IsShown()
+local oldShift, oldAnchor = IsShiftKeyDown, RLSuite.db.profile.anchorMode
+IsShiftKeyDown = function() return true end
+RLSuite.db.profile.anchorMode = true
+local tankFrame, raidFrame = rf.tankFrame, rf.frame
+tankFrame._rlsMoving, tankFrame._moving = nil, false
+raidFrame._rlsMoving, raidFrame._moving = nil, false
+rf.tankSlots[1]._scripts.OnMouseDown(rf.tankSlots[1], 'RightButton')
+local startedOnlyTank = tankFrame._rlsMoving == true and tankFrame._moving == true and raidFrame._moving == false
+rf.tankSlots[1]._scripts.OnMouseUp(rf.tankSlots[1], 'RightButton')
+TANK_WINDOW_MOVE_INDEPENDENT = startedOnlyTank and not tankFrame._rlsMoving and tankFrame._moving == false and raidFrame._moving == false
+local oldTankPosition = rf.db.tankWindow
+tankFrame:ClearAllPoints()
+tankFrame:SetPoint('TOPLEFT', UIParent, 'TOPLEFT', 123, -77)
+rf:PersistTankAnchor(tankFrame)
+local saved = rf.db.tankWindow
+TANK_WINDOW_POSITION_SAVED = saved.point == 'TOPLEFT' and saved.relPoint == 'TOPLEFT' and saved.x == 123 and saved.y == -77
+rf.db.tankWindow = oldTankPosition
+tankFrame:ClearAllPoints()
+tankFrame:SetPoint(p[1], p[2], p[3], p[4], p[5])
+IsShiftKeyDown, RLSuite.db.profile.anchorMode = oldShift, oldAnchor
+""")
+check(bool(rt.eval("TANK_WINDOW_SEPARATE")), "Tanks rows live in their own UIParent window, separate from Raid matrix slots")
+check(bool(rt.eval("TANK_WINDOW_BELOW")), "new Tanks window is initially placed below the Raid matrix")
+check(bool(rt.eval("TANK_WINDOW_SIZES")), "Raid and Tanks windows each size to only their own content")
+check(bool(rt.eval("TANK_VISIBILITY_SYNC")), "Tanks window follows Raid Frame visibility")
+check(bool(rt.eval("TANK_WINDOW_MOVE_INDEPENDENT")), "Shift-right drag on a tank row moves only the separate Tanks window")
+check(bool(rt.eval("TANK_WINDOW_POSITION_SAVED")), "moving Tanks stores an independent UIParent position")
 check(bool(rt.eval("RLSuite.raidFrame.tankHeader:IsShown() == true")), "Tanks group visible when there is a raid roster")
-check(bool(rt.eval("RLSuite.raidFrame.tankHeader._points[1][5] < RLSuite.raidFrame.slots[40]._points[1][5] - RLSuite.raidFrame:LayoutMetrics().rowHeight")), "Tanks header is positioned below the bottom row of the raid-group matrix")
 check(bool(rt.eval("RLSuite.raidFrame.tankSlots[1].flaskIcon == nil and RLSuite.raidFrame.tankSlots[1].foodIcon == nil")), "tank bars have NO flask/food icons")
 check(rt.eval("RLSuite.raidFrame.tankSlots[1].tankTag:GetText()") == "MT" and rt.eval("RLSuite.raidFrame.tankSlots[2].tankTag:GetText()") == "OT", "MT and OT labels replace the consumable icons beside the bars")
 check(rt.eval("RLSuite.raidFrame.tankSlots[1].member.name") == "Testplayer", "debug: MT bar auto-fills with the first fake-roster player (fake members work as tanks)")
@@ -6140,7 +6180,7 @@ IMRF.buffMatrixOn = false
 
 IM_GRID_STABLE = (IM_Y4_MAT_ON == yBeforeBuffWindow and IM_Y4_MAT_OFF == yBeforeBuffWindow)
 
--- blocco Tanks riservato sempre: la barra MT non si muove col roster
+-- la finestra Tanks separata mantiene la geometria locale col roster
 local mt1 = IMRF.tankSlots[1]
 local mp1 = mt1 and mt1._points and mt1._points[1]
 IM_MT_Y_ONE = mp1 and mp1[5]
@@ -6168,7 +6208,7 @@ check(bool(rt.eval("IM_DRAG_SHOWN >= 5")), "v1.11.62: durante il drag gli slot v
 
 check(bool(rt.eval("IM_WINDOW_OPEN and IM_NO_GROUP_HEADERS and IM_RF_BUFF_BTN")), "v1.11.62: Raid Buffs opens as a standalone window from Raid Control, with no group headers")
 check(bool(rt.eval("IM_H_MAT_OFF == IM_H_MAT_ON and IM_GRID_STABLE")), "v1.11.62: opening/closing the standalone buff window never shifts Raid Frame bars")
-check(bool(rt.eval("IM_MT_Y_ONE == IM_MT_Y_FULL")), "v1.11.62: il blocco Tanks e' riservato sempre (barra MT ferma: %r / %r)" % (rt.eval("IM_MT_Y_ONE"), rt.eval("IM_MT_Y_FULL")))
+check(bool(rt.eval("IM_MT_Y_ONE == IM_MT_Y_FULL")), "v1.11.62: la barra MT conserva la stessa posizione nella sua finestra Tanks separata (y=%r / %r)" % (rt.eval("IM_MT_Y_ONE"), rt.eval("IM_MT_Y_FULL")))
 
 rt.execute("""
 -- =====================================================================
@@ -6428,7 +6468,7 @@ local tr = RF.tankSlots[1]
 UW_P8_PARENT = {
     bar = (row.bar:GetParent() == RF.content),
     noCDWidgets = (row.cdIcons == nil and row.cdHolder == nil),
-    tankBar = (tr.bar:GetParent() == RF.content),
+    tankBar = (tr.bar:GetParent() == RF.tankContent),
     icon = true,
 }
 
