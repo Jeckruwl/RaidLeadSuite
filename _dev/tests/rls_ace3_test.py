@@ -2480,7 +2480,11 @@ return root.childGroups=='tree'
     and bar.barTexture and bar.showIcons and bar.useClassColor
     and bar.readyColor and bar.cooldownColor and bar.deadColor and bar.disconnectedColor
     and bar.previewSingle and bar.previewFake
-    and gen.layoutMode and gen.groupByCaster and gen.autoInspect and gen.retryInspection
+    and gen.layoutMode and gen.layoutMode.values.macro and gen.layoutMode.values.macro_offensive
+    and gen.layoutMode.values.macro_defensive and gen.layoutMode.values.macro_tank_threat
+    and gen.layoutMode.values.macro_int_cc
+    and gen.groupMode and gen.groupMode.values.caster and gen.groupMode.values.spells and gen.groupMode.values.none
+    and gen.groupByCaster==nil and gen.autoInspect and gen.retryInspection
     and gen.hideTooltips and gen.hideBackdrop and gen.category_tank_defensive
     and gen.category_raid_wide_offensive.name=='Raid Wide Offensive'
     and gen.category_raid_party_defensive.name=='Raid/Party Wide Defensive'
@@ -2531,9 +2535,9 @@ CDW_STATUS_MARKERS=ready.statusIcon:IsShown()
     and ready.statusIcon._texture=='Interface\\\\Buttons\\\\WHITE8X8'
     and math.abs((green[1] or 0)-0.10)<0.001 and math.abs((green[2] or 0)-0.9)<0.001
     and math.abs((green[3] or 0)-0.2)<0.001
-    and dead.statusIcon._texture=='Interface\\\\Icons\\\\INV_Misc_Bone_Skull_01'
+    and dead.statusIcon._texture=='Interface\\\\TargetingFrame\\\\UI-TargetingFrame-Skull'
     and dead.icon._texture=='TestSpellIcon:22812'
-    and disconnected.statusIcon._texture=='Interface\\\\Icons\\\\INV_Misc_QuestionMark'
+    and disconnected.statusIcon._texture=='Interface\\\\Buttons\\\\UI-GroupLoot-Pass-Up'
     and disconnected.icon._texture=='TestSpellIcon:498'
 bar.showIcons.set(nil,false)
 cdw:ShowPreview('fake')
@@ -2550,6 +2554,10 @@ CDW_PREVIEW_OK=p:IsShown() and ready and cooling and dead and disconnected
     and ready.timer._fontArgs[2]==16 and ready.timer._fontArgs[3]==nil
     and ready.icon:IsShown()==false and ready.data.life=='alive' and ready.data.ready
     and ready.statusIcon:IsShown() and ready.statusIcon._texture==ready.bg._texture
+    and ready.bar._alpha==1
+    and not cooling.statusIcon:IsShown() and math.abs(cooling.bar._alpha-0.6)<0.001
+    and dead.statusIcon:IsShown() and math.abs(dead.bar._alpha-0.6)<0.001
+    and disconnected.statusIcon:IsShown() and math.abs(disconnected.bar._alpha-0.6)<0.001
     and math.abs(ready.bar._value-300)<0.001
     and math.abs(ready.bar._sbColor[1]-0.12)<0.001
     and math.abs(ready.bar._sbColor[2]-0.34)<0.001
@@ -2558,6 +2566,11 @@ CDW_PREVIEW_OK=p:IsShown() and ready and cooling and dead and disconnected
     and cooling.label:GetText():find('READY',1,true)==nil
     and math.abs(cooling.bar._value-47)<0.001
     and dead.data.life=='dead' and disconnected.data.life=='disconnected'
+local oldCooling=cooling.data.cooldown
+cooling.data.cooldown=cooling.data.ability.cd
+cdw:RenderBar(p,cooling.data,120,300)
+CDW_FULL_COOLDOWN_ALPHA=math.abs(cooling.bar._value)<0.001 and math.abs(cooling.bar._alpha-0.6)<0.001
+cooling.data.cooldown=oldCooling
 cdw:ShowPreview('single')
 local shown=0
 for _,row in pairs(p.barFrames) do if row:IsShown() then shown=shown+1 end end
@@ -2575,9 +2588,106 @@ gen.fontSize.set(nil,CDW_OLD_SETTINGS.fontSize); gen.fontFace.set(nil,CDW_OLD_SE
 """)
 check(bool(rt.eval("CDW_PREVIEW_OK")), "CD Watcher preview applies dimensions, custom colors, icon visibility and omits the timer when cooldown is zero")
 check(bool(rt.eval("CDW_LAYERED_TEXT")), "CD Watcher label is layered above the StatusBar fill and the status marker is aligned at the right edge")
-check(bool(rt.eval("CDW_STATUS_MARKERS")), "ready uses a green square, offline a null icon, dead a skull, and spell icons remain unchanged")
+check(bool(rt.eval("CDW_STATUS_MARKERS")), "ready uses a green square, offline a prohibition icon, dead the target-frame skull, and spell icons remain unchanged")
+check(bool(rt.eval("CDW_FULL_COOLDOWN_ALPHA")), "CD Watcher cooldown fill stays at 60% opacity even when empty")
 check(bool(rt.eval("CDW_SINGLE_PREVIEW")), "CD Watcher supports a single sample-bar preview")
 check(bool(rt.eval("CDW_CLASS_COLOR_DEFAULT")), "default ready/alive bar colors follow the caster's class color")
+rt.execute("""
+local cdw=RLSuite.cdwatcher
+local s=cdw:NormalizeSettings()
+local oldMode,oldLegacy=s.groupMode,s.groupByCaster
+local groupOpt=RLSuite.config:BuildOptionsTable().args.cdwatcher.args.general.args.groupMode
+groupOpt.set(nil,'spells')
+CDW_GROUP_OPTION=s.groupMode=='spells' and s.groupByCaster==false
+local ability={key='test_group_spell',name='Mock Spell',cd=120,ids={},category='cc',order=1}
+local models={
+    {key='test_group_spell@Alice',ability=ability,ownerName='Alice',member={name='Alice',class='MAGE'},life='alive',ready=false,cooldown=73,rosterOrder=1,categoryOrder=1,preview=true},
+    {key='test_group_spell@Bob',ability=ability,ownerName='Bob',member={name='Bob',class='MAGE'},life='alive',ready=true,cooldown=0,rosterOrder=2,categoryOrder=1,preview=true},
+}
+local w=cdw:EnsurePreviewWindow()
+local function render(mode)
+    s.groupMode=mode; s.groupByCaster=mode=='caster'
+    for _,h in pairs(w.subheaderFrames) do h:Hide() end
+    local bars,subs={},{}
+    local height=cdw:RenderRows(w,'cc',models,0,300,bars,subs)
+    cdw:FinalizeWindow(w,height,300,bars,{},subs,{})
+    return bars,subs
+end
+render('caster')
+local aliceBar=w.barFrames['test_group_spell@Alice']
+local bobBar=w.barFrames['test_group_spell@Bob']
+local aliceHeader=w.subheaderFrames.Alice
+local bobHeader=w.subheaderFrames.Bob
+CDW_GROUP_CASTER=aliceHeader and aliceHeader:IsShown()
+    and bobHeader and bobHeader:IsShown()
+    and aliceBar.label:GetText()=='Mock Spell  '..cdw:FormatTime(73)
+    and bobBar.label:GetText()=='Mock Spell'
+render('spells')
+local spellHeader=w.subheaderFrames['Mock Spell']
+CDW_GROUP_SPELLS=spellHeader and spellHeader:IsShown()
+    and not (aliceHeader and aliceHeader:IsShown())
+    and not (bobHeader and bobHeader:IsShown())
+    and aliceBar.label:GetText()=='Alice  '..cdw:FormatTime(73)
+    and bobBar.label:GetText()=='Bob'
+render('none')
+local anySubheader=false
+for _,h in pairs(w.subheaderFrames) do if h:IsShown() then anySubheader=true end end
+CDW_GROUP_NONE=not anySubheader
+    and aliceBar.label:GetText()=='Mock Spell:Alice  '..cdw:FormatTime(73)
+    and bobBar.label:GetText()=='Mock Spell:Bob'
+s.groupMode=nil; s.groupByCaster=true
+local migrated=cdw:NormalizeSettings().groupMode=='caster'
+s.groupMode,s.groupByCaster=oldMode,oldLegacy
+cdw:RefreshAll()
+CDW_GROUP_MIGRATION=migrated
+""")
+check(bool(rt.eval("CDW_GROUP_OPTION")), "CD Watcher group-by dropdown stores the selected grouping mode")
+check(bool(rt.eval("CDW_GROUP_CASTER")), "Caster grouping shows spell names under caster headers and preserves cooldown text")
+check(bool(rt.eval("CDW_GROUP_SPELLS")), "Spells grouping shows caster names under spell headers and preserves cooldown text")
+check(bool(rt.eval("CDW_GROUP_NONE")), "None grouping shows spell and caster names without group subheaders")
+check(bool(rt.eval("CDW_GROUP_MIGRATION")), "legacy group-by-caster profiles migrate to the Caster dropdown option")
+rt.execute("""
+local cdw,s=RLSuite.cdwatcher,RLSuite.cdwatcher:NormalizeSettings()
+local groups={}
+for _,group in ipairs(cdw.MacroGroups) do groups[group.key]=group end
+local function has(group,key)
+    for _,value in ipairs(group and group.categories or {}) do if value==key then return true end end
+    return false
+end
+local covered={}
+for _,group in ipairs(cdw.MacroGroups) do for _,key in ipairs(group.categories) do covered[key]=(covered[key] or 0)+1 end end
+local allCovered=true
+for _,category in ipairs(cdw.Categories) do if covered[category.key]~=1 then allCovered=false end end
+CDW_MACRO_MAPPING=#cdw.MacroGroups==4 and allCovered
+    and has(groups.offensive,'raid_wide_offensive') and has(groups.offensive,'utility_dispel')
+    and has(groups.offensive,'battle_res') and has(groups.offensive,'mana_regen')
+    and has(groups.offensive,'single_target_offensive')
+    and has(groups.defensive,'raid_party_defensive') and has(groups.defensive,'single_target_defensive')
+    and has(groups.tank_threat,'tank_defensive') and has(groups.tank_threat,'threat')
+    and has(groups.int_cc,'interrupts') and has(groups.int_cc,'cc')
+local all=cdw:GetMacroGroupsForLayout('macro')
+local one=cdw:GetMacroGroupsForLayout('macro_tank_threat')
+CDW_MACRO_SELECTION=#all==4 and #one==1 and one[1].key=='tank_threat'
+local layoutOpt=RLSuite.config:BuildOptionsTable().args.cdwatcher.args.general.args.layoutMode
+local oldSetLayout,selectedLayout=cdw.SetLayoutMode,nil
+cdw.SetLayoutMode=function(_,value) selectedLayout=value end
+layoutOpt.set(nil,'macro_tank_threat')
+cdw.SetLayoutMode=oldSetLayout
+CDW_MACRO_LAYOUT_SET=selectedLayout=='macro_tank_threat'
+cdw:RenderMacroGroup(groups.offensive)
+local w=cdw.groupWindows.offensive
+CDW_MACRO_RENDER=w and w.titleText:GetText()=='Offensive'
+    and w.headerFrames.raid_wide_offensive:IsShown()
+    and w.headerFrames.utility_dispel:IsShown()
+    and w.headerFrames.battle_res:IsShown()
+    and w.headerFrames.mana_regen:IsShown()
+    and w.headerFrames.single_target_offensive:IsShown()
+    and not (cdw.groupWindows.defensive and cdw.groupWindows.defensive:IsShown())
+""")
+check(bool(rt.eval("CDW_MACRO_MAPPING")), "macro groups contain the requested categories and every existing category exactly once")
+check(bool(rt.eval("CDW_MACRO_SELECTION")), "Window layout selects all macro groups or a specific group")
+check(bool(rt.eval("CDW_MACRO_LAYOUT_SET")), "Window layout dropdown activates a specific macro-group window")
+check(bool(rt.eval("CDW_MACRO_RENDER")), "selected macro-group layout renders its categories in a titled group window")
 rt.execute("""
 local cfg=RLSuite.config
 local wasOpen=cfg:IsOpen()
@@ -2731,15 +2841,17 @@ GameTooltip.AddLine=oldAdd; s.hideTooltips=false; cdw:ApplyBarSettings()
 
 -- Every CDW window is created without the universal Dialog border path.
 local backdrop=main:GetBackdrop()
-cdw:EnsureCategoryWindow('tank_defensive'); cdw:EnsureInspectWindow()
-local noEdges,noScroll=true,true
+cdw:EnsureCategoryWindow('tank_defensive'); cdw:EnsureMacroGroupWindow('offensive'); cdw:EnsureInspectWindow()
+local noEdges,noScroll,noConfig=true,true,true
 for _,frame in ipairs(cdw:GetWindows()) do
     local b=frame:GetBackdrop()
     if not frame._cdwWindow or (b and b.edgeFile~=nil) then noEdges=false end
     if frame.scroll~=nil then noScroll=false end
+    if frame.optionsBtn~=nil then noConfig=false end
 end
 CDW_BORDERLESS=main._cdwWindow and main._noOuterBorder and main.scroll==nil
     and main.content:GetParent()==main and backdrop and backdrop.edgeFile==nil and noEdges and noScroll
+CDW_NO_CONFIG_BUTTON=noConfig
 s.hideBackdrop=true; cdw:ApplyBackdropSettings()
 local everyBackdropHidden=true
 for _,frame in ipairs(cdw:GetWindows()) do if frame:GetBackdrop()~=nil then everyBackdropHidden=false end end
@@ -2772,6 +2884,7 @@ check(bool(rt.eval("CDW_TARGET_ASSIGN")), "CD Watcher bar drag assigns a target,
 check(bool(rt.eval("CDW_TOOLTIP_DETAILS")), "bar tooltip contains caster, target and cooldown details")
 check(bool(rt.eval("CDW_TOOLTIP_HIDDEN")), "General hide-tooltip option suppresses bar tooltips")
 check(bool(rt.eval("CDW_BORDERLESS")), "CD Watcher windows omit the universal Dialog border and do not use a ScrollFrame")
+check(bool(rt.eval("CDW_NO_CONFIG_BUTTON")), "CD Watcher windows no longer include a Config button")
 check(bool(rt.eval("CDW_BACKDROP_HIDDEN")), "General hide-backdrop option removes the background from CD Watcher windows")
 check(bool(rt.eval("CDW_NO_SCROLL_CLIP")), "floating CD Watcher windows expand to show every bar without scroll clipping")
 check(bool(rt.eval("(function() local n,d=0,0 for _,c in ipairs(RLSuite.raidFrame:_MatrixCols()) do n=n+1 if c.kind=='durability' then d=d+1 end end return n==13 and d==1 end)()")), "13 columns: 10 buff categories including Focus Magic, 2 consumables, and Durability")

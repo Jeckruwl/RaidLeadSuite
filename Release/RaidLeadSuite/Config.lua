@@ -772,16 +772,31 @@ function CFG:BuildOptionsTable()
     local cdwLayoutValues = {
         combined = L["One panel, grouped by category"],
         separate = L["Floating window per category"],
+        macro = L["All macro groups (one window each)"],
+        macro_offensive = L["Macro group: Offensive"],
+        macro_defensive = L["Macro group: Defensive"],
+        macro_tank_threat = L["Macro group: Tank & Threat"],
+        macro_int_cc = L["Macro group: Int & CC"],
+    }
+    local cdwGroupModeValues = {
+        caster = L["Caster"],
+        spells = L["Spells"],
+        none = L["None"],
     }
     local fontValues = mediaValues("font", cdwGet("fontFace", "Fonts\\FRIZQT__.TTF"))
     local cdwGeneral = {
-        layoutMode = select(L["Window layout"], L["Show all categories together or in separate floating windows."], 1,
+        layoutMode = select(L["Window layout"], L["Show all categories together, separate categories, or organize them into selectable macro-group windows."], 1,
             cdwLayoutValues,
             function() return cdwGet("layoutMode", "combined") end,
             function(_, value) if cdw and cdw.SetLayoutMode then cdw:SetLayoutMode(value); self:NotifyChange() end end),
-        groupByCaster = toggle(L["Group cooldowns by caster"], L["Group each player's cooldown bars inside their category."], 2,
-            function() return cdwGet("groupByCaster", false) end,
-            function(_, value) if cdw and cdw.SetGroupByCaster then cdw:SetGroupByCaster(value); self:NotifyChange() end end),
+        groupMode = select(L["Group by"], L["Group the bars by caster, by spell, or do not group them."], 2,
+            cdwGroupModeValues,
+            function() return cdwGet("groupMode", "none") end,
+            function(_, value)
+                if cdw and cdw.SetGroupMode then cdw:SetGroupMode(value)
+                else cdwSet("groupMode", value) end
+                self:NotifyChange()
+            end),
         autoInspect = toggle(L["Inspect raid composition automatically"], L["Inspect nearby players to identify talent specializations and required capabilities needed by the cooldown watchlist."], 3,
             function() return cdwGet("autoInspect", true) end,
             function(_, value) if cdw and cdw.SetAutoInspect then cdw:SetAutoInspect(value); self:NotifyChange() end end),

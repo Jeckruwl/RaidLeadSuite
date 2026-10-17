@@ -14,9 +14,9 @@ local ROW_H, HEADER_H, SUBHEADER_H = 24, 24, 18
 local TITLE_H, PAD, ICON_SIZE = 30, 8, 24
 local DEFAULT_BAR_WIDTH, INSPECT_W = 240, 390
 local TANK_PROMPT_H = 38
-local DEAD_ICON = "Interface\\Icons\\INV_Misc_Bone_Skull_01"
+local DEAD_ICON = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
+local OFFLINE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up"
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
-local NULL_ICON = QUESTION_ICON
 local WHITE_TEXTURE = "Interface\\Buttons\\WHITE8X8"
 local STATUSBAR_TEXTURE = "Interface\\TargetingFrame\\UI-StatusBar"
 local STATUS_SQUARE_SIZE, STATUS_ICON_SIZE = 8, 14
@@ -127,6 +127,35 @@ for _, category in ipairs(CATEGORIES) do
     end
 end
 
+-- Macro layouts put related categories in their own floating windows.
+-- Single Target Offensive is kept with the other offensive tools so every
+-- existing category remains available in one of the macro groups.
+local MACRO_GROUPS = {
+    { key="offensive", title="Offensive", categories={
+        "raid_wide_offensive", "single_target_offensive", "utility_dispel", "battle_res", "mana_regen",
+    } },
+    { key="defensive", title="Defensive", categories={
+        "raid_party_defensive", "single_target_defensive",
+    } },
+    { key="tank_threat", title="Tank & Threat", categories={
+        "tank_defensive", "threat",
+    } },
+    { key="int_cc", title="Int & CC", categories={
+        "interrupts", "cc",
+    } },
+}
+local MACRO_GROUP_BY_KEY, MACRO_GROUP_BY_CATEGORY = {}, {}
+for _, group in ipairs(MACRO_GROUPS) do
+    MACRO_GROUP_BY_KEY[group.key] = group
+    for _, key in ipairs(group.categories) do MACRO_GROUP_BY_CATEGORY[key] = group end
+end
+
+local function isMacroLayout(mode)
+    if mode == "macro" then return true end
+    if type(mode) ~= "string" or string.sub(mode, 1, 6) ~= "macro_" then return false end
+    return MACRO_GROUP_BY_KEY[string.sub(mode, 7)] ~= nil
+end
+
 local SPEC_TREES = {
     WARRIOR={"Arms","Fury","Protection"}, PALADIN={"Holy","Protection","Retribution"},
     HUNTER={"Beast Mastery","Marksmanship","Survival"}, ROGUE={"Assassination","Combat","Subtlety"},
@@ -160,11 +189,18 @@ end
 
 function CDW:NormalizeSettings()
     local s = self:GetSettings()
-    if s.layoutMode ~= "combined" and s.layoutMode ~= "separate" then s.layoutMode = "combined" end
+    if s.layoutMode ~= "combined" and s.layoutMode ~= "separate" and not isMacroLayout(s.layoutMode) then
+        s.layoutMode = "combined"
+    end
     s.categories, s.collapsed = s.categories or {}, s.collapsed or {}
     s.targetAssignments = type(s.targetAssignments) == "table" and s.targetAssignments or {}
     s.tankAssignments = type(s.tankAssignments) == "table" and s.tankAssignments or {}
-    if s.groupByCaster == nil then s.groupByCaster = false end
+    if s.groupMode ~= "caster" and s.groupMode ~= "spells" and s.groupMode ~= "none" then
+        -- Migrate profiles saved with the former boolean checkbox.
+        if s.groupMode == nil and s.groupByCaster == true then s.groupMode = "caster"
+        else s.groupMode = "none" end
+    end
+    s.groupByCaster = s.groupMode == "caster" -- legacy compatibility
     if s.autoInspect == nil then s.autoInspect = true end
     s.hideTooltips = s.hideTooltips == true
     s.hideBackdrop = s.hideBackdrop == true
@@ -188,6 +224,46 @@ function CDW:NormalizeSettings()
     for _, key in ipairs(ORDER_KEYS) do if not seen[key] then order[#order+1] = key end end
     s.categoryOrder = order
     return s
+end
+
+function CDW:IsMacroLayout(mode)
+    return isMacroLayout(mode or self:NormalizeSettings().layoutMode)
+end
+
+function CDW:GetMacroGroupsForLayout(mode)
+    mode = mode or self:NormalizeSettings().layoutMode
+    if mode == "macro" then return MACRO_GROUPS end
+    if not isMacroLayout(mode) then return {} end
+    local group = MACRO_GROUP_BY_KEY[string.sub(mode, 7)]
+    return group and {group} or {}
+end
+
+function CDW:MacroGroupForCategory(categoryKey)
+    return MACRO_GROUP_BY_CATEGORY[categoryKey]
+end
+
+function CDW:IsMacroGroupSelected(groupKey, mode)
+    for _, group in ipairs(self:GetMacroGroupsForLayout(mode)) do
+        if group.key == groupKey then return true end
+    end
+    return false
+end
+
+function CDW:MacroGroupHasEnabledCategories(group)
+    if not group then return false end
+    for _, key in ipairs(group.categories) do
+        if self:IsCategoryEnabled(key) then return true end
+    end
+    return false
+end
+
+function CDW:GetMacroGroupCategoryOrder(group)
+    local members, order={},{}
+    for _,key in ipairs(group and group.categories or {}) do members[key]=true end
+    for _,key in ipairs(self:GetCategoryOrder()) do
+        if members[key] then order[#order+1]=key end
+    end
+    return order
 end
 
 function CDW:GetCategoryOrder() return self:NormalizeSettings().categoryOrder end
@@ -225,14 +301,28 @@ function CDW:SetCategoryEnabled(key, enabled)
     settings.categories[key] = enabled and true or false
     if not enabled and self.categoryWindows and self.categoryWindows[key] then self.categoryWindows[key]:Hide() end
     self:RefreshAll()
-    if enabled and settings.layoutMode=="separate" and self.isOpen then
-        self:EnsureCategoryWindow(key):Show()
+    if enabled and self.isOpen then
+        if settings.layoutMode == "separate" then
+            self:EnsureCategoryWindow(key):Show()
+        elseif self:IsMacroLayout(settings.layoutMode) then
+            local group=self:MacroGroupForCategory(key)
+            if group and self:IsMacroGroupSelected(group.key,settings.layoutMode) then
+                self:EnsureMacroGroupWindow(group.key):Show()
+            end
+        end
     end
 end
 
-function CDW:SetGroupByCaster(enabled)
-    self:NormalizeSettings().groupByCaster = enabled and true or false
+function CDW:SetGroupMode(mode)
+    if mode ~= "caster" and mode ~= "spells" and mode ~= "none" then return end
+    local settings=self:NormalizeSettings()
+    settings.groupMode=mode
+    settings.groupByCaster=mode=="caster"
     self:RefreshAll()
+end
+
+function CDW:SetGroupByCaster(enabled)
+    self:SetGroupMode(enabled and "caster" or "none")
 end
 
 function CDW:SetAutoInspect(enabled)
@@ -244,6 +334,7 @@ function CDW:IsOpen()
     if self.frame and self.frame:IsShown() then return true end
     if self.inspectFrame and self.inspectFrame:IsShown() then return true end
     for _, frame in pairs(self.categoryWindows or {}) do if frame:IsShown() then return true end end
+    for _, frame in pairs(self.groupWindows or {}) do if frame:IsShown() then return true end end
     return false
 end
 
@@ -257,44 +348,48 @@ function CDW:PrepareWindow(frame, key)
     if RLSuite.utils.SkinFrame then RLSuite.utils:SkinFrame(frame) end
 end
 
-function CDW:CreateWindow(name, title, key, width, categoryKey)
+function CDW:CreateWindow(name, title, key, width, categoryKey, macroGroupKey)
     local frame = CreateFrame("Frame", name, UIParent)
     frame:SetSize(width, 260)
     frame:SetFrameStrata("HIGH")
     frame:EnableMouse(true)
     frame:Hide()
-    frame.categoryKey = categoryKey
+    frame.categoryKey, frame.macroGroupKey = categoryKey, macroGroupKey
     frame.barFrames, frame.headerFrames, frame.subheaderFrames, frame.promptFrames = {}, {}, {}, {}
     self:PrepareWindow(frame, key)
     RLSuite.utils:ApplySavedPos(frame, key, function()
         local idx = 1
-        for i, cat in ipairs(self:GetCategoryOrder()) do if cat == categoryKey then idx = i break end end
+        if macroGroupKey then
+            for i, group in ipairs(MACRO_GROUPS) do if group.key == macroGroupKey then idx = i break end end
+        elseif categoryKey then
+            for i, cat in ipairs(self:GetCategoryOrder()) do if cat == categoryKey then idx = i break end end
+        end
         return ((idx - 1) % 3) * 34, -math.floor((idx - 1) / 3) * 34
     end)
 
     frame.titleText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     frame.titleText:SetPoint("LEFT", frame, "TOPLEFT", PAD, -TITLE_H / 2)
-    frame.titleText:SetWidth(math.max(80,width-126))
+    frame.titleText:SetWidth(math.max(80,width-60))
     frame.titleText:SetJustifyH("LEFT")
     frame.titleText:SetText(title)
     frame.titleText:SetTextColor(1, 0.82, 0)
     frame.closeBtn = RLSuite.utils:MakeCloseX(frame, function() frame:Hide() end)
     frame.closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -4)
-    frame.optionsBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    frame.optionsBtn:SetSize(48, 20)
-    frame.optionsBtn:SetPoint("RIGHT", frame.closeBtn, "LEFT", -4, 0)
-    frame.optionsBtn:SetText(L["Config"])
-    frame.optionsBtn:SetScript("OnClick", function() CDW:OpenConfig() end)
 
     frame.content = CreateFrame("Frame", nil, frame)
     frame.content:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -TITLE_H)
     frame.content:SetSize(width - 40, 1)
     frame:SetScript("OnShow", function() CDW:RefreshAll() end)
     frame:SetScript("OnHide", function()
-        if frame == CDW.frame and CDW:NormalizeSettings().layoutMode == "combined" then CDW.isOpen = false end
-        if frame.categoryKey and CDW:NormalizeSettings().layoutMode == "separate" then
+        local mode = CDW:NormalizeSettings().layoutMode
+        if frame == CDW.frame and mode == "combined" then CDW.isOpen = false end
+        if frame.categoryKey and mode == "separate" then
             local any = false
             for _, f in pairs(CDW.categoryWindows or {}) do if f:IsShown() then any = true break end end
+            if not any then CDW.isOpen = false end
+        elseif frame.macroGroupKey and isMacroLayout(mode) then
+            local any = false
+            for _, f in pairs(CDW.groupWindows or {}) do if f:IsShown() then any = true break end end
             if not any then CDW.isOpen = false end
         end
     end)
@@ -316,6 +411,16 @@ function CDW:EnsureCategoryWindow(key)
     return self.categoryWindows[key]
 end
 
+function CDW:EnsureMacroGroupWindow(key)
+    self.groupWindows = self.groupWindows or {}
+    if self.groupWindows[key] then return self.groupWindows[key] end
+    local group = MACRO_GROUP_BY_KEY[key]
+    if not group then return nil end
+    self.groupWindows[key] = self:CreateWindow("RLSuiteCDWGroup_" .. key, L[group.title] or group.title,
+        "cdwatcher_group_" .. key, self:GetBarWidth() + 40, nil, key)
+    return self.groupWindows[key]
+end
+
 function CDW:EnsureInspectWindow()
     if self.inspectFrame then return self.inspectFrame end
     local f = self:CreateWindow("RLSuiteCDWInspect", L["CD Watcher: Inspect required"], "cdwatcher_inspect", INSPECT_W)
@@ -333,6 +438,9 @@ function CDW:GetWindows()
     for _, category in ipairs(CATEGORIES) do
         if self.categoryWindows and self.categoryWindows[category.key] then result[#result+1] = self.categoryWindows[category.key] end
     end
+    for _, group in ipairs(MACRO_GROUPS) do
+        if self.groupWindows and self.groupWindows[group.key] then result[#result+1] = self.groupWindows[group.key] end
+    end
     return result
 end
 
@@ -341,7 +449,7 @@ function CDW:Init()
     self.cdTracker, self.activeAuras, self.activePlayerStates = self.cdTracker or {}, self.activeAuras or {}, self.activePlayerStates or {}
     self.soulstoneStates, self.totemStates = self.soulstoneStates or {}, self.totemStates or {}
     self.inspectCache, self.inspectStatus, self.inspectQueue = self.inspectCache or {}, self.inspectStatus or {}, self.inspectQueue or {}
-    self.categoryWindows, self.rows = self.categoryWindows or {}, self.rows or {}
+    self.categoryWindows, self.groupWindows, self.rows = self.categoryWindows or {}, self.groupWindows or {}, self.rows or {}
     self._nextInspectAt = 0
     self._rosterDirty = true
     self:EnsureWindow()
@@ -358,18 +466,41 @@ function CDW:Init()
 end
 
 function CDW:ShowCurrentMode()
-    self.isOpen, self._inspectDismissed = true, false
+    self._inspectDismissed = false
     local mode, shown = self:NormalizeSettings().layoutMode, false
     if mode == "combined" then
+        for _, frame in pairs(self.categoryWindows) do frame:Hide() end
+        for _, frame in pairs(self.groupWindows or {}) do frame:Hide() end
         self:EnsureWindow():Show()
         shown = true
-    else
+    elseif mode == "separate" then
         self:EnsureWindow():Hide()
+        for _, frame in pairs(self.groupWindows or {}) do frame:Hide() end
         for _, key in ipairs(self:GetCategoryOrder()) do
-            if self:IsCategoryEnabled(key) then self:EnsureCategoryWindow(key):Show(); shown=true end
+            if self:IsCategoryEnabled(key) then
+                self:EnsureCategoryWindow(key):Show(); shown=true
+            elseif self.categoryWindows[key] then
+                self.categoryWindows[key]:Hide()
+            end
+        end
+    elseif self:IsMacroLayout(mode) then
+        self:EnsureWindow():Hide()
+        for _, frame in pairs(self.categoryWindows) do frame:Hide() end
+        local selected={}
+        for _, group in ipairs(self:GetMacroGroupsForLayout(mode)) do
+            selected[group.key]=true
+            if self:MacroGroupHasEnabledCategories(group) then
+                self:EnsureMacroGroupWindow(group.key):Show(); shown=true
+            elseif self.groupWindows[group.key] then
+                self.groupWindows[group.key]:Hide()
+            end
+        end
+        for key, frame in pairs(self.groupWindows or {}) do
+            if not selected[key] then frame:Hide() end
         end
     end
     if #((self.inspectItems) or {}) > 0 then self:EnsureInspectWindow():Show(); shown=true end
+    self.isOpen=shown
     if not shown then self:OpenConfig("general") end
 end
 
@@ -377,26 +508,32 @@ function CDW:Toggle()
     local mode, displayOpen = self:NormalizeSettings().layoutMode, false
     if mode == "combined" then
         displayOpen = self.frame and self.frame:IsShown() or false
-    else
+    elseif mode == "separate" then
         for _, frame in pairs(self.categoryWindows) do if frame:IsShown() then displayOpen=true break end end
+    else
+        for key, frame in pairs(self.groupWindows or {}) do
+            if frame:IsShown() and self:IsMacroGroupSelected(key,mode) then displayOpen=true break end
+        end
     end
     if displayOpen then
         self.isOpen = false
         if self.frame then self.frame:Hide() end
         if self.inspectFrame then self.inspectFrame:Hide() end
         for _, frame in pairs(self.categoryWindows) do frame:Hide() end
+        for _, frame in pairs(self.groupWindows or {}) do frame:Hide() end
         return
     end
     self:ShowCurrentMode()
 end
 
 function CDW:SetLayoutMode(mode)
-    if mode ~= "combined" and mode ~= "separate" then return end
+    if mode ~= "combined" and mode ~= "separate" and not isMacroLayout(mode) then return end
     local wasOpen = self:IsOpen()
     self:NormalizeSettings().layoutMode = mode
     if self.frame then self.frame:Hide() end
     if self.inspectFrame then self.inspectFrame:Hide() end
     for _, frame in pairs(self.categoryWindows) do frame:Hide() end
+    for _, frame in pairs(self.groupWindows or {}) do frame:Hide() end
     self.isOpen, self._inspectDismissed = wasOpen, false
     self:RefreshAll()
     if wasOpen then self:ShowCurrentMode() end
@@ -734,11 +871,19 @@ end
 
 function CDW:GroupModels(models)
     local groups, lookup = {}, {}
+    local groupMode=self:NormalizeSettings().groupMode
     for _, model in ipairs(models) do
-        local key = shortName(model.ownerName)
+        local key, name
+        if groupMode == "spells" then
+            key=tostring(model.ability.key or model.ability.name)
+            name=model.ability.name
+        else
+            key=shortName(model.ownerName)
+            name=model.ownerName
+        end
         local group = lookup[key]
         if not group then
-            group = { name=model.ownerName, order=model.rosterOrder, models={}, ready=false, soonest=nil }
+            group = { name=name, order=model.rosterOrder, models={}, ready=false, soonest=nil }
             lookup[key], groups[#groups+1] = group, group
         end
         group.models[#group.models+1] = model
@@ -819,6 +964,8 @@ function CDW:RenderBar(window, model, y, width)
     local fontFlags = settings.fontOutline and "OUTLINE" or nil
     local fontColor = settings.fontColor or { r=1, g=1, b=1 }
     local iconSize = math.min(ICON_SIZE, math.max(8, height - 2))
+    local inCooldown = (tonumber(model.cooldown) or 0) > 0
+    local stateIconSize = math.min(STATUS_ICON_SIZE, math.max(8,height-2))
     local barLeft = 4
 
     row.data, row.modelKey, row.ability = model, model.key, model.ability.key
@@ -845,22 +992,24 @@ function CDW:RenderBar(window, model, y, width)
     if life == "dead" then
         row.statusIcon:SetTexture(DEAD_ICON)
         row.statusIcon:SetTexCoord(0.08,0.92,0.08,0.92)
-        row.statusIcon:SetSize(math.min(STATUS_ICON_SIZE, math.max(8,height-2)), math.min(STATUS_ICON_SIZE, math.max(8,height-2)))
+        row.statusIcon:SetSize(stateIconSize,stateIconSize)
         row.statusIcon:SetVertexColor(1,1,1,1)
         row.statusIcon:Show()
     elseif life == "disconnected" then
-        row.statusIcon:SetTexture(NULL_ICON)
+        row.statusIcon:SetTexture(OFFLINE_ICON)
         row.statusIcon:SetTexCoord(0.08,0.92,0.08,0.92)
-        row.statusIcon:SetSize(math.min(STATUS_ICON_SIZE, math.max(8,height-2)), math.min(STATUS_ICON_SIZE, math.max(8,height-2)))
+        row.statusIcon:SetSize(stateIconSize,stateIconSize)
         row.statusIcon:SetVertexColor(1,1,1,1)
         row.statusIcon:Show()
-    else
+    elseif model.ready and not inCooldown then
         row.statusIcon:SetTexture(WHITE_TEXTURE)
         row.statusIcon:SetTexCoord(0,1,0,1)
         row.statusIcon:SetSize(STATUS_SQUARE_SIZE,STATUS_SQUARE_SIZE)
-        if model.ready then row.statusIcon:SetVertexColor(0.10,0.9,0.2,1)
-        else row.statusIcon:SetVertexColor(0.10,0.55,0.18,1) end
+        row.statusIcon:SetVertexColor(0.10,0.9,0.2,1)
         row.statusIcon:Show()
+    else
+        -- Cooldown bars have no alive/ready square; only dead/offline use icons.
+        row.statusIcon:Hide()
     end
 
     row.bar:SetPoint("TOPLEFT",row,"TOPLEFT",barLeft,-2)
@@ -890,10 +1039,19 @@ function CDW:RenderBar(window, model, y, width)
         r,g,b=settings.cooldownColor.r,settings.cooldownColor.g,settings.cooldownColor.b
     end
     row.bar:SetStatusBarColor(r,g,b,1)
+    row.bar:SetAlpha(inCooldown and 0.6 or 1)
 
-    local spellPlayerText=(model.ability.name or "?")..":"..(model.ownerName or "?")
-    local labelText=spellPlayerText
-    if model.cooldown and model.cooldown>0 then labelText=labelText.."  "..self:FormatTime(model.cooldown) end
+    local spellName=model.ability.name or "?"
+    local casterName=model.ownerName or "?"
+    local labelText
+    if settings.groupMode == "caster" then
+        labelText=spellName
+    elseif settings.groupMode == "spells" then
+        labelText=casterName
+    else
+        labelText=spellName..":"..casterName
+    end
+    if inCooldown then labelText=labelText.."  "..self:FormatTime(model.cooldown) end
     row.label:SetWidth(math.max(20,width-barLeft-22))
     row.label:SetFont(font,fontSize,fontFlags)
     row.label:SetTextColor(fontColor.r or 1,fontColor.g or 1,fontColor.b or 1,1)
@@ -982,11 +1140,25 @@ function CDW:EnsurePrompt(window,key,width)
 end
 
 function CDW:CategoryAtCursor()
-    if not GetCursorPosition or not self.frame then return nil end
-    local x,y=GetCursorPosition(); local scale=self.frame:GetEffectiveScale() or 1; x,y=x/scale,y/scale
-    for key,h in pairs(self.frame.headerFrames or {}) do
-        if h:IsShown() and type(h:GetLeft())=="number" and x>=h:GetLeft() and x<=h:GetRight() and y>=h:GetBottom() and y<=h:GetTop() then
-            return key,y>=(h:GetBottom()+h:GetTop())/2
+    if not GetCursorPosition then return nil end
+    local cursorX,cursorY=GetCursorPosition()
+    if not cursorX or not cursorY then return nil end
+    local windows={}
+    if self.frame then windows[#windows+1]=self.frame end
+    for _,window in pairs(self.categoryWindows or {}) do windows[#windows+1]=window end
+    for _,window in pairs(self.groupWindows or {}) do windows[#windows+1]=window end
+    for _,window in ipairs(windows) do
+        if window:IsShown() then
+            local scale=window:GetEffectiveScale() or 1
+            if scale<=0 then scale=1 end
+            local x,y=cursorX/scale,cursorY/scale
+            for key,header in pairs(window.headerFrames or {}) do
+                if header:IsShown() and type(header:GetLeft())=="number"
+                    and x>=header:GetLeft() and x<=header:GetRight()
+                    and y>=header:GetBottom() and y<=header:GetTop() then
+                    return key,y>=(header:GetBottom()+header:GetTop())/2
+                end
+            end
         end
     end
 end
@@ -1016,20 +1188,22 @@ function CDW:RenderRows(window,key,models,y,width,usedBars,usedSubs)
         local row=self:RenderBar(window,model,y,width); usedBars[row]=true; y=y+self:GetBarHeight()
     end
     self._nextInterruptMarked=false
-    if s.groupByCaster then
+    local function renderGroups(list)
+        for _,group in ipairs(self:GroupModels(list)) do
+            local h=self:EnsureSubheader(window,group.name); h:ClearAllPoints(); h:SetPoint("TOPLEFT",window.content,"TOPLEFT",0,-y)
+            h:SetSize(width-10,SUBHEADER_H); h:Show(); usedSubs[h]=true; y=y+SUBHEADER_H
+            for _,model in ipairs(group.models) do renderOne(model) end
+        end
+    end
+    if s.groupMode == "caster" then
         local ready, cooling = {}, {}
         for _, model in ipairs(sorted) do
             if model.ready then ready[#ready+1]=model else cooling[#cooling+1]=model end
         end
-        local function renderGroups(list)
-            for _,group in ipairs(self:GroupModels(list)) do
-                local h=self:EnsureSubheader(window,group.name); h:ClearAllPoints(); h:SetPoint("TOPLEFT",window.content,"TOPLEFT",0,-y)
-                h:SetSize(width-10,SUBHEADER_H); h:Show(); usedSubs[h]=true; y=y+SUBHEADER_H
-                for _,model in ipairs(group.models) do renderOne(model) end
-            end
-        end
         renderGroups(ready)
         renderGroups(cooling)
+    elseif s.groupMode == "spells" then
+        renderGroups(sorted)
     else
         for _,model in ipairs(sorted) do renderOne(model) end
     end
@@ -1090,6 +1264,57 @@ function CDW:RenderSeparate()
             self:FinalizeWindow(w,y,width,usedBars,usedHeads,usedSubs,usedPrompts)
             if #self.rows==0 then for _,row in pairs(w.barFrames) do if row:IsShown() then self.rows[#self.rows+1]=row end end end
         elseif self.categoryWindows[key] then self.categoryWindows[key]:Hide() end
+    end
+end
+
+function CDW:RenderMacroGroup(group)
+    local width=self:GetBarWidth()+40; local contentWidth=width-40
+    local window=self:EnsureMacroGroupWindow(group.key)
+    local usedBars,usedHeads,usedSubs,usedPrompts={}, {}, {}, {}
+    local categoryOrder=self:GetMacroGroupCategoryOrder(group)
+    local y=2
+    for _,key in ipairs(categoryOrder) do
+        local category=CATEGORY_BY_KEY[key]
+        local header=self:EnsureCategoryHeader(window,key,contentWidth)
+        header:ClearAllPoints(); header:SetPoint("TOPLEFT",window.content,"TOPLEFT",0,-y)
+        header:SetSize(contentWidth,HEADER_H)
+        header.title:SetText(L[category.title] or category.title)
+        header.visible:SetText(self:IsCategoryEnabled(key) and "ON" or "--")
+        header.collapse:SetText(self:NormalizeSettings().collapsed[key] and "+" or "−")
+        header:Show(); usedHeads[header]=true; y=y+HEADER_H
+        if self:IsCategoryEnabled(key) then
+            if key=="tank_defensive" and not self.hasTankAssignments then
+                local prompt=self:EnsurePrompt(window,key,contentWidth)
+                prompt:ClearAllPoints(); prompt:SetPoint("TOPLEFT",window.content,"TOPLEFT",0,-y)
+                prompt:Show(); usedPrompts[prompt]=true; y=y+prompt:GetHeight()+4
+            else
+                y=self:RenderRows(window,key,self.modelsByCategory[key],y,contentWidth,usedBars,usedSubs)+4
+            end
+        else
+            y=y+2
+        end
+    end
+    self:FinalizeWindow(window,y,width,usedBars,usedHeads,usedSubs,usedPrompts)
+    for _,key in ipairs(categoryOrder) do
+        for _,row in pairs(window.barFrames) do
+            if row:IsShown() and row.data and row.data.ability.category==key then self.rows[#self.rows+1]=row end
+        end
+    end
+end
+
+function CDW:RenderMacroGroups()
+    self.rows={}
+    local selected={}
+    for _,group in ipairs(self:GetMacroGroupsForLayout()) do
+        if self:MacroGroupHasEnabledCategories(group) then
+            selected[group.key]=true
+            self:RenderMacroGroup(group)
+        elseif self.groupWindows and self.groupWindows[group.key] then
+            self.groupWindows[group.key]:Hide()
+        end
+    end
+    for key,window in pairs(self.groupWindows or {}) do
+        if not selected[key] then window:Hide() end
     end
 end
 
@@ -1181,7 +1406,10 @@ end
 function CDW:RefreshAll()
     if not self.frame then return end
     self:BuildModels(); self:QueueInspectNeeds()
-    if self:NormalizeSettings().layoutMode=="combined" then self:RenderCombined() else self:RenderSeparate() end
+    local layoutMode=self:NormalizeSettings().layoutMode
+    if layoutMode=="combined" then self:RenderCombined()
+    elseif layoutMode=="separate" then self:RenderSeparate()
+    else self:RenderMacroGroups() end
     self:RenderInspector()
     if self.previewWindow and self.previewWindow:IsShown() then self:RenderPreview(self.previewMode) end
 end
@@ -1293,8 +1521,11 @@ function CDW:TryRaidFrameTankDrop(name,role)
     local windows={}
     if settings.layoutMode=="combined" then
         if self.frame and self.frame:IsShown() then windows[#windows+1]=self.frame end
-    else
+    elseif settings.layoutMode=="separate" then
         local tankWindow=self.categoryWindows and self.categoryWindows.tank_defensive
+        if tankWindow and tankWindow:IsShown() then windows[#windows+1]=tankWindow end
+    elseif self:IsMacroLayout(settings.layoutMode) and self:IsMacroGroupSelected("tank_threat",settings.layoutMode) then
+        local tankWindow=self.groupWindows and self.groupWindows.tank_threat
         if tankWindow and tankWindow:IsShown() then windows[#windows+1]=tankWindow end
     end
     if #windows==0 then return false end
@@ -1427,3 +1658,4 @@ function CDW:ApplyAppearance() self:ApplyBackdropSettings() end
 function CDW:ApplyLayoutMode() self:SetLayoutMode(self:NormalizeSettings().layoutMode) end
 
 CDW.Categories, CDW.AbilitiesByKey, CDW.AbilitiesByName = CATEGORIES, ABILITY_BY_KEY, ABILITY_BY_NAME
+CDW.MacroGroups, CDW.MacroGroupsByKey = MACRO_GROUPS, MACRO_GROUP_BY_KEY
