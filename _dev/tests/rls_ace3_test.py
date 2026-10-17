@@ -2809,14 +2809,35 @@ for _,category in ipairs(cdw.Categories) do
     local header=picker and picker.customCategoryHeaders[category.key]
     if header and header:IsShown() then shownHeaders=shownHeaders+1 end
 end
-local categoryColumns=picker and picker.columnCount==4 and picker:GetWidth()>=888
-local firstRowY
-for index=1,4 do
-    local category=cdw.Categories[index]
+local categoryColumns=picker and picker.columnCount==4
+    and picker.content:GetWidth()>=(4*200+3*12)
+local sortedCategories={}
+for index,category in ipairs(cdw.Categories) do
+    sortedCategories[#sortedCategories+1]={category=category,sourceOrder=index,spellCount=#category.abilities}
+end
+table.sort(sortedCategories,function(a,b)
+    if a.spellCount~=b.spellCount then return a.spellCount<b.spellCount end
+    return a.sourceOrder<b.sourceOrder
+end)
+local categoriesPerColumn=math.max(1,math.ceil(#sortedCategories/4))
+local columnEnds={}
+for index,entry in ipairs(sortedCategories) do
+    local column=math.floor((index-1)/categoriesPerColumn)
+    local category=entry.category
     local header=picker and picker.customCategoryHeaders[category.key]
     local _,_,_,x,y=header:GetPoint()
-    if index==1 then firstRowY=y end
-    if x~=((index-1)*(200+12)) or y~=firstRowY then categoryColumns=false end
+    local expectedY=columnEnds[column] or 2
+    if not (header and header:IsShown()) or x~=(column*(200+12)) or -y~=expectedY then
+        categoryColumns=false
+    end
+    local classCounts={}
+    for _,ability in ipairs(category.abilities or {}) do
+        local class=ability.class or 'OTHER'
+        classCounts[class]=(classCounts[class] or 0)+1
+    end
+    local blockHeight=24+2
+    for _,count in pairs(classCounts) do blockHeight=blockHeight+18+count*cdw:GetBarHeight()+2 end
+    columnEnds[column]=expectedY+blockHeight+4
 end
 local firstA=picker.barFrames['custom_catalog_'..firstCategory.abilities[1].key]
 local firstB=picker.barFrames['custom_catalog_'..firstCategory.abilities[2].key]
@@ -2830,6 +2851,37 @@ local classColored=math.abs((firstBarColor[1] or 0)-classR)<0.001
     and math.abs((firstBarColor[3] or 0)-classB)<0.001
 local editorOK=cdw:IsCustomPanelEditMode() and picker and picker:IsShown()
     and modify.name()=='Finish editing panels' and labelBefore=='Modify panels'
+local dragAbility
+for _,category in ipairs(cdw.Categories) do
+    for _,ability in ipairs(category.abilities) do
+        if ability.key~=firstAbility.key and ability.key~=ccAbility.key then dragAbility=ability; break end
+    end
+    if dragAbility then break end
+end
+local dragRow=dragAbility and picker.barFrames['custom_catalog_'..dragAbility.key]
+local oldCursor=GetCursorPosition
+local oldPickerBounds={picker.GetLeft,picker.GetRight,picker.GetBottom,picker.GetTop}
+local oldPanelBounds={windowOne.GetLeft,windowOne.GetRight,windowOne.GetBottom,windowOne.GetTop}
+picker.GetLeft=function() return 0 end
+picker.GetRight=function() return 900 end
+picker.GetBottom=function() return 0 end
+picker.GetTop=function() return 760 end
+windowOne.GetLeft=function() return 0 end
+windowOne.GetRight=function() return 280 end
+windowOne.GetBottom=function() return 0 end
+windowOne.GetTop=function() return 260 end
+GetCursorPosition=function() return 40,40 end
+local dragHandlers=dragRow and dragRow._scripts.OnDragStart and dragRow._scripts.OnDragStop
+if dragHandlers then
+    dragRow._scripts.OnDragStart(dragRow)
+    dragRow._scripts.OnDragStop(dragRow)
+end
+local dragAssigned=false
+for _,key in ipairs(s.customPanels[1].spells) do if dragAbility and key==dragAbility.key then dragAssigned=true end end
+GetCursorPosition=oldCursor
+picker.GetLeft,picker.GetRight,picker.GetBottom,picker.GetTop=unpack(oldPickerBounds)
+windowOne.GetLeft,windowOne.GetRight,windowOne.GetBottom,windowOne.GetTop=unpack(oldPanelBounds)
+CDW_CUSTOM_DND=dragHandlers and dragAssigned
 modify.func()
 local editClosed=not cdw:IsCustomPanelEditMode() and not picker:IsShown()
     and cdw.customWindows[1]:GetBackdrop()==nil and picker:GetBackdrop()==nil
@@ -2905,7 +2957,8 @@ cdw:RefreshAll()
 """)
 check(bool(rt.eval("CDW_CUSTOM_PANEL_CORE")), "Custom panels support six persisted settings, rename, spell assignment, duplicate rejection and moves")
 check(bool(rt.eval("CDW_CUSTOM_PANEL_POSITION")), "custom panels default to a three-across grid and restore saved positions after toggling")
-check(bool(rt.eval("CDW_CUSTOM_CATALOG")), "custom editor shows all spells grouped by class within four category columns, with 200px class-colored bars")
+check(bool(rt.eval("CDW_CUSTOM_CATALOG")), "custom editor sorts categories by spell count and stacks them column-first in four 200px columns")
+check(bool(rt.eval("CDW_CUSTOM_DND")), "dragging a catalog spell onto an active custom panel works when the editor and panel overlap")
 check(bool(rt.eval("CDW_CUSTOM_BACKDROP")), "custom panel backdrops stay visible during editing, then follow Hide window backdrop again")
 check(bool(rt.eval("CDW_CUSTOM_GROUP_MODE")), "Custom panels honor Caster, Spells and None grouping labels and headers")
 check(bool(rt.eval("CDW_CUSTOM_LAYOUT_OPTIONS")),  "Custom panels controls are available only under the Custom panels layout")

@@ -21,6 +21,7 @@ local WHITE_TEXTURE = "Interface\\Buttons\\WHITE8X8"
 local STATUSBAR_TEXTURE = "Interface\\TargetingFrame\\UI-StatusBar"
 local STATUS_SQUARE_SIZE, STATUS_ICON_SIZE = 8, 14
 local CUSTOM_PICKER_COLUMNS, CUSTOM_PICKER_BAR_WIDTH, CUSTOM_PICKER_COLUMN_GAP = 4, 200, 12
+local CUSTOM_PICKER_CATEGORY_GAP = 4
 local CLASS_LABELS = {
     WARRIOR="Warrior", PALADIN="Paladin", HUNTER="Hunter", ROGUE="Rogue", PRIEST="Priest",
     DEATHKNIGHT="Death Knight", SHAMAN="Shaman", MAGE="Mage", WARLOCK="Warlock", DRUID="Druid",
@@ -379,9 +380,10 @@ function CDW:MoveCustomPanelSpell(sourceIndex, targetIndex, abilityKey)
     return true
 end
 
-function CDW:IsCustomSpellPickerAtCursor()
+function CDW:IsCustomSpellPickerAtCursor(ignorePanelOcclusion)
     local picker=self.customSpellPickerFrame
     if not (picker and picker:IsShown() and self:CursorInsideFrame(picker)) then return false end
+    if ignorePanelOcclusion then return true end
     local pickerLevel=picker.GetFrameLevel and picker:GetFrameLevel() or 0
     for index=1,6 do
         local panel=self:NormalizeSettings().customPanels[index]
@@ -394,7 +396,7 @@ function CDW:IsCustomSpellPickerAtCursor()
     return true
 end
 
-function CDW:GetCustomPanelAtCursor()
+function CDW:GetCustomPanelAtCursor(ignorePickerOcclusion)
     local picker=self.customSpellPickerFrame
     local pickerAtCursor=picker and picker:IsShown() and self:CursorInsideFrame(picker)
     local pickerLevel=pickerAtCursor and picker.GetFrameLevel and picker:GetFrameLevel() or -1
@@ -404,7 +406,7 @@ function CDW:GetCustomPanelAtCursor()
         local window=self.customWindows and self.customWindows[index]
         if panel.enabled and window and window:IsShown() and self:CursorInsideFrame(window) then
             local level=window.GetFrameLevel and window:GetFrameLevel() or 0
-            if (not pickerAtCursor or level>pickerLevel) and level>targetLevel then
+            if (ignorePickerOcclusion or not pickerAtCursor or level>pickerLevel) and level>targetLevel then
                 target,targetLevel=index,level
             end
         end
@@ -412,10 +414,26 @@ function CDW:GetCustomPanelAtCursor()
     return target
 end
 
+function CDW:RaiseCustomPanelWindows()
+    if not (RLSuite.utils and RLSuite.utils.RaiseWindow) then return end
+    for index=1,6 do
+        local panel=self:NormalizeSettings().customPanels[index]
+        local window=self.customWindows and self.customWindows[index]
+        if panel.enabled and window and window:IsShown() then RLSuite.utils:RaiseWindow(window) end
+    end
+end
+
+function CDW:RaiseCustomSpellPicker()
+    local picker=self.customSpellPickerFrame
+    if picker and picker:IsShown() and RLSuite.utils and RLSuite.utils.RaiseWindow then
+        RLSuite.utils:RaiseWindow(picker)
+    end
+end
+
 function CDW:OnCustomSpellDragStop(frame)
     local model=frame and frame.data
     if not self.customPanelEditMode or not (model and model.customCatalogSpell and model.ability and model.ability.key) then return end
-    local panelIndex=self:GetCustomPanelAtCursor()
+    local panelIndex=self:GetCustomPanelAtCursor(true)
     if panelIndex then self:AddCustomPanelSpell(panelIndex,model.ability.key) end
 end
 
@@ -427,7 +445,7 @@ function CDW:OnCustomPanelBarDragStop(frame)
     local targetIndex=self:GetCustomPanelAtCursor()
     if targetIndex and targetIndex~=model.customPanelIndex then
         self:MoveCustomPanelSpell(model.customPanelIndex,targetIndex,model.ability.key)
-    elseif self:IsCustomSpellPickerAtCursor() then
+    elseif not targetIndex and self:IsCustomSpellPickerAtCursor(true) then
         self:RemoveCustomPanelSpell(model.customPanelIndex,model.ability.key)
     end
 end
@@ -874,11 +892,8 @@ function CDW:SetCustomPanelEditMode(enabled)
         end
         self:EnsureCustomSpellPickerWindow():Show()
         if RLSuite.utils and RLSuite.utils.RaiseWindow then
-            for index=1,6 do
-                local panel=self:NormalizeSettings().customPanels[index]
-                local window=self.customWindows and self.customWindows[index]
-                if panel.enabled and window and window:IsShown() then RLSuite.utils:RaiseWindow(window) end
-            end
+            self:RaiseCustomPanelWindows()
+            self:RaiseCustomSpellPicker()
         end
     else
         if self.customSpellPickerFrame then self.customSpellPickerFrame:Hide() end
@@ -1283,14 +1298,10 @@ function CDW:EnsureBar(window, model, width)
         local data=frame.data
         if data and data.customCatalogSpell then
             CDW.draggedCustomSpell=frame
-            if CDW.customPanelEditMode and RLSuite.utils and RLSuite.utils.RaiseWindow then
-                for index=1,6 do
-                    local panel=CDW:NormalizeSettings().customPanels[index]
-                    local window=CDW.customWindows and CDW.customWindows[index]
-                    if panel.enabled and window and window:IsShown() then RLSuite.utils:RaiseWindow(window) end
-                end
-            end
-        elseif data and data.customPanelIndex and CDW.customPanelEditMode then CDW.draggedCustomPanelSpell=frame
+            if CDW.customPanelEditMode then CDW:RaiseCustomPanelWindows() end
+        elseif data and data.customPanelIndex and CDW.customPanelEditMode then
+            CDW.draggedCustomPanelSpell=frame
+            CDW:RaiseCustomPanelWindows()
         elseif data and not data.preview then CDW.draggedBar=frame end
     end)
     row:SetScript("OnDragStop", function(frame)
@@ -1299,6 +1310,9 @@ function CDW:EnsureBar(window, model, width)
         elseif data and data.customPanelIndex and CDW.customPanelEditMode then CDW:OnCustomPanelBarDragStop(frame)
         elseif data and not data.preview then CDW:OnBarDragStop(frame) end
         CDW.draggedCustomSpell,CDW.draggedCustomPanelSpell=nil,nil
+        if CDW.customPanelEditMode and data and (data.customCatalogSpell or data.customPanelIndex) then
+            CDW:RaiseCustomSpellPicker()
+        end
     end)
     row:SetScript("OnEnter", function(frame)
         if frame.data and frame.data.customCatalogSpell and GameTooltip and not CDW:NormalizeSettings().hideTooltips then
@@ -1711,8 +1725,7 @@ function CDW:RenderCustomSpellPicker()
     local columnGap=CUSTOM_PICKER_COLUMN_GAP
     local gridWidth=CUSTOM_PICKER_COLUMNS*columnWidth+(CUSTOM_PICKER_COLUMNS-1)*columnGap
     local contentWidth=math.max(width-64,gridWidth)
-    local categoryBlocks,rowHeights={},{}
-    local rowCount=math.ceil(#CATEGORIES/CUSTOM_PICKER_COLUMNS)
+    local categoryBlocks,columnEnds={},{}
 
     for index,category in ipairs(CATEGORIES) do
         local groups,classOrder={},{}
@@ -1725,19 +1738,24 @@ function CDW:RenderCustomSpellPicker()
         for _,class in ipairs(classOrder) do
             blockHeight=blockHeight+SUBHEADER_H+#groups[class]*barHeight+2
         end
-        local gridRow=math.floor((index-1)/CUSTOM_PICKER_COLUMNS)+1
-        local gridColumn=(index-1)%CUSTOM_PICKER_COLUMNS
         categoryBlocks[#categoryBlocks+1]={
-            category=category,groups=groups,classOrder=classOrder,row=gridRow,column=gridColumn,
+            category=category,groups=groups,classOrder=classOrder,
+            spellCount=#(category.abilities or {}),sourceOrder=index,blockHeight=blockHeight,
         }
-        rowHeights[gridRow]=math.max(rowHeights[gridRow] or 0,blockHeight)
     end
 
-    local rowStarts={}
+    table.sort(categoryBlocks,function(a,b)
+        if a.spellCount~=b.spellCount then return a.spellCount<b.spellCount end
+        return a.sourceOrder<b.sourceOrder
+    end)
+
+    local categoriesPerColumn=math.max(1,math.ceil(#categoryBlocks/CUSTOM_PICKER_COLUMNS))
     local contentHeight=2
-    for row=1,rowCount do
-        rowStarts[row]=contentHeight
-        contentHeight=contentHeight+(rowHeights[row] or 0)+12
+    for index,block in ipairs(categoryBlocks) do
+        block.column=math.floor((index-1)/categoriesPerColumn)
+        block.y=columnEnds[block.column] or 2
+        columnEnds[block.column]=block.y+block.blockHeight+CUSTOM_PICKER_CATEGORY_GAP
+        contentHeight=math.max(contentHeight,block.y+block.blockHeight+2)
     end
 
     local usedBars,usedCategories,usedClasses={},{},{}
@@ -1745,7 +1763,7 @@ function CDW:RenderCustomSpellPicker()
     for _,block in ipairs(categoryBlocks) do
         local category=block.category
         local x=block.column*(columnWidth+columnGap)
-        local y=rowStarts[block.row]
+        local y=block.y
         local header=window.customCategoryHeaders[category.key]
         if not header then
             header=CreateFrame("Frame",nil,window.content)
@@ -1817,6 +1835,8 @@ function CDW:RenderCustomSpellPicker()
     for _,header in pairs(window.customCategoryHeaders) do if not usedCategories[header] then header:Hide() end end
     for _,header in pairs(window.customClassHeaders) do if not usedClasses[header] then header:Hide() end end
     window.content:SetSize(contentWidth,math.max(1,contentHeight))
+    if window.scroll and window.scroll.SetVerticalScroll then window.scroll:SetVerticalScroll(0) end
+    if window.scroll and window.scroll.SetHorizontalScroll then window.scroll:SetHorizontalScroll(0) end
 end
 
 function CDW:RenderCustomPanels()
