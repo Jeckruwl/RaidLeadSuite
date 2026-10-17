@@ -85,7 +85,7 @@ local RF_OUT_OF_SIGHT = 999       -- sentinella: unita' non visibile al client
 local RF_DRAG_SNAP = 10
 local RF_HEADER_H = 14
 local RF_GROUP_GAP = 8
-local RF_TANK_COUNT = 2     -- Tanks group sopra G1: barra MT + barra OT
+local RF_TANK_COUNT = 2     -- Tanks group separato sotto la matrice: MT + OT
 -- Geometria della finestra autonoma "Raid Buffs" (tabella compatta):
 local RF_BP_NAME_W = 92
 local RF_BP_ICON_SIZE = 16
@@ -389,25 +389,33 @@ function RF:LayoutMetrics()
     local cellW = math.max(12, iconSize + iconSpacing) -- passo colonne matrice
     local abw = 0 -- buff bar / ability bar rimosse (redesign in corso)
     local gap = 0
-    -- Layout per row: [roleIcon (iconSize)] [HP bar = barWidth]
-    -- [target reserve used only by the MT/OT target bars]. CD monitoring and
-    -- its display now live in the standalone CD Watcher module.
+    -- Le righe Raid conservano solo lo spazio usato da icona ruolo + barra HP;
+    -- nessuna colonna residua per i cooldown rimossi. Le barre target MT/OT
+    -- restano nella sezione Tanks separata, sotto la matrice.
     local roleReserve = iconSize + 4
-    local targetReserve = 4 * iconSize + 3 * 2 + 4
-    local rowWidth = roleReserve + barWidth + targetReserve + 4
+    local rowWidth = roleReserve + barWidth
     local rowHeight = barHeight
+    -- Per non riservare una colonna vuota a destra della matrice, la barra
+    -- target dei Tanks resta attiva ma viene impilata sotto la barra HP MT/OT.
+    local tankTargetGap = 2
+    local targetBarWidth = barWidth
+    local tankRowWidth = rowWidth
+    local tankRowHeight = (2 * barHeight) + tankTargetGap
     local groupBlockH = groupHeaderH + (RF_PER_GROUP * rowHeight)
         + ((RF_PER_GROUP - 1) * verticalSpacing)
-    local tankBlockH = groupHeaderH + (RF_TANK_COUNT * rowHeight)
+    local tankBlockH = groupHeaderH + (RF_TANK_COUNT * tankRowHeight)
         + (RF_TANK_COUNT * verticalSpacing)
     local gridHeight = (groupRows * groupBlockH)
         + ((groupRows - 1) * groupSpacing)
-    local W = (groupsPerRow * rowWidth)
+    local gridWidth = (groupsPerRow * rowWidth)
         + ((groupsPerRow - 1) * horizontalSpacing) + abw + gap
-    local rowsH = tankBlockH + gridHeight
+    local W = gridWidth
+    local rowsH = gridHeight + groupSpacing + tankBlockH
     return {
-        W = W, abw = abw, rowWidth = rowWidth,
-        roleReserve = roleReserve, targetReserve = targetReserve,
+        W = W, abw = abw, rowWidth = rowWidth, gridWidth = gridWidth,
+        tankRowWidth = tankRowWidth, tankRowHeight = tankRowHeight,
+        tankTargetGap = tankTargetGap, targetBarWidth = targetBarWidth,
+        roleReserve = roleReserve,
         barWidth = barWidth, barHeight = barHeight,
         iconSize = iconSize, nameFontSize = nameFontSize,
         rowHeight = rowHeight,
@@ -447,7 +455,7 @@ function RF:EnsureSlots()
     self:EnsureTanks()
 end
 
--- Gruppo "Tanks" (sopra G1): header dorato + 2 barre MT/OT. Le barre sono
+-- Gruppo "Tanks" (sotto la matrice): header dorato + 2 barre MT/OT. Le barre sono
 -- slot normali SENZA icone consumabili (al loro posto il tag MT/OT) e non
 -- fanno parte di self.slots: niente drag player su di esse.
 function RF:EnsureTanks()
@@ -650,16 +658,14 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag)
 
     -- Le barre TANK al posto della roleIcon hanno il tag MT/OT dorato.
     if row.isTank then
-        -- Anche il tag MT/OT fuori dalla riga (stessa regola della barra).
+        -- Tag MT/OT a sinistra della barra HP (posizionato in LayoutSlotGeometry).
         local tag = self.content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        -- Posizionato in LayoutSlotGeometry: ATTACCATO a sinistra della barra.
         tag:SetText(tankTag)
         tag:SetTextColor(1, 0.82, 0)
         tag:Hide()
         row.tankTag = tag
         row.tankTagText = tankTag -- per le tracce di debug ("barra MT/OT")
-        -- Barra TARGET del tank a destra della barra HP; mostra nome + HP%
-        -- del bersaglio attuale del tank.
+        -- Barra TARGET del tank sotto la barra HP; mostra nome + HP% del bersaglio.
         local tbar = CreateFrame("StatusBar", nil, row)
         tbar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
         tbar:SetMinMaxValues(0, 100)
@@ -904,7 +910,9 @@ end
 -- Called from ApplyLayout so Config changes (bar width/height, icon size,
 -- name font size) apply immediately without a full roster rebuild.
 function RF:LayoutSlotGeometry(slot, m)
-    slot:SetSize(m.rowWidth, m.rowHeight)
+    local slotWidth = slot.isTank and (m.tankRowWidth or m.rowWidth) or m.rowWidth
+    local slotHeight = slot.isTank and (m.tankRowHeight or m.rowHeight) or m.rowHeight
+    slot:SetSize(slotWidth, slotHeight)
     local iconSize = m.iconSize
     if slot.flaskIcon then
         slot.flaskIcon:ClearAllPoints()
@@ -936,19 +944,20 @@ function RF:LayoutSlotGeometry(slot, m)
             local flags = (app.fontOutline == false) and "" or "OUTLINE"
             slot.offlineText:SetFont(fontFile, m.nameFontSize, flags)
         end
-        -- Tag MT/OT: Nello stesso identico posto delle icone di ruolo (a sinistra della barra)
+        -- Tag MT/OT allineato al lato sinistro della barra HP nella riga superiore.
         if slot.tankTag then
             slot.tankTag:ClearAllPoints()
             slot.tankTag:SetSize(roleReserve, m.barHeight)
-            slot.tankTag:SetPoint("LEFT", slot, "LEFT", 0, 0)
+            slot.tankTag:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, 0)
             slot.tankTag:SetJustifyH("CENTER")
         end
-        -- Barra target accanto alla barra HP per le righe MT/OT.
+        -- La barra target MT/OT e' impilata sotto la barra HP, senza una
+        -- colonna larga inutilizzata accanto ai gruppi Raid.
         if slot.targetBar then
             slot.targetBar:ClearAllPoints()
-            local targetBarW = m.targetReserve or (m.rowWidth - roleReserve - m.barWidth - 4)
+            local targetBarW = m.targetBarWidth or m.barWidth
             slot.targetBar:SetSize(targetBarW, m.barHeight)
-            slot.targetBar:SetPoint("TOPLEFT", slot.bar, "TOPRIGHT", 4, 0)
+            slot.targetBar:SetPoint("TOPLEFT", slot.bar, "BOTTOMLEFT", 0, -(m.tankTargetGap or 2))
             local tex = self.db and self.db.appearance and self.db.appearance.barTexture
                 or "Interface\\TargetingFrame\\UI-StatusBar"
             slot.targetBar:SetStatusBarTexture(tex)
@@ -2418,7 +2427,7 @@ function RF:ApplyLayout()
 
     -- Griglia deterministica: i gruppi sono distribuiti nelle colonne
     -- configurate, mentre le righe dei membri restano ordinate all'interno
-    -- di ogni gruppo. Il blocco Tanks e' riservato sopra la griglia.
+    -- di ogni gruppo. Il blocco Tanks e' posizionato sotto la griglia.
     local ghApp = (self.db and self.db.appearance) or {}
     local ghFont = ghApp.font or "Fonts\\FRIZQT__.TTF"
     local ghSize = m.groupHeaderFontSize
@@ -2431,31 +2440,9 @@ function RF:ApplyLayout()
         if gh and gh.SetFont then gh:SetFont(ghFont, ghSize, ghFlags) end
     end
 
-    local y = 0
     local rosterActive = self.rows and #self.rows > 0
     local dragging = self:IsDragEnabled() and self._rfDragSource ~= nil
-    -- BLOCCO TANKS (sopra G1): la posizione resta fissa anche a roster vuoto.
-    if self.tankHeader then
-        self.tankHeader:ClearAllPoints()
-        self.tankHeader:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, y)
-        self.tankHeader:SetWidth(m.rowWidth)
-        if m.showGroupHeaders and rosterActive then
-            self.tankHeader:Show()
-        else
-            self.tankHeader:Hide()
-        end
-        y = y - m.groupHeaderH
-        for ti = 1, RF_TANK_COUNT do
-            local tank = self.tankSlots and self.tankSlots[ti]
-            if tank then
-                tank:ClearAllPoints()
-                tank:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, y)
-                self:LayoutSlotGeometry(tank, m)
-                y = y - m.rowHeight - m.verticalSpacing
-            end
-        end
-    end
-    local groupGridTop = y
+    local groupGridTop = 0
     for g = 1, RF_GROUPS do
         local header = self.groupHeaders and self.groupHeaders[g]
         local groupActive = g <= m.groupCount
@@ -2498,6 +2485,30 @@ function RF:ApplyLayout()
                     slot:Hide()
                     self:HideDropPlane(slot)
                 end
+            end
+        end
+    end
+
+    -- Tanks e' una sezione autonoma sotto tutte le righe della matrice raid.
+    -- Il gap usa Group Spacing; non sposta ne' ridimensiona i gruppi sopra.
+    local tankTop = -m.gridHeight - m.groupSpacing
+    if self.tankHeader then
+        self.tankHeader:ClearAllPoints()
+        self.tankHeader:SetPoint("TOPLEFT", self.content, "TOPLEFT", 2, tankTop)
+        self.tankHeader:SetWidth(m.tankRowWidth)
+        if m.showGroupHeaders and rosterActive then
+            self.tankHeader:Show()
+        else
+            self.tankHeader:Hide()
+        end
+        local tankY = tankTop - m.groupHeaderH
+        for ti = 1, RF_TANK_COUNT do
+            local tank = self.tankSlots and self.tankSlots[ti]
+            if tank then
+                tank:ClearAllPoints()
+                tank:SetPoint("TOPLEFT", self.content, "TOPLEFT", 0, tankY)
+                self:LayoutSlotGeometry(tank, m)
+                tankY = tankY - (m.tankRowHeight or m.rowHeight) - m.verticalSpacing
             end
         end
     end

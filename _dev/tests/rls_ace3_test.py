@@ -2179,8 +2179,9 @@ check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar:GetWidth() == RLSuite.db.profil
 # --- buff/debuff/ability bars: RIMOSSE (redesign in corso), restano SOLO flask+food per riga ---
 check(bool(rt.eval("RLSuite.raidFrame.buffBar == nil and RLSuite.raidFrame.debuffBar == nil and RLSuite.raidFrame.abilityBar == nil")), "no buff/debuff/ability bars exist anymore (eliminated for redesign)")
 check(bool(rt.eval("RLSuite.raidFrame.BuildAbilityBar == nil and RLSuite.raidFrame.RefreshAlertBars == nil and RLSuite.raidFrame.CheckCoverage == nil")), "buff-bar machinery functions are gone (UI code removed, not just hidden)")
-check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().W == RLSuite.raidFrame:LayoutMetrics().rowWidth")), "window width = bars area only: the matrix zone is NOT covered by the window (fully click-through)")
-check(bool(rt.eval("RLSuite.raidFrame.frame._w == RLSuite.raidFrame:LayoutMetrics().rowWidth")), "window hitbox ends at the bars' right edge: buff columns area never swallows clicks (open or closed)")
+check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().rowWidth == RLSuite.raidFrame:LayoutMetrics().roleReserve + RLSuite.raidFrame:LayoutMetrics().barWidth")), "Raid group rows reserve no width for removed cooldown icons")
+check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().gridWidth == RLSuite.raidFrame:LayoutMetrics().rowWidth")), "one-column group grid width equals the used player-bar width")
+check(bool(rt.eval("RLSuite.raidFrame.frame._w == RLSuite.raidFrame:LayoutMetrics().W")), "Raid Frame hitbox matches the visible groups/Tanks layout, not the removed CD columns")
 # fase: le icone flask/food per riga restano vive in ogni fase (lo stato non dipende piu' dalle barre)
 rt.execute("RLSuite:SetContextPhase('preboss')")
 rt.execute("RLSuite:SetContextPhase('infight')")
@@ -2494,9 +2495,10 @@ FC_BACK = (RLSuite.raidFrame.rows[1].bar.nameText._tc[1] == 1 and RLSuite.raidFr
 check(bool(rt.eval("FC_RED")), "font color option applies to the player name on the bars")
 check(bool(rt.eval("FC_BACK")), "font color restores to the default white")
 
-# Tanks group above G1 (MT + OT bars)
-check(rt.eval("RLSuite.raidFrame.tankHeader:GetText()") == "Tanks", "Tanks group header named exactly 'Tanks' above G1")
+# Tanks group is separate and placed below the group matrix (MT + OT bars)
+check(rt.eval("RLSuite.raidFrame.tankHeader:GetText()") == "Tanks", "Tanks group header named exactly 'Tanks'")
 check(bool(rt.eval("RLSuite.raidFrame.tankHeader:IsShown() == true")), "Tanks group visible when there is a raid roster")
+check(bool(rt.eval("RLSuite.raidFrame.tankHeader._points[1][5] < RLSuite.raidFrame.slots[40]._points[1][5] - RLSuite.raidFrame:LayoutMetrics().rowHeight")), "Tanks header is positioned below the bottom row of the raid-group matrix")
 check(bool(rt.eval("RLSuite.raidFrame.tankSlots[1].flaskIcon == nil and RLSuite.raidFrame.tankSlots[1].foodIcon == nil")), "tank bars have NO flask/food icons")
 check(rt.eval("RLSuite.raidFrame.tankSlots[1].tankTag:GetText()") == "MT" and rt.eval("RLSuite.raidFrame.tankSlots[2].tankTag:GetText()") == "OT", "MT and OT labels replace the consumable icons beside the bars")
 check(rt.eval("RLSuite.raidFrame.tankSlots[1].member.name") == "Testplayer", "debug: MT bar auto-fills with the first fake-roster player (fake members work as tanks)")
@@ -2527,7 +2529,7 @@ rt.execute("""
 RLSuite.raidFrame:ApplyLayout()
 local mtb = RLSuite.raidFrame.tankSlots[1]
 local tp = mtb.tankTag._points[#mtb.tankTag._points]
-TANK_TAG_OK = (tp[1] == 'LEFT' and tp[2] == mtb and tp[3] == 'LEFT' and tp[4] == 0)
+TANK_TAG_OK = (tp[1] == 'TOPLEFT' and tp[2] == mtb and tp[3] == 'TOPLEFT' and tp[4] == 0 and tp[5] == 0)
 TANK_NOCD = true
 for ti = 1, 2 do
     TANK_NOCD = TANK_NOCD and (RLSuite.raidFrame.tankSlots[ti].cdIcons == nil)
@@ -2535,8 +2537,9 @@ end
 local tb = mtb.targetBar
 local bp = tb._points[#tb._points]
 local m = RLSuite.raidFrame:LayoutMetrics()
-TANK_TBAR = (tb ~= nil and bp[2] == mtb.bar and bp[3] == 'TOPRIGHT'
-    and (tb._w == m.targetReserve or tb._w == (m.rowWidth - m.barWidth - 4)))
+TANK_TBAR = (tb ~= nil and bp[1] == 'TOPLEFT' and bp[2] == mtb.bar and bp[3] == 'BOTTOMLEFT'
+    and bp[5] == -m.tankTargetGap and tb._w == m.targetBarWidth
+    and mtb._w == m.rowWidth and mtb._h == m.tankRowHeight)
 
 -- barra target con unit reali mockate (salva/ripristina i global)
 local S_UE, S_UN, S_UH, S_UHM, S_UIP, S_UC = UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass
@@ -2558,9 +2561,9 @@ mtb.fake = true
 UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass = S_UE, S_UN, S_UH, S_UHM, S_UIP, S_UC
 RLSuite.raidFrame:UpdateTankTargets()
 """)
-check(bool(rt.eval("TANK_TAG_OK")), "MT/OT tag attached inside the left space at the roleIcon position")
+check(bool(rt.eval("TANK_TAG_OK")), "MT/OT tag attached beside the top HP bar in the Tanks slot")
 check(bool(rt.eval("TANK_NOCD")), "tank bars never show player CDs on the right")
-check(bool(rt.eval("TANK_TBAR")), "tank bars have a TARGET bar where the CDs were (size = former CD zone)")
+check(bool(rt.eval("TANK_TBAR")), "tank target bar is stacked below the MT/OT HP bar without widening the Raid rows")
 check(bool(rt.eval("TANK_TBAR_NAME")) and bool(rt.eval("TANK_TBAR_VAL")), "tank target bar shows current target name + HP% from real units")
 check(bool(rt.eval("TANK_TBAR_COL")), "tank target bar colors red for hostile targets")
 check(bool(rt.eval("TANK_TBAR_FAKE")), "debug/fake tanks leave the target bar empty (no fake-unit API queries)")
@@ -5293,7 +5296,7 @@ check(bool(rt.eval("RFW == RF_LIVE_W and RF_LIVE_W == RF_M.W * RF_SCALE")),
       "right offset = Raid Frame width (%d px at scale %s)" % (rt.eval("RF_M.W * RF_SCALE"), rt.eval("RF_SCALE")))
 check(bool(rt.eval("TB_ANCH_X == RFW")), "the offset IS the Raid Frame width, on the LEFT side (no other constant)")
 check(bool(rt.eval("BUFF_WINDOW_SEPARATE == true")), "the compact Raid Buffs matrix no longer changes the Raid Frame width")
-check(bool(rt.eval("RF_M.W == RF_M.rowWidth")), "Raid Frame width = food/flask + player bar + CDs (no buffs)")
+check(bool(rt.eval("RF_M.rowWidth == RF_M.roleReserve + RF_M.barWidth and RF_M.gridWidth == RF_M.rowWidth and RF_M.W == RF_M.gridWidth and RF_M.tankRowWidth == RF_M.rowWidth")), "Raid Frame width contains only the group matrix; the separate Tanks target bars do not reserve horizontal space")
 
 # -- il Raid Frame cambia -> la barra si riposiziona da sola ---------------
 rt.execute("""
@@ -8571,7 +8574,7 @@ end
 
 check(not bool(rt.eval("V109_TANK_ROLE_ICON_SHOWN")), "v1.11.109: Tank/DPS/Heal role does not display role icon (leader/assist/ML only)")
 check(rt.eval("V109_MT_BAR_X") == rt.eval("RLSuite.raidFrame:LayoutMetrics().roleReserve"), "v1.11.109: MT bar aligned to roleReserve")
-check(rt.eval("V109_MT_TAG_X") == 0, "v1.11.109: MT tankTag placed at roleIcon position (LEFT 0)")
+check(rt.eval("V109_MT_TAG_X") == 0, "v1.11.109: MT tankTag aligned to the top-left of its stacked HP bar")
 check(rt.eval("V109_DUR_TXT_74") == "74%", "v1.11.109: Durability cell shows real percentage when known (74%)")
 check(rt.eval("V109_DUR_TXT_OK") == "-", "v1.11.109: Durability cell shows - instead of fake 100% when exact pct is not readable")
 check(bool(rt.eval("V109_FLASK_MSG:find('Buff Check', 1, true) == nil and V109_FLASK_MSG:find('Missing Flask |', 1, true) ~= nil and V109_FLASK_MSG:find('Missing:', 1, true) == nil")), "v1.11.109: Flask warning has no 'Buff Check:' and no 'Missing:' before player names")
