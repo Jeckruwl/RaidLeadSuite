@@ -2443,6 +2443,13 @@ check(bool(rt.eval("GM_NOHIT")), "Group Making panel (50% scale): old raw point 
 rt.execute("""
 local RFmod = RLSuite.raidFrame
 local row = RFmod.rows[1]
+local hpTrack = row.bar.bg._vertex
+local tankTrack = RFmod.tankSlots[1].targetBar.bg._vertex
+RF_EMPTY_BG_50 = hpTrack[1] == 0 and hpTrack[2] == 0 and hpTrack[3] == 0 and hpTrack[4] == 0.5
+    and tankTrack[1] == 0 and tankTrack[2] == 0 and tankTrack[3] == 0 and tankTrack[4] == 0.5
+local cr, cg, cb = RLSuite.utils:GetClassColor(row.member.class)
+local fill = row.bar._sbColor
+RF_FILL_COLOR_PRESERVED = fill and fill[1] == cr and fill[2] == cg and fill[3] == cb
 SAVED_MEMBER_WF = row.member
 SAVED_UE_WF = UnitExists
 SAVED_GSI_WF = GetSpellInfo
@@ -2469,6 +2476,8 @@ UnitBuff = SAVED_UB_WF; GetSpellInfo = SAVED_GSI_WF; UnitExists = SAVED_UE_WF
 WF_BUFFS = nil
 RLSuite.raidFrame:FillSlot(row, SAVED_MEMBER_WF)
 """)
+check(bool(rt.eval("RF_EMPTY_BG_50")), "the black unfilled Raid and tank-target tracks use 50% opacity")
+check(bool(rt.eval("RF_FILL_COLOR_PRESERVED")), "the HP fill retains its original class color")
 check(bool(rt.eval("WF_FED")), "Well Fed present (any spellId): food icon turns off")
 check(bool(rt.eval("WF_FLASK_STILL")), "flask check untouched by the Well Fed rework")
 check(bool(rt.eval("WF_NOTFED")), "no Well Fed on the unit: food icon shows missing")

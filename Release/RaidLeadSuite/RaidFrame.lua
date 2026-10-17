@@ -78,6 +78,7 @@ local RF_DUR_SLOTS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 1
 local RF_DUR_ALERT_PCT = 80      -- sotto questa % conta come "da riparare"
 local RF_DUR_REFRESH = 4         -- ricalcolo ogni N passate da 0,5s (2s)
 local RF_OUT_OF_SIGHT = 999       -- sentinella: unita' non visibile al client
+local RF_BAR_TRACK_ALPHA = 0.50   -- sfondo nero della parte HP vuota: 50% opaco
 -- Tolleranza del gesto di trascinamento (px): prendere una barra a 5-6 px di
 -- distanza deve FUNZIONARE. Con le righe da ~20 px un click "a filo" finiva
 -- nel vuoto e il gesto non faceva niente: da fuori sembrava che quel player
@@ -748,7 +749,7 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag, parent)
         local tbg = tbar:CreateTexture(nil, "BACKGROUND")
         tbg:SetAllPoints(tbar)
         tbg:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
-        tbg:SetVertexColor(0, 0, 0, 0.45)
+        tbg:SetVertexColor(0, 0, 0, RF_BAR_TRACK_ALPHA)
         tbar.bg = tbg
         local tfs = tbar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         tfs:SetPoint("LEFT", tbar, "LEFT", 3, 0)
@@ -770,12 +771,12 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag, parent)
     bar:SetValue(0)
     row.bar = bar
 
-    -- Subtle track behind the fill (a status bar needs a readable track;
-    -- this is a per-bar background, not a HUD backdrop).
+    -- Track nero al 50% solo nella parte vuota; colore e opacita' del fill
+    -- HP restano quelli della StatusBar (colore di classe).
     local bg = bar:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(bar)
     bg:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
-    bg:SetVertexColor(0, 0, 0, 0.45)
+    bg:SetVertexColor(0, 0, 0, RF_BAR_TRACK_ALPHA)
     bar.bg = bg
 
     -- Icona di ruolo: sulle righe Raid e' figlia della barra (interna); per
