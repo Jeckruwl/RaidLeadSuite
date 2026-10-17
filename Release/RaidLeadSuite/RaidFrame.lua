@@ -749,7 +749,8 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag, parent)
         local tbg = tbar:CreateTexture(nil, "BACKGROUND")
         tbg:SetAllPoints(tbar)
         tbg:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
-        tbg:SetVertexColor(0, 0, 0, RF_BAR_TRACK_ALPHA)
+        tbg:SetVertexColor(0, 0, 0, 1)
+        tbg:SetAlpha(RF_BAR_TRACK_ALPHA)
         tbar.bg = tbg
         local tfs = tbar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         tfs:SetPoint("LEFT", tbar, "LEFT", 3, 0)
@@ -776,7 +777,8 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag, parent)
     local bg = bar:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints(bar)
     bg:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
-    bg:SetVertexColor(0, 0, 0, RF_BAR_TRACK_ALPHA)
+    bg:SetVertexColor(0, 0, 0, 1)
+    bg:SetAlpha(RF_BAR_TRACK_ALPHA)
     bar.bg = bg
 
     -- Icona di ruolo: sulle righe Raid e' figlia della barra (interna); per
@@ -3460,7 +3462,8 @@ function RF:ApplyDistanceFade(row)
         if row.SetAlpha then row:SetAlpha(alpha) end
         if row.bar and row.bar.SetAlpha then row.bar:SetAlpha(alpha) end
         if row.bar and row.bar.nameText and row.bar.nameText.SetAlpha then row.bar.nameText:SetAlpha(alpha) end
-        if row.bar and row.bar.bg and row.bar.bg.SetAlpha then row.bar.bg:SetAlpha(alpha) end
+        -- Il track mantiene alpha locale al 50%; la sfumatura distanza viene
+        -- ereditata dal parent StatusBar senza riportarlo a piena opacita'.
         if row.roleIcon and row.roleIcon.SetAlpha then row.roleIcon:SetAlpha(alpha) end
         if row.flaskIcon and row.flaskIcon.SetAlpha then row.flaskIcon:SetAlpha(alpha) end
         if row.foodIcon and row.foodIcon.SetAlpha then row.foodIcon:SetAlpha(alpha) end

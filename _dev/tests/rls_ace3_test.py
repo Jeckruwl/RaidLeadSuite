@@ -2443,10 +2443,12 @@ check(bool(rt.eval("GM_NOHIT")), "Group Making panel (50% scale): old raw point 
 rt.execute("""
 local RFmod = RLSuite.raidFrame
 local row = RFmod.rows[1]
-local hpTrack = row.bar.bg._vertex
-local tankTrack = RFmod.tankSlots[1].targetBar.bg._vertex
-RF_EMPTY_BG_50 = hpTrack[1] == 0 and hpTrack[2] == 0 and hpTrack[3] == 0 and hpTrack[4] == 0.5
-    and tankTrack[1] == 0 and tankTrack[2] == 0 and tankTrack[3] == 0 and tankTrack[4] == 0.5
+local hpTrack = row.bar.bg
+local tankTrack = RFmod.tankSlots[1].targetBar.bg
+RF_EMPTY_BG_50 = hpTrack._vertex[1] == 0 and hpTrack._vertex[2] == 0 and hpTrack._vertex[3] == 0
+    and hpTrack._vertex[4] == 1 and hpTrack._alpha == 0.5
+    and tankTrack._vertex[1] == 0 and tankTrack._vertex[2] == 0 and tankTrack._vertex[3] == 0
+    and tankTrack._vertex[4] == 1 and tankTrack._alpha == 0.5
 local cr, cg, cb = RLSuite.utils:GetClassColor(row.member.class)
 local fill = row.bar._sbColor
 RF_FILL_COLOR_PRESERVED = fill and fill[1] == cr and fill[2] == cg and fill[3] == cb
