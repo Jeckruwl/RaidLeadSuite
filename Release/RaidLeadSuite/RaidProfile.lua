@@ -17,12 +17,18 @@ local PHASE_GAP = 6        -- distacco fra icona e nome della fase
 function MW:Init()
     self:CreateFrame()
     self:RegisterAllWindows()
+    -- Mostra una volta, fuori dal combat di login; poi resta indipendente
+    -- dalla visibilita' del Raid Frame.
+    if self.titleBar then self.titleBar:Show() end
+    if self.phaseBtn then self.phaseBtn:Show() end
+    if self.phaseText then self.phaseText:Show() end
     self:SyncVisibilityWithRaidFrame()
+    -- Se il debug era gia' attivo al login, crea/ancora qui i suoi comandi.
+    if RLSuite.SyncDebugPanel then RLSuite:SyncDebugPanel() end
 end
 
 function MW:Toggle()
-    -- Visibilita' della raid control bar vincolata al Raid Frame.
-    -- Toggle comanda l'apertura/chiusura del pannello matrice tasti sotto la barra.
+    -- Il pannello matrice e' indipendente dalla visibilita' del Raid Frame.
     if not self.frame then return end
     if self.frame:IsShown() then
         self.frame:Hide()
@@ -30,35 +36,14 @@ function MW:Toggle()
         self.frame:Show()
     end
     if self._updateArrowDir then self:_updateArrowDir() end
-    if RLSuite.SyncDebugPanel then RLSuite:SyncDebugPanel() end
     local rf = RLSuite.raidFrame
     if rf and rf.ApplyLayout then rf:ApplyLayout() end
 end
 
 function MW:SyncVisibilityWithRaidFrame()
-    local rf = RLSuite.raidFrame
-    local rfShown = rf and rf.frame and rf.frame:IsShown()
-
-    -- REGOLA ASSOLUTA: se il Raid Frame non è a schermo,
-    -- la Raid Control bar e il suo pannello NON DEVONO ESISTERE a schermo.
-    local show = rfShown and true or false
-
-    if self.titleBar then
-        if show then
-            self.titleBar:Show()
-            if self.phaseBtn then self.phaseBtn:Show() end
-            if self.phaseText then self.phaseText:Show() end
-        else
-            self.titleBar:Hide()
-            if self.phaseBtn then self.phaseBtn:Hide() end
-            if self.phaseText then self.phaseText:Hide() end
-            if self.frame then self.frame:Hide() end
-        end
-    end
+    -- Nessuna Show/Hide: la barra e' persistente e queste chiamate arrivano
+    -- anche da eventi del Raid Frame durante il combat.
     if self._updateArrowDir then self:_updateArrowDir() end
-    if RLSuite.SyncDebugPanel then
-        RLSuite:SyncDebugPanel()
-    end
 end
 
 function MW:ShowTab(key)
@@ -148,14 +133,14 @@ function MW:DefaultCascadeOffset(ignoreKey)
 end
 
 function MW:CreateFrame()
-    local parentFrame = (RLSuite.raidFrame and RLSuite.raidFrame.frame) or UIParent
-    local f = CreateFrame("Frame", "RLSuiteMainWindow", parentFrame)
+    -- La barra e la matrice sono autonome dal Raid Frame e restano cliccabili
+    -- anche quando l'HUD viene nascosto o e' in combat.
+    local f = CreateFrame("Frame", "RLSuiteMainWindow", UIParent)
     f:SetSize(240, 150)
     f:SetFrameStrata("HIGH")
-    -- NIENTE drag: la barra e' ANCORATA (bordo alto dello schermo, a una
-    -- distanza dal lato destro pari alla larghezza del Raid Frame). La
-    -- posizione la impone ApplyLayout a ogni ricalcolo; restano skin e
-    -- "click to front" come per le altre finestre.
+    -- NIENTE drag: la matrice viene ancorata a destra della Raid Control bar.
+    -- ApplyLayout ricalcola la posizione in base alla larghezza del Raid Frame;
+    -- restano skin e "click to front" come per le altre finestre.
     RLSuite.utils:MakeClickToFront(f)
     RLSuite.utils:ClampWindow(f)
     f:Hide()
@@ -164,33 +149,20 @@ function MW:CreateFrame()
     RLSuite.utils:SkinFrame(f)
     RLSuite.utils:ClampWindow(f)
 
-    -- === Barretta titolo (26px) SOPRA la main bar =============
-    -- Eredita la larghezza della main bar (anchor a tutti e due gli
-    -- angoli). Figlia di parentFrame (Raid Frame) così se il Raid Frame
-    -- è nascosto, il motore di WoW nasconde automaticamente la barra!
-    local tb = CreateFrame("Frame", "RLSuiteMainTitleBar", parentFrame)
+    -- === Raid Control bar autonoma (26px) =======================
+    -- Figlia di UIParent: non sparisce quando il Raid Frame e' nascosto.
+    local tb = CreateFrame("Frame", "RLSuiteMainTitleBar", UIParent)
     -- ALTEZZA ALZATA (era 20px): la barretta di Raid Control aveva i tasti
     -- schiacciati sul bordo. Icona di fase e X restano centrate, il tasto
     -- "Raid Control" cresce con lei.
     tb:SetHeight(TITLE_BAR_H)
-    -- gap 2px: barretta STACCATA dalla main bar (non incollata)
-    tb:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 2)
-    tb:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 2)
+    -- Posizione definitiva: in alto a destra del Raid Frame, su UIParent.
+    tb:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth(), 0)
     tb:SetFrameStrata(f:GetFrameStrata() or "HIGH")
     tb:EnableMouse(true)
     tb:Hide()
     self.titleBar = tb
 
-    -- HARD SAFETY GUARD: Se per qualunque motivo esterno o chiamata di layout
-    -- qualcuno chiama :Show() sulla barretta mentre il Raid Frame NON è visibile,
-    -- intercettiamo OnShow e la richiudiamo all'istante.
-    tb:SetScript("OnShow", function(this)
-        local rf = RLSuite.raidFrame
-        local rfShown = rf and rf.frame and rf.frame:IsShown()
-        if not rfShown then
-            this:Hide()
-        end
-    end)
     -- SOLO skin: la barretta NON si trascina piu' (niente drag, niente
     -- posizione salvata). La barra e' ANCORATA al bordo alto dello schermo e
     -- la sua posizione la calcola ApplyLayout: un drag la farebbe solo
@@ -207,9 +179,19 @@ function MW:CreateFrame()
     -- Niente piu' la scritta "RLS": al suo posto (creati piu' sotto) l'icona
     -- di fase e il nome della fase, cosi' la barretta dice qualcosa di utile.
 
-    -- Pulsante "Raid Control": apre e chiude il pannello dei tasti sotto la barretta.
-    local rcBtn = CreateFrame("Button", "RLSuiteRaidControlBtn", tb, "UIPanelButtonTemplate")
+    -- Pulsante secure: il click deve poter mostrare/nascondere la matrice anche
+    -- in combat, quando un normale OnClick Lua non puo' toccare frame protetti.
+    local rcBtn = CreateFrame("Button", "RLSuiteRaidControlBtn", tb,
+        "SecureHandlerClickTemplate, UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(rcBtn)
+    rcBtn:RegisterForClicks("LeftButtonUp")
+    rcBtn:SetFrameRef("matrix", f)
+    rcBtn:SetAttribute("_onclick", [[
+        local panel = self:GetFrameRef("matrix")
+        if panel then
+            if panel:IsShown() then panel:Hide() else panel:Show() end
+        end
+    ]])
     rcBtn:SetHeight(20)
     rcBtn:SetText("Raid Control")
     local probe = tb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -221,35 +203,25 @@ function MW:CreateFrame()
     rcBtn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_BOTTOM")
         GameTooltip:SetText("Raid Control")
-        GameTooltip:AddLine(L["Shows or hides the button panel under this bar."], 1, 1, 1)
+        GameTooltip:AddLine(L["Shows or hides the button panel to the right of this bar."], 1, 1, 1)
         GameTooltip:Show()
     end)
     rcBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- Evidenzia il pulsante quando il pannello e' aperto (prima lo faceva la
-    -- freccia girandosi). Nome storico mantenuto: _updateArrowDir.
+    -- Evidenzia il pulsante quando la matrice a destra e' aperta.
+    -- Nome storico mantenuto: _updateArrowDir.
     local function MW_UpdateArrowDir()
+        -- Evita operazioni Lua sul pulsante/frame protetto durante il combat;
+        -- il secure handler gestisce comunque la visibilita' della matrice.
+        if InCombatLockdown and InCombatLockdown() then return end
         if not (rcBtn and rcBtn.LockHighlight) then return end
         if f:IsShown() then rcBtn:LockHighlight() else rcBtn:UnlockHighlight() end
-        -- Stesso legame anche quando il pannello si apre/chiude per altre vie
-        -- (X della barretta, /rls, ShowTab): il pannello debug segue sempre.
-        if RLSuite.SyncDebugPanel then RLSuite:SyncDebugPanel() end
     end
     MW._updateArrowDir = MW_UpdateArrowDir
     f:HookScript("OnShow", MW_UpdateArrowDir)
     f:HookScript("OnHide", MW_UpdateArrowDir)
 
-    rcBtn:SetScript("OnClick", function()
-        if f:IsShown() then
-            f:Hide()
-        else
-            f:Show()
-        end
-        MW_UpdateArrowDir()
-        -- RLS DEBUG vive e muore con il pannello dei tasti: si chiude con lui
-        -- e ricompare a OGNI apertura (se il debug e' attivo).
-        if RLSuite.SyncDebugPanel then RLSuite:SyncDebugPanel() end
-    end)
+    rcBtn:SetScript("PostClick", MW_UpdateArrowDir)
     tb.raidControlBtn = rcBtn
     tb.arrowBtn = rcBtn            -- alias storico (stesso bottone)
     self.raidControlBtn = rcBtn    -- usato da ApplyLayout per la larghezza
@@ -512,6 +484,11 @@ end
 function MW:ApplyLayout()
     local L = RLSuite.db and RLSuite.db.profile.layout and RLSuite.db.profile.layout.main
     if not self.frame then return end
+    if InCombatLockdown and InCombatLockdown() then
+        self._layoutPending = true
+        return
+    end
+    self._layoutPending = nil
     L = L or {}
     local cols, rows = 8, 1
     -- Celle della matrice: una per tasto, una per la coppia MT & OT.
@@ -529,6 +506,7 @@ function MW:ApplyLayout()
     local matrixH = rows * bh + (rows - 1) * gapY
 
     local tbPad, tbGap = 4, 4
+    local matrixGap = 2
     local phaseIconW = PHASE_ICON
     local phaseNameW = self._phaseLabelW or 58
     local rcBtnRef = self.raidControlBtn or (self.titleBar and self.titleBar.raidControlBtn)
@@ -549,9 +527,9 @@ function MW:ApplyLayout()
     end
     self.frame:ClearAllPoints()
     if self.titleBar then
-        self.frame:SetPoint("TOPLEFT", self.titleBar, "BOTTOMLEFT", 0, -2)
+        self.frame:SetPoint("TOPLEFT", self.titleBar, "TOPRIGHT", matrixGap, 0)
     else
-        self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth(), -TITLE_BAR_H - 2)
+        self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth() + titleW + matrixGap, 0)
     end
 
     -- Otto celle in una riga: la terza ospita la coppia MT/OT, tutte le
@@ -583,9 +561,8 @@ function MW:ApplyLayout()
         end
     end
 
-    -- BARRETTA DEL TITOLO: larghezza = SOMMA DEI SUOI ELEMENTI e ancorata a
-    -- sinistra sopra il pannello (non piu' stirata sulla larghezza della
-    -- matrice: con la matrice larga restava un vuoto enorme in mezzo).
+    -- RAID CONTROL bar: larghezza = somma dei suoi elementi; la matrice si
+    -- ancora al suo TOPRIGHT, senza stirare la barra sulla larghezza dei tasti.
     if self.titleBar then
         self.titleBar:SetWidth(titleW)
     end
@@ -596,11 +573,9 @@ function MW:ApplyLayout()
     if self.phaseText and self.phaseBtn then
         self.phaseText:ClearAllPoints()
         self.phaseText:SetPoint("LEFT", self.phaseBtn, "RIGHT", PHASE_GAP, 0)
-        -- Il nome della fase ha un posto RISERVATO nel calcolo della
-        -- larghezza (phaseNameW): qui si mostra sempre se la titleBar e' mostrata.
-        local rf = RLSuite.raidFrame
-        local rfShown = rf and rf.frame and rf.frame:IsShown()
-        if self.titleBar and self.titleBar:IsShown() and rfShown then
+        -- Il nome della fase ha un posto riservato: segue solo la visibilita'
+        -- della Raid Control bar, non quella del Raid Frame.
+        if self.titleBar and self.titleBar:IsShown() then
             self.phaseText:Show()
         else
             self.phaseText:Hide()

@@ -70,6 +70,8 @@ function methods:RegisterForDrag(...) self._dragButtons = {...}; return self end
 function methods:RegisterForClicks(...) self._clickButtons = {...}; return self end
 function methods:SetAttribute(k, v) self._attrs = self._attrs or {}; self._attrs[k] = v; return self end
 function methods:GetAttribute(k) return self._attrs and self._attrs[k] or nil end
+function methods:SetFrameRef(k, frame) self._frameRefs = self._frameRefs or {}; self._frameRefs[k] = frame; return self end
+function methods:GetFrameRef(k) return self._frameRefs and self._frameRefs[k] or nil end
 function methods:RegisterEvent(e)
     EVENT_REG[self] = EVENT_REG[self] or {}
     EVENT_REG[self][e] = true
@@ -264,6 +266,17 @@ CreateFrame = function(typ, name, parent, template)
     if parent then parent._children = parent._children or {}; parent._children[#parent._children + 1] = o end
     if name then _G[name] = o; FRAMES[name] = o end
     return o
+end
+-- Mock WoW's restricted _onclick handler for SecureHandlerClickTemplate.
+function TestSecureClick(button)
+    local code = button:GetAttribute("_onclick") or ""
+    local panel = button:GetFrameRef("matrix")
+    assert(panel and code:find("panel:IsShown()", 1, true)
+        and code:find("panel:Hide()", 1, true) and code:find("panel:Show()", 1, true),
+        "Raid Control secure click handler is not configured")
+    if panel:IsShown() then panel:Hide() else panel:Show() end
+    local postClick = button:GetScript("PostClick")
+    if postClick then postClick(button) end
 end
 UIParent = newFrame({ _name = "UIParent" })
 UIParent._w = 1920; UIParent._h = 1080
@@ -4954,7 +4967,7 @@ check(bool(rt.eval("DBG_TITLE_STYLE.noBackdrop == true and DBG_TITLE_STYLE.mouse
 check(bool(rt.eval("DBG_GAP.n == 1 and DBG_GAP.cells == 8")), "RLS DEBUG grid has ONE empty cell (8 cells: title + 6 buttons + blank)")
 check(bool(rt.eval("DBG_GAP.nameBefore == 'Empty Loot'")), "the blank cell sits right AFTER 'Empty Loot' (%s -> vuota)" % rt.eval("DBG_GAP.nameBefore"))
 check(bool(rt.eval("DBG_GAP.freeCell == true and DBG_GAP.afterAt.y == DBG_GAP.y and DBG_GAP.afterAt.x == DBG_GAP.nextColX")), "no button sits in the blank cell: '%s' starts the cell right after it" % rt.eval("DBG_GAP.afterName"))
-check(bool(rt.eval("""(function() local f = RLSuite.debugPanel local p = f._points[1] or {} local mw = RLSuite.mainWindow local expected = mw:RaidFrameWidth() + mw.frame:GetWidth() * mw.frame:GetScale() return p[1] == 'TOPLEFT' and p[2] == UIParent and p[3] == 'TOPLEFT' and math.abs((p[4] or -1) - expected) < 0.001 and p[5] == 0 end)()""")), "v1.11.114: debug panel is top-aligned after Raid Frame width + command matrix width")
+check(bool(rt.eval("""(function() local f = RLSuite.debugPanel local p = f._points[1] or {} local mw = RLSuite.mainWindow return p[1] == 'TOPLEFT' and p[2] == mw.titleBar and p[3] == 'BOTTOMLEFT' and p[4] == 0 and p[5] == -2 end)()""")), "v1.11.114: debug panel is directly below the Raid Control bar")
 check(bool(rt.eval("RLSuite.debugPanel._scripts['OnDragStart'] == nil")), "debug panel is NOT draggable")
 
 # --- RLS DEBUG indipendente dal pannello dei tasti (Raid Control) ---
@@ -4967,10 +4980,10 @@ DBG_FOLLOW_CLOSED = RLSuite.debugPanel:IsShown()
 MWd.frame:Show()                       -- apre il pannello (come il tasto)
 RLSuite:SyncDebugPanel()
 DBG_FOLLOW_OPEN = RLSuite.debugPanel:IsShown()
--- il tasto vero: click su Raid Control -> pannello + debug insieme
-MWd.titleBar.raidControlBtn._scripts.OnClick(MWd.titleBar.raidControlBtn)
+-- il tasto vero: click su Raid Control -> pannello, il debug resta indipendente
+TestSecureClick(MWd.titleBar.raidControlBtn)
 DBG_AFTER_RC_CLOSE = RLSuite.debugPanel:IsShown()
-MWd.titleBar.raidControlBtn._scripts.OnClick(MWd.titleBar.raidControlBtn)
+TestSecureClick(MWd.titleBar.raidControlBtn)
 DBG_AFTER_RC_OPEN = RLSuite.debugPanel:IsShown()
 -- debug spento: il pannello resta aperto ma RLS DEBUG no
 RLSuite.db.profile.debug = false
@@ -5374,18 +5387,20 @@ rt.execute("""
     RF_SCALE = RLSuite.raidFrame.db.scale or 1
     BUFF_WINDOW_SEPARATE = (RLSuite.raidFrame.buffPanelBtn == nil)
 """)
-check(bool(rt.eval("ANCH_P == 'TOPLEFT' and ANCH_RELP == 'BOTTOMLEFT'")),
-      "button matrix panel opens BELOW the title bar (%s -> %s)" % (rt.eval("ANCH_P"), rt.eval("ANCH_RELP")))
+check(bool(rt.eval("ANCH_P == 'TOPLEFT' and ANCH_RELP == 'TOPRIGHT'")),
+      "button matrix panel opens to the RIGHT of the Raid Control bar (%s -> %s)" % (rt.eval("ANCH_P"), rt.eval("ANCH_RELP")))
+check(bool(rt.eval("ANCH_PARENT_NAME == 'UIParent'")), "Raid Control matrix is not parented to the Raid Frame and remains independently visible")
 rt.execute("""
     local tp1, tpParent, tp3, tx, ty = RLSuite.mainWindow.titleBar:GetPoint(1)
     TB_ANCH_P, TB_ANCH_REL, TB_ANCH_X, TB_ANCH_Y = tp1, tp3, tx, ty
     TB_ANCH_PARENT = (tpParent == UIParent) and 'UIParent' or 'ALTRO'
+    TB_ACTUAL_PARENT = (RLSuite.mainWindow.titleBar:GetParent() == UIParent)
 """)
-check(bool(rt.eval("TB_ANCH_P == 'TOPLEFT' and TB_ANCH_PARENT == 'UIParent' and TB_ANCH_REL == 'TOPLEFT'")),
-      "the title bar (the anchor) is at the TOP-LEFT of the screen: distance from the LEFT side")
+check(bool(rt.eval("TB_ANCH_P == 'TOPLEFT' and TB_ANCH_PARENT == 'UIParent' and TB_ANCH_REL == 'TOPLEFT' and TB_ACTUAL_PARENT == true")),
+      "the Raid Control bar is parented to UIParent and anchored at the top-left edge")
 check(bool(rt.eval("TB_ANCH_Y == 0")),
       "title bar touches top edge")
-check(bool(rt.eval("ANCH_X == 0")), "panel left is aligned with title bar left")
+check(bool(rt.eval("ANCH_X == 2")), "matrix panel starts 2px to the right of the title bar")
 check(bool(rt.eval("RFW == RF_LIVE_W and RF_LIVE_W == RF_M.W * RF_SCALE")),
       "right offset = Raid Frame width (%d px at scale %s)" % (rt.eval("RF_M.W * RF_SCALE"), rt.eval("RF_SCALE")))
 check(bool(rt.eval("TB_ANCH_X == RFW")), "the offset IS the Raid Frame width, on the LEFT side (no other constant)")
@@ -5491,8 +5506,8 @@ rt.execute("""
 """)
 check(bool(rt.eval("PANEL_TO_TITLE == true and PANEL_POINTS == 1")),
       "MAIN BAR panel is anchored to the title bar (%s)" % rt.eval("PANEL_ANCH"))
-check(bool(rt.eval("PANEL_ANCH:find('BOTTOMLEFT') ~= nil")),
-      "it opens BELOW the title bar (TOPLEFT -> BOTTOMLEFT)")
+check(bool(rt.eval("PANEL_ANCH:find('TOPRIGHT') ~= nil and PANEL_TOP == TB_TOP")),
+      "it opens to the RIGHT of the title bar, aligned at the top")
 check(bool(rt.eval("TB_TOP == 0")), "bar at top y = 0")
 check(bool(rt.eval("TITLE_W2 == TITLE_SUM")), "title bar still measures exactly its own elements")
 
@@ -5509,33 +5524,58 @@ check(bool(rt.eval("MB_TB_ANCHOR == false")), "MacroBar is NOT anchored to the t
 check(bool(rt.eval("MB_OVERRIDE_FN == false")), "MacroBar manual-position override removed (v1.11.60 reverted)")
 check(bool(rt.eval("MB_HAS_POINT == true")), "MacroBar keeps using its configured anchor point")
 
-# -- Raid Control apre/chiude proprio quel pannello, che resta a destra -----
+# -- Raid Control apre/chiude la matrice a destra della barra -------------
 rt.execute("""
     MW = RLSuite.mainWindow
     MW.frame:Hide(); MW.titleBar:Show()
-    MW.titleBar.raidControlBtn._scripts.OnClick(MW.titleBar.raidControlBtn)
+    TestSecureClick(MW.titleBar.raidControlBtn)
     RC_OPEN = MW.frame:IsShown()
     local p2 = MW.frame._points[1] or {}
-    RC_BELOW = (p2[2] == MW.titleBar and (p2[4] or 0) == 0 and p2[3] == 'BOTTOMLEFT')
+    RC_RIGHT = (p2[2] == MW.titleBar and (p2[4] or 0) == 2
+        and p2[3] == 'TOPRIGHT' and (p2[5] or 0) == 0)
 """)
-check(bool(rt.eval("RC_OPEN == true and RC_BELOW == true")),
-      "'Raid Control' opens the panel, and it appears below the bar aligned left")
+check(bool(rt.eval("RC_OPEN == true and RC_RIGHT == true")),
+      "'Raid Control' opens the button matrix to the right of the bar")
 
 # -- Barretta: "Raid Control" = solo pannello; close = tutto chiuso
 rt.execute("""
 f = RLSuite.mainWindow.frame
 f:Show(); TB:Show()
-TB.raidControlBtn._scripts.OnClick(TB.raidControlBtn)
+TestSecureClick(TB.raidControlBtn)
 A1 = f:IsShown(); A1TB = TB:IsShown()
 HL_HIDDEN = TB.raidControlBtn._highlight
-TB.raidControlBtn._scripts.OnClick(TB.raidControlBtn)
+TestSecureClick(TB.raidControlBtn)
 A2 = f:IsShown()
 HL_SHOWN = TB.raidControlBtn._highlight
 """)
-check(bool(rt.eval("A1 == false and A1TB == true")), "Raid Control: hides ONLY the panel under the bar (bar stays)")
-check(bool(rt.eval("A2 == true")), "Raid Control: shows the panel back under the bar")
+check(bool(rt.eval("A1 == false and A1TB == true")), "Raid Control: hides ONLY the matrix to its right; the bar stays")
+check(bool(rt.eval("A2 == true")), "Raid Control: shows the matrix to the right again")
 check(bool(rt.eval("HL_SHOWN == true and HL_HIDDEN == false")),
-      "Raid Control is highlighted only while the panel is open")
+      "Raid Control is highlighted only while the matrix is open")
+
+# -- Raid Control resta visibile e la matrice e' apribile/chiudibile in combat
+rt.execute("""
+local MWc = RLSuite.mainWindow
+local RFc = RLSuite.raidFrame
+local oldCombat, oldRFShown, oldPanelShown = InCombatLockdown, RFc.frame:IsShown(), MWc.frame:IsShown()
+InCombatLockdown = function() return true end
+MWc.frame:Hide()
+TestSecureClick(MWc.titleBar.raidControlBtn)
+COMBAT_RC_OPEN = MWc.frame:IsShown()
+TestSecureClick(MWc.titleBar.raidControlBtn)
+COMBAT_RC_CLOSE = not MWc.frame:IsShown()
+InCombatLockdown = oldCombat
+MWc.frame:Show()
+RFc.frame:Hide()
+MWc:SyncVisibilityWithRaidFrame()
+RC_VISIBLE_WITH_RF_HIDDEN = MWc.titleBar:IsShown() and MWc.titleBar:GetParent() == UIParent
+RC_MATRIX_INDEPENDENT = MWc.frame:IsShown() and MWc.frame:GetParent() == UIParent
+if oldRFShown then RFc.frame:Show() else RFc.frame:Hide() end
+if oldPanelShown then MWc.frame:Show() else MWc.frame:Hide() end
+MWc:SyncVisibilityWithRaidFrame()
+""")
+check(bool(rt.eval("COMBAT_RC_OPEN and COMBAT_RC_CLOSE")), "Raid Control matrix can be opened and closed during combat")
+check(bool(rt.eval("RC_VISIBLE_WITH_RF_HIDDEN and RC_MATRIX_INDEPENDENT")), "Raid Control bar and open matrix stay visible when the Raid Frame is hidden")
 
 # -- Toggle tab riallinea anche la barretta
 rt.execute("RLSuite.mainWindow:ShowTab('group')")
@@ -5594,7 +5634,12 @@ check('HideAllWindows' not in _ct, "CloseTab never hides other windows (in-fight
 check(_rp42.count('MW:CloseTab()') == 1, "only the CloseTab definition remains (no implicit calls from arrow/X/toggle)")
 _rt42 = _re.sub(r'--[^\n]*', '', _rp42)
 _rt42 = _re.sub(r'\s+', ' ', _rt42)
-check('rcBtn:SetScript("OnClick", function() if f:IsShown() then f:Hide() else f:Show() end' in _rt42, "the Raid Control button toggles ONLY the button panel, at any time")
+check('SecureHandlerClickTemplate' in _rp42 and 'rcBtn:SetFrameRef("matrix", f)' in _rp42
+      and 'rcBtn:SetAttribute("_onclick"' in _rp42
+      and 'panel:Hide()' in _rp42 and 'panel:Show()' in _rp42
+      and 'rcBtn:SetScript("PostClick", MW_UpdateArrowDir)' in _rp42
+      and 'rcBtn:SetScript("OnClick", function() if f:IsShown()' not in _rt42,
+      "Raid Control toggles its matrix through a secure click handler, including during combat")
 # -- v1.11.42: loot dedupe + boss from looted corpse
 _l42 = open("LootManager.lua", encoding='utf-8').read()
 check('< 4 then' in _l42 and 'prev.itemLink == itemLink' in _l42, "loot dedupe: same itemLink within 4s is skipped (no duplicates)")
@@ -5612,7 +5657,7 @@ RLSuite.mainWindow:ShowTab('loot')
 local pms = RLSuite.mainWindow:PaneForTab('ms'); local pl = RLSuite.mainWindow:PaneForTab('loot')
 RLSuite.mainWindow.frame:Hide(); RLSuite.mainWindow.titleBar:Show()
 local arrS = RLSuite.mainWindow.titleBar and RLSuite.mainWindow.titleBar.arrowBtn
-arrS._scripts.OnClick(arrS)
+TestSecureClick(arrS)
 AF1 = pms:IsShown(); AL1 = pl:IsShown()
 UnitExists = function() return true end
 UnitIsDead = function() return true end

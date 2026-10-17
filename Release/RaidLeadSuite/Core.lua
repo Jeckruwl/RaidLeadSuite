@@ -482,6 +482,11 @@ end
 
 function RLSuite:OnPlayerRegenEnabled()
     self:UpdateRaidContext()
+    -- Reflow della matrice sospeso se era arrivato un aggiornamento UI durante
+    -- combat; le posizioni dei secure button si applicano ora fuori combat.
+    if self.mainWindow and self.mainWindow._layoutPending and self.mainWindow.ApplyLayout then
+        self.mainWindow:ApplyLayout()
+    end
 end
 
 function RLSuite:OnPlayerRegenDisabled()
@@ -1757,20 +1762,20 @@ function RLSuite:AnchorDebugPanel()
     local f = self.debugPanel
     if not f then return end
     local mw = self.mainWindow
-    local raidW = (mw and mw.RaidFrameWidth and mw:RaidFrameWidth()) or 0
-    local matrixW = 0
-    if mw and mw.frame then
-        local scale = (mw.frame.GetScale and mw.frame:GetScale()) or 1
-        matrixW = (mw.frame:GetWidth() or 0) * scale
-    end
     f:ClearAllPoints()
-    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", raidW + matrixW, 0)
+    if mw and mw.titleBar then
+        -- I comandi di debug stanno sotto la Raid Control bar, non accanto
+        -- o sotto la matrice che si apre alla sua destra.
+        f:SetPoint("TOPLEFT", mw.titleBar, "BOTTOMLEFT", 0, -2)
+    else
+        -- Fallback solo durante l'inizializzazione prima della MainWindow.
+        f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -28)
+    end
 end
 
 function RLSuite:EnsureDebugPanel()
     if self.debugPanel then return end
-    -- Pannello indipendente dalla Raid Control bar: fisso al bordo superiore,
-    -- dopo la larghezza del Raid Frame e della matrice pulsanti.
+    -- Pannello indipendente dalla matrice: si apre sotto la Raid Control bar.
     local f = CreateFrame("Frame", "RLSuiteDebugPanel", UIParent)
     f:SetSize(126, 60)
     f:SetFrameStrata("HIGH")
