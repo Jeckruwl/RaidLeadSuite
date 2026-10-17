@@ -2829,6 +2829,43 @@ local editorOK=cdw:IsCustomPanelEditMode() and picker and picker:IsShown()
 modify.func()
 local editClosed=not cdw:IsCustomPanelEditMode() and not picker:IsShown()
 s.useClassColor=oldClassColor
+local oldGroupMode,oldGroupBy= s.groupMode,s.groupByCaster
+local oldModelsByCategory=cdw.modelsByCategory
+s.customPanels[1].spells={firstAbility.key,ccAbility.key}
+local function groupTestModel(ability,owner,order)
+    return {key=ability.key..'@'..owner,ability=ability,ownerName=owner,sourceName=owner,
+        member={name=owner,class=ability.class},life='alive',ready=true,cooldown=0,
+        rosterOrder=order,categoryOrder=ability.order}
+end
+cdw.modelsByCategory={}
+cdw.modelsByCategory[firstAbility.category]={groupTestModel(firstAbility,'Alice',1),groupTestModel(firstAbility,'Bob',2)}
+cdw.modelsByCategory[ccAbility.category]={groupTestModel(ccAbility,'Alice',1)}
+local panelWindow=cdw.customWindows[1]
+local function hasSubheader(text)
+    for _,header in pairs(panelWindow.subheaderFrames) do
+        if header:IsShown() and header.text:GetText()==text then return true end
+    end
+    return false
+end
+local function hasAnySubheader()
+    for _,header in pairs(panelWindow.subheaderFrames) do if header:IsShown() then return true end end
+    return false
+end
+s.groupMode='caster'; s.groupByCaster=true
+cdw:RenderCustomPanel(1)
+local casterGroups=hasSubheader('Alice') and hasSubheader('Bob')
+    and panelWindow.barFrames[firstAbility.key..'@Alice'].label:GetText()==firstAbility.name
+s.groupMode='spells'; s.groupByCaster=false
+cdw:RenderCustomPanel(1)
+local spellGroups=hasSubheader(firstAbility.name) and hasSubheader(ccAbility.name)
+    and panelWindow.barFrames[firstAbility.key..'@Alice'].label:GetText()=='Alice'
+s.groupMode='none'; s.groupByCaster=false
+cdw:RenderCustomPanel(1)
+local ungrouped=not hasAnySubheader()
+    and panelWindow.barFrames[firstAbility.key..'@Alice'].label:GetText()==firstAbility.name..':Alice'
+s.groupMode,s.groupByCaster=oldGroupMode,oldGroupBy
+cdw.modelsByCategory=oldModelsByCategory
+CDW_CUSTOM_GROUP_MODE=casterGroups and spellGroups and ungrouped
 CDW_CUSTOM_PANEL_CORE=categoryCount>0 and spellCount>0 and renameOK and emptyRenameRejected
     and assignFirst and assignCC and moveCC and duplicateRejected and s.customPanels[1].spells[1]==firstAbility.key
     and #s.customPanels[2].spells==1 and s.customPanels[2].spells[1]==ccAbility.key
@@ -2862,7 +2899,8 @@ cdw:RefreshAll()
 check(bool(rt.eval("CDW_CUSTOM_PANEL_CORE")), "Custom panels support six persisted settings, rename, spell assignment, duplicate rejection and moves")
 check(bool(rt.eval("CDW_CUSTOM_PANEL_POSITION")), "custom panels default to a three-across grid and restore saved positions after toggling")
 check(bool(rt.eval("CDW_CUSTOM_CATALOG")), "custom editor shows all spells grouped by class within four category columns, with 200px class-colored bars")
-check(bool(rt.eval("CDW_CUSTOM_LAYOUT_OPTIONS")), "Custom panels controls are available only under the Custom panels layout")
+check(bool(rt.eval("CDW_CUSTOM_GROUP_MODE")), "Custom panels honor Caster, Spells and None grouping labels and headers")
+check(bool(rt.eval("CDW_CUSTOM_LAYOUT_OPTIONS")),  "Custom panels controls are available only under the Custom panels layout")
 rt.execute("""
 local cfg=RLSuite.config
 local wasOpen=cfg:IsOpen()

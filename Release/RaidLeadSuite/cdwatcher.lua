@@ -1655,6 +1655,7 @@ function CDW:RenderCustomPanel(index)
     local width=self:GetBarWidth()+40
     local usedBars,usedHeads,usedSubs,usedPrompts={}, {}, {}, {}
     local y,count=2,0
+    local models={}
     window.titleText:SetText(panel.name)
     for _,abilityKey in ipairs(panel.spells) do
         local ability=ABILITY_BY_KEY[abilityKey]
@@ -1663,16 +1664,16 @@ function CDW:RenderCustomPanel(index)
                 if source.ability and source.ability.key==abilityKey then
                     local model={}
                     for key,value in pairs(source) do model[key]=value end
-                    model.customSpell=true
                     model.customPanelIndex=index
-                    local row=self:RenderBar(window,model,y,width-40)
-                    usedBars[row]=true
-                    self.rows[#self.rows+1]=row
-                    count=count+1
-                    y=y+self:GetBarHeight()
+                    models[#models+1]=model
                 end
             end
         end
+    end
+    count=#models
+    if count>0 then
+        y=self:RenderRows(window,"custom_panel_"..index,models,y,width-40,usedBars,usedSubs)
+        for row in pairs(usedBars) do self.rows[#self.rows+1]=row end
     end
     if count==0 then
         window.emptyText:SetText(#panel.spells==0 and L["No spells assigned to this panel. Use Modify panels to add spells."]
