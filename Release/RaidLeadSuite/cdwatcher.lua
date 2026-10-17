@@ -494,6 +494,24 @@ function CDW:QueueManualBarDrag(frame,button)
     self._barDragButtonDown=true
 end
 
+function CDW:AnnounceReadyBar(frame)
+    local model=frame and frame.data
+    if not model or model.preview or model.customCatalogSpell or model.ready~=true then return false end
+    if model.life and model.life~="alive" then return false end
+    if not self:CursorInsideFrame(frame) then return false end
+    local caster=model.sourceName or model.ownerName
+    local spellName=model.ability and model.ability.name
+    if not caster or caster=="" or not spellName or spellName=="" then return false end
+    local message=caster.." cast "..spellName
+    local target=model.assignedTarget
+    if target and target~="" then message=message.." on "..target end
+    if RLSuite.utils and RLSuite.utils.SendChat then
+        RLSuite.utils:SendChat(message,"RAID_WARNING")
+        return true
+    end
+    return false
+end
+
 function CDW:StartManualBarDrag(frame)
     if self._barDragSource or not self:IsManualBarDragCandidate(frame) then return false end
     self._barDragSource=frame
@@ -543,6 +561,7 @@ function CDW:HandleManualBarMouseUp(_,button)
     if self._barDragSource then
         self:FinishManualBarDrag()
     else
+        self:AnnounceReadyBar(candidate)
         self._barDragButtonDown=false
         self._barDragCandidate=nil
         self._barDragStartX,self._barDragStartY=nil,nil
@@ -593,6 +612,7 @@ function CDW:_InitManualBarDragPoller()
             if CDW._barDragSource then
                 CDW:FinishManualBarDrag()
             else
+                CDW:AnnounceReadyBar(candidate)
                 CDW._barDragCandidate=nil
                 CDW._barDragStartX,CDW._barDragStartY=nil,nil
             end
@@ -1492,7 +1512,8 @@ function CDW:EnsureBar(window, model, width)
     row:SetSize(width, self:GetBarHeight())
     row:EnableMouse(true)
     -- No RegisterForDrag: the client drag manager in 3.3.5 can swallow
-    -- mouse input for the whole frame tree. The manual poller below handles it.
+    -- mouse input for the whole frame tree. The manual poller handles drag
+    -- detection and ready-bar click activation when row scripts are swallowed.
     row.bg = row:CreateTexture(nil, "BACKGROUND")
     row.bg:SetTexture(WHITE_TEXTURE)
     row.bg:SetAllPoints(row)

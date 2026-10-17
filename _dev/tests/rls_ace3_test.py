@@ -3242,6 +3242,62 @@ if targetRow and targetRow._scripts.OnEnter then targetRow._scripts.OnEnter(targ
 CDW_TOOLTIP_HIDDEN=not GameTooltip:IsShown()
 GameTooltip.AddLine=oldAdd; s.hideTooltips=false; cdw:ApplyBarSettings()
 
+-- Ready-bar clicks use the real manual poller (the client can swallow row
+-- mouse scripts on 3.3.5) and emit exact RAID_WARNING text with optional target.
+local alertWindow=cdw.groupWindows.offensive
+local alertWindowWasShown=alertWindow:IsShown()
+if not alertWindowWasShown then alertWindow:Show() end
+local alertRow=alertWindow.barFrames['hysteria@CasterDK']
+local oldAlertData=alertRow.data
+local oldAlertLeft,oldAlertRight,oldAlertBottom,oldAlertTop=
+    alertRow.GetLeft,alertRow.GetRight,alertRow.GetBottom,alertRow.GetTop
+local oldCursorPosition,oldMouseButtonDown=GetCursorPosition,IsMouseButtonDown
+local oldRaidLeader,oldRaidOfficer=IsRaidLeader,IsRaidOfficer
+local oldDebug,oldChatLog=RLSuite.db.profile.debug,CHAT_LOG
+local oldBarDragButtonDown,oldBarDragCandidate=cdw._barDragButtonDown,cdw._barDragCandidate
+local oldBarDragStartX,oldBarDragStartY=cdw._barDragStartX,cdw._barDragStartY
+local oldBarDragSource=cdw._barDragSource
+local clickDown=false
+local clickPoller=cdw._barDragPoller
+alertRow.GetLeft=function() return 10 end; alertRow.GetRight=function() return 210 end
+alertRow.GetBottom=function() return 30 end; alertRow.GetTop=function() return 54 end
+alertRow.data={key='hysteria@CasterDK',ability=cdw.AbilitiesByKey.hysteria,
+    sourceName='CasterDK',ownerName='CasterDK',assignedTarget='TargetPlayer',ready=true,life='alive'}
+alertRow:Show()
+GetCursorPosition=function() return 40,40 end
+IsMouseButtonDown=function(button) return clickDown and button=='LeftButton' end
+IsRaidLeader=function() return true end; IsRaidOfficer=function() return false end
+RLSuite.db.profile.debug=false
+local function simulateReadyBarClick()
+    clickDown=true
+    if clickPoller and clickPoller._scripts.OnUpdate then clickPoller._scripts.OnUpdate(clickPoller,0.04) end
+    clickDown=false
+    if clickPoller and clickPoller._scripts.OnUpdate then clickPoller._scripts.OnUpdate(clickPoller,0.04) end
+end
+CHAT_LOG={}
+simulateReadyBarClick()
+local alertWithTarget=CHAT_LOG[1]
+alertRow.data.assignedTarget=nil
+CHAT_LOG={}
+simulateReadyBarClick()
+local alertWithoutTarget=CHAT_LOG[1]
+alertRow.data.ready=false
+CHAT_LOG={}
+simulateReadyBarClick()
+local notReadySilent=#CHAT_LOG==0
+CDW_READY_BAR_ALERT=alertWithTarget=='RAID_WARNING|CasterDK cast Hysteria on TargetPlayer'
+    and alertWithoutTarget=='RAID_WARNING|CasterDK cast Hysteria' and notReadySilent
+alertRow.data=oldAlertData
+alertRow.GetLeft,alertRow.GetRight,alertRow.GetBottom,alertRow.GetTop=
+    oldAlertLeft,oldAlertRight,oldAlertBottom,oldAlertTop
+GetCursorPosition,IsMouseButtonDown=oldCursorPosition,oldMouseButtonDown
+IsRaidLeader,IsRaidOfficer=oldRaidLeader,oldRaidOfficer
+RLSuite.db.profile.debug=oldDebug; CHAT_LOG=oldChatLog
+cdw._barDragButtonDown,cdw._barDragCandidate=oldBarDragButtonDown,oldBarDragCandidate
+cdw._barDragStartX,cdw._barDragStartY=oldBarDragStartX,oldBarDragStartY
+cdw._barDragSource=oldBarDragSource
+if not alertWindowWasShown then alertWindow:Hide() end
+
 -- Every CDW window is created without the universal Dialog border path.
 local backdrop=tankWindow:GetBackdrop()
 cdw:EnsureCategoryWindow('tank_defensive'); cdw:EnsureMacroGroupWindow('offensive'); cdw:EnsureInspectWindow()
@@ -3287,6 +3343,7 @@ check(bool(rt.eval("CDW_TANK_RAIDFRAME_DROP")), "Raid Frame drag release assigns
 check(bool(rt.eval("CDW_TARGET_ASSIGN")), "CD Watcher bar drag assigns a target, not a caster")
 check(bool(rt.eval("CDW_TOOLTIP_DETAILS")), "bar tooltip contains caster, target and cooldown details")
 check(bool(rt.eval("CDW_TOOLTIP_HIDDEN")), "General hide-tooltip option suppresses bar tooltips")
+check(bool(rt.eval("CDW_READY_BAR_ALERT")), "clicking a ready bar sends the exact raid-warning alert, adds its assigned target when present, and ignores bars on cooldown")
 check(bool(rt.eval("CDW_BORDERLESS")), "CD Watcher panels stay borderless; only the custom spell catalog is scrollable")
 check(bool(rt.eval("CDW_NO_CONFIG_BUTTON")), "CD Watcher windows no longer include a Config button")
 check(bool(rt.eval("CDW_BACKDROP_HIDDEN")), "General hide-backdrop option removes the background from CD Watcher windows")
