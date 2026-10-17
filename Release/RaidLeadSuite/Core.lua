@@ -1763,10 +1763,9 @@ function RLSuite:AnchorDebugPanel()
     if not f then return end
     local mw = self.mainWindow
     f:ClearAllPoints()
-    if mw and mw.titleBar then
-        -- I comandi di debug stanno sotto la Raid Control bar, non accanto
-        -- o sotto la matrice che si apre alla sua destra.
-        f:SetPoint("TOPLEFT", mw.titleBar, "BOTTOMLEFT", 0, -2)
+    if mw and mw.frame then
+        -- I comandi di debug stanno sotto la matrice Raid Control 2x4.
+        f:SetPoint("TOPLEFT", mw.frame, "BOTTOMLEFT", 0, -2)
     else
         -- Fallback solo durante l'inizializzazione prima della MainWindow.
         f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -28)
@@ -1775,7 +1774,7 @@ end
 
 function RLSuite:EnsureDebugPanel()
     if self.debugPanel then return end
-    -- Pannello indipendente dalla matrice: si apre sotto la Raid Control bar.
+    -- Pannello indipendente dal toggle: si apre sotto la matrice Raid Control.
     local f = CreateFrame("Frame", "RLSuiteDebugPanel", UIParent)
     f:SetSize(126, 60)
     f:SetFrameStrata("HIGH")

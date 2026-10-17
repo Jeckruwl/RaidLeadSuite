@@ -4126,9 +4126,20 @@ check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors
 print()
 print("== Scenario G: main bar MT/OT + realtime config, loot pickup stack, debug-off clear, WL gold drag, real-raid join ==")
 
-# --- G.1 Raid Control keeps its fixed one-row, eight-column matrix --------
+# --- G.1 Raid Control keeps its fixed 2-row, 4-column matrix -------------
 rt.execute("RLSuite.mainWindow:ApplyLayout(); MW_FIXED_W = RLSuite.mainWindow.frame._w; MW_FIXED_H = RLSuite.mainWindow.frame._h; MW_FIXED_CELLS = #RLSuite.mainWindow.matrixOrder")
-check(bool(rt.eval("MW_FIXED_CELLS == 8 and MW_FIXED_W == 642 and MW_FIXED_H == 30")), "Raid Control remains a fixed 1x8 matrix (642x30 including padding)")
+check(bool(rt.eval("MW_FIXED_CELLS == 8 and MW_FIXED_W == 322 and MW_FIXED_H == 56")), "Raid Control remains a fixed 2x4 matrix (322x56 including padding)")
+rt.execute("""
+local rc = RLSuite.mainWindow.titleBar.raidControlBtn
+local lines = {}
+local oldAdd = GameTooltip.AddLine
+GameTooltip.AddLine = function(_, text) lines[#lines + 1] = tostring(text) end
+rc._scripts.OnEnter(rc)
+RC_TOOLTIP = table.concat(lines, " | ")
+GameTooltip.AddLine = oldAdd
+rc._scripts.OnLeave(rc)
+""")
+check(bool(rt.eval("RC_TOOLTIP == 'Shows or hides the 2x4 button panel below this bar.'")), "Raid Control tooltip describes the fixed 2x4 matrix below the bar")
 
 # --- G.2 MT / OT: two small buttons sharing ONE matrix cell ---
 check(bool(rt.eval("RLSuite.mainWindow.mtBtn ~= nil and RLSuite.mainWindow.otBtn ~= nil")), "MT / OT buttons exist on the main bar")
@@ -4142,7 +4153,7 @@ LOOTXOF, LOOTYOF = select(4, mw.tabs['loot']:GetPoint(1)), select(5, mw.tabs['lo
 """)
 rt.execute("""
 -- posizione attesa dal NUOVO ordine esplicito delle celle (senza raidframe)
-local cols = 8
+local cols = 4
 local function cellXY(idx)
     local col = (idx - 1) % cols
     local row = math.floor((idx - 1) / cols)
@@ -4170,7 +4181,7 @@ end
 BAR_ORDER = table.concat(names, " | ")
 BAR_CELLS = #(MWo.matrixOrder or {})
 -- posizioni reali: riga per riga, da sinistra a destra
-local cols = 8
+local cols = 4
 local function cellXY(idx)
     local col = (idx - 1) % cols
     local row = math.floor((idx - 1) / cols)
@@ -4967,7 +4978,7 @@ check(bool(rt.eval("DBG_TITLE_STYLE.noBackdrop == true and DBG_TITLE_STYLE.mouse
 check(bool(rt.eval("DBG_GAP.n == 1 and DBG_GAP.cells == 8")), "RLS DEBUG grid has ONE empty cell (8 cells: title + 6 buttons + blank)")
 check(bool(rt.eval("DBG_GAP.nameBefore == 'Empty Loot'")), "the blank cell sits right AFTER 'Empty Loot' (%s -> vuota)" % rt.eval("DBG_GAP.nameBefore"))
 check(bool(rt.eval("DBG_GAP.freeCell == true and DBG_GAP.afterAt.y == DBG_GAP.y and DBG_GAP.afterAt.x == DBG_GAP.nextColX")), "no button sits in the blank cell: '%s' starts the cell right after it" % rt.eval("DBG_GAP.afterName"))
-check(bool(rt.eval("""(function() local f = RLSuite.debugPanel local p = f._points[1] or {} local mw = RLSuite.mainWindow return p[1] == 'TOPLEFT' and p[2] == mw.titleBar and p[3] == 'BOTTOMLEFT' and p[4] == 0 and p[5] == -2 end)()""")), "v1.11.114: debug panel is directly below the Raid Control bar")
+check(bool(rt.eval("""(function() local f = RLSuite.debugPanel local p = f._points[1] or {} local mw = RLSuite.mainWindow return p[1] == 'TOPLEFT' and p[2] == mw.frame and p[3] == 'BOTTOMLEFT' and p[4] == 0 and p[5] == -2 end)()""")), "v1.11.114: debug panel is directly below the Raid Control matrix")
 check(bool(rt.eval("RLSuite.debugPanel._scripts['OnDragStart'] == nil")), "debug panel is NOT draggable")
 
 # --- RLS DEBUG indipendente dal pannello dei tasti (Raid Control) ---
@@ -5313,7 +5324,7 @@ check(bool(rt.eval("SAVE_HAS_ICON == false")), "SaveRaid is no longer an icon bu
 # -- la barra e' piu' bassa e i tasti sono ADERENTI al bordo (PAD ridotto)
 rt.execute("""
     MW = RLSuite.mainWindow
-    local cols, rows = 8, 1
+    local cols, rows = 4, 2
     PADU = 4
     EXPECT_H = 2 * PADU + rows * 22 + (rows - 1) * 4
     BAR_H = MW.frame._h
@@ -5331,7 +5342,7 @@ check(bool(rt.eval("BAR_H == EXPECT_H")),
       "main bar height = padding + matrix only (icon row removed): %d px" % rt.eval("BAR_H"))
 check(bool(rt.eval("FIRST_Y == 4 * -1 and FIRST_X == 4")),
       "buttons sit 4px from the bar border on all sides (spacing reduced, was 12)")
-check(bool(rt.eval("RIGHT_GAP == 4")), "the fixed eight-column matrix has 4px padding on both sides")
+check(bool(rt.eval("RIGHT_GAP == 4")), "the fixed four-column matrix has 4px padding on both sides")
 
 # -- il click sul pulsante salva davvero (OnSaveRaid) ---------------------
 rt.execute("""
@@ -5370,8 +5381,8 @@ rt.execute("""
 """)
 check(bool(rt.eval("NARROW_TEXT == true and NARROW_BTN == true")),
       "narrow bar: phase icon AND phase name stay (the name has a reserved slot)")
-check(bool(rt.eval("NARROW_W == WIDE_W and NARROW_W == 642")),
-      "the Raid Control matrix stays fixed at eight columns regardless of stale profile values")
+check(bool(rt.eval("NARROW_W == WIDE_W and NARROW_W == 322")),
+      "the Raid Control matrix stays fixed at four columns regardless of stale profile values")
 
 # -- v1.11.57: ancoraggio fisso + larghezza = somma degli elementi --------
 rt.execute("""
@@ -5387,8 +5398,8 @@ rt.execute("""
     RF_SCALE = RLSuite.raidFrame.db.scale or 1
     BUFF_WINDOW_SEPARATE = (RLSuite.raidFrame.buffPanelBtn == nil)
 """)
-check(bool(rt.eval("ANCH_P == 'TOPLEFT' and ANCH_RELP == 'TOPRIGHT'")),
-      "button matrix panel opens to the RIGHT of the Raid Control bar (%s -> %s)" % (rt.eval("ANCH_P"), rt.eval("ANCH_RELP")))
+check(bool(rt.eval("ANCH_P == 'TOPLEFT' and ANCH_RELP == 'BOTTOMLEFT'")),
+      "button matrix panel opens BELOW the Raid Control bar (%s -> %s)" % (rt.eval("ANCH_P"), rt.eval("ANCH_RELP")))
 check(bool(rt.eval("ANCH_PARENT_NAME == 'UIParent'")), "Raid Control matrix is not parented to the Raid Frame and remains independently visible")
 rt.execute("""
     local tp1, tpParent, tp3, tx, ty = RLSuite.mainWindow.titleBar:GetPoint(1)
@@ -5400,7 +5411,7 @@ check(bool(rt.eval("TB_ANCH_P == 'TOPLEFT' and TB_ANCH_PARENT == 'UIParent' and 
       "the Raid Control bar is parented to UIParent and anchored at the top-left edge")
 check(bool(rt.eval("TB_ANCH_Y == 0")),
       "title bar touches top edge")
-check(bool(rt.eval("ANCH_X == 2")), "matrix panel starts 2px to the right of the title bar")
+check(bool(rt.eval("ANCH_X == 0 and ANCH_Y == -2")), "matrix panel starts 2px below the title bar")
 check(bool(rt.eval("RFW == RF_LIVE_W and RF_LIVE_W == RF_M.W * RF_SCALE")),
       "right offset = Raid Frame width (%d px at scale %s)" % (rt.eval("RF_M.W * RF_SCALE"), rt.eval("RF_SCALE")))
 check(bool(rt.eval("TB_ANCH_X == RFW")), "the offset IS the Raid Frame width, on the LEFT side (no other constant)")
@@ -5428,7 +5439,7 @@ check(bool(rt.eval("RFW_NEW == RFW + 40 and ANCH_X_NEW == (RFW + 40)")),
 check(bool(rt.eval("FOLLOWS == true")), "the panel keeps following the title bar when the bar moves")
 check(bool(rt.eval("ANCH_X_BACK == RFW")), "restoring the Raid Frame restores the bar position")
 
-# -- larghezza fissa: matrice Raid Control 1x8 e title bar autonoma -------
+# -- larghezza fissa: matrice Raid Control 2x4 e title bar autonoma -------
 rt.execute("""
     MW = RLSuite.mainWindow
     local layout = RLSuite.db.profile.layout
@@ -5442,8 +5453,8 @@ rt.execute("""
         W_BY_COLS[c] = MW.frame._w
     end
     MATRIX_FIXED = true
-    for _, w in pairs(W_BY_COLS) do if w ~= 642 then MATRIX_FIXED = false end end
-    MATRIX_FIXED = MATRIX_FIXED and MW.frame._h == 30
+    for _, w in pairs(W_BY_COLS) do if w ~= 322 then MATRIX_FIXED = false end end
+    MATRIX_FIXED = MATRIX_FIXED and MW.frame._h == 56
     local rc = MW.titleBar.raidControlBtn
     local phaseTextStart = 4 + MW.phaseBtn:GetWidth() + 6
     local phaseTextEnd = phaseTextStart + MW._phaseLabelW
@@ -5454,7 +5465,7 @@ rt.execute("""
     MW:ApplyLayout()
 """)
 check(bool(rt.eval("MATRIX_FIXED == true")),
-      "Raid Control stays 642x30 (one row, eight columns) regardless of stale layout values")
+      "Raid Control stays 322x56 (two rows, four columns) regardless of stale layout values")
 check(bool(rt.eval("TITLE_FITS == true")), "the phase icon and name fit beside Raid Control in the title bar")
 rt.execute("""
     local MWt = RLSuite.mainWindow
@@ -5474,7 +5485,7 @@ check(bool(rt.eval("TITLE_CONST_W == true")),
       "the title bar keeps its own width irrespective of the fixed matrix")
 rt.execute("""
     local MW = RLSuite.mainWindow
-    local matrixW = 8 * 74 + 7 * 6
+    local matrixW = 4 * 74 + 3 * 6
     EXPECT_W = 2 * 4 + matrixW
     BAR_W = MW.frame._w
     local rcRef = MW.titleBar.raidControlBtn
@@ -5482,14 +5493,14 @@ rt.execute("""
     RC_TEXT_W = (rcRef and rcRef.GetStringWidth and rcRef:GetStringWidth()) or 84
     PHASE_RESERVE = MW._phaseLabelW
 """)
-check(bool(rt.eval("BAR_W == EXPECT_W and BAR_W == 642")),
-      "bar width = 4px padding + eight fixed cells + 4px padding")
+check(bool(rt.eval("BAR_W == EXPECT_W and BAR_W == 322")),
+      "bar width = 4px padding + four fixed cells + 4px padding")
 check(bool(rt.eval("RC_W >= RC_TEXT_W + 8")),
       "the Raid Control button is sized on its own text (%d px wide)" % rt.eval("RC_W"))
 check(bool(rt.eval("PHASE_RESERVE >= 40 and PHASE_RESERVE <= 90")),
       "phase name reserve is measured on the real labels (%d px), not a magic number" % rt.eval("PHASE_RESERVE"))
 
-# -- v1.11.61: la matrice di MAIN BAR si apre a DESTRA della barretta -------
+# -- v1.11.61: la matrice di MAIN BAR si apre SOTTO la barretta -------
 rt.execute("""
     MW = RLSuite.mainWindow
     MW.frame:Show(); MW.titleBar:Show(); MW:ApplyLayout()
@@ -5506,8 +5517,8 @@ rt.execute("""
 """)
 check(bool(rt.eval("PANEL_TO_TITLE == true and PANEL_POINTS == 1")),
       "MAIN BAR panel is anchored to the title bar (%s)" % rt.eval("PANEL_ANCH"))
-check(bool(rt.eval("PANEL_ANCH:find('TOPRIGHT') ~= nil and PANEL_TOP == TB_TOP")),
-      "it opens to the RIGHT of the title bar, aligned at the top")
+check(bool(rt.eval("PANEL_ANCH:find('BOTTOMLEFT') ~= nil and PANEL_TOP == TB_TOP - 2")),
+      "it opens below the title bar with a 2px gap")
 check(bool(rt.eval("TB_TOP == 0")), "bar at top y = 0")
 check(bool(rt.eval("TITLE_W2 == TITLE_SUM")), "title bar still measures exactly its own elements")
 
@@ -5524,18 +5535,18 @@ check(bool(rt.eval("MB_TB_ANCHOR == false")), "MacroBar is NOT anchored to the t
 check(bool(rt.eval("MB_OVERRIDE_FN == false")), "MacroBar manual-position override removed (v1.11.60 reverted)")
 check(bool(rt.eval("MB_HAS_POINT == true")), "MacroBar keeps using its configured anchor point")
 
-# -- Raid Control apre/chiude la matrice a destra della barra -------------
+# -- Raid Control apre/chiude la matrice sotto la barra --------------------
 rt.execute("""
     MW = RLSuite.mainWindow
     MW.frame:Hide(); MW.titleBar:Show()
     TestSecureClick(MW.titleBar.raidControlBtn)
     RC_OPEN = MW.frame:IsShown()
     local p2 = MW.frame._points[1] or {}
-    RC_RIGHT = (p2[2] == MW.titleBar and (p2[4] or 0) == 2
-        and p2[3] == 'TOPRIGHT' and (p2[5] or 0) == 0)
+    RC_BELOW = (p2[2] == MW.titleBar and (p2[4] or 0) == 0
+        and p2[3] == 'BOTTOMLEFT' and (p2[5] or 0) == -2)
 """)
-check(bool(rt.eval("RC_OPEN == true and RC_RIGHT == true")),
-      "'Raid Control' opens the button matrix to the right of the bar")
+check(bool(rt.eval("RC_OPEN == true and RC_BELOW == true")),
+      "'Raid Control' opens the button matrix below the bar")
 
 # -- Barretta: "Raid Control" = solo pannello; close = tutto chiuso
 rt.execute("""
@@ -5548,8 +5559,8 @@ TestSecureClick(TB.raidControlBtn)
 A2 = f:IsShown()
 HL_SHOWN = TB.raidControlBtn._highlight
 """)
-check(bool(rt.eval("A1 == false and A1TB == true")), "Raid Control: hides ONLY the matrix to its right; the bar stays")
-check(bool(rt.eval("A2 == true")), "Raid Control: shows the matrix to the right again")
+check(bool(rt.eval("A1 == false and A1TB == true")), "Raid Control: hides ONLY the matrix; the bar stays")
+check(bool(rt.eval("A2 == true")), "Raid Control: shows the matrix below again")
 check(bool(rt.eval("HL_SHOWN == true and HL_HIDDEN == false")),
       "Raid Control is highlighted only while the matrix is open")
 

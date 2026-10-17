@@ -469,7 +469,7 @@ do
     L["Raid Frame - position"] = true
     L["Lock position"] = true
     L["Reset position"] = true
-    L["Shows or hides the button panel under this bar."] = true
+    L["Shows or hides the 2x4 button panel below this bar."] = true
     L["Saves the current setup (Comp, MacroBar, Config)."] = true
     L["Saves created with the SaveRaid button of the main bar. Click Load to restore Comp, MacroBar and Config (except General)."] = true
     L["No saves yet."] = true

@@ -138,7 +138,7 @@ function MW:CreateFrame()
     local f = CreateFrame("Frame", "RLSuiteMainWindow", UIParent)
     f:SetSize(240, 150)
     f:SetFrameStrata("HIGH")
-    -- NIENTE drag: la matrice viene ancorata a destra della Raid Control bar.
+    -- NIENTE drag: la matrice viene ancorata sotto la Raid Control bar.
     -- ApplyLayout ricalcola la posizione in base alla larghezza del Raid Frame;
     -- restano skin e "click to front" come per le altre finestre.
     RLSuite.utils:MakeClickToFront(f)
@@ -203,12 +203,12 @@ function MW:CreateFrame()
     rcBtn:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_BOTTOM")
         GameTooltip:SetText("Raid Control")
-        GameTooltip:AddLine(L["Shows or hides the button panel to the right of this bar."], 1, 1, 1)
+        GameTooltip:AddLine(L["Shows or hides the 2x4 button panel below this bar."], 1, 1, 1)
         GameTooltip:Show()
     end)
     rcBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- Evidenzia il pulsante quando la matrice a destra e' aperta.
+    -- Evidenzia il pulsante quando la matrice sottostante e' aperta.
     -- Nome storico mantenuto: _updateArrowDir.
     local function MW_UpdateArrowDir()
         -- Evita operazioni Lua sul pulsante/frame protetto durante il combat;
@@ -490,15 +490,14 @@ function MW:ApplyLayout()
     end
     self._layoutPending = nil
     L = L or {}
-    local cols, rows = 8, 1
+    local cols, rows = 4, 2
     -- Celle della matrice: una per tasto, una per la coppia MT & OT.
     local cells = self.matrixOrder
     if not cells or #cells == 0 then
         cells = {}
         for _, b in ipairs(self.matrixButtons or {}) do cells[#cells + 1] = { btn = b } end
     end
-    -- Matrice fissa a otto colonne su una sola riga: SaveRaid resta nella
-    -- sesta cella, Raid Buffs nella settima e CD Watcher nell'ottava.
+    -- Matrice fissa 2x4, non configurabile: l'ordine dei pulsanti e' fisso.
     local bw, bh, gapX, gapY = 74, 22, 6, 4
     local PAD = 4
 
@@ -527,13 +526,13 @@ function MW:ApplyLayout()
     end
     self.frame:ClearAllPoints()
     if self.titleBar then
-        self.frame:SetPoint("TOPLEFT", self.titleBar, "TOPRIGHT", matrixGap, 0)
+        self.frame:SetPoint("TOPLEFT", self.titleBar, "BOTTOMLEFT", 0, -matrixGap)
     else
-        self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth() + titleW + matrixGap, 0)
+        self.frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", self:RaidFrameWidth(), -TITLE_BAR_H - matrixGap)
     end
 
-    -- Otto celle in una riga: la terza ospita la coppia MT/OT, tutte le
-    -- altre ospitano un pulsante standard.
+    -- Otto celle su due righe: la terza ospita la coppia MT/OT, le altre
+    -- ospitano un pulsante standard.
     local x0 = PAD
     local topY = -PAD
     -- POSIZIONAMENTO FISSO da sinistra a destra: Pugger, Macrobar, MT/OT,
@@ -561,8 +560,8 @@ function MW:ApplyLayout()
         end
     end
 
-    -- RAID CONTROL bar: larghezza = somma dei suoi elementi; la matrice si
-    -- ancora al suo TOPRIGHT, senza stirare la barra sulla larghezza dei tasti.
+    -- RAID CONTROL bar: larghezza = somma dei suoi elementi; la matrice 2x4
+    -- si apre sotto la barra, senza stirarla sulla larghezza dei tasti.
     if self.titleBar then
         self.titleBar:SetWidth(titleW)
     end
