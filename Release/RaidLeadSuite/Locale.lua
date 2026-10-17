@@ -267,14 +267,13 @@ do
     L["Cooldown"] = true
     L["Next interrupt"] = true
     L["Window layout"] = true
-    L["One panel, grouped by category"] = true
     L["Floating window per category"] = true
     L["All macro groups (one window each)"] = true
     L["Macro group: Offensive"] = true
     L["Macro group: Defensive"] = true
     L["Macro group: Tank & Threat"] = true
     L["Macro group: Int & CC"] = true
-    L["Show all categories together, separate categories, or organize them into selectable macro-group windows."] = true
+    L["Choose separate windows for each category or organize categories into selectable macro-group windows."] = true
     L["Group by"] = true
     L["Group the bars by caster, by spell, or do not group them."] = true
     L["Caster"] = true

@@ -189,8 +189,9 @@ end
 
 function CDW:NormalizeSettings()
     local s = self:GetSettings()
-    if s.layoutMode ~= "combined" and s.layoutMode ~= "separate" and not isMacroLayout(s.layoutMode) then
-        s.layoutMode = "combined"
+    if s.layoutMode ~= "separate" and not isMacroLayout(s.layoutMode) then
+        -- Retire the old one-panel layout and migrate its profiles to all macro groups.
+        s.layoutMode = "macro"
     end
     s.categories, s.collapsed = s.categories or {}, s.collapsed or {}
     s.targetAssignments = type(s.targetAssignments) == "table" and s.targetAssignments or {}
@@ -331,7 +332,6 @@ function CDW:SetAutoInspect(enabled)
 end
 
 function CDW:IsOpen()
-    if self.frame and self.frame:IsShown() then return true end
     if self.inspectFrame and self.inspectFrame:IsShown() then return true end
     for _, frame in pairs(self.categoryWindows or {}) do if frame:IsShown() then return true end end
     for _, frame in pairs(self.groupWindows or {}) do if frame:IsShown() then return true end end
@@ -382,7 +382,6 @@ function CDW:CreateWindow(name, title, key, width, categoryKey, macroGroupKey)
     frame:SetScript("OnShow", function() CDW:RefreshAll() end)
     frame:SetScript("OnHide", function()
         local mode = CDW:NormalizeSettings().layoutMode
-        if frame == CDW.frame and mode == "combined" then CDW.isOpen = false end
         if frame.categoryKey and mode == "separate" then
             local any = false
             for _, f in pairs(CDW.categoryWindows or {}) do if f:IsShown() then any = true break end end
@@ -394,12 +393,6 @@ function CDW:CreateWindow(name, title, key, width, categoryKey, macroGroupKey)
         end
     end)
     return frame
-end
-
-function CDW:EnsureWindow()
-    if self.frame then return self.frame end
-    self.frame = self:CreateWindow("RLSuiteCDWatcherWindow", L["CD Watcher"], "cdwatcher", self:GetBarWidth() + 40)
-    return self.frame
 end
 
 function CDW:EnsureCategoryWindow(key)
@@ -432,7 +425,6 @@ end
 
 function CDW:GetWindows()
     local result = {}
-    if self.frame then result[#result+1] = self.frame end
     if self.inspectFrame then result[#result+1] = self.inspectFrame end
     if self.previewWindow then result[#result+1] = self.previewWindow end
     for _, category in ipairs(CATEGORIES) do
@@ -452,7 +444,7 @@ function CDW:Init()
     self.categoryWindows, self.groupWindows, self.rows = self.categoryWindows or {}, self.groupWindows or {}, self.rows or {}
     self._nextInspectAt = 0
     self._rosterDirty = true
-    self:EnsureWindow()
+    self.initialized = true
     self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", "OnCombatLog")
     self:RegisterEvent("RAID_ROSTER_UPDATE", "OnRosterChanged")
     self:RegisterEvent("PARTY_MEMBERS_CHANGED", "OnRosterChanged")
@@ -468,13 +460,7 @@ end
 function CDW:ShowCurrentMode()
     self._inspectDismissed = false
     local mode, shown = self:NormalizeSettings().layoutMode, false
-    if mode == "combined" then
-        for _, frame in pairs(self.categoryWindows) do frame:Hide() end
-        for _, frame in pairs(self.groupWindows or {}) do frame:Hide() end
-        self:EnsureWindow():Show()
-        shown = true
-    elseif mode == "separate" then
-        self:EnsureWindow():Hide()
+    if mode == "separate" then
         for _, frame in pairs(self.groupWindows or {}) do frame:Hide() end
         for _, key in ipairs(self:GetCategoryOrder()) do
             if self:IsCategoryEnabled(key) then
@@ -484,7 +470,6 @@ function CDW:ShowCurrentMode()
             end
         end
     elseif self:IsMacroLayout(mode) then
-        self:EnsureWindow():Hide()
         for _, frame in pairs(self.categoryWindows) do frame:Hide() end
         local selected={}
         for _, group in ipairs(self:GetMacroGroupsForLayout(mode)) do
@@ -506,9 +491,7 @@ end
 
 function CDW:Toggle()
     local mode, displayOpen = self:NormalizeSettings().layoutMode, false
-    if mode == "combined" then
-        displayOpen = self.frame and self.frame:IsShown() or false
-    elseif mode == "separate" then
+    if mode == "separate" then
         for _, frame in pairs(self.categoryWindows) do if frame:IsShown() then displayOpen=true break end end
     else
         for key, frame in pairs(self.groupWindows or {}) do
@@ -517,7 +500,6 @@ function CDW:Toggle()
     end
     if displayOpen then
         self.isOpen = false
-        if self.frame then self.frame:Hide() end
         if self.inspectFrame then self.inspectFrame:Hide() end
         for _, frame in pairs(self.categoryWindows) do frame:Hide() end
         for _, frame in pairs(self.groupWindows or {}) do frame:Hide() end
@@ -527,10 +509,9 @@ function CDW:Toggle()
 end
 
 function CDW:SetLayoutMode(mode)
-    if mode ~= "combined" and mode ~= "separate" and not isMacroLayout(mode) then return end
+    if mode ~= "separate" and not isMacroLayout(mode) then return end
     local wasOpen = self:IsOpen()
     self:NormalizeSettings().layoutMode = mode
-    if self.frame then self.frame:Hide() end
     if self.inspectFrame then self.inspectFrame:Hide() end
     for _, frame in pairs(self.categoryWindows) do frame:Hide() end
     for _, frame in pairs(self.groupWindows or {}) do frame:Hide() end
@@ -1144,7 +1125,6 @@ function CDW:CategoryAtCursor()
     local cursorX,cursorY=GetCursorPosition()
     if not cursorX or not cursorY then return nil end
     local windows={}
-    if self.frame then windows[#windows+1]=self.frame end
     for _,window in pairs(self.categoryWindows or {}) do windows[#windows+1]=window end
     for _,window in pairs(self.groupWindows or {}) do windows[#windows+1]=window end
     for _,window in ipairs(windows) do
@@ -1217,35 +1197,6 @@ function CDW:FinalizeWindow(window,height,width,usedBars,usedHeads,usedSubs,used
     for _,row in pairs(window.promptFrames or {}) do if not usedPrompts or not usedPrompts[row] then row:Hide() end end
     window.content:SetSize(width-40,math.max(1,height))
     window:SetSize(width,TITLE_H+math.max(self:GetBarHeight(),height)+PAD*2)
-end
-
-function CDW:RenderCombined()
-    local width=self:GetBarWidth()+40; local contentWidth=width-40
-    local window=self:EnsureWindow(); local usedBars,usedHeads,usedSubs,usedPrompts={}, {}, {}, {}; local y=4
-    self.rows={}
-    for _,key in ipairs(self:GetCategoryOrder()) do
-        local cat=CATEGORY_BY_KEY[key]
-        local h=self:EnsureCategoryHeader(window,key,contentWidth)
-        h:ClearAllPoints(); h:SetPoint("TOPLEFT",window.content,"TOPLEFT",0,-y); h:SetSize(contentWidth,HEADER_H)
-        h.title:SetText(L[cat.title] or cat.title); h.visible:SetText(self:IsCategoryEnabled(key) and "ON" or "--")
-        h.collapse:SetText(self:NormalizeSettings().collapsed[key] and "+" or "−")
-        h:Show(); usedHeads[h]=true; y=y+HEADER_H
-        if self:IsCategoryEnabled(key) then
-            if key=="tank_defensive" and not self.hasTankAssignments then
-                local prompt=self:EnsurePrompt(window,key,contentWidth)
-                prompt:ClearAllPoints(); prompt:SetPoint("TOPLEFT",window.content,"TOPLEFT",0,-y)
-                prompt:Show(); usedPrompts[prompt]=true; y=y+prompt:GetHeight()+4
-            else
-                y=self:RenderRows(window,key,self.modelsByCategory[key],y,contentWidth,usedBars,usedSubs)+4
-            end
-        else
-            y=y+2
-        end
-    end
-    self:FinalizeWindow(window,y,width,usedBars,usedHeads,usedSubs,usedPrompts)
-    for _,key in ipairs(self:GetCategoryOrder()) do
-        for _,row in pairs(window.barFrames) do if row:IsShown() and row.data and row.data.ability.category==key then self.rows[#self.rows+1]=row end end
-    end
 end
 
 function CDW:RenderSeparate()
@@ -1391,7 +1342,7 @@ function CDW:RenderInspector()
     end
     for key,row in pairs(w.inspectRows) do if not used[row] then row:Hide() end end
     w.content:SetSize(INSPECT_W-40,math.max(1,y)); w:SetSize(INSPECT_W,TITLE_H+y+PAD*2)
-    if not self._inspectDismissed and (self.isOpen or self:NormalizeSettings().layoutMode=="combined") then w:Show() end
+    if not self._inspectDismissed and self.isOpen then w:Show() end
 end
 
 function CDW:QueueInspectNeeds()
@@ -1404,11 +1355,10 @@ function CDW:QueueInspectNeeds()
 end
 
 function CDW:RefreshAll()
-    if not self.frame then return end
+    if not self.initialized then return end
     self:BuildModels(); self:QueueInspectNeeds()
     local layoutMode=self:NormalizeSettings().layoutMode
-    if layoutMode=="combined" then self:RenderCombined()
-    elseif layoutMode=="separate" then self:RenderSeparate()
+    if layoutMode=="separate" then self:RenderSeparate()
     else self:RenderMacroGroups() end
     self:RenderInspector()
     if self.previewWindow and self.previewWindow:IsShown() then self:RenderPreview(self.previewMode) end
@@ -1424,7 +1374,7 @@ function CDW:OnRosterChanged()
 end
 
 function CDW:Update()
-    if not self.frame then return end
+    if not self.initialized then return end
     local roster=self:GetRoster(); local signature=self:RosterSignature(roster)
     if self._rosterDirty or signature~=self._rosterSignature or self:IsOpen() then self:RefreshAll() end
     self:TryInspectQueue(false)
@@ -1519,9 +1469,7 @@ function CDW:TryRaidFrameTankDrop(name,role)
     if not name or not self:IsCategoryEnabled("tank_defensive") then return false end
     local settings=self:NormalizeSettings()
     local windows={}
-    if settings.layoutMode=="combined" then
-        if self.frame and self.frame:IsShown() then windows[#windows+1]=self.frame end
-    elseif settings.layoutMode=="separate" then
+    if settings.layoutMode=="separate" then
         local tankWindow=self.categoryWindows and self.categoryWindows.tank_defensive
         if tankWindow and tankWindow:IsShown() then windows[#windows+1]=tankWindow end
     elseif self:IsMacroLayout(settings.layoutMode) and self:IsMacroGroupSelected("tank_threat",settings.layoutMode) then

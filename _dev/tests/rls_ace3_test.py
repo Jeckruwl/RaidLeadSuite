@@ -2471,6 +2471,7 @@ check(bool(rt.eval("TANK_TBAR_FAKE")), "debug/fake tanks leave the target bar em
 # Raid Buffs standalone matrix panel (Method style)
 check(bool(rt.eval("RLSuite.mainWindow.raidBuffBtn ~= nil and RLSuite.mainWindow.raidBuffBtn:GetText() == 'Raid Buffs'")), "Raid Buffs button is in the Raid Control matrix")
 check(bool(rt.eval("RLSuite.mainWindow.cdWatcherBtn ~= nil and RLSuite.mainWindow.cdWatcherBtn:GetText() == 'CD Watcher'")), "CD Watcher button is in the Raid Control matrix")
+check(bool(rt.eval("RLSuite.db.profile.cdwatcher.layoutMode=='macro'")), "CD Watcher defaults to all macro-group windows, not a single panel")
 check(bool(rt.eval("""(function()
 local root=RLSuite.config:BuildOptionsTable().args.cdwatcher
 local bar,gen=root.args.baroptions.args,root.args.general.args
@@ -2480,8 +2481,9 @@ return root.childGroups=='tree'
     and bar.barTexture and bar.showIcons and bar.useClassColor
     and bar.readyColor and bar.cooldownColor and bar.deadColor and bar.disconnectedColor
     and bar.previewSingle and bar.previewFake
-    and gen.layoutMode and gen.layoutMode.values.macro and gen.layoutMode.values.macro_offensive
-    and gen.layoutMode.values.macro_defensive and gen.layoutMode.values.macro_tank_threat
+    and gen.layoutMode and gen.layoutMode.values.combined==nil and gen.layoutMode.values.macro
+    and gen.layoutMode.values.macro_offensive and gen.layoutMode.values.macro_defensive
+    and gen.layoutMode.values.macro_tank_threat
     and gen.layoutMode.values.macro_int_cc
     and gen.groupMode and gen.groupMode.values.caster and gen.groupMode.values.spells and gen.groupMode.values.none
     and gen.groupByCaster==nil and gen.autoInspect and gen.retryInspection
@@ -2648,6 +2650,11 @@ check(bool(rt.eval("CDW_GROUP_NONE")), "None grouping shows spell and caster nam
 check(bool(rt.eval("CDW_GROUP_MIGRATION")), "legacy group-by-caster profiles migrate to the Caster dropdown option")
 rt.execute("""
 local cdw,s=RLSuite.cdwatcher,RLSuite.cdwatcher:NormalizeSettings()
+local oldLayout=s.layoutMode
+s.layoutMode='combined'
+CDW_LEGACY_LAYOUT=cdw:NormalizeSettings().layoutMode=='macro'
+s.layoutMode=oldLayout
+cdw:NormalizeSettings()
 local groups={}
 for _,group in ipairs(cdw.MacroGroups) do groups[group.key]=group end
 local function has(group,key)
@@ -2684,6 +2691,7 @@ CDW_MACRO_RENDER=w and w.titleText:GetText()=='Offensive'
     and w.headerFrames.single_target_offensive:IsShown()
     and not (cdw.groupWindows.defensive and cdw.groupWindows.defensive:IsShown())
 """)
+check(bool(rt.eval("CDW_LEGACY_LAYOUT")), "legacy single-panel profiles migrate to the all-macro-groups layout")
 check(bool(rt.eval("CDW_MACRO_MAPPING")), "macro groups contain the requested categories and every existing category exactly once")
 check(bool(rt.eval("CDW_MACRO_SELECTION")), "Window layout selects all macro groups or a specific group")
 check(bool(rt.eval("CDW_MACRO_LAYOUT_SET")), "Window layout dropdown activates a specific macro-group window")
@@ -2701,7 +2709,7 @@ check(bool(rt.eval("CDW_CONFIG_NAV")), "CD Watcher Config button opens the reque
 check(bool(rt.eval("RLSuite.raidFrame.GetAbilityRemaining == nil and RLSuite.raidFrame.OnSpellCast == nil and RLSuite.raidFrame.ApplySlotCDs == nil and RLSuite.cdwatcher.GetAbilityRemaining ~= nil and RLSuite.cdwatcher.OnSpellCast ~= nil")), "cooldown tracking methods moved from Raid Frame to CD Watcher")
 check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn == nil")), "Raid Frame no longer contains the Raid Buffs button")
 check(bool(rt.eval("RLSuite.mainWindow.matrixOrder[6].btn == RLSuite.mainWindow.saveRaidBtn and RLSuite.mainWindow.matrixOrder[7].btn == RLSuite.mainWindow.raidBuffBtn and RLSuite.mainWindow.matrixOrder[8].btn == RLSuite.mainWindow.cdWatcherBtn and RLSuite.mainWindow.saveRaidBtn:GetParent() == RLSuite.mainWindow.frame")), "SaveRaid stays sixth; Raid Buffs and CD Watcher occupy cells seven and eight")
-rt.execute("local b=RLSuite.mainWindow.cdWatcherBtn; b._scripts.OnClick(b); CDW_OPENED=RLSuite.cdwatcher.frame:IsShown(); b._scripts.OnClick(b); CDW_CLOSED=not RLSuite.cdwatcher.frame:IsShown()")
+rt.execute("local b=RLSuite.mainWindow.cdWatcherBtn; local w=RLSuite.cdwatcher; b._scripts.OnClick(b); CDW_OPENED=w:IsOpen(); b._scripts.OnClick(b); CDW_CLOSED=not w:IsOpen()")
 check(bool(rt.eval("CDW_OPENED == true and CDW_CLOSED == true")), "CD Watcher matrix button opens and closes its standalone cooldown panel")
 rt.execute("local w=RLSuite.cdwatcher; w.cdTracker={}; local t=GetTime(); w:OnCombatLog('COMBAT_LOG_EVENT_UNFILTERED', t, 'SPELL_CAST_SUCCESS', 'Player-1', 'WatcherTest', 0, 'Player-2', 'Target', 0, 871); CDW_TRACK_REMAINING=w:GetAbilityRemaining('WatcherTest', nil, 'Shield Wall')")
 check(bool(rt.eval("CDW_TRACK_REMAINING ~= nil and CDW_TRACK_REMAINING > 299 and CDW_TRACK_REMAINING <= 300")), "CD Watcher tracks raid cooldown casts from the combat log")
@@ -2730,7 +2738,7 @@ local testRoster={
     {name='Lock',class='WARLOCK',fake=true},
 }
 cdw.GetRoster=function() return testRoster end
-s.layoutMode='combined'; s.hideTooltips=false; s.hideBackdrop=false
+s.layoutMode='macro'; s.hideTooltips=false; s.hideBackdrop=false
 s.categories.tank_defensive=true; s.collapsed.tank_defensive=false
 s.tankAssignments={}; s.targetAssignments={}
 GetPartyAssignment=function() return nil end
@@ -2779,8 +2787,9 @@ rf.tankSlots={{member=nil},{member=nil}}
 s.tankAssignments={}
 cdw:BuildModels()
 local noneTankRows=#cdw.modelsByCategory.tank_defensive==0 and not cdw.hasTankAssignments
-local main=cdw:EnsureWindow(); main:Show(); cdw:RenderCombined()
-local prompt=main.promptFrames.tank_defensive
+cdw:RefreshAll()
+local tankWindow=cdw:EnsureMacroGroupWindow('tank_threat'); tankWindow:Show()
+local prompt=tankWindow.promptFrames.tank_defensive
 CDW_TANK_PROMPT=noneTankRows and prompt and prompt:IsShown()
     and prompt.text:GetText()=='assign MT, OT or drag&drop Tanks here from Raid Frame'
 local savedPromptBounds={prompt.GetLeft,prompt.GetRight,prompt.GetBottom,prompt.GetTop}
@@ -2789,7 +2798,7 @@ prompt.GetBottom=function() return 10 end; prompt.GetTop=function() return 70 en
 GetCursorPosition=function() return 30,30 end
 local mtDrop=cdw:TryRaidFrameTankDrop('TankOne')
 local mtAssigned=s.tankAssignments.mt=='TankOne' and cdw.tankAssignmentRoles.mt=='TankOne'
-local header=main.headerFrames.tank_defensive
+local header=tankWindow.headerFrames.tank_defensive
 local savedHeaderBounds={header.GetLeft,header.GetRight,header.GetBottom,header.GetTop}
 header.GetLeft=function() return 10 end; header.GetRight=function() return 120 end
 header.GetBottom=function() return 10 end; header.GetTop=function() return 70 end
@@ -2798,7 +2807,7 @@ CDW_TANK_MANUAL_ASSIGN=mtDrop and otDrop and mtAssigned and s.tankAssignments.ot
 
 -- Exercise the Raid Frame's actual drag-release handoff to CD Watcher.
 s.tankAssignments={}; rf.tankSlots={{member=nil},{member=nil}}
-cdw:RefreshAll(); prompt=main.promptFrames.tank_defensive
+cdw:RefreshAll(); prompt=tankWindow.promptFrames.tank_defensive
 prompt.GetLeft=function() return 10 end; prompt.GetRight=function() return 120 end
 prompt.GetBottom=function() return 10 end; prompt.GetTop=function() return 70 end
 rf._BuffHeaderAtCursor=function() return nil end
@@ -2824,7 +2833,7 @@ CDW_TARGET_ASSIGN=(s.targetAssignments['hysteria@CasterDK']=='TargetPlayer' and 
 
 -- Tooltip contains the details omitted from the one-line label, and the
 -- General checkbox suppresses it without affecting the bar.
-local targetRow=main.barFrames['hysteria@CasterDK']
+local targetRow=cdw.groupWindows.offensive.barFrames['hysteria@CasterDK']
 local lines={}
 local oldAdd=GameTooltip.AddLine
 GameTooltip.AddLine=function(_,line) lines[#lines+1]=tostring(line) end
@@ -2833,14 +2842,14 @@ if targetRow and targetRow._scripts.OnEnter then targetRow._scripts.OnEnter(targ
 CDW_TOOLTIP_DETAILS=GameTooltip:IsShown() and table.concat(lines,' | '):find('Caster: CasterDK',1,true)~=nil
     and table.concat(lines,' | '):find('Target: TargetPlayer',1,true)~=nil
     and table.concat(lines,' | '):find('Cooldown:',1,true)~=nil
-s.hideTooltips=true; cdw:ApplyBarSettings(); targetRow=main.barFrames['hysteria@CasterDK']
+s.hideTooltips=true; cdw:ApplyBarSettings(); targetRow=cdw.groupWindows.offensive.barFrames['hysteria@CasterDK']
 GameTooltip:Hide()
 if targetRow and targetRow._scripts.OnEnter then targetRow._scripts.OnEnter(targetRow) end
 CDW_TOOLTIP_HIDDEN=not GameTooltip:IsShown()
 GameTooltip.AddLine=oldAdd; s.hideTooltips=false; cdw:ApplyBarSettings()
 
 -- Every CDW window is created without the universal Dialog border path.
-local backdrop=main:GetBackdrop()
+local backdrop=tankWindow:GetBackdrop()
 cdw:EnsureCategoryWindow('tank_defensive'); cdw:EnsureMacroGroupWindow('offensive'); cdw:EnsureInspectWindow()
 local noEdges,noScroll,noConfig=true,true,true
 for _,frame in ipairs(cdw:GetWindows()) do
@@ -2849,16 +2858,16 @@ for _,frame in ipairs(cdw:GetWindows()) do
     if frame.scroll~=nil then noScroll=false end
     if frame.optionsBtn~=nil then noConfig=false end
 end
-CDW_BORDERLESS=main._cdwWindow and main._noOuterBorder and main.scroll==nil
-    and main.content:GetParent()==main and backdrop and backdrop.edgeFile==nil and noEdges and noScroll
+CDW_BORDERLESS=tankWindow._cdwWindow and tankWindow._noOuterBorder and tankWindow.scroll==nil
+    and tankWindow.content:GetParent()==tankWindow and backdrop and backdrop.edgeFile==nil and noEdges and noScroll
 CDW_NO_CONFIG_BUTTON=noConfig
 s.hideBackdrop=true; cdw:ApplyBackdropSettings()
 local everyBackdropHidden=true
 for _,frame in ipairs(cdw:GetWindows()) do if frame:GetBackdrop()~=nil then everyBackdropHidden=false end end
-CDW_BACKDROP_HIDDEN=main:GetBackdrop()==nil and everyBackdropHidden
+CDW_BACKDROP_HIDDEN=tankWindow:GetBackdrop()==nil and everyBackdropHidden
 s.hideBackdrop=false; cdw:ApplyBackdropSettings()
-cdw:FinalizeWindow(main,1600,cdw:GetBarWidth()+40,{},{},{},{})
-CDW_NO_SCROLL_CLIP=main.scroll==nil and main.content:GetHeight()==1600 and main:GetHeight()>1500
+cdw:FinalizeWindow(tankWindow,1600,cdw:GetBarWidth()+40,{},{},{},{})
+CDW_NO_SCROLL_CLIP=tankWindow.scroll==nil and tankWindow.content:GetHeight()==1600 and tankWindow:GetHeight()>1500
 cdw:RefreshAll()
 
 -- Restore all shared state before later unrelated tests.

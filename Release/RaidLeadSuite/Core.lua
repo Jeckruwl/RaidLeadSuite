@@ -198,7 +198,7 @@ local defaults = {
         -- profiles' Raid Frame iconSpacing as the initial buff-spacing value.
         raidbuffs = {},
         cdwatcher = {
-            layoutMode = "combined",
+            layoutMode = "macro",
             groupByCaster = false, -- legacy saved profiles migrate this to groupMode
             autoInspect = true,
             hideTooltips = false,

@@ -770,7 +770,6 @@ function CFG:BuildOptionsTable()
     }
 
     local cdwLayoutValues = {
-        combined = L["One panel, grouped by category"],
         separate = L["Floating window per category"],
         macro = L["All macro groups (one window each)"],
         macro_offensive = L["Macro group: Offensive"],
@@ -785,9 +784,9 @@ function CFG:BuildOptionsTable()
     }
     local fontValues = mediaValues("font", cdwGet("fontFace", "Fonts\\FRIZQT__.TTF"))
     local cdwGeneral = {
-        layoutMode = select(L["Window layout"], L["Show all categories together, separate categories, or organize them into selectable macro-group windows."], 1,
+        layoutMode = select(L["Window layout"], L["Choose separate windows for each category or organize categories into selectable macro-group windows."], 1,
             cdwLayoutValues,
-            function() return cdwGet("layoutMode", "combined") end,
+            function() return cdwGet("layoutMode", "macro") end,
             function(_, value) if cdw and cdw.SetLayoutMode then cdw:SetLayoutMode(value); self:NotifyChange() end end),
         groupMode = select(L["Group by"], L["Group the bars by caster, by spell, or do not group them."], 2,
             cdwGroupModeValues,
