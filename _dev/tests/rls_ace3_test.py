@@ -2513,18 +2513,43 @@ bar.barTexture.set(nil,'Interface\\\\Buttons\\\\WHITE8x8')
 bar.showIcons.set(nil,false); bar.useClassColor.set(nil,false)
 bar.readyColor.set(nil,0.12,0.34,0.56)
 gen.fontSize.set(nil,16); gen.fontFace.set(nil,'Fonts\\\\ARIALN.TTF'); gen.fontOutline.set(nil,false)
+-- Life-state icons belong to the right-hand marker, never to spell icons.
+local oldSpellInfo=GetSpellInfo
+bar.showIcons.set(nil,true)
+GetSpellInfo=function(id) return 'Spell',nil,'TestSpellIcon:'..tostring(id) end
 cdw:ShowPreview('fake')
+GetSpellInfo=oldSpellInfo
 local p=cdw.previewWindow
 local ready=p.barFrames.preview_ready
-local cooling=p.barFrames.preview_cooldown
 local dead=p.barFrames.preview_dead
 local disconnected=p.barFrames.preview_disconnected
+local green=ready.statusIcon._vertex or {}
+local statusRight,statusRelative,statusRelativePoint,statusX=ready.statusIcon:GetPoint(1)
+CDW_LAYERED_TEXT=ready.label:GetParent()==ready.bar and ready.bar:GetParent()==ready
+    and statusRight=='RIGHT' and statusRelative==ready and statusRelativePoint=='RIGHT' and statusX==-1
+CDW_STATUS_MARKERS=ready.statusIcon:IsShown()
+    and ready.statusIcon._texture=='Interface\\\\Buttons\\\\WHITE8X8'
+    and math.abs((green[1] or 0)-0.10)<0.001 and math.abs((green[2] or 0)-0.9)<0.001
+    and math.abs((green[3] or 0)-0.2)<0.001
+    and dead.statusIcon._texture=='Interface\\\\Icons\\\\INV_Misc_Bone_Skull_01'
+    and dead.icon._texture=='TestSpellIcon:22812'
+    and disconnected.statusIcon._texture=='Interface\\\\Icons\\\\INV_Misc_QuestionMark'
+    and disconnected.icon._texture=='TestSpellIcon:498'
+bar.showIcons.set(nil,false)
+cdw:ShowPreview('fake')
+p=cdw.previewWindow
+ready=p.barFrames.preview_ready
+local cooling=p.barFrames.preview_cooldown
+dead=p.barFrames.preview_dead
+disconnected=p.barFrames.preview_disconnected
 CDW_PREVIEW_OK=p:IsShown() and ready and cooling and dead and disconnected
     and ready:GetHeight()==32 and ready:GetWidth()==300
     and ready.bar._statusbarTex=='Interface\\\\Buttons\\\\WHITE8x8'
-    and ready.label:IsShown() and ready.label:GetText()=='Shield Wall:Aldor  0s'
+    and ready.label:IsShown() and ready.label:GetText()=='Shield Wall:Aldor'
+    and ready.label:GetText():find('0s',1,true)==nil
     and ready.timer._fontArgs[2]==16 and ready.timer._fontArgs[3]==nil
     and ready.icon:IsShown()==false and ready.data.life=='alive' and ready.data.ready
+    and ready.statusIcon:IsShown() and ready.statusIcon._texture==ready.bg._texture
     and math.abs(ready.bar._value-300)<0.001
     and math.abs(ready.bar._sbColor[1]-0.12)<0.001
     and math.abs(ready.bar._sbColor[2]-0.34)<0.001
@@ -2548,7 +2573,9 @@ bar.disconnectedColor.set(nil,CDW_OLD_SETTINGS.disconnectedColor.r,CDW_OLD_SETTI
 gen.hideTooltips.set(nil,CDW_OLD_SETTINGS.hideTooltips); gen.hideBackdrop.set(nil,CDW_OLD_SETTINGS.hideBackdrop)
 gen.fontSize.set(nil,CDW_OLD_SETTINGS.fontSize); gen.fontFace.set(nil,CDW_OLD_SETTINGS.fontFace); gen.fontOutline.set(nil,CDW_OLD_SETTINGS.fontOutline)
 """)
-check(bool(rt.eval("CDW_PREVIEW_OK")), "CD Watcher preview applies dimensions, custom colors, icon visibility and the one-line spell:player/cooldown label")
+check(bool(rt.eval("CDW_PREVIEW_OK")), "CD Watcher preview applies dimensions, custom colors, icon visibility and omits the timer when cooldown is zero")
+check(bool(rt.eval("CDW_LAYERED_TEXT")), "CD Watcher label is layered above the StatusBar fill and the status marker is aligned at the right edge")
+check(bool(rt.eval("CDW_STATUS_MARKERS")), "ready uses a green square, offline a null icon, dead a skull, and spell icons remain unchanged")
 check(bool(rt.eval("CDW_SINGLE_PREVIEW")), "CD Watcher supports a single sample-bar preview")
 check(bool(rt.eval("CDW_CLASS_COLOR_DEFAULT")), "default ready/alive bar colors follow the caster's class color")
 rt.execute("""

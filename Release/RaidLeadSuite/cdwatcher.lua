@@ -15,10 +15,11 @@ local TITLE_H, PAD, ICON_SIZE = 30, 8, 24
 local DEFAULT_BAR_WIDTH, INSPECT_W = 240, 390
 local TANK_PROMPT_H = 38
 local DEAD_ICON = "Interface\\Icons\\INV_Misc_Bone_Skull_01"
-local OFFLINE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up"
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+local NULL_ICON = QUESTION_ICON
 local WHITE_TEXTURE = "Interface\\Buttons\\WHITE8X8"
 local STATUSBAR_TEXTURE = "Interface\\TargetingFrame\\UI-StatusBar"
+local STATUS_SQUARE_SIZE, STATUS_ICON_SIZE = 8, 14
 
 -- Spell IDs are WotLK 3.3.5 IDs. Ranks and aliases are included where useful.
 local CATEGORIES = {
@@ -767,14 +768,21 @@ function CDW:EnsureBar(window, model, width)
     row.icon:SetPoint("LEFT", row, "LEFT", 0, 0)
     row.icon:SetTexCoord(0.08,0.92,0.08,0.92)
     row.icons = {row.icon}
+    row.statusIcon = row:CreateTexture(nil, "OVERLAY")
+    row.statusIcon:SetTexture(WHITE_TEXTURE)
+    row.statusIcon:SetSize(STATUS_SQUARE_SIZE, STATUS_SQUARE_SIZE)
+    row.statusIcon:SetPoint("RIGHT", row, "RIGHT", -1, 0)
+    row.statusIcon:Hide()
+    -- Preserve the old field name for integrations that used the alive marker.
+    row.alive = row.statusIcon
     row.bar = CreateFrame("StatusBar", nil, row)
     row.bar:SetStatusBarTexture(self:NormalizeSettings().barTexture or STATUSBAR_TEXTURE)
-    row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    -- Parent the text to the StatusBar so it is drawn above its changing fill.
+    row.label = row.bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     row.label:SetPoint("CENTER", row.bar, "CENTER", 0, 0)
     row.label:SetJustifyH("CENTER")
     row.label:SetWordWrap(false)
-    -- Legacy consumers read the cooldown FontString through icon.timer.
-    -- It aliases the one visible label; no additional text is rendered.
+    -- Legacy consumers read the visible cooldown label through icon.timer.
     row.timer = row.label
     row.icon.timer = row.label
     row:SetScript("OnDragStart", function(frame) if frame.data and not frame.data.preview then CDW.draggedBar = frame end end)
@@ -824,16 +832,40 @@ function CDW:RenderBar(window, model, y, width)
     if settings.showIcons then
         row.icon:SetPoint("LEFT",row,"LEFT",0,0)
         barLeft=iconSize+4
+        -- Spell icons always identify the ability; life state belongs to the
+        -- separate status marker at the far right of the row.
         row.icon:SetTexture(self:IconFor(model.ability))
-        if model.life=="dead" then row.icon:SetTexture(DEAD_ICON)
-        elseif model.life=="disconnected" then row.icon:SetTexture(OFFLINE_ICON) end
         row.icon:SetVertexColor(1,1,1,1)
         row.icon:Show()
     else
         row.icon:Hide()
     end
+
+    local life = model.life or "alive"
+    if life == "dead" then
+        row.statusIcon:SetTexture(DEAD_ICON)
+        row.statusIcon:SetTexCoord(0.08,0.92,0.08,0.92)
+        row.statusIcon:SetSize(math.min(STATUS_ICON_SIZE, math.max(8,height-2)), math.min(STATUS_ICON_SIZE, math.max(8,height-2)))
+        row.statusIcon:SetVertexColor(1,1,1,1)
+        row.statusIcon:Show()
+    elseif life == "disconnected" then
+        row.statusIcon:SetTexture(NULL_ICON)
+        row.statusIcon:SetTexCoord(0.08,0.92,0.08,0.92)
+        row.statusIcon:SetSize(math.min(STATUS_ICON_SIZE, math.max(8,height-2)), math.min(STATUS_ICON_SIZE, math.max(8,height-2)))
+        row.statusIcon:SetVertexColor(1,1,1,1)
+        row.statusIcon:Show()
+    else
+        row.statusIcon:SetTexture(WHITE_TEXTURE)
+        row.statusIcon:SetTexCoord(0,1,0,1)
+        row.statusIcon:SetSize(STATUS_SQUARE_SIZE,STATUS_SQUARE_SIZE)
+        if model.ready then row.statusIcon:SetVertexColor(0.10,0.9,0.2,1)
+        else row.statusIcon:SetVertexColor(0.10,0.55,0.18,1) end
+        row.statusIcon:Show()
+    end
+
     row.bar:SetPoint("TOPLEFT",row,"TOPLEFT",barLeft,-2)
-    row.bar:SetPoint("BOTTOMRIGHT",row,"BOTTOMRIGHT",-2,2)
+    -- Reserve the right edge for the alive/dead/offline status marker.
+    row.bar:SetPoint("BOTTOMRIGHT",row,"BOTTOMRIGHT",-16,2)
     row.bar:SetMinMaxValues(0,model.ability.stateOnly and (model.ability.duration or 1)
         or (model.ability.cd>0 and model.ability.cd or (model.ability.duration or 1)))
     local max = model.ability.stateOnly and (model.ability.duration or 1)
@@ -859,11 +891,13 @@ function CDW:RenderBar(window, model, y, width)
     end
     row.bar:SetStatusBarColor(r,g,b,1)
 
-    local cooldownText = model.cooldown and model.cooldown>0 and self:FormatTime(model.cooldown) or "0s"
-    row.label:SetWidth(math.max(20,width-barLeft-8))
+    local spellPlayerText=(model.ability.name or "?")..":"..(model.ownerName or "?")
+    local labelText=spellPlayerText
+    if model.cooldown and model.cooldown>0 then labelText=labelText.."  "..self:FormatTime(model.cooldown) end
+    row.label:SetWidth(math.max(20,width-barLeft-22))
     row.label:SetFont(font,fontSize,fontFlags)
     row.label:SetTextColor(fontColor.r or 1,fontColor.g or 1,fontColor.b or 1,1)
-    row.label:SetText((model.ability.name or "?")..":"..(model.ownerName or "?").."  "..cooldownText)
+    row.label:SetText(labelText)
     row.label:Show()
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT",window.content,"TOPLEFT",0,-y)
