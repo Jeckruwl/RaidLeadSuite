@@ -735,6 +735,7 @@ fire(rt, "AceAddon30Frame", "PLAYER_LOGIN")
 
 
 check(RLS.groupmaking is not None and RLS.groupmaking.mainFrame is not None, "GroupMaking initialized (mainFrame created)")
+check(bool(rt.eval("RLSuite.db.profile.groupmaking.requestSpecsFor.tank == false and RLSuite.db.profile.groupmaking.requestSpecsFor.healer == false and RLSuite.db.profile.groupmaking.requestSpecsFor.dps == false and RLSuite.db.profile.groupmaking.showSpecsInMessage == nil")), "new profile defaults all specific-spec role requests off and clears the legacy key")
 check(RLS.macrobar is not None and RLS.macrobar.frame is not None, "MacroBar initialized (frame created)")
 check(RLS.raidFrame is not None and RLS.raidFrame.frame is not None, "RaidFrame initialized")
 check(RLS.msManager is not None and RLS.msManager.frame is not None, "MSManager initialized")
@@ -821,6 +822,9 @@ check(g2.RLSuite.db.profile.anchorMode == True, "legacy anchorMode=true migrated
 check(rt2.eval("#RLSuite.db.profile.savedRaids") == 1, "legacy savedRaids migrated (1 entry)")
 check(g2.RLSuite.db.profile.loot.rollDuration == 15, "legacy loot.rollDuration migrated -> 15")
 check(g2.RLSuite.db.profile.whisplist.autoinvite.mode == "calendar", "legacy autoinvite.mode migrated -> 'calendar'")
+rt2.execute("LOGGED_IN = true")
+fire(rt2, "AceAddon30Frame", "PLAYER_LOGIN")
+check(bool(rt2.eval("RLSuite.db.profile.groupmaking.requestSpecsFor.tank == true and RLSuite.db.profile.groupmaking.requestSpecsFor.healer == true and RLSuite.db.profile.groupmaking.requestSpecsFor.dps == true and RLSuite.db.profile.groupmaking.showSpecsInMessage == nil and RLSuite.groupmaking.specChecks.tank:GetChecked() == true and RLSuite.groupmaking.specChecks.healer:GetChecked() == true and RLSuite.groupmaking.specChecks.dps:GetChecked() == true")), "legacy showSpecsInMessage=true migrates to checked Tank/Healer/DPS controls without losing behavior")
 
 
 print()
@@ -1668,7 +1672,7 @@ check(g.RLSuite.context == "preraid", "phase backward: preboss -> preraid")
 
 # --- Spammer "Lim" = the Aim field, between difficulty/HC and Need ---
 rt.execute("RLSuite.groupmaking.db.hc = false")
-rt.execute("RLSuite.groupmaking.db.showSpecsInMessage = false")
+rt.execute("RLSuite.groupmaking.db.requestSpecsFor = { tank = false, healer = false, dps = false }")
 rt.execute("RLSuite.groupmaking.aimEdit:SetText('GS 5800+')")
 rt.execute("RLSuite.groupmaking.reservedEdit:SetText('Valanyr')")
 rt.execute("RLSuite.groupmaking.otherEdit:SetText('no hunters')")
@@ -1679,18 +1683,39 @@ check(bool(rt.eval("SPAM_MSG:find('GS 5800+', 1, true) ~= nil")), "Aim ('Lim') t
 check(bool(rt.eval("(SPAM_MSG:find('GS 5800+', 1, true) or 0) < (SPAM_MSG:find('Need', 1, true) or 0)")), "Aim text sits before 'Need'")
 check(bool(rt.eval("(SPAM_MSG:find('Need', 1, true) or 0) < (SPAM_MSG:find('Res', 1, true) or 0)")), "'Need' sits before 'Res'")
 check(bool(rt.eval("(SPAM_MSG:find('Res', 1, true) or 0) < (SPAM_MSG:find('no hunters', 1, true) or 0)")), "Other requirements still at the end (after Res)")
+check(bool(rt.eval("SPAM_MSG:find('1 TANK', 1, true) ~= nil")), "a disabled role option keeps its aggregate role count")
 rt.execute("RLSuite.groupmaking:ClearSlot(1)")
 
-# --- Ideal comp: duplicate specs collapse to "name xN" in the LFM message ---
-rt.execute("RLSuite.groupmaking.db.showSpecsInMessage = true")
+# --- Request specific specs by role: aggregation, selected specs, DPS mapping ---
+rt.execute("RLSuite.groupmaking.db.requestSpecsFor = { tank = false, healer = true, dps = false }")
 rt.execute("RLSuite.groupmaking:FillSlot(3, 'PRIEST', 'healer', nil, 'holy')")
 rt.execute("RLSuite.groupmaking:FillSlot(4, 'PRIEST', 'healer', nil, 'holy')")
 rt.execute("RLSuite.groupmaking:FillSlot(5, 'PRIEST', 'healer', nil, 'disc')")
 rt.execute("SPAM_MSG_S = RLSuite.groupmaking:BuildSpamMessage()")
-check(bool(rt.eval("SPAM_MSG_S:find('HPriest x2', 1, true) ~= nil")), "duplicate ideal-comp specs collapse to 'HPriest x2' (never repeated)")
-check(bool(rt.eval("SPAM_MSG_S:find('HPriest, HPriest', 1, true) == nil")), "the raw duplicate 'HPriest, HPriest' is gone from the message")
-check(bool(rt.eval("SPAM_MSG_S:find('Disco', 1, true) ~= nil and SPAM_MSG_S:find('Disco x', 1, true) == nil")), "single specs still shown once without a count")
+check(bool(rt.eval("SPAM_MSG_S:find('2 HPRIEST', 1, true) ~= nil")), "selected Healer role groups duplicate specs with an explicit count")
+check(bool(rt.eval("SPAM_MSG_S:find('HPRIEST, HPRIEST', 1, true) == nil")), "duplicate healer specs are not repeated individually")
+check(bool(rt.eval("SPAM_MSG_S:find('1 DISCO', 1, true) ~= nil")), "selected Healer role includes the other specific healer spec")
 rt.execute("RLSuite.groupmaking:ClearSlot(3); RLSuite.groupmaking:ClearSlot(4); RLSuite.groupmaking:ClearSlot(5)")
+
+rt.execute("""
+local gm = RLSuite.groupmaking
+gm.db.requestSpecsFor = { tank = true, healer = false, dps = false }
+gm:FillSlot(1, 'WARRIOR', 'tank', nil, 'prot')
+gm:FillSlot(2, 'PRIEST', 'healer', nil, 'holy')
+gm:FillSlot(3, 'MAGE', 'rdps', nil, 'arcane')
+SPAM_MIXED = gm:BuildSpamMessage()
+""")
+check(bool(rt.eval("SPAM_MIXED:find('1 PWAR', 1, true) ~= nil and SPAM_MIXED:find('1 HEAL', 1, true) ~= nil and SPAM_MIXED:find('1 RDPS', 1, true) ~= nil and SPAM_MIXED:find('HPRIEST', 1, true) == nil and SPAM_MIXED:find('ARCANE', 1, true) == nil")), "Tank requests its spec while unchecked Healer and DPS stay aggregated")
+rt.execute("""
+local gm = RLSuite.groupmaking
+gm:ClearSlot(1); gm:ClearSlot(2); gm:ClearSlot(3)
+gm.db.requestSpecsFor = { tank = false, healer = false, dps = true }
+gm:FillSlot(1, 'DEATHKNIGHT', 'mdps', nil, 'frost')
+gm:FillSlot(2, 'MAGE', 'rdps', nil, 'arcane')
+SPAM_DPS = gm:BuildSpamMessage()
+""")
+check(bool(rt.eval("SPAM_DPS:find('1 FDK', 1, true) ~= nil and SPAM_DPS:find('1 ARCANE', 1, true) ~= nil and SPAM_DPS:find('MDPS', 1, true) == nil and SPAM_DPS:find('RDPS', 1, true) == nil")), "DPS option selects specs for both melee and ranged DPS roles")
+rt.execute("RLSuite.groupmaking:ClearSlot(1); RLSuite.groupmaking:ClearSlot(2); RLSuite.groupmaking.db.requestSpecsFor = { tank = false, healer = false, dps = false }")
 
 # --- Groupmaking spam channels: the custom 'global' channel is honored ---
 rt.execute("""
@@ -4372,8 +4397,8 @@ RLSuite.DebugMode = SAVED_DM_G
 """)
 
 # --- G.3 Groupmaking: reqBox hugs the button row + thicker icon borders ---
-rt.execute("local p, rel, rp, x, y = RLSuite.groupmaking.reqBox:GetPoint(3); REQBOX_OK = (p == 'BOTTOMLEFT' and rel == RLSuite.groupmaking.spamBtn and rp == 'TOPLEFT' and y == 8)")
-check(bool(rt.eval("REQBOX_OK == true")), "requirements box bottom-anchored 8px above the buttons (no dead space)")
+rt.execute("local p, rel, rp, x, y = RLSuite.groupmaking.reqBox:GetPoint(3); REQBOX_OK = (p == 'BOTTOMLEFT' and rel == RLSuite.groupmaking.specsSection and rp == 'TOPLEFT' and y == 8)")
+check(bool(rt.eval("REQBOX_OK == true")), "requirements box bottom-anchored 8px above the role selector (no dead space)")
 check(bool(rt.eval("RLSuite.groupmaking.compSlots[1]._backdrop.edgeSize == nil")), "comp slot body has no border anymore (it sat under the spec icon)")
 check(bool(rt.eval("RLSuite.groupmaking.compSlots[1].borderFrame ~= nil")), "comp slot has a dedicated border overlay frame")
 check(bool(rt.eval("RLSuite.groupmaking.compSlots[1].borderFrame._backdrop.edgeSize == 16 and RLSuite.groupmaking.compSlots[1].borderFrame._backdrop.edgeFile ~= nil")), "comp slot border overlay carries the edge (edgeSize 16)")
@@ -4540,15 +4565,43 @@ check(rt.eval("CELLPOS[8]") == "159/-144", "Warlock -> second column, directly u
 check(rt.eval("CELLPOS[10]") == "159/-192", "Druid -> second column, directly under Warlock")
 check(rt.eval("CELLPOS[7]") == "0/-144", "DK -> first column, directly under Shaman")
 check(rt.eval("CELLPOS[9]") == "0/-192", "Hunter -> first column, under DK (Shaman column)")
-check(bool(rt.eval("RLSuite.groupmaking:MinHeight() == RLSuite.groupmaking.topRow:GetHeight() + 328")), "minimum window height reduced to topRow + 328 (dead space removed)")
+check(bool(rt.eval("RLSuite.groupmaking:MinHeight() == RLSuite.groupmaking.topRow:GetHeight() + 380")), "minimum window height includes the 44px role selector and its gaps")
 
-# --- G.9 Groupmaking: minimum width = bottom button row overall width ---
-check(bool(rt.eval("RLSuite.groupmaking.specsLbl ~= nil")), "'Show specs in message' label reference stored for MinWidth")
-check(bool(rt.eval("RLSuite.groupmaking:MinWidth() == 380 + math.ceil(RLSuite.groupmaking.specsLbl:GetStringWidth())")),
-    "MinWidth = 16+L-margin + Start Spam(100)+8 + Preview(100)+6 + check(24) + label width + 10 + InviteEngine(100) + 16+R-margin")
+# --- G.9 Groupmaking: role selector layout + minimum window sizing ---
+rt.execute("""
+local gm = RLSuite.groupmaking
+local sectionPoint, sectionRelative, sectionRelativePoint = gm.specsSection:GetPoint(1)
+local sectionRight, sectionRightRelative, sectionRightRelativePoint, _, sectionRightY = gm.specsSection:GetPoint(2)
+local tankPoint, tankRelative = gm.specChecks.tank:GetPoint(1)
+local reqPoint, reqRelative, reqRelativePoint = gm.reqBox:GetPoint(3)
+local invitePoint, inviteRelative, inviteRelativePoint, inviteX = gm.whisplistBtn:GetPoint(1)
+SPEC_UI_LABELS = (gm.specsLbl:GetText() == 'Request specific specs for'
+    and gm.specLabels.tank:GetText() == 'Tank'
+    and gm.specLabels.healer:GetText() == 'Healer'
+    and gm.specLabels.dps:GetText() == 'DPS')
+SPEC_UI_ORDER = (sectionPoint == 'BOTTOMLEFT' and sectionRelative == gm.spamBtn
+    and sectionRelativePoint == 'TOPLEFT'
+    and sectionRight == 'BOTTOMRIGHT' and sectionRightRelative == gm.previewBox
+    and sectionRightRelativePoint == 'TOPRIGHT' and sectionRightY == 40
+    and tankPoint == 'TOPLEFT' and tankRelative == gm.specsLbl
+    and reqPoint == 'BOTTOMLEFT' and reqRelative == gm.specsSection
+    and reqRelativePoint == 'TOPLEFT')
+SPEC_BUTTON_ROW = (invitePoint == 'LEFT' and inviteRelative == gm.previewBtn
+    and inviteRelativePoint == 'RIGHT' and inviteX == 8)
+gm.specChecks.tank:SetChecked(true)
+gm.specChecks.tank._scripts.OnClick(gm.specChecks.tank)
+SPEC_SETTING_CLICK = (gm.db.requestSpecsFor.tank == true and gm.db.requestSpecsFor.healer == false
+    and gm.db.requestSpecsFor.dps == false and gm.db.showSpecsInMessage == nil)
+gm.specChecks.tank:SetChecked(false)
+gm.specChecks.tank._scripts.OnClick(gm.specChecks.tank)
+""")
+check(bool(rt.eval("SPEC_UI_LABELS")), "Pugger shows the exact heading and Tank/Healer/DPS checkbox labels")
+check(bool(rt.eval("SPEC_UI_ORDER")), "role checkboxes sit above the action row and the requests box sits above the selector")
+check(bool(rt.eval("SPEC_BUTTON_ROW")), "InviteEngine is on the action row immediately after Preview Msg")
+check(bool(rt.eval("SPEC_SETTING_CLICK")), "role checkbox click persists independently without restoring the legacy global setting")
+check(bool(rt.eval("RLSuite.groupmaking:MinWidth() == 422")), "MinWidth protects the raid controls, action row, role selector, and composition/class panels")
 check(bool(rt.eval("select(1, RLSuite.windowMins.groupmaking()) == RLSuite.groupmaking:MinWidth()")),
-    "registered windowMins.groupmaking uses the button-row width as minimum width")
-check(bool(rt.eval("RLSuite.groupmaking:MinWidth() >= 500")), "minimum width fits the whole button row (>= 500)")
+    "registered windowMins.groupmaking uses the calculated minimum width")
 
 # --- G.10 Loot Manager: roll keys -> RAID WARNING, give-to line, keep rolling with pickup open ---
 rt.execute("""

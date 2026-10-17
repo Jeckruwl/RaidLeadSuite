@@ -56,6 +56,40 @@ local ROLE_COLORS = {
     dps    = {r=1.0, g=0.2, b=0.2},
 }
 
+local REQUEST_SPEC_ROLES = {"tank", "healer", "dps"}
+
+-- Convert the old all-or-nothing option into the new per-role settings once.
+-- The legacy key is intentionally not a Core.lua default for new profiles:
+-- keeping it out of the defaults lets this function distinguish old profiles
+-- from profiles that already have the new table.
+local function EnsureRequestSpecsFor(db)
+    if type(db.requestSpecsFor) ~= "table" then
+        local legacyEnabled = db.showSpecsInMessage == true
+        db.requestSpecsFor = {
+            tank = legacyEnabled,
+            healer = legacyEnabled,
+            dps = legacyEnabled,
+        }
+    else
+        for _, role in ipairs(REQUEST_SPEC_ROLES) do
+            if type(db.requestSpecsFor[role]) ~= "boolean" then
+                db.requestSpecsFor[role] = false
+            end
+        end
+    end
+    db.showSpecsInMessage = nil
+    return db.requestSpecsFor
+end
+
+local function RequestsSpecificSpecForRole(settings, role)
+    if role == "tank" then return settings.tank == true end
+    if role == "healer" then return settings.healer == true end
+    if role == "mdps" or role == "rdps" or role == "dps" then
+        return settings.dps == true
+    end
+    return false
+end
+
 -- Icone di ruolo di default WotLK (LFG frame, quadranti tank/healer/dps).
 local ROLE_ICON_TEXTURE = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"
 local ROLE_ICON_COORDS = {
@@ -73,6 +107,7 @@ end
 
 function GM:Init()
     self.db = RLSuite.db.profile.groupmaking
+    EnsureRequestSpecsFor(self.db)
     self.whisperDB = RLSuite.db.profile.whisplist
     -- Autoinviter: stato salvato + default per i campi mancanti. "enabled"
     -- torna sempre false al reload (i timer AceTimer non sopravvivono).
@@ -199,6 +234,7 @@ function GM:CreateMainWindow()
     local raidLabel = FontStr(f, "OVERLAY", 14)
     raidLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -36)
     raidLabel:SetText("Raid:")
+    self.raidLabel = raidLabel
 
     self.raidDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteRaidDropdown", 180, 22)
     self.raidDropdown:SetPoint("LEFT", raidLabel, "RIGHT", 8, 0)
@@ -211,6 +247,7 @@ function GM:CreateMainWindow()
     local diffLabel = FontStr(f, "OVERLAY", 14)
     diffLabel:SetPoint("LEFT", self.raidDropdown, "RIGHT", 12, 0)
     diffLabel:SetText("Diff:")
+    self.diffLabel = diffLabel
 
     -- Due tasti al posto del dropdown: il tasto attivo resta evidenziato.
     self.diffBtn10 = CreateFrame("Button", "RLSuiteDiffBtn10", f, "UIPanelButtonTemplate")
@@ -244,6 +281,7 @@ function GM:CreateMainWindow()
     hcLbl:SetPoint("LEFT", self.hcCheck, "RIGHT", 0, 0)
     hcLbl:SetText("HC")
     hcLbl:SetTextColor(1, 0.82, 0)
+    self.hcLbl = hcLbl
 
     self.topRow = CreateFrame("Frame", nil, f)
     self.topRow:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -66)
@@ -289,9 +327,8 @@ function GM:CreateMainWindow()
     self.reqBox:SetPoint("TOPLEFT", self.topRow, "BOTTOMLEFT", 0, -8)
     self.reqBox:SetPoint("TOPRIGHT", self.topRow, "BOTTOMRIGHT", 0, -8)
     -- L'altezza NON e' fissa: il bordo inferiore viene ancorato sopra la
-    -- fila di bottoni (vedi sotto, dopo spamBtn), cosi' tra la fine del
-    -- riquadro delle caselle di testo e i tasti non resta spazio morto a
-    -- nessuna dimensione della finestra.
+    -- sezione delle richieste di spec, che si trova tra il box richieste e
+    -- la fila dei pulsanti.
     RLSuite.utils:SkinBox(self.reqBox)
 
     -- Campo "Aim": nota libera del raid leader, sopra a Reserved items.
@@ -391,12 +428,6 @@ function GM:CreateMainWindow()
     self.spamBtn:SetText("Start Spam")
     self.spamBtn:SetScript("OnClick", function() self:ToggleSpam() end)
 
-    -- Il riquadro delle richieste (Aim/Reserved/Other) si estende in basso
-    -- fino a 8px sopra la fila di bottoni: spamBtn parte dallo stesso
-    -- margine sinistro del contenuto (16), quindi BOTTOMLEFT non sposta la
-    -- geometria orizzontale; gli edit restano ancorati in alto dentro il box.
-    self.reqBox:SetPoint("BOTTOMLEFT", self.spamBtn, "TOPLEFT", 0, 8)
-
     self.previewBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.previewBtn)
     self.previewBtn:SetSize(100, 24)
@@ -404,30 +435,62 @@ function GM:CreateMainWindow()
     self.previewBtn:SetText("Preview Msg")
     self.previewBtn:SetScript("OnClick", function() self:ShowMessagePreview() end)
 
-    self.showSpecsCheck = CreateFrame("CheckButton", "RLSuiteShowSpecsCheck", f, "UICheckButtonTemplate")
-    self.showSpecsCheck:SetSize(24, 24)
-    self.showSpecsCheck:SetPoint("LEFT", self.previewBtn, "RIGHT", 6, 0)
-    self.showSpecsCheck:SetChecked(self.db.showSpecsInMessage and true or false)
-    self.showSpecsCheck:SetScript("OnClick", function(s)
-        self.db.showSpecsInMessage = s:GetChecked() and true or false
-        self:UpdateMessagePreview()
-        self:SaveComp()
-    end)
-
-    local specsLbl = FontStr(f, "OVERLAY", 12)
-    specsLbl:SetPoint("LEFT", self.showSpecsCheck, "RIGHT", 0, 0)
-    specsLbl:SetText(L["Request specific Specs"] or "Request specific Specs")
-    specsLbl:SetTextColor(1, 0.82, 0)
-    self.specsLbl = specsLbl -- usata da MinWidth() per la fila di bottoni
-
-    -- InviteEngine (ex-Whisplist): il bottone sta a DESTRA della checkbox
-    -- "Request specific Specs".
     self.whisplistBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.whisplistBtn)
     self.whisplistBtn:SetSize(100, 24)
-    self.whisplistBtn:SetPoint("LEFT", specsLbl, "RIGHT", 10, 0)
+    self.whisplistBtn:SetPoint("LEFT", self.previewBtn, "RIGHT", 8, 0)
     self.whisplistBtn:SetText("InviteEngine")
     self.whisplistBtn:SetScript("OnClick", function() self:ToggleWhisplist() end)
+
+    -- Le preferenze per ruolo sono una sezione dedicata sopra la fila dei
+    -- pulsanti, con l'intestazione sopra alle tre caselle.
+    self.specsSection = CreateFrame("Frame", nil, f)
+    self.specsSection:SetHeight(44)
+    self.specsSection:SetPoint("BOTTOMLEFT", self.spamBtn, "TOPLEFT", 0, 8)
+    self.specsSection:SetPoint("BOTTOMRIGHT", self.previewBox, "TOPRIGHT", 0, 40)
+
+    self.specsLbl = FontStr(self.specsSection, "OVERLAY", 12)
+    self.specsLbl:SetPoint("TOPLEFT", self.specsSection, "TOPLEFT", 0, -2)
+    self.specsLbl:SetText(L["Request specific specs for"] or "Request specific specs for")
+    self.specsLbl:SetTextColor(1, 0.82, 0)
+
+    self.specChecks = {}
+    self.specLabels = {}
+    local specRoleControls = {
+        { key = "tank", label = L["Tank"] or "Tank", name = "RLSuiteRequestTankSpecsCheck" },
+        { key = "healer", label = L["Healer"] or "Healer", name = "RLSuiteRequestHealerSpecsCheck" },
+        { key = "dps", label = L["DPS"] or "DPS", name = "RLSuiteRequestDPSSpecsCheck" },
+    }
+    local previousSpecLabel
+    for _, control in ipairs(specRoleControls) do
+        local check = CreateFrame("CheckButton", control.name, self.specsSection, "UICheckButtonTemplate")
+        check:SetSize(24, 24)
+        if previousSpecLabel then
+            check:SetPoint("LEFT", previousSpecLabel, "RIGHT", 8, 0)
+        else
+            check:SetPoint("TOPLEFT", self.specsLbl, "BOTTOMLEFT", -2, -2)
+        end
+        check:SetChecked(self.db.requestSpecsFor[control.key] == true)
+
+        local label = FontStr(self.specsSection, "OVERLAY", 12)
+        label:SetPoint("LEFT", check, "RIGHT", 0, 0)
+        label:SetText(control.label)
+
+        local role = control.key
+        check:SetScript("OnClick", function(button)
+            self.db.requestSpecsFor[role] = button:GetChecked() and true or false
+            self:UpdateMessagePreview()
+            self:SaveComp()
+        end)
+        self.specChecks[role] = check
+        self.specLabels[role] = label
+        previousSpecLabel = label
+    end
+
+    -- Il box richieste termina sopra la nuova sezione ruolo, mentre la
+    -- sezione resta separata dalla fila dei pulsanti.
+    self.reqBox:SetPoint("BOTTOMLEFT", self.specsSection, "TOPLEFT", 0, 8)
+    self.reqBox:SetPoint("BOTTOMRIGHT", self.specsSection, "TOPRIGHT", 0, 8)
 
     f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
@@ -598,19 +661,19 @@ function GM:LayoutGroupPanels(rowW)
     self:SyncWhisplistHeight()
 end
 
--- Altezza minima di resize di Groupmaking, SOMMATA dal layout reale cosi'
--- da non lasciare spazio morto tra il box richieste e la fila di bottoni:
+-- Altezza minima di resize di Groupmaking, calcolata sul layout effettivo:
 --   66  intestazione (title + riga raid/diff/hc)
---    8  gap
 -- topRow (topH: comp + class/spec bar, dipende da 10/25 e dal resize)
 --    8  gap
---  140  box richieste (3 label + 3 edit + padding interno: misura del contenuto)
+--  140  box richieste (3 label + 3 edit + padding interno)
 --    8  gap
---   24  fila bottoni (Start Spam / Preview / specs / InviteEngine)
+--   44  selettore delle spec (intestazione + caselle Tank/Healer/DPS)
+--    8  gap
+--   24  fila pulsanti (Start Spam / Preview Msg / InviteEngine)
 --    8  gap
 --   58  box anteprima messaggio
 --   16  margine inferiore
--- Totale fisso = 66+8+8+140+8+24+8+58+16 = 328 + topH.
+-- Totale fisso = 66+8+140+8+44+8+24+8+58+16 = 380 + topH.
 -- IE_TAB_EXTRA (striscia tab della costola InviteEngine) non e' piu' sommato:
 -- il minimo calcolato copre comunque il contenuto dei tab del pannello.
 function GM:MinHeight()
@@ -619,29 +682,45 @@ function GM:MinHeight()
         local th = self.topRow:GetHeight()
         if th and th > 60 then topH = th end
     end
-    return topH + 328
+    return topH + 380
 end
 
--- Larghezza minima della finestra: la fila di controllo in basso deve
--- restare interamente visibile. Somma dei pezzi reali della fila:
---   16   margine sinistro (previewBox/spamBtn partono a x=16)
---  100   Start Spam
---    8
---  100   Preview Msg
---    6
---   24   checkbox
---    w   label "Request specific Specs" (misurata via GetStringWidth)
---   10
---  100   InviteEngine
---   16   margine destro (simmetrico al sinistro)
--- Fisso = 16+100+8+100+6+24+10+100+16 = 380 + larghezza del testo.
+-- Larghezza minima: copre intestazione, selettore, fila pulsanti e i due
+-- pannelli affiancati (Composizione 204 + gap 8 + barra classi min. 160).
 function GM:MinWidth()
-    local labelW = 0
-    if self.specsLbl and self.specsLbl.GetStringWidth then
-        labelW = math.ceil(self.specsLbl:GetStringWidth() or 0)
+    local function textWidth(fontString, fallback)
+        if fontString and fontString.GetStringWidth then
+            local width = math.ceil(fontString:GetStringWidth() or 0)
+            if width > 0 then return width end
+        end
+        return fallback
     end
-    if labelW <= 0 then labelW = 140 end -- fallback per "Request specific Specs"
-    return 380 + labelW
+
+    local actionRowW = 16 + 100 + 8 + 100 + 8 + 100 + 16
+    local groupPanelsW = 16 + 204 + 8 + 160 + 16
+    local headerRowW = 16
+        + textWidth(self.raidLabel, 35) + 8
+        + (self.raidDropdown and self.raidDropdown:GetWidth() or 180) + 12
+        + textWidth(self.diffLabel, 35) + 8
+        + (self.diffBtn10 and self.diffBtn10:GetWidth() or 30) + 4
+        + (self.diffBtn25 and self.diffBtn25:GetWidth() or 30) + 10
+        + (self.hcCheck and self.hcCheck:GetWidth() or 24)
+        + textWidth(self.hcLbl, 14) + 16
+
+    local selectorChecksW = 0
+    local roleLabelFallbacks = {tank = 28, healer = 42, dps = 21}
+    for index, role in ipairs(REQUEST_SPEC_ROLES) do
+        if index > 1 then selectorChecksW = selectorChecksW + 8 end
+        local check = self.specChecks and self.specChecks[role]
+        selectorChecksW = selectorChecksW + (check and check:GetWidth() or 24)
+            + textWidth(self.specLabels and self.specLabels[role], roleLabelFallbacks[role])
+    end
+    local selectorW = 32 + math.max(
+        textWidth(self.specsLbl, #"Request specific specs for" * 7),
+        selectorChecksW
+    )
+
+    return math.max(actionRowW, groupPanelsW, headerRowW, selectorW)
 end
 
 -- L'InviteEngine e' una costola di Groupmaking: la sua altezza segue sempre
@@ -1019,7 +1098,7 @@ function GM:BuildSpamMessage()
         msg = msg .. " - " .. aimText
     end
 
-    local needed = {tank = 0, healer = 0, mdps = 0, rdps = 0}
+    local requestSpecsFor = (self.db and self.db.requestSpecsFor) or {}
     local unspecifiedNeeded = {tank = 0, healer = 0, mdps = 0, rdps = 0}
     local specCounts, specOrder = {}, {}
     local hasComp = false
@@ -1030,17 +1109,22 @@ function GM:BuildSpamMessage()
             hasComp = true
             if not slot.playerName then
                 local role = RLSuite.utils:NormalizeRole(slot.role, slot.class, slot.spec)
-                needed[role] = (needed[role] or 0) + 1
                 local specName = RLSuite.utils:SpecShortName(slot.class, slot.spec)
-                if specName and specName ~= "" then
+                if specName and specName ~= "" and RequestsSpecificSpecForRole(requestSpecsFor, role) then
                     local upperSpec = string.upper(tostring(specName))
-                    if not specCounts[upperSpec] then
-                        specCounts[upperSpec] = 0
-                        specOrder[#specOrder + 1] = upperSpec
+                    local specKey = role .. ":" .. upperSpec
+                    if not specCounts[specKey] then
+                        specCounts[specKey] = 0
+                        specOrder[#specOrder + 1] = {
+                            key = specKey,
+                            name = upperSpec,
+                        }
                     end
-                    specCounts[upperSpec] = specCounts[upperSpec] + 1
-                elseif unspecifiedNeeded[role] ~= nil then
-                    unspecifiedNeeded[role] = unspecifiedNeeded[role] + 1
+                    specCounts[specKey] = specCounts[specKey] + 1
+                else
+                    -- Se il ruolo non richiede le spec (o lo slot non ne ha
+                    -- una salvata), conserva il conteggio aggregato del ruolo.
+                    unspecifiedNeeded[role] = (unspecifiedNeeded[role] or 0) + 1
                 end
             end
         end
@@ -1057,26 +1141,18 @@ function GM:BuildSpamMessage()
         return tostring(n)
     end
     local roles = {}
-    local showSpecs = self.db and self.db.showSpecsInMessage
-    if showSpecs then
-        -- Con le richieste di spec attive, ogni voce è un conteggio esplicito
-        -- seguito dall'abbreviazione maiuscola (es. "1 BDK"), senza il ruolo.
-        for _, spec in ipairs(specOrder) do
-            table.insert(roles, tostring(specCounts[spec]) .. " " .. spec)
-        end
-        -- Slot senza una spec salvata non possono essere specificati: mantieni
-        -- il requisito del ruolo invece di ometterli dal messaggio.
-        for _, def in ipairs(roleOrder) do
-            local n = unspecifiedNeeded[def.key] or 0
-            if n > 0 then
-                table.insert(roles, tostring(n) .. " " .. def.label)
-            end
-        end
-    else
-        for _, def in ipairs(roleOrder) do
-            if needed[def.key] and needed[def.key] > 0 then
-                table.insert(roles, fmtCount(needed[def.key]) .. " " .. def.label)
-            end
+    -- Le spec abilitate sono raggruppate e mostrate nell'ordine della comp.
+    for _, spec in ipairs(specOrder) do
+        table.insert(roles, tostring(specCounts[spec.key]) .. " " .. spec.name)
+    end
+    -- I ruoli disattivati (e gli slot senza spec salvata) restano conteggiati
+    -- come ruolo, senza perdere requisiti dal messaggio.
+    for _, def in ipairs(roleOrder) do
+        local n = unspecifiedNeeded[def.key] or 0
+        if n > 0 then
+            local count = RequestsSpecificSpecForRole(requestSpecsFor, def.key)
+                and tostring(n) or fmtCount(n)
+            table.insert(roles, count .. " " .. def.label)
         end
     end
     if #roles > 0 then

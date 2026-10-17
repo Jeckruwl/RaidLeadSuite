@@ -166,7 +166,7 @@ local defaults = {
             spamChannels = {"General"},
             spamChannelNums = {},
             spamInterval = 60,
-            showSpecsInMessage = false,
+            -- GroupMaking:Init creates per-role spec flags after legacy migration.
         },
         whisplist = {
             entries = {},
