@@ -135,7 +135,10 @@ local CATEGORIES = {
     } },
     { value = "raidframe", text = "Raid Frame" },
     { value = "raidbuffs", text = "Raid Buffs" },
-    { value = "cdwatcher", text = "CD Watcher" },
+    { value = "cdwatcher", text = L["CD Watcher"], children = {
+        { value = "baroptions", text = L["Bar options"] },
+        { value = "general", text = L["General"] },
+    } },
     { value = "savedraids", text = "Saved Raids" },
     -- Lista ignora degli item di loot (v1.11.94): la voce va anche QUI,
     -- non solo nella tabella opzioni, altrimenti nel pannello non compare.
@@ -156,7 +159,9 @@ local NODES = {
     -- positions e alerts sono stati eliminati dal pannello).
     ["raidframe"]          = { "raidframe" },
     ["raidbuffs"]          = { "raidbuffs" },
-    ["cdwatcher"]          = { "cdwatcher" },
+    ["cdwatcher"]          = { "cdwatcher", "general" },
+    ["cdwatcher\001baroptions"] = { "cdwatcher", "baroptions" },
+    ["cdwatcher\001general"]    = { "cdwatcher", "general" },
     ["savedraids"]         = { "savedraids" },
     ["loot"]               = { "loot" },
     ["debug"]              = { "debug" },
@@ -196,6 +201,12 @@ function CFG:Open()
     else
         self:SelectNode("general\001look")
     end
+end
+
+function CFG:OpenCDWatcher(section)
+    local node = section == "baroptions" and "cdwatcher\001baroptions" or "cdwatcher\001general"
+    self:Open()
+    self:SelectNode(node)
 end
 
 function CFG:CloseWindow()
@@ -703,6 +714,104 @@ function CFG:BuildOptionsTable()
             function(_, v) setBuffSetting("fontSize", v) end),
     }
 
+    -- --- CD Watcher: bar appearance + general behavior ------------
+    local cdw = RLSuite.cdwatcher
+    local function cdwGet(key, fallback)
+        if not (cdw and cdw.GetSettings) then return fallback end
+        local value = cdw:GetSettings()[key]
+        if value == nil then return fallback end
+        return value
+    end
+    local function cdwSet(key, value)
+        if not (cdw and cdw.GetSettings) then return end
+        cdw:GetSettings()[key] = value
+        if cdw.ApplyBarSettings then cdw:ApplyBarSettings()
+        elseif cdw.RefreshAll then cdw:RefreshAll() end
+        self:NotifyChange()
+    end
+
+    local barTextureValues = mediaValues("statusbar", cdwGet("barTexture", "Interface\\TargetingFrame\\UI-StatusBar"))
+    local cdwBarOptions = {
+        barHeight = slider(L["Bar height"], L["Height of each cooldown bar in pixels."], 1, 26, 60, 1,
+            function() return cdwGet("barHeight", 34) end,
+            function(_, value) cdwSet("barHeight", value) end),
+        barWidth = slider(L["Bar width"], L["Width of each cooldown bar in pixels."], 2, 300, 900, 10,
+            function() return cdwGet("barWidth", 530) end,
+            function(_, value) cdwSet("barWidth", value) end),
+        barTexture = select(L["Bar texture"], L["Status-bar texture used by cooldown bars."], 3, barTextureValues,
+            function() return cdwGet("barTexture", "Interface\\TargetingFrame\\UI-StatusBar") end,
+            function(_, value) cdwSet("barTexture", value) end),
+        textHead = { type = "header", name = L["Bar text"], order = 4 },
+        showAbilityText = toggle(L["Show ability name"], L["Show the monitored ability name on each bar."], 5,
+            function() return cdwGet("showAbilityText", true) end,
+            function(_, value) cdwSet("showAbilityText", value) end),
+        showPlayerText = toggle(L["Show player name"], L["Show the caster name on each bar."], 6,
+            function() return cdwGet("showPlayerText", true) end,
+            function(_, value) cdwSet("showPlayerText", value) end),
+        showTimerText = toggle(L["Show cooldown timer"], L["Show the remaining cooldown or active-state timer."], 7,
+            function() return cdwGet("showTimerText", true) end,
+            function(_, value) cdwSet("showTimerText", value) end),
+        showDetailText = toggle(L["Show target and status text"], L["Show target, inspect, death, and active-effect details."], 8,
+            function() return cdwGet("showDetailText", true) end,
+            function(_, value) cdwSet("showDetailText", value) end),
+        previewHead = { type = "header", name = L["Preview"], order = 9 },
+        previewSingle = execute(L["Preview a single bar"], L["Open a live sample bar using the current bar and font settings."], 10,
+            function() if cdw and cdw.ShowPreview then cdw:ShowPreview("single") end end),
+        previewFake = execute(L["Preview fake CD bars"], L["Show sample ready, cooldown, dead, and disconnected bars without changing the raid roster."], 11,
+            function() if cdw and cdw.ShowPreview then cdw:ShowPreview("fake") end end),
+    }
+
+    local cdwLayoutValues = {
+        combined = L["One panel, grouped by category"],
+        separate = L["Floating window per category"],
+    }
+    local fontValues = mediaValues("font", cdwGet("fontFace", "Fonts\\FRIZQT__.TTF"))
+    local cdwGeneral = {
+        layoutMode = select(L["Window layout"], L["Show all categories together or in separate floating windows."], 1,
+            cdwLayoutValues,
+            function() return cdwGet("layoutMode", "combined") end,
+            function(_, value) if cdw and cdw.SetLayoutMode then cdw:SetLayoutMode(value); self:NotifyChange() end end),
+        groupByCaster = toggle(L["Group cooldowns by caster"], L["Group each player's cooldown bars inside their category."], 2,
+            function() return cdwGet("groupByCaster", false) end,
+            function(_, value) if cdw and cdw.SetGroupByCaster then cdw:SetGroupByCaster(value); self:NotifyChange() end end),
+        autoInspect = toggle(L["Inspect raid composition automatically"], L["Inspect nearby players to identify talent specializations and required capabilities needed by the cooldown watchlist."], 3,
+            function() return cdwGet("autoInspect", true) end,
+            function(_, value) if cdw and cdw.SetAutoInspect then cdw:SetAutoInspect(value); self:NotifyChange() end end),
+        retryInspection = execute(L["Retry required inspections"], L["Retry inspections for players whose specialization or required capability is unknown."], 4,
+            function() if cdw and cdw.RetryInspection then cdw:RetryInspection() end end),
+        categoriesHead = { type = "header", name = L["Visible categories"], order = 5 },
+    }
+    for i, category in ipairs((cdw and cdw.Categories) or {}) do
+        local categoryKey = category.key
+        cdwGeneral["category_" .. categoryKey] = toggle(
+            L[category.title] or category.title,
+            L["Show or hide this cooldown category independently."], 5 + i,
+            function() return cdw and cdw.IsCategoryEnabled and cdw:IsCategoryEnabled(categoryKey) or false end,
+            function(_, value)
+                if cdw and cdw.SetCategoryEnabled then cdw:SetCategoryEnabled(categoryKey, value) end
+                self:NotifyChange()
+            end)
+    end
+    cdwGeneral.fontHead = { type = "header", name = L["Font options"], order = 20 }
+    cdwGeneral.fontFace = select(L["Font face"], L["Font used for ability, player, timer, and detail text."], 21, fontValues,
+        function() return cdwGet("fontFace", "Fonts\\FRIZQT__.TTF") end,
+        function(_, value) cdwSet("fontFace", value) end)
+    cdwGeneral.fontSize = slider(L["Font size"], L["Font size for cooldown bar text."], 22, 8, 24, 1,
+        function() return cdwGet("fontSize", 11) end,
+        function(_, value) cdwSet("fontSize", value) end)
+    cdwGeneral.fontOutline = toggle(L["Font outline"], L["Draw an outline around cooldown bar text."], 23,
+        function() return cdwGet("fontOutline", true) end,
+        function(_, value) cdwSet("fontOutline", value) end)
+    cdwGeneral.fontColor = {
+        type = "color", name = L["Bar text color"], desc = L["Color for ability, timer, and detail text; player names retain their class color."],
+        hasAlpha = false, order = 24,
+        get = function()
+            local c = cdwGet("fontColor", { r = 1, g = 1, b = 1 })
+            return c.r or 1, c.g or 1, c.b or 1
+        end,
+        set = function(_, r, g, b) cdwSet("fontColor", { r = r, g = g, b = b, a = 1 }) end,
+    }
+
     -- --- Loot ----------------------------------------------------
     -- La LISTA IGNORA (item singoli) sta qui, modificabile a mano: una riga
     -- per item, "id" oppure "id: Nome" (o incollando direttamente il link).
@@ -767,7 +876,10 @@ function CFG:BuildOptionsTable()
             macros = { type = "group", name = L["Macros"], order = 4, args = macros },
             raidframe = { type = "group", name = L["Raid Frame"], order = 5, args = raidframe },
             raidbuffs = { type = "group", name = L["Raid Buffs"], order = 6, args = raidbuffs },
-            cdwatcher = { type = "group", name = L["CD Watcher"], order = 7, args = {} },
+            cdwatcher = { type = "group", name = L["CD Watcher"], order = 7, childGroups = "tree", args = {
+                baroptions = { type = "group", name = L["Bar options"], order = 1, args = cdwBarOptions },
+                general = { type = "group", name = L["General"], order = 2, args = cdwGeneral },
+            } },
             savedraids = savedraids,
             loot = { type = "group", name = L["Loot"], order = 9, args = loot },
             debug = { type = "group", name = L["Debug"], order = 10, args = debug },

@@ -917,7 +917,12 @@ function Utils:AllWindows()
     end
     add(RLSuite.mainWindow and RLSuite.mainWindow.frame)
     add(RLSuite.raidFrame and RLSuite.raidFrame.buffWindow)
-    add(RLSuite.cdwatcher and RLSuite.cdwatcher.frame)
+    local cdwatcher = RLSuite.cdwatcher
+    if cdwatcher and cdwatcher.GetWindows then
+        for _, frame in ipairs(cdwatcher:GetWindows()) do add(frame) end
+    else
+        add(cdwatcher and cdwatcher.frame)
+    end
     add(RLSuite.macrobar and RLSuite.macrobar.keypadFrame)
     add(RLSuite.macrobar and RLSuite.macrobar.editFrame)
     -- Il Raid Frame HUD non viene mai skinnato: nessuno sfondo/bordo.

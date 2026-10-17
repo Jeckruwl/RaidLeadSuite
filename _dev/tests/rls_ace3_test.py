@@ -871,7 +871,7 @@ check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.args.save
 
 # Ordering: Raid Buffs, Saved Raids, Loot, Debug in fondo.
 check(rt.eval("RLSuite.config:BuildOptionsTable().args.raidbuffs.order") == 6, "Raid Buffs Config is order 6")
-check(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.order") == 8, "Saved Raids is order 8 after the empty CD Watcher panel")
+check(rt.eval("RLSuite.config:BuildOptionsTable().args.savedraids.order") == 8, "Saved Raids is order 8 after the CD Watcher panel")
 check(rt.eval("RLSuite.config:BuildOptionsTable().args.loot.order") == 9, "v1.11.94: Loot (lista ignora) is order 9")
 check(rt.eval("RLSuite.config:BuildOptionsTable().args.debug.order") == 10, "Debug is the last entry (order 10)")
 
@@ -898,6 +898,7 @@ rt.execute("local t = RLSuite.config.tree.tree; CATS = {}; for _,n in ipairs(t) 
 check(bool(rt.eval("CATS.general ~= nil and CATS.modulemenu ~= nil and CATS.savedraids ~= nil and CATS.groupmaking ~= nil and CATS.macros ~= nil and CATS.raidframe ~= nil and CATS.raidbuffs ~= nil and CATS.cdwatcher ~= nil and CATS.debug ~= nil and CATS.ms == nil")), "tree lists the categories including the CD Watcher config panel (10, MS still absent)")
 check(bool(rt.eval("CATS.loot ~= nil")), "v1.11.95: the tree lists 'Loot' too (it was only in the options table, so the panel hid it)")
 check(bool(rt.eval("CATS.macros.children[1].value == 'layout' and CATS.macros.children[2].value == 'editor'")), "Macros node has Bar Layout + Macro Editor children")
+check(bool(rt.eval("CATS.cdwatcher.children[1].value == 'baroptions' and CATS.cdwatcher.children[2].value == 'general'")), "CD Watcher has Bar options + General navigation subsections")
 check(bool(rt.eval("CATS.general.children == nil")), "General is a flat leaf (no children)")
 
 # Global scale slider (General): every module follows it.
@@ -2470,7 +2471,51 @@ check(bool(rt.eval("TANK_TBAR_FAKE")), "debug/fake tanks leave the target bar em
 # Raid Buffs standalone matrix panel (Method style)
 check(bool(rt.eval("RLSuite.mainWindow.raidBuffBtn ~= nil and RLSuite.mainWindow.raidBuffBtn:GetText() == 'Raid Buffs'")), "Raid Buffs button is in the Raid Control matrix")
 check(bool(rt.eval("RLSuite.mainWindow.cdWatcherBtn ~= nil and RLSuite.mainWindow.cdWatcherBtn:GetText() == 'CD Watcher'")), "CD Watcher button is in the Raid Control matrix")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.cdwatcher ~= nil and next(RLSuite.config:BuildOptionsTable().args.cdwatcher.args) == nil")), "CD Watcher config panel exists and is intentionally empty")
+check(bool(rt.eval("""(function() local root=RLSuite.config:BuildOptionsTable().args.cdwatcher; local bar=root.args.baroptions.args; local gen=root.args.general.args; return root.childGroups=='tree' and bar.barHeight and bar.barWidth and bar.barTexture and bar.showAbilityText and bar.showPlayerText and bar.showTimerText and bar.showDetailText and bar.previewSingle and bar.previewFake and gen.layoutMode and gen.groupByCaster and gen.autoInspect and gen.retryInspection and gen.category_tank_defensive and gen.fontFace and gen.fontSize and gen.fontOutline and gen.fontColor end)()""")), "CD Watcher Config has Bar options and General subsections with previews, categories, Inspect and font controls")
+rt.execute("""
+local cdw=RLSuite.cdwatcher
+local opts=RLSuite.config:BuildOptionsTable().args.cdwatcher.args
+local bar,gen=opts.baroptions.args,opts.general.args
+local s=cdw:NormalizeSettings()
+CDW_OLD_SETTINGS={barHeight=s.barHeight,barWidth=s.barWidth,barTexture=s.barTexture,showTimerText=s.showTimerText,fontSize=s.fontSize,fontFace=s.fontFace,fontOutline=s.fontOutline}
+bar.barHeight.set(nil,40); bar.barWidth.set(nil,400)
+bar.barTexture.set(nil,'Interface\\\\Buttons\\\\WHITE8x8')
+bar.showTimerText.set(nil,false)
+gen.fontSize.set(nil,16); gen.fontFace.set(nil,'Fonts\\\\ARIALN.TTF'); gen.fontOutline.set(nil,false)
+cdw:ShowPreview('fake')
+local p=cdw.previewWindow
+local ready=p.barFrames.preview_ready
+local cooling=p.barFrames.preview_cooldown
+local dead=p.barFrames.preview_dead
+local disconnected=p.barFrames.preview_disconnected
+CDW_PREVIEW_OK=p:IsShown() and ready and cooling and dead and disconnected
+    and ready:GetHeight()==40 and ready:GetWidth()==400
+    and ready.bar._statusbarTex=='Interface\\\\Buttons\\\\WHITE8x8'
+    and ready.timer:IsShown()==false and ready.abilityText:IsShown()
+    and ready.timer._fontArgs[2]==16 and ready.timer._fontArgs[3]==nil
+    and ready.data.life=='alive' and ready.data.ready
+    and dead.data.life=='dead' and disconnected.data.life=='disconnected'
+cdw:ShowPreview('single')
+local shown=0
+for _,row in pairs(p.barFrames) do if row:IsShown() then shown=shown+1 end end
+CDW_SINGLE_PREVIEW=(shown==1)
+p:Hide()
+bar.barHeight.set(nil,CDW_OLD_SETTINGS.barHeight); bar.barWidth.set(nil,CDW_OLD_SETTINGS.barWidth)
+bar.barTexture.set(nil,CDW_OLD_SETTINGS.barTexture); bar.showTimerText.set(nil,CDW_OLD_SETTINGS.showTimerText)
+gen.fontSize.set(nil,CDW_OLD_SETTINGS.fontSize); gen.fontFace.set(nil,CDW_OLD_SETTINGS.fontFace); gen.fontOutline.set(nil,CDW_OLD_SETTINGS.fontOutline)
+""")
+check(bool(rt.eval("CDW_PREVIEW_OK")), "CD Watcher preview applies bar dimensions, texture, font, visibility and ready/dead/disconnected sample states")
+check(bool(rt.eval("CDW_SINGLE_PREVIEW")), "CD Watcher supports a single sample-bar preview")
+rt.execute("""
+local cfg=RLSuite.config
+local wasOpen=cfg:IsOpen()
+cfg:OpenCDWatcher('baroptions')
+local barNode=(cfg.currentNode=='cdwatcher\\001baroptions')
+cfg:OpenCDWatcher('general')
+CDW_CONFIG_NAV=barNode and cfg.currentNode=='cdwatcher\\001general'
+if not wasOpen then cfg:CloseWindow() end
+""")
+check(bool(rt.eval("CDW_CONFIG_NAV")), "CD Watcher Config button opens the requested Bar options or General subsection")
 check(bool(rt.eval("RLSuite.raidFrame.GetAbilityRemaining == nil and RLSuite.raidFrame.OnSpellCast == nil and RLSuite.raidFrame.ApplySlotCDs == nil and RLSuite.cdwatcher.GetAbilityRemaining ~= nil and RLSuite.cdwatcher.OnSpellCast ~= nil")), "cooldown tracking methods moved from Raid Frame to CD Watcher")
 check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn == nil")), "Raid Frame no longer contains the Raid Buffs button")
 check(bool(rt.eval("RLSuite.mainWindow.matrixOrder[6].btn == RLSuite.mainWindow.saveRaidBtn and RLSuite.mainWindow.matrixOrder[7].btn == RLSuite.mainWindow.raidBuffBtn and RLSuite.mainWindow.matrixOrder[8].btn == RLSuite.mainWindow.cdWatcherBtn and RLSuite.mainWindow.saveRaidBtn:GetParent() == RLSuite.mainWindow.frame")), "SaveRaid stays sixth; Raid Buffs and CD Watcher occupy cells seven and eight")

@@ -197,6 +197,26 @@ local defaults = {
         -- Standalone Raid Buffs window controls. Empty defaults preserve old
         -- profiles' Raid Frame iconSpacing as the initial buff-spacing value.
         raidbuffs = {},
+        cdwatcher = {
+            layoutMode = "combined",
+            groupByCaster = false,
+            autoInspect = true,
+            categories = {},
+            collapsed = {},
+            categoryOrder = {},
+            assignments = {},
+            barHeight = 34,
+            barWidth = 530,
+            barTexture = "Interface\\TargetingFrame\\UI-StatusBar",
+            showAbilityText = true,
+            showPlayerText = true,
+            showTimerText = true,
+            showDetailText = true,
+            fontFace = "Fonts\\FRIZQT__.TTF",
+            fontSize = 11,
+            fontOutline = true,
+            fontColor = { r = 1, g = 1, b = 1, a = 1 },
+        },
         mschanges = {},
         loot = {
             history = {},
