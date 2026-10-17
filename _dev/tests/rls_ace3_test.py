@@ -2776,17 +2776,28 @@ cdw:SetCustomPanelEnabled(1,true)
 local savedPoint,savedRel,savedRelPoint,savedX,savedY=windowOne:GetPoint()
 local restorePosition=savedPoint=='TOPLEFT' and savedRel==UIParent and savedRelPoint=='TOPLEFT'
     and savedX==123 and savedY==-77
+local oldClassColor=s.useClassColor
+s.useClassColor=false
 local modify=general.modifyPanels
 local labelBefore=modify.name()
 modify.func()
 local picker=cdw.customSpellPickerFrame
-local catalogFound,catalogAll=0,true
+local catalogFound,catalogAll,catalogWidthAll=0,true,true
+local classHeadersAll,seenClassHeaders=true,{}
 for _,category in ipairs(cdw.Categories) do
     for _,ability in ipairs(category.abilities) do
         local row=picker and picker.barFrames['custom_catalog_'..ability.key]
         if row and row:IsShown() and row.data.customCatalogSpell
-            and row.data.ability.category==category.key then catalogFound=catalogFound+1
+            and row.data.ability.category==category.key then
+            catalogFound=catalogFound+1
+            if row:GetWidth()~=200 then catalogWidthAll=false end
         else catalogAll=false end
+        local classKey=category.key..':'..tostring(ability.class or 'OTHER')
+        if not seenClassHeaders[classKey] then
+            seenClassHeaders[classKey]=true
+            local classHeader=picker and picker.customClassHeaders[classKey]
+            if not (classHeader and classHeader:IsShown()) then classHeadersAll=false end
+        end
     end
 end
 local shownHeaders=0
@@ -2794,24 +2805,37 @@ for _,category in ipairs(cdw.Categories) do
     local header=picker and picker.customCategoryHeaders[category.key]
     if header and header:IsShown() then shownHeaders=shownHeaders+1 end
 end
-local threeColumns=false
-if largeCategory then
-    local a=picker.barFrames['custom_catalog_'..largeCategory.abilities[1].key]
-    local b=picker.barFrames['custom_catalog_'..largeCategory.abilities[2].key]
-    local c=picker.barFrames['custom_catalog_'..largeCategory.abilities[3].key]
-    local _,_,_,ax=a:GetPoint(); local _,_,_,bx=b:GetPoint(); local _,_,_,cx=c:GetPoint()
-    threeColumns=ax==0 and bx>ax and cx>bx
+local categoryColumns=picker and picker.columnCount==4 and picker:GetWidth()>=888
+local firstRowY
+for index=1,4 do
+    local category=cdw.Categories[index]
+    local header=picker and picker.customCategoryHeaders[category.key]
+    local _,_,_,x,y=header:GetPoint()
+    if index==1 then firstRowY=y end
+    if x~=((index-1)*(200+12)) or y~=firstRowY then categoryColumns=false end
 end
+local firstA=picker.barFrames['custom_catalog_'..firstCategory.abilities[1].key]
+local firstB=picker.barFrames['custom_catalog_'..firstCategory.abilities[2].key]
+local _,_,_,firstAX,firstAY=firstA:GetPoint()
+local _,_,_,firstBX,firstBY=firstB:GetPoint()
+local barsOneColumn=firstAX==firstBX and firstAY>firstBY
+local classR,classG,classB=cdw:ClassColor(firstAbility.class)
+local firstBarColor=firstA.bar._sbColor or {}
+local classColored=math.abs((firstBarColor[1] or 0)-classR)<0.001
+    and math.abs((firstBarColor[2] or 0)-classG)<0.001
+    and math.abs((firstBarColor[3] or 0)-classB)<0.001
 local editorOK=cdw:IsCustomPanelEditMode() and picker and picker:IsShown()
     and modify.name()=='Finish editing panels' and labelBefore=='Modify panels'
 modify.func()
 local editClosed=not cdw:IsCustomPanelEditMode() and not picker:IsShown()
+s.useClassColor=oldClassColor
 CDW_CUSTOM_PANEL_CORE=categoryCount>0 and spellCount>0 and renameOK and emptyRenameRejected
     and assignFirst and assignCC and moveCC and duplicateRejected and s.customPanels[1].spells[1]==firstAbility.key
     and #s.customPanels[2].spells==1 and s.customPanels[2].spells[1]==ccAbility.key
 CDW_CUSTOM_PANEL_POSITION=defaultGrid and restorePosition
 CDW_CUSTOM_CATALOG=editorOK and editClosed and catalogAll and catalogFound==spellCount
-    and shownHeaders==categoryCount and threeColumns
+    and shownHeaders==categoryCount and catalogWidthAll and classHeadersAll
+    and categoryColumns and barsOneColumn and classColored
 CDW_CUSTOM_LAYOUT_OPTIONS=general.layoutMode.values.custom=='Custom panels'
     and general.modifyPanels.hidden()==false and general.customPanel1.hidden()==false and general.customPanel6.hidden()==false
     and general.customPanel1.args.enabled.type=='toggle'
@@ -2837,7 +2861,7 @@ cdw:RefreshAll()
 """)
 check(bool(rt.eval("CDW_CUSTOM_PANEL_CORE")), "Custom panels support six persisted settings, rename, spell assignment, duplicate rejection and moves")
 check(bool(rt.eval("CDW_CUSTOM_PANEL_POSITION")), "custom panels default to a three-across grid and restore saved positions after toggling")
-check(bool(rt.eval("CDW_CUSTOM_CATALOG")), "custom editor catalogs every spell in every CD category in a three-column layout")
+check(bool(rt.eval("CDW_CUSTOM_CATALOG")), "custom editor shows all spells grouped by class within four category columns, with 200px class-colored bars")
 check(bool(rt.eval("CDW_CUSTOM_LAYOUT_OPTIONS")), "Custom panels controls are available only under the Custom panels layout")
 rt.execute("""
 local cfg=RLSuite.config

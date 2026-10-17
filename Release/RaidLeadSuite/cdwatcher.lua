@@ -20,6 +20,15 @@ local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local WHITE_TEXTURE = "Interface\\Buttons\\WHITE8X8"
 local STATUSBAR_TEXTURE = "Interface\\TargetingFrame\\UI-StatusBar"
 local STATUS_SQUARE_SIZE, STATUS_ICON_SIZE = 8, 14
+local CUSTOM_PICKER_COLUMNS, CUSTOM_PICKER_BAR_WIDTH, CUSTOM_PICKER_COLUMN_GAP = 4, 200, 12
+local CLASS_LABELS = {
+    WARRIOR="Warrior", PALADIN="Paladin", HUNTER="Hunter", ROGUE="Rogue", PRIEST="Priest",
+    DEATHKNIGHT="Death Knight", SHAMAN="Shaman", MAGE="Mage", WARLOCK="Warlock", DRUID="Druid",
+}
+local function localizedClassName(class)
+    local names=LOCALIZED_CLASS_NAMES_MALE or LOCALIZED_CLASS_NAMES_FEMALE
+    return (names and names[class]) or CLASS_LABELS[class] or tostring(class or "Other")
+end
 
 -- Spell IDs are WotLK 3.3.5 IDs. Ranks and aliases are included where useful.
 local CATEGORIES = {
@@ -641,7 +650,7 @@ function CDW:EnsureCustomSpellPickerWindow()
     if screenHeight<=0 and GetScreenHeight then screenHeight=GetScreenHeight() end
     screenWidth=tonumber(screenWidth) or 1280
     screenHeight=tonumber(screenHeight) or 768
-    local width=math.max(480,math.min(900,screenWidth*0.48))
+    local width=math.max(480,math.min(900,screenWidth-24))
     local height=math.max(420,math.min(760,screenHeight*0.86))
     local key="cdwatcher_custom_spell_picker"
     local window=self:CreateWindow("RLSuiteCDWCustomSpellPicker",L["Custom panel editor"],key,width)
@@ -658,19 +667,27 @@ function CDW:EnsureCustomSpellPickerWindow()
     if scroll.EnableMouseWheel then scroll:EnableMouseWheel(true) end
     if scroll.SetScript then
         scroll:SetScript("OnMouseWheel",function(frame,delta)
-            local current=frame.GetVerticalScroll and frame:GetVerticalScroll() or 0
-            local range=frame.GetVerticalScrollRange and frame:GetVerticalScrollRange() or 0
-            frame:SetVerticalScroll(math.max(0,math.min(range,current-delta*36)))
+            if IsShiftKeyDown and IsShiftKeyDown() and frame.GetHorizontalScrollRange and frame.SetHorizontalScroll then
+                local current=frame.GetHorizontalScroll and frame:GetHorizontalScroll() or 0
+                local range=frame:GetHorizontalScrollRange() or 0
+                frame:SetHorizontalScroll(math.max(0,math.min(range,current-delta*36)))
+            else
+                local current=frame.GetVerticalScroll and frame:GetVerticalScroll() or 0
+                local range=frame.GetVerticalScrollRange and frame:GetVerticalScrollRange() or 0
+                frame:SetVerticalScroll(math.max(0,math.min(range,current-delta*36)))
+            end
         end)
     end
     window.content:SetParent(scroll)
     window.content:ClearAllPoints()
     window.content:SetPoint("TOPLEFT",scroll,"TOPLEFT",0,0)
-    window.content:SetSize(width-52,1)
+    window.content:SetSize(math.max(width-64,CUSTOM_PICKER_COLUMNS*CUSTOM_PICKER_BAR_WIDTH
+        +(CUSTOM_PICKER_COLUMNS-1)*CUSTOM_PICKER_COLUMN_GAP),1)
     scroll:SetScrollChild(window.content)
     window.scroll=scroll
-    window.columnCount=3
+    window.columnCount=CUSTOM_PICKER_COLUMNS
     window.customCategoryHeaders={}
+    window.customClassHeaders={}
     self.customSpellPickerFrame=window
     window:SetScript("OnHide",function()
         local wasEditing=CDW.customPanelEditMode
@@ -1371,6 +1388,8 @@ function CDW:RenderBar(window, model, y, width)
     elseif model.life=="disconnected" then
         r,g,b=settings.disconnectedColor.r,settings.disconnectedColor.g,settings.disconnectedColor.b
         row.bg:SetVertexColor(0.10,0.10,0.11,1)
+    elseif model.customCatalogSpell then
+        r,g,b=self:ClassColor(model.ability.class)
     elseif settings.useClassColor then
         r,g,b=self:ClassColor(model.member and model.member.class)
     elseif model.ready then
@@ -1669,13 +1688,45 @@ end
 function CDW:RenderCustomSpellPicker()
     local window=self:EnsureCustomSpellPickerWindow()
     local width=window:GetWidth()
-    local contentWidth=math.max(300,width-52)
-    local columnGap=8
-    local columnWidth=math.floor((contentWidth-columnGap*2)/3)
-    local usedBars,usedHeaders={},{}
-    local y=2
+    local columnWidth,barHeight=CUSTOM_PICKER_BAR_WIDTH,self:GetBarHeight()
+    local columnGap=CUSTOM_PICKER_COLUMN_GAP
+    local gridWidth=CUSTOM_PICKER_COLUMNS*columnWidth+(CUSTOM_PICKER_COLUMNS-1)*columnGap
+    local contentWidth=math.max(width-64,gridWidth)
+    local categoryBlocks,rowHeights={},{}
+    local rowCount=math.ceil(#CATEGORIES/CUSTOM_PICKER_COLUMNS)
+
+    for index,category in ipairs(CATEGORIES) do
+        local groups,classOrder={},{}
+        for _,ability in ipairs(category.abilities or {}) do
+            local class=ability.class or "OTHER"
+            if not groups[class] then groups[class]={}; classOrder[#classOrder+1]=class end
+            groups[class][#groups[class]+1]=ability
+        end
+        local blockHeight=HEADER_H+2
+        for _,class in ipairs(classOrder) do
+            blockHeight=blockHeight+SUBHEADER_H+#groups[class]*barHeight+2
+        end
+        local gridRow=math.floor((index-1)/CUSTOM_PICKER_COLUMNS)+1
+        local gridColumn=(index-1)%CUSTOM_PICKER_COLUMNS
+        categoryBlocks[#categoryBlocks+1]={
+            category=category,groups=groups,classOrder=classOrder,row=gridRow,column=gridColumn,
+        }
+        rowHeights[gridRow]=math.max(rowHeights[gridRow] or 0,blockHeight)
+    end
+
+    local rowStarts={}
+    local contentHeight=2
+    for row=1,rowCount do
+        rowStarts[row]=contentHeight
+        contentHeight=contentHeight+(rowHeights[row] or 0)+12
+    end
+
+    local usedBars,usedCategories,usedClasses={},{},{}
     window.titleText:SetText(L["Custom panel editor"])
-    for _,category in ipairs(CATEGORIES) do
+    for _,block in ipairs(categoryBlocks) do
+        local category=block.category
+        local x=block.column*(columnWidth+columnGap)
+        local y=rowStarts[block.row]
         local header=window.customCategoryHeaders[category.key]
         if not header then
             header=CreateFrame("Frame",nil,window.content)
@@ -1688,39 +1739,65 @@ function CDW:RenderCustomSpellPicker()
             window.customCategoryHeaders[category.key]=header
         end
         header:ClearAllPoints()
-        header:SetPoint("TOPLEFT",window.content,"TOPLEFT",0,-y)
-        header:SetSize(contentWidth,HEADER_H)
+        header:SetPoint("TOPLEFT",window.content,"TOPLEFT",x,-y)
+        header:SetSize(columnWidth,HEADER_H)
+        header.title:SetWidth(columnWidth-12)
         header.title:SetText(L[category.title] or category.title)
         header:Show()
-        usedHeaders[header]=true
+        usedCategories[header]=true
         y=y+HEADER_H+2
 
-        local abilities=category.abilities or {}
-        for index,ability in ipairs(abilities) do
-            local zero=index-1
-            local col=zero%3
-            local rowIndex=math.floor(zero/3)
-            local model={
-                key="custom_catalog_"..ability.key,
-                ability=ability,
-                ownerName="",
-                life="alive",
-                ready=true,
-                cooldown=0,
-                customSpell=true,
-                customCatalogSpell=true,
-            }
-            local row=self:RenderBar(window,model,y+rowIndex*self:GetBarHeight(),columnWidth)
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT",window.content,"TOPLEFT",col*(columnWidth+columnGap),-(y+rowIndex*self:GetBarHeight()))
-            row:SetSize(columnWidth,self:GetBarHeight())
-            usedBars[row]=true
+        for _,class in ipairs(block.classOrder) do
+            local classHeaderKey=category.key..":"..class
+            local classHeader=window.customClassHeaders[classHeaderKey]
+            if not classHeader then
+                classHeader=CreateFrame("Frame",nil,window.content)
+                classHeader.bg=classHeader:CreateTexture(nil,"BACKGROUND")
+                classHeader.bg:SetTexture(WHITE_TEXTURE)
+                classHeader.bg:SetAllPoints(classHeader)
+                classHeader.title=classHeader:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+                classHeader.title:SetPoint("LEFT",classHeader,"LEFT",6,0)
+                window.customClassHeaders[classHeaderKey]=classHeader
+            end
+            local r,g,b=self:ClassColor(class~="OTHER" and class or nil)
+            classHeader:ClearAllPoints()
+            classHeader:SetPoint("TOPLEFT",window.content,"TOPLEFT",x,-y)
+            classHeader:SetSize(columnWidth,SUBHEADER_H)
+            classHeader.title:SetWidth(columnWidth-12)
+            classHeader.bg:SetVertexColor(r*0.22,g*0.22,b*0.22,0.95)
+            classHeader.title:SetText(localizedClassName(class~="OTHER" and class or nil))
+            classHeader.title:SetTextColor(r,g,b,1)
+            classHeader:Show()
+            usedClasses[classHeader]=true
+            y=y+SUBHEADER_H
+
+            for _,ability in ipairs(block.groups[class]) do
+                local model={
+                    key="custom_catalog_"..ability.key,
+                    ability=ability,
+                    member={class=ability.class},
+                    ownerName="",
+                    life="alive",
+                    ready=true,
+                    cooldown=0,
+                    customSpell=true,
+                    customCatalogSpell=true,
+                }
+                local row=self:RenderBar(window,model,y,columnWidth)
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT",window.content,"TOPLEFT",x,-y)
+                row:SetSize(columnWidth,barHeight)
+                usedBars[row]=true
+                y=y+barHeight
+            end
+            y=y+2
         end
-        y=y+math.ceil(#abilities/3)*self:GetBarHeight()+6
     end
+
     for _,row in pairs(window.barFrames) do if not usedBars[row] then row:Hide() end end
-    for _,header in pairs(window.customCategoryHeaders) do if not usedHeaders[header] then header:Hide() end end
-    window.content:SetSize(contentWidth,math.max(1,y))
+    for _,header in pairs(window.customCategoryHeaders) do if not usedCategories[header] then header:Hide() end end
+    for _,header in pairs(window.customClassHeaders) do if not usedClasses[header] then header:Hide() end end
+    window.content:SetSize(contentWidth,math.max(1,contentHeight))
 end
 
 function CDW:RenderCustomPanels()
