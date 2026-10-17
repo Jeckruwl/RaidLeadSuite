@@ -22,6 +22,13 @@ local STATUSBAR_TEXTURE = "Interface\\TargetingFrame\\UI-StatusBar"
 local STATUS_SQUARE_SIZE, STATUS_ICON_SIZE = 8, 14
 local CUSTOM_PICKER_COLUMNS, CUSTOM_PICKER_BAR_WIDTH, CUSTOM_PICKER_COLUMN_GAP = 4, 200, 12
 local CUSTOM_PICKER_CATEGORY_GAP = 4
+local CUSTOM_PICKER_CATEGORY_ORDER = {
+    {"raid_wide_offensive","single_target_offensive","battle_res","mana_regen","raid_party_defensive"},
+    {"single_target_defensive","utility_dispel","tank_defensive"},
+    {"threat","interrupts"},
+    {"cc"},
+}
+local CDW_BAR_DRAG_START_DISTANCE = 6
 local CLASS_LABELS = {
     WARRIOR="Warrior", PALADIN="Paladin", HUNTER="Hunter", ROGUE="Rogue", PRIEST="Priest",
     DEATHKNIGHT="Death Knight", SHAMAN="Shaman", MAGE="Mage", WARLOCK="Warlock", DRUID="Druid",
@@ -450,6 +457,155 @@ function CDW:OnCustomPanelBarDragStop(frame)
     end
 end
 
+function CDW:IsManualBarDragCandidate(frame)
+    local model=frame and frame.data
+    return model and model.ability and model.ability.key and not model.preview
+        and (not model.customCatalogSpell or self.customPanelEditMode)
+end
+
+function CDW:GetManualBarAtCursor()
+    if not GetCursorPosition then return nil end
+    local target,targetLevel=nil,-1
+    for _,window in ipairs(self:GetWindows()) do
+        local windowVisible=window.IsVisible and window:IsVisible()
+        if windowVisible==nil and window.IsShown then windowVisible=window:IsShown() end
+        if windowVisible then
+            for _,row in pairs(window.barFrames or {}) do
+                local rowVisible=row.IsVisible and row:IsVisible()
+                if rowVisible==nil and row.IsShown then rowVisible=row:IsShown() end
+                if rowVisible and self:IsManualBarDragCandidate(row) and self:CursorInsideFrame(row) then
+                    local level=row.GetFrameLevel and row:GetFrameLevel() or 0
+                    if level>targetLevel then target,targetLevel=row,level end
+                end
+            end
+        end
+    end
+    return target
+end
+
+function CDW:QueueManualBarDrag(frame,button)
+    if button~="LeftButton" or not self:IsManualBarDragCandidate(frame) or self._barDragSource then return end
+    local x,y
+    if GetCursorPosition then x,y=GetCursorPosition() end
+    if not self._barDragButtonDown then
+        self._barDragStartX,self._barDragStartY=x,y
+        self._barDragCandidate=frame
+    elseif not self._barDragCandidate then
+        self._barDragCandidate=frame
+        if not self._barDragStartX then self._barDragStartX,self._barDragStartY=x,y end
+    end
+    self._barDragButtonDown=true
+end
+
+function CDW:StartManualBarDrag(frame)
+    if self._barDragSource or not self:IsManualBarDragCandidate(frame) then return false end
+    self._barDragSource=frame
+    self._barDragCandidate=frame
+    local model=frame.data
+    if model.customCatalogSpell then
+        self.draggedCustomSpell=frame
+        self:RaiseCustomPanelWindows()
+    elseif model.customPanelIndex and self.customPanelEditMode then
+        self.draggedCustomPanelSpell=frame
+        self:RaiseCustomPanelWindows()
+    else
+        self.draggedBar=frame
+    end
+    return true
+end
+
+function CDW:FinishManualBarDrag()
+    local frame=self._barDragSource
+    if not frame then return false end
+    local model=frame.data
+    self._barDragSource,self._barDragCandidate=nil,nil
+    self._barDragStartX,self._barDragStartY=nil,nil
+    self._barDragButtonDown=false
+    if model and model.customCatalogSpell then
+        self:OnCustomSpellDragStop(frame)
+    elseif model and model.customPanelIndex and self.customPanelEditMode then
+        self:OnCustomPanelBarDragStop(frame)
+    elseif model and not model.preview then
+        self:OnBarDragStop(frame)
+    end
+    self.draggedCustomSpell,self.draggedCustomPanelSpell,self.draggedBar=nil,nil,nil
+    if self.customPanelEditMode and model and (model.customCatalogSpell or model.customPanelIndex) then
+        self:RaiseCustomSpellPicker()
+    end
+    return true
+end
+
+function CDW:HandleManualBarMouseUp(_,button)
+    if button~="LeftButton" or not self._barDragButtonDown then return end
+    local candidate=self._barDragCandidate
+    local x,y
+    if GetCursorPosition then x,y=GetCursorPosition() end
+    if not self._barDragSource and candidate and x and self._barDragStartX
+        and (math.abs(x-self._barDragStartX)>=CDW_BAR_DRAG_START_DISTANCE
+            or math.abs((y or 0)-(self._barDragStartY or 0))>=CDW_BAR_DRAG_START_DISTANCE) then
+        self:StartManualBarDrag(candidate)
+    end
+    if self._barDragSource then
+        self:FinishManualBarDrag()
+    else
+        self._barDragButtonDown=false
+        self._barDragCandidate=nil
+        self._barDragStartX,self._barDragStartY=nil,nil
+    end
+end
+
+function CDW:_InitManualBarDragPoller()
+    if self._barDragPoller then return end
+    local poller=CreateFrame("Frame",nil,UIParent)
+    poller:SetSize(1,1)
+    poller:EnableMouse(false)
+    poller:Show()
+    local elapsedTotal=0
+    poller:SetScript("OnUpdate",function(_,elapsed)
+        elapsedTotal=elapsedTotal+(elapsed or 0)
+        if elapsedTotal<0.03 then return end
+        elapsedTotal=0
+        local down=IsMouseButtonDown and IsMouseButtonDown("LeftButton") or false
+        if down then
+            if not CDW._barDragButtonDown then
+                CDW._barDragButtonDown=true
+                CDW._barDragCandidate=CDW:GetManualBarAtCursor()
+                if GetCursorPosition then CDW._barDragStartX,CDW._barDragStartY=GetCursorPosition() end
+            elseif not CDW._barDragCandidate and not CDW._barDragSource then
+                CDW._barDragCandidate=CDW:GetManualBarAtCursor()
+                if CDW._barDragCandidate and GetCursorPosition then
+                    CDW._barDragStartX,CDW._barDragStartY=GetCursorPosition()
+                end
+            end
+            local candidate=CDW._barDragCandidate
+            local x,y
+            if GetCursorPosition then x,y=GetCursorPosition() end
+            if candidate and not CDW._barDragSource and x and CDW._barDragStartX
+                and (math.abs(x-CDW._barDragStartX)>=CDW_BAR_DRAG_START_DISTANCE
+                    or math.abs((y or 0)-(CDW._barDragStartY or 0))>=CDW_BAR_DRAG_START_DISTANCE) then
+                CDW:StartManualBarDrag(candidate)
+            end
+        elseif CDW._barDragButtonDown then
+            local candidate=CDW._barDragCandidate
+            local x,y
+            if GetCursorPosition then x,y=GetCursorPosition() end
+            if not CDW._barDragSource and candidate and x and CDW._barDragStartX
+                and (math.abs(x-CDW._barDragStartX)>=CDW_BAR_DRAG_START_DISTANCE
+                    or math.abs((y or 0)-(CDW._barDragStartY or 0))>=CDW_BAR_DRAG_START_DISTANCE) then
+                CDW:StartManualBarDrag(candidate)
+            end
+            CDW._barDragButtonDown=false
+            if CDW._barDragSource then
+                CDW:FinishManualBarDrag()
+            else
+                CDW._barDragCandidate=nil
+                CDW._barDragStartX,CDW._barDragStartY=nil,nil
+            end
+        end
+    end)
+    self._barDragPoller=poller
+end
+
 function CDW:GetCategoryOrder() return self:NormalizeSettings().categoryOrder end
 function CDW:IsCategoryEnabled(key) return self:NormalizeSettings().categories[key] ~= false end
 function CDW:GetBarHeight() return self:NormalizeSettings().barHeight end
@@ -535,6 +691,50 @@ function CDW:PrepareWindow(frame, key)
     local hideBackdrop=self:NormalizeSettings().hideBackdrop
     frame._cdwHideBackdrop=hideBackdrop and not self:ShouldForceCustomPanelBackdrop(frame)
     RLSuite.utils:MakeDraggable(frame, key)
+    -- CD Watcher bars need the left mouse button for manual drag/drop. In
+    -- WoW 3.3.5 a parent registered with RegisterForDrag can consume input
+    -- from every child, so window movement is manual (titlebar drag or
+    -- Shift+right-drag) and never registers the left button with the client.
+    if frame.RegisterForDrag then frame:RegisterForDrag() end
+    frame:SetScript("OnDragStart",nil)
+    frame:SetScript("OnDragStop",nil)
+    frame:SetScript("OnMouseDown",function(self2,button)
+        local canMove=button=="RightButton" and IsShiftKeyDown and IsShiftKeyDown()
+        if button=="LeftButton" and GetCursorPosition then
+            local x,y=GetCursorPosition()
+            local scale=frame.GetEffectiveScale and frame:GetEffectiveScale() or 1
+            if not scale or scale<=0 then scale=1 end
+            local left,right,top=frame:GetLeft(),frame:GetRight(),frame:GetTop()
+            if x and y and left and right and top then
+                x,y=x/scale,y/scale
+                canMove=x>=left and x<=right and y<=top and y>=top-TITLE_H
+            end
+        end
+        if canMove then
+            self2._cdwManualMoving=true
+            self2._cdwManualMoveButton=button
+            if frame._rlsDragGuard then frame._rlsDragGuard:Show() end
+            self2:StartMoving()
+        end
+    end)
+    frame:SetScript("OnMouseUp",function(self2,button)
+        if button==self2._cdwManualMoveButton and self2._cdwManualMoving then
+            self2._cdwManualMoving=nil
+            self2._cdwManualMoveButton=nil
+            if frame._rlsDragStop then frame._rlsDragStop(self2) end
+        end
+    end)
+    if frame._rlsDragGuard and frame._rlsDragGuard.HookScript then
+        frame._rlsDragGuard:HookScript("OnUpdate",function()
+            local moveButton=frame._cdwManualMoveButton
+            if frame._cdwManualMoving and moveButton and IsMouseButtonDown
+                and not IsMouseButtonDown(moveButton) then
+                frame._cdwManualMoving=nil
+                frame._cdwManualMoveButton=nil
+                if frame._rlsDragStop then frame._rlsDragStop(frame) end
+            end
+        end)
+    end
     RLSuite.utils:MakeClickToFront(frame)
     frame._noOuterBorder = true
     if RLSuite.utils.SkinFrame then RLSuite.utils:SkinFrame(frame) end
@@ -765,6 +965,7 @@ function CDW:Init()
     self._nextInspectAt = 0
     self._rosterDirty = true
     self.initialized = true
+    self:_InitManualBarDragPoller()
     self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", "OnCombatLog")
     self:RegisterEvent("RAID_ROSTER_UPDATE", "OnRosterChanged")
     self:RegisterEvent("PARTY_MEMBERS_CHANGED", "OnRosterChanged")
@@ -1268,7 +1469,8 @@ function CDW:EnsureBar(window, model, width)
     row = CreateFrame("Button", nil, window.content)
     row:SetSize(width, self:GetBarHeight())
     row:EnableMouse(true)
-    row:RegisterForDrag("LeftButton")
+    -- No RegisterForDrag: the client drag manager in 3.3.5 can swallow
+    -- mouse input for the whole frame tree. The manual poller below handles it.
     row.bg = row:CreateTexture(nil, "BACKGROUND")
     row.bg:SetTexture(WHITE_TEXTURE)
     row.bg:SetAllPoints(row)
@@ -1294,25 +1496,11 @@ function CDW:EnsureBar(window, model, width)
     -- Legacy consumers read the visible cooldown label through icon.timer.
     row.timer = row.label
     row.icon.timer = row.label
-    row:SetScript("OnDragStart", function(frame)
-        local data=frame.data
-        if data and data.customCatalogSpell then
-            CDW.draggedCustomSpell=frame
-            if CDW.customPanelEditMode then CDW:RaiseCustomPanelWindows() end
-        elseif data and data.customPanelIndex and CDW.customPanelEditMode then
-            CDW.draggedCustomPanelSpell=frame
-            CDW:RaiseCustomPanelWindows()
-        elseif data and not data.preview then CDW.draggedBar=frame end
+    row:SetScript("OnMouseDown",function(frame,button)
+        CDW:QueueManualBarDrag(frame,button)
     end)
-    row:SetScript("OnDragStop", function(frame)
-        local data=frame.data
-        if data and data.customCatalogSpell then CDW:OnCustomSpellDragStop(frame)
-        elseif data and data.customPanelIndex and CDW.customPanelEditMode then CDW:OnCustomPanelBarDragStop(frame)
-        elseif data and not data.preview then CDW:OnBarDragStop(frame) end
-        CDW.draggedCustomSpell,CDW.draggedCustomPanelSpell=nil,nil
-        if CDW.customPanelEditMode and data and (data.customCatalogSpell or data.customPanelIndex) then
-            CDW:RaiseCustomSpellPicker()
-        end
+    row:SetScript("OnMouseUp",function(frame,button)
+        CDW:HandleManualBarMouseUp(frame,button)
     end)
     row:SetScript("OnEnter", function(frame)
         if frame.data and frame.data.customCatalogSpell and GameTooltip and not CDW:NormalizeSettings().hideTooltips then
@@ -1725,9 +1913,10 @@ function CDW:RenderCustomSpellPicker()
     local columnGap=CUSTOM_PICKER_COLUMN_GAP
     local gridWidth=CUSTOM_PICKER_COLUMNS*columnWidth+(CUSTOM_PICKER_COLUMNS-1)*columnGap
     local contentWidth=math.max(width-64,gridWidth)
-    local categoryBlocks,columnEnds={},{}
+    local categoryByKey,categoryBlocks,columnEnds,placed={}, {}, {}, {}
+    for _,category in ipairs(CATEGORIES) do categoryByKey[category.key]=category end
 
-    for index,category in ipairs(CATEGORIES) do
+    local function appendCategory(category,column)
         local groups,classOrder={},{}
         for _,ability in ipairs(category.abilities or {}) do
             local class=ability.class or "OTHER"
@@ -1740,19 +1929,38 @@ function CDW:RenderCustomSpellPicker()
         end
         categoryBlocks[#categoryBlocks+1]={
             category=category,groups=groups,classOrder=classOrder,
-            spellCount=#(category.abilities or {}),sourceOrder=index,blockHeight=blockHeight,
+            column=column,blockHeight=blockHeight,
         }
+        placed[category.key]=true
     end
 
-    table.sort(categoryBlocks,function(a,b)
-        if a.spellCount~=b.spellCount then return a.spellCount<b.spellCount end
-        return a.sourceOrder<b.sourceOrder
-    end)
+    for column,categoryKeys in ipairs(CUSTOM_PICKER_CATEGORY_ORDER) do
+        for _,key in ipairs(categoryKeys) do
+            local category=categoryByKey[key]
+            if category then appendCategory(category,column-1) end
+        end
+    end
 
-    local categoriesPerColumn=math.max(1,math.ceil(#categoryBlocks/CUSTOM_PICKER_COLUMNS))
+    -- Keep future categories in the catalog even if they have not yet been
+    -- added to the explicit four-column order above.
+    local fallbackCounts={}
+    for _,block in ipairs(categoryBlocks) do
+        fallbackCounts[block.column]=(fallbackCounts[block.column] or 0)+1
+    end
+    for _,category in ipairs(CATEGORIES) do
+        if not placed[category.key] then
+            local column,smallestCount=0,math.huge
+            for candidate=0,CUSTOM_PICKER_COLUMNS-1 do
+                local count=fallbackCounts[candidate] or 0
+                if count<smallestCount then column,smallestCount=candidate,count end
+            end
+            appendCategory(category,column)
+            fallbackCounts[column]=(fallbackCounts[column] or 0)+1
+        end
+    end
+
     local contentHeight=2
-    for index,block in ipairs(categoryBlocks) do
-        block.column=math.floor((index-1)/categoriesPerColumn)
+    for _,block in ipairs(categoryBlocks) do
         block.y=columnEnds[block.column] or 2
         columnEnds[block.column]=block.y+block.blockHeight+CUSTOM_PICKER_CATEGORY_GAP
         contentHeight=math.max(contentHeight,block.y+block.blockHeight+2)

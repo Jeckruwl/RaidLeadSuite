@@ -2809,35 +2809,42 @@ for _,category in ipairs(cdw.Categories) do
     local header=picker and picker.customCategoryHeaders[category.key]
     if header and header:IsShown() then shownHeaders=shownHeaders+1 end
 end
+local expectedEditorColumns={
+    {'raid_wide_offensive','single_target_offensive','battle_res','mana_regen','raid_party_defensive'},
+    {'single_target_defensive','utility_dispel','tank_defensive'},
+    {'threat','interrupts'},
+    {'cc'},
+}
 local categoryColumns=picker and picker.columnCount==4
     and picker.content:GetWidth()>=(4*200+3*12)
-local sortedCategories={}
-for index,category in ipairs(cdw.Categories) do
-    sortedCategories[#sortedCategories+1]={category=category,sourceOrder=index,spellCount=#category.abilities}
+local seenEditorCategories={}
+for column,keys in ipairs(expectedEditorColumns) do
+    local expectedY=2
+    for _,key in ipairs(keys) do
+        local category
+        for _,candidate in ipairs(cdw.Categories) do if candidate.key==key then category=candidate; break end end
+        local header=category and picker.customCategoryHeaders[category.key]
+        if not (category and header) then
+            categoryColumns=false
+        else
+            local _,_,_,x,y=header:GetPoint()
+            if not header:IsShown() or x~=((column-1)*(200+12)) or -y~=expectedY then
+                categoryColumns=false
+            end
+            local classCounts={}
+            for _,ability in ipairs(category.abilities or {}) do
+                local class=ability.class or 'OTHER'
+                classCounts[class]=(classCounts[class] or 0)+1
+            end
+            local blockHeight=24+2
+            for _,count in pairs(classCounts) do blockHeight=blockHeight+18+count*cdw:GetBarHeight()+2 end
+            expectedY=expectedY+blockHeight+4
+        end
+        seenEditorCategories[key]=true
+    end
 end
-table.sort(sortedCategories,function(a,b)
-    if a.spellCount~=b.spellCount then return a.spellCount<b.spellCount end
-    return a.sourceOrder<b.sourceOrder
-end)
-local categoriesPerColumn=math.max(1,math.ceil(#sortedCategories/4))
-local columnEnds={}
-for index,entry in ipairs(sortedCategories) do
-    local column=math.floor((index-1)/categoriesPerColumn)
-    local category=entry.category
-    local header=picker and picker.customCategoryHeaders[category.key]
-    local _,_,_,x,y=header:GetPoint()
-    local expectedY=columnEnds[column] or 2
-    if not (header and header:IsShown()) or x~=(column*(200+12)) or -y~=expectedY then
-        categoryColumns=false
-    end
-    local classCounts={}
-    for _,ability in ipairs(category.abilities or {}) do
-        local class=ability.class or 'OTHER'
-        classCounts[class]=(classCounts[class] or 0)+1
-    end
-    local blockHeight=24+2
-    for _,count in pairs(classCounts) do blockHeight=blockHeight+18+count*cdw:GetBarHeight()+2 end
-    columnEnds[column]=expectedY+blockHeight+4
+for _,category in ipairs(cdw.Categories) do
+    if not seenEditorCategories[category.key] then categoryColumns=false end
 end
 local firstA=picker.barFrames['custom_catalog_'..firstCategory.abilities[1].key]
 local firstB=picker.barFrames['custom_catalog_'..firstCategory.abilities[2].key]
@@ -2862,6 +2869,7 @@ local dragRow=dragAbility and picker.barFrames['custom_catalog_'..dragAbility.ke
 local oldCursor=GetCursorPosition
 local oldPickerBounds={picker.GetLeft,picker.GetRight,picker.GetBottom,picker.GetTop}
 local oldPanelBounds={windowOne.GetLeft,windowOne.GetRight,windowOne.GetBottom,windowOne.GetTop}
+local oldDragRowBounds={dragRow.GetLeft,dragRow.GetRight,dragRow.GetBottom,dragRow.GetTop}
 picker.GetLeft=function() return 0 end
 picker.GetRight=function() return 900 end
 picker.GetBottom=function() return 0 end
@@ -2870,18 +2878,41 @@ windowOne.GetLeft=function() return 0 end
 windowOne.GetRight=function() return 280 end
 windowOne.GetBottom=function() return 0 end
 windowOne.GetTop=function() return 260 end
+dragRow.GetLeft=function() return 10 end
+dragRow.GetRight=function() return 210 end
+dragRow.GetBottom=function() return 30 end
+dragRow.GetTop=function() return 54 end
 GetCursorPosition=function() return 40,40 end
-local dragHandlers=dragRow and dragRow._scripts.OnDragStart and dragRow._scripts.OnDragStop
-if dragHandlers then
-    dragRow._scripts.OnDragStart(dragRow)
-    dragRow._scripts.OnDragStop(dragRow)
+local oldMouseDown=IsMouseButtonDown
+local buttonDown=false
+IsMouseButtonDown=function(button) return buttonDown and button=='LeftButton' end
+local poller=cdw._barDragPoller
+local dragHandlers=dragRow and dragRow._scripts.OnMouseDown and dragRow._scripts.OnMouseUp
+local noClientDrag=dragRow and not dragRow._scripts.OnDragStart and not dragRow._scripts.OnDragStop
+for _,frame in ipairs({picker,windowOne,dragRow}) do
+    for _,button in ipairs(frame._dragButtons or {}) do
+        if button=='LeftButton' then noClientDrag=false end
+    end
 end
+buttonDown=true
+-- Emulate the 3.3.5 client swallowing row mouse handlers; the poller must
+-- detect the pressed catalog bar from cursor geometry alone.
+if poller and poller._scripts.OnUpdate then poller._scripts.OnUpdate(poller,0.04) end
+GetCursorPosition=function() return 50,40 end
+if poller and poller._scripts.OnUpdate then poller._scripts.OnUpdate(poller,0.04) end
+local manualStarted=cdw._barDragSource==dragRow
+GetCursorPosition=function() return 40,40 end
+buttonDown=false
+if poller and poller._scripts.OnUpdate then poller._scripts.OnUpdate(poller,0.04) end
 local dragAssigned=false
 for _,key in ipairs(s.customPanels[1].spells) do if dragAbility and key==dragAbility.key then dragAssigned=true end end
 GetCursorPosition=oldCursor
+IsMouseButtonDown=oldMouseDown
 picker.GetLeft,picker.GetRight,picker.GetBottom,picker.GetTop=unpack(oldPickerBounds)
 windowOne.GetLeft,windowOne.GetRight,windowOne.GetBottom,windowOne.GetTop=unpack(oldPanelBounds)
-CDW_CUSTOM_DND=dragHandlers and dragAssigned
+dragRow.GetLeft,dragRow.GetRight,dragRow.GetBottom,dragRow.GetTop=unpack(oldDragRowBounds)
+CDW_CUSTOM_DND=dragHandlers and noClientDrag and manualStarted and dragAssigned
+    and poller~=nil and cdw._barDragSource==nil
 modify.func()
 local editClosed=not cdw:IsCustomPanelEditMode() and not picker:IsShown()
     and cdw.customWindows[1]:GetBackdrop()==nil and picker:GetBackdrop()==nil
@@ -2957,8 +2988,8 @@ cdw:RefreshAll()
 """)
 check(bool(rt.eval("CDW_CUSTOM_PANEL_CORE")), "Custom panels support six persisted settings, rename, spell assignment, duplicate rejection and moves")
 check(bool(rt.eval("CDW_CUSTOM_PANEL_POSITION")), "custom panels default to a three-across grid and restore saved positions after toggling")
-check(bool(rt.eval("CDW_CUSTOM_CATALOG")), "custom editor sorts categories by spell count and stacks them column-first in four 200px columns")
-check(bool(rt.eval("CDW_CUSTOM_DND")), "dragging a catalog spell onto an active custom panel works when the editor and panel overlap")
+check(bool(rt.eval("CDW_CUSTOM_CATALOG")), "custom editor follows the requested category order, stacking categories down each of four 200px columns")
+check(bool(rt.eval("CDW_CUSTOM_DND")), "manual left-button drag polling adds a catalog spell to an overlapping active custom panel without client drag registrations")
 check(bool(rt.eval("CDW_CUSTOM_BACKDROP")), "custom panel backdrops stay visible during editing, then follow Hide window backdrop again")
 check(bool(rt.eval("CDW_CUSTOM_GROUP_MODE")), "Custom panels honor Caster, Spells and None grouping labels and headers")
 check(bool(rt.eval("CDW_CUSTOM_LAYOUT_OPTIONS")),  "Custom panels controls are available only under the Custom panels layout")
