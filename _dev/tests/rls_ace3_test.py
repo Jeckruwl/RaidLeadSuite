@@ -2568,7 +2568,7 @@ check(bool(rt.eval("TANK_WINDOW_MOVE_INDEPENDENT")), "Shift-right drag on a tank
 check(bool(rt.eval("TANK_WINDOW_POSITION_SAVED")), "moving Tanks stores an independent UIParent position")
 check(bool(rt.eval("RLSuite.raidFrame.tankHeader:IsShown() == true")), "Tanks group visible when there is a raid roster")
 check(bool(rt.eval("RLSuite.raidFrame.tankSlots[1].flaskIcon == nil and RLSuite.raidFrame.tankSlots[1].foodIcon == nil")), "tank bars have NO flask/food icons")
-check(rt.eval("RLSuite.raidFrame.tankSlots[1].tankTag:GetText()") == "MT" and rt.eval("RLSuite.raidFrame.tankSlots[2].tankTag:GetText()") == "OT", "MT and OT labels replace the consumable icons beside the bars")
+check(rt.eval("RLSuite.raidFrame.tankSlots[1].tankTag:GetText()") == "MT" and rt.eval("RLSuite.raidFrame.tankSlots[2].tankTag:GetText()") == "OT", "MT and OT labels are preserved outside the left edge of the HP bars")
 check(rt.eval("RLSuite.raidFrame.tankSlots[1].member.name") == "Testplayer", "debug: MT bar auto-fills with the first fake-roster player (fake members work as tanks)")
 check(rt.eval("RLSuite.raidFrame.tankSlots[2].member.name") == "F1", "debug: OT bar auto-fills with the next fake-roster player")
 rt.execute("""
@@ -2592,22 +2592,33 @@ check(bool(rt.eval("TANK_CLEAR_STAYS")), "debug: an intentionally cleared tank b
 check(bool(rt.eval("TANK_BACK")), "debug tank assignments restored")
 check(bool(rt.eval("#RLSuite.raidFrame.rows == 6")), "group rows unaffected by the Tanks group (a tank appears in BOTH places)")
 
-# --- tank bars: MT/OT tag attached to the bar, no player CDs, target bar ---
+# --- Tank layout: role icon + MT/OT outside left, target bar right ---
 rt.execute("""
 RLSuite.raidFrame:ApplyLayout()
 local rf = RLSuite.raidFrame
 local mtb = rf.tankSlots[1]
-local tp = mtb.tankTag._points[#mtb.tankTag._points]
-TANK_TAG_OK = (tp[1] == 'TOPLEFT' and tp[2] == mtb.bar and tp[3] == 'TOPLEFT' and tp[4] == 0 and tp[5] == 0)
 local m = rf:LayoutMetrics()
+local tp = mtb.tankTag._points[#mtb.tankTag._points]
+TANK_TAG_OK = mtb.tankTag:GetText() == 'MT' and mtb.tankTag:GetParent() == rf.tankContent
+    and tp[1] == 'TOPLEFT' and tp[2] == mtb and tp[3] == 'TOPLEFT'
+    and tp[4] == m.tankTagLeftInset and tp[5] == 0
+local otb = rf.tankSlots[2]
+local otp = otb.tankTag._points[#otb.tankTag._points]
+TANK_TAG_OK = TANK_TAG_OK and otb.tankTag:GetText() == 'OT'
+    and otb.tankTag:GetParent() == rf.tankContent and otp[1] == 'TOPLEFT'
+    and otp[2] == otb and otp[3] == 'TOPLEFT' and otp[4] == m.tankTagLeftInset
 local savedRank = mtb.member.rank
 mtb.member.rank = 2
 rf:UpdateRoleIcon(mtb)
 local rolePoint = mtb.roleIcon._points[#mtb.roleIcon._points]
 local barPoint = mtb.bar._points[#mtb.bar._points]
-TANK_ROLE_ICON_OUTSIDE = mtb.roleIcon:IsShown()
-    and rolePoint[2] == mtb.bar and rolePoint[4] == 3 - m.roleNameInset
-    and barPoint[4] == m.roleNameInset
+TANK_ROLE_ICON_OUTSIDE = mtb.roleIcon:IsShown() and mtb.roleIcon:GetParent() == rf.tankContent
+    and rolePoint[1] == 'LEFT' and rolePoint[2] == mtb and rolePoint[3] == 'LEFT'
+    and rolePoint[4] == m.tankRoleIconLeft
+    and tp[4] >= rolePoint[4] + m.iconSize
+    and tp[4] + m.tankTagWidth <= barPoint[4]
+    and barPoint[4] == m.tankBarLeftInset
+    and mtb.bar.nameText._points[#mtb.bar.nameText._points][4] == 3
     and mtb._w == m.tankRowWidth
 mtb.member.rank = savedRank
 rf:UpdateRoleIcon(mtb)
@@ -2617,9 +2628,11 @@ for ti = 1, 2 do
 end
 local tb = mtb.targetBar
 local bp = tb._points[#tb._points]
-TANK_TBAR = (tb ~= nil and bp[1] == 'TOPLEFT' and bp[2] == mtb.bar and bp[3] == 'BOTTOMLEFT'
-    and bp[5] == -m.tankTargetGap and tb._w == m.targetBarWidth
-    and mtb._w == m.tankRowWidth and mtb._h == m.tankRowHeight)
+TANK_TBAR = (tb ~= nil and bp[1] == 'TOPLEFT' and bp[2] == mtb.bar and bp[3] == 'TOPRIGHT'
+    and bp[4] == m.tankTargetGap and bp[5] == 0
+    and tb._w == m.targetBarWidth and tb._h == m.barHeight
+    and mtb._w == m.tankRowWidth and mtb._h == m.tankRowHeight
+    and mtb.tankTag._points[#mtb.tankTag._points][4] < barPoint[4])
 
 -- barra target con unit reali mockate (salva/ripristina i global)
 local S_UE, S_UN, S_UH, S_UHM, S_UIP, S_UC = UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass
@@ -2641,10 +2654,10 @@ mtb.fake = true
 UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass = S_UE, S_UN, S_UH, S_UHM, S_UIP, S_UC
 RLSuite.raidFrame:UpdateTankTargets()
 """)
-check(bool(rt.eval("TANK_TAG_OK")), "MT/OT tag sits inside its HP bar before the player name")
-check(bool(rt.eval("TANK_ROLE_ICON_OUTSIDE")), "rank/status role icon is outside the left edge of the HP bar only in the separate Tanks window")
+check(bool(rt.eval("TANK_TAG_OK")), "MT/OT tag is a separate label outside the left edge of the HP bar")
+check(bool(rt.eval("TANK_ROLE_ICON_OUTSIDE")), "rank/status role icon and MT/OT tag occupy separate left-side space only for Tanks")
 check(bool(rt.eval("TANK_NOCD")), "tank bars never show player CDs on the right")
-check(bool(rt.eval("TANK_TBAR")), "tank target bar is stacked below the MT/OT HP bar; Tanks alone has an external role-icon gutter")
+check(bool(rt.eval("TANK_TBAR")), "tank target bar is horizontally to the right of the HP bar")
 check(bool(rt.eval("TANK_TBAR_NAME")) and bool(rt.eval("TANK_TBAR_VAL")), "tank target bar shows current target name + HP% from real units")
 check(bool(rt.eval("TANK_TBAR_COL")), "tank target bar colors red for hostile targets")
 check(bool(rt.eval("TANK_TBAR_FAKE")), "debug/fake tanks leave the target bar empty (no fake-unit API queries)")
@@ -5377,7 +5390,7 @@ check(bool(rt.eval("RFW == RF_LIVE_W and RF_LIVE_W == RF_M.W * RF_SCALE")),
       "right offset = Raid Frame width (%d px at scale %s)" % (rt.eval("RF_M.W * RF_SCALE"), rt.eval("RF_SCALE")))
 check(bool(rt.eval("TB_ANCH_X == RFW")), "the offset IS the Raid Frame width, on the LEFT side (no other constant)")
 check(bool(rt.eval("BUFF_WINDOW_SEPARATE == true")), "the compact Raid Buffs matrix no longer changes the Raid Frame width")
-check(bool(rt.eval("RF_M.rowWidth == RF_M.barWidth and RF_M.gridWidth == RF_M.rowWidth and RF_M.W == RF_M.gridWidth and RF_M.tankRowWidth == RF_M.rowWidth + RF_M.roleNameInset")), "Raid matrix reserves no role-icon column; only the separate Tanks window adds an external role-icon gutter")
+check(bool(rt.eval("RF_M.rowWidth == RF_M.barWidth and RF_M.gridWidth == RF_M.rowWidth and RF_M.W == RF_M.gridWidth and RF_M.tankRowWidth == RF_M.tankBarLeftInset + RF_M.barWidth + RF_M.tankTargetGap + RF_M.targetBarWidth")), "Raid matrix excludes Tanks; separate Tanks window reserves left-side labels and side-by-side HP/target bars")
 
 # -- il Raid Frame cambia -> la barra si riposiziona da sola ---------------
 rt.execute("""
@@ -8612,7 +8625,8 @@ local mtSlot = RF.tankSlots[1]
 RF:LayoutSlotGeometry(mtSlot, m)
 V109_MT_BAR_POINT, _, _, V109_MT_BAR_X = mtSlot.bar:GetPoint()
 V109_MT_TAG_POINT, _, _, V109_MT_TAG_X = mtSlot.tankTag:GetPoint()
-V109_ROLE_INSET = m.roleNameInset
+V109_TANK_BAR_LEFT = m.tankBarLeftInset
+V109_TANK_TAG_LEFT = m.tankTagLeftInset
 
 -- 3. Test Durability: cell text displays pct if known, OK if unknown, BROKEN if broken
 local durStPct = { state = "ok", pct = 74, broken = 0 }
@@ -8655,8 +8669,8 @@ end
 """)
 
 check(not bool(rt.eval("V109_TANK_ROLE_ICON_SHOWN")), "v1.11.109: Tank/DPS/Heal role does not display role icon (leader/assist/ML only)")
-check(rt.eval("V109_MT_BAR_X") == rt.eval("V109_ROLE_INSET"), "v1.11.109: MT bar shifts right to make room for its external role icon")
-check(rt.eval("V109_MT_TAG_X") == 0, "v1.11.109: MT tankTag aligned to the top-left of its stacked HP bar")
+check(rt.eval("V109_MT_BAR_X") == rt.eval("V109_TANK_BAR_LEFT"), "v1.11.109: MT HP bar starts after the external icon and MT/OT label")
+check(rt.eval("V109_MT_TAG_X") == rt.eval("V109_TANK_TAG_LEFT"), "v1.11.109: MT label is positioned outside the left edge of its HP bar")
 check(rt.eval("V109_DUR_TXT_74") == "74%", "v1.11.109: Durability cell shows real percentage when known (74%)")
 check(rt.eval("V109_DUR_TXT_OK") == "-", "v1.11.109: Durability cell shows - instead of fake 100% when exact pct is not readable")
 check(bool(rt.eval("V109_FLASK_MSG:find('Buff Check', 1, true) == nil and V109_FLASK_MSG:find('Missing Flask |', 1, true) ~= nil and V109_FLASK_MSG:find('Missing:', 1, true) == nil")), "v1.11.109: Flask warning has no 'Buff Check:' and no 'Missing:' before player names")

@@ -479,16 +479,18 @@ function RF:LayoutMetrics()
     local abw = 0 -- buff bar / ability bar rimosse (redesign in corso)
     local gap = 0
     -- Le righe Raid normali hanno la sola larghezza della barra HP: le icone
-    -- di ruolo restano interne. Tanks usa una finestra separata e riserva invece
-    -- un gutter a sinistra per la sua icona esterna, senza allargare la matrice.
+    -- di ruolo restano interne. Tanks usa una finestra separata: icona e tag
+    -- MT/OT hanno colonne a sinistra della barra HP, il target a destra.
     local roleNameInset = iconSize + 6
     local rowWidth = barWidth
     local rowHeight = barHeight
-    -- La barra target MT/OT resta attiva e viene impilata sotto la barra HP.
-    local tankTargetGap = 2
+    local tankTagWidth = 24
+    local tankTagGap = 4
+    local tankBarLeftInset = roleNameInset + tankTagWidth + tankTagGap
+    local tankTargetGap = 4
     local targetBarWidth = barWidth
-    local tankRowWidth = rowWidth + roleNameInset
-    local tankRowHeight = (2 * barHeight) + tankTargetGap
+    local tankRowWidth = tankBarLeftInset + barWidth + tankTargetGap + targetBarWidth
+    local tankRowHeight = barHeight
     local groupBlockH = groupHeaderH + (RF_PER_GROUP * rowHeight)
         + ((RF_PER_GROUP - 1) * verticalSpacing)
     local tankBlockH = groupHeaderH + (RF_TANK_COUNT * tankRowHeight)
@@ -502,6 +504,8 @@ function RF:LayoutMetrics()
     return {
         W = W, abw = abw, rowWidth = rowWidth, gridWidth = gridWidth,
         tankRowWidth = tankRowWidth, tankRowHeight = tankRowHeight,
+        tankRoleIconLeft = 3, tankTagLeftInset = roleNameInset,
+        tankTagWidth = tankTagWidth, tankBarLeftInset = tankBarLeftInset,
         tankTargetGap = tankTargetGap, targetBarWidth = targetBarWidth,
         roleNameInset = roleNameInset,
         barWidth = barWidth, barHeight = barHeight,
@@ -734,7 +738,7 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag, parent)
     row.offlineOverlay = offlineOverlay
     row.offlineText = offlineText
 
-    -- Le barre TANK mantengono una barra TARGET sotto la barra HP.
+    -- Le barre TANK mostrano la barra del bersaglio a destra della barra HP.
     if row.isTank then
         -- Mostra nome + HP% del bersaglio del tank.
         local tbar = CreateFrame("StatusBar", nil, row)
@@ -774,14 +778,16 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag, parent)
     bg:SetVertexColor(0, 0, 0, 0.45)
     bar.bg = bg
 
-    -- Icona di ruolo sopra il fill: interna alle righe Raid, esterna solo Tanks.
-    local roleIcon = bar:CreateTexture(nil, "OVERLAY")
+    -- Icona di ruolo: sulle righe Raid e' figlia della barra (interna); per
+    -- Tanks e' figlia del container Tanks, indipendente dalla visibilita' dello slot.
+    local roleIconParent = row.isTank and parent or bar
+    local roleIcon = roleIconParent:CreateTexture(nil, "OVERLAY")
     roleIcon:Hide()
     row.roleIcon = roleIcon
 
-    -- MT/OT resta nello slot interno della barra HP, prima del nome.
+    -- Anche il tag MT/OT e' una regione del container Tanks, fuori dalla barra HP.
     if row.isTank then
-        local tag = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local tag = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         tag:SetText(tankTag)
         tag:SetTextColor(1, 0.82, 0)
         tag:Hide()
@@ -995,7 +1001,7 @@ end
 function RF:SetRoleNameInset(slot, hasRoleIcon)
     local nameText = slot and slot.bar and slot.bar.nameText
     if not nameText or not nameText.ClearAllPoints or not nameText.SetPoint then return end
-    local inset = (slot.isTank or hasRoleIcon) and (slot.roleNameInset or 3) or 3
+    local inset = (not slot.isTank and hasRoleIcon) and (slot.roleNameInset or 3) or 3
     nameText:ClearAllPoints()
     nameText:SetPoint("LEFT", slot.bar, "LEFT", inset, 0)
 end
@@ -1021,11 +1027,15 @@ function RF:LayoutSlotGeometry(slot, m)
     if slot.bar then
         slot.bar:ClearAllPoints()
         slot.bar:SetSize(m.barWidth, m.barHeight)
-        slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", slot.isTank and roleNameInset or 0, 0)
+        slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", slot.isTank and m.tankBarLeftInset or 0, 0)
         if slot.roleIcon then
             slot.roleIcon:ClearAllPoints()
             slot.roleIcon:SetSize(iconSize, iconSize)
-            slot.roleIcon:SetPoint("LEFT", slot.bar, "LEFT", slot.isTank and (3 - roleNameInset) or 3, 0)
+            if slot.isTank then
+                slot.roleIcon:SetPoint("LEFT", slot, "LEFT", m.tankRoleIconLeft or 3, 0)
+            else
+                slot.roleIcon:SetPoint("LEFT", slot.bar, "LEFT", 3, 0)
+            end
         end
         if slot.offlineOverlay then
             slot.offlineOverlay:ClearAllPoints()
@@ -1039,20 +1049,19 @@ function RF:LayoutSlotGeometry(slot, m)
             local flags = (app.fontOutline == false) and "" or "OUTLINE"
             slot.offlineText:SetFont(fontFile, m.nameFontSize, flags)
         end
-        -- Tag MT/OT dentro la barra, nello slot normalmente usato dall'icona.
+        -- Il tag MT/OT resta fuori a sinistra della barra HP, accanto all'icona.
         if slot.tankTag then
             slot.tankTag:ClearAllPoints()
-            slot.tankTag:SetSize(roleNameInset, m.barHeight)
-            slot.tankTag:SetPoint("TOPLEFT", slot.bar, "TOPLEFT", 0, 0)
+            slot.tankTag:SetSize(m.tankTagWidth or 24, m.barHeight)
+            slot.tankTag:SetPoint("TOPLEFT", slot, "TOPLEFT", m.tankTagLeftInset or roleNameInset, 0)
             slot.tankTag:SetJustifyH("CENTER")
         end
-        -- La barra target MT/OT e' impilata sotto la barra HP, senza una
-        -- colonna larga inutilizzata accanto ai gruppi Raid.
+        -- La barra target e' affiancata alla barra HP, sulla sua destra.
         if slot.targetBar then
             slot.targetBar:ClearAllPoints()
             local targetBarW = m.targetBarWidth or m.barWidth
             slot.targetBar:SetSize(targetBarW, m.barHeight)
-            slot.targetBar:SetPoint("TOPLEFT", slot.bar, "BOTTOMLEFT", 0, -(m.tankTargetGap or 2))
+            slot.targetBar:SetPoint("TOPLEFT", slot.bar, "TOPRIGHT", m.tankTargetGap or 4, 0)
             local tex = self.db and self.db.appearance and self.db.appearance.barTexture
                 or "Interface\\TargetingFrame\\UI-StatusBar"
             slot.targetBar:SetStatusBarTexture(tex)
