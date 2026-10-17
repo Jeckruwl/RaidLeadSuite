@@ -38,6 +38,14 @@ local WL_BORDER = 14
 -- Bordo dorato dello slot-drop durante il drag nel pannello Raid Group
 -- (bordino che evidenzia il riquadro in cui il player sta per essere rilasciato).
 local WL_GOLD_R, WL_GOLD_G, WL_GOLD_B = 1, 0.82, 0
+local WL_ACCEPTED_R, WL_ACCEPTED_G, WL_ACCEPTED_B = 0.16, 0.95, 0.32
+
+local function WhisperNameKey(name)
+    if type(name) ~= "string" or name == "" then return nil end
+    -- Whisper senders may include a realm while the raid roster does not.
+    name = name:match("^([^-]+)") or name
+    return string.lower(name)
+end
 
 -- All Groupmaking window fonts are +2pt over the default game fonts
 -- (window titles keep their large size).
@@ -3540,6 +3548,24 @@ function GM:UpdateWLGroups()
         end
     end
 
+    -- Cache the current roster separately from the displayed bars so the
+    -- matching Whisper row can turn green only after its invited player joins.
+    local rosterNames = {}
+    for g = 1, WL_GROUPS do
+        for s = 1, 5 do
+            local member = byGroup[g][s]
+            local key = member and WhisperNameKey(member.name)
+            if key then rosterNames[key] = true end
+        end
+    end
+    self.wlRosterNames = rosterNames
+
+    -- Roster changes can happen while InviteEngine is open; restyle in place
+    -- so accepted rows update without rebuilding or replacing clickable rows.
+    if self.wlRows and self.StyleWhisperRows then
+        self:StyleWhisperRows()
+    end
+
     -- Numero di colonne del pannello Raid Group (sempre 6: G1..G6).
     local ngroups = self:WlGroupColumnCount()
 
@@ -3916,6 +3942,17 @@ function GM:CreateWhisperRow()
     if row.SetMouseClickEnabled then row:SetMouseClickEnabled(true) end
     row:RegisterForClicks("LeftButtonUp")
 
+    -- An accepted invite gets a persistent green strip at the left of the
+    -- whisper row, without replacing the normal row/selection background.
+    local acceptedAccent = row:CreateTexture(nil, "OVERLAY")
+    acceptedAccent:SetTexture("Interface\\Buttons\\WHITE8x8")
+    acceptedAccent:SetVertexColor(WL_ACCEPTED_R, WL_ACCEPTED_G, WL_ACCEPTED_B, 1)
+    acceptedAccent:SetWidth(3)
+    acceptedAccent:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    acceptedAccent:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+    acceptedAccent:Hide()
+    row.acceptedAccent = acceptedAccent
+
     local text = FontStr(row, "OVERLAY", 12)
     text:SetPoint("LEFT", row, "LEFT", 6, 0)
     text:SetPoint("RIGHT", row, "RIGHT", -22, 0)
@@ -4149,7 +4186,13 @@ function GM:StyleWhisperRows()
     local anyUnread = false
     for i, row in ipairs(self.wlRows or {}) do
         local entry = row.entry
+        local nameKey = entry and WhisperNameKey(entry.name)
+        local isAccepted = entry and entry.invited and nameKey
+            and self.wlRosterNames and self.wlRosterNames[nameKey] == true
         local isSelected = (i == self.selectedEntryIndex)
+        if row.acceptedAccent then
+            if isAccepted then row.acceptedAccent:Show() else row.acceptedAccent:Hide() end
+        end
         if isSelected then
             RLSuite.utils:SkinRow(row, true)
             if row.text then row.text:SetTextColor(1, 1, 1) end
@@ -4163,7 +4206,11 @@ function GM:StyleWhisperRows()
             RLSuite.utils:SkinRow(row, false)
             if row.text then
                 if entry and entry.invited then
-                    row.text:SetTextColor(0.5, 0.5, 0.5)
+                    if isAccepted then
+                        row.text:SetTextColor(WL_ACCEPTED_R, WL_ACCEPTED_G, WL_ACCEPTED_B)
+                    else
+                        row.text:SetTextColor(0.5, 0.5, 0.5)
+                    end
                 else
                     row.text:SetTextColor(1, 1, 1)
                 end

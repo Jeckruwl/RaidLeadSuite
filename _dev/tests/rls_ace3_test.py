@@ -1774,6 +1774,8 @@ rt.execute("RLSuite.groupmaking:StartSpam()")
 check(bool(rt.eval("#RLSuite.groupmaking.whisperDB.entries == 0")), "Starting the spammer no longer auto-sends fake whispers")
 rt.execute("RLSuite.groupmaking:DebugWhisperBurst()")
 check(bool(rt.eval("#RLSuite.groupmaking.whisperDB.entries == 10")), "DebugWhisperBurst instantly delivers 10 fake whispers into the Whisplist")
+rt.execute("local row = RLSuite.groupmaking.wlRows[1]; WL_NOT_ACCEPTED_ACCENT_HIDDEN = row and row.acceptedAccent and not row.acceptedAccent:IsShown()")
+check(bool(rt.eval("WL_NOT_ACCEPTED_ACCENT_HIDDEN == true")), "Whisplist row has no green accent before invite acceptance")
 rt.execute("RLSuite.groupmaking:StopSpam()")
 
 # --- Inviting a fake whisperer behaves like a real accept ---
@@ -1782,6 +1784,18 @@ rt.execute("INV_NAME = RLSuite.groupmaking.selectedEntry and RLSuite.groupmaking
 check(bool(rt.eval("INV_NAME ~= nil")), "a whisper entry is selected")
 rt.execute("RLSuite.groupmaking:InviteSelected()")
 check(bool(rt.eval("#RLSuite:DebugRoster() == 3")), "InviteSelected (debug) accepts the fake player into the roster")
+rt.execute("""
+local gm = RLSuite.groupmaking
+local invitedEntry = gm.selectedEntry
+local row
+for _, candidate in ipairs(gm.wlRows or {}) do
+    if candidate.entry == invitedEntry then row = candidate; break end
+end
+local color = row and row.acceptedAccent and row.acceptedAccent._vertex
+WHISPER_ACCEPTED_ACCENT = row and row.acceptedAccent and row.acceptedAccent:IsShown()
+WHISPER_ACCEPTED_GREEN = color and color[1] < color[2] and color[2] > 0.8 and color[3] > 0.2
+""")
+check(bool(rt.eval("WHISPER_ACCEPTED_ACCENT == true and WHISPER_ACCEPTED_GREEN == true")), "accepted invite gives the matching Whisplist row a green accent")
 
 # --- Right-click removal defers the rebuild so future clicks stay alive ---
 rt.execute("RLSuite.groupmaking:SelectWhisperEntry(1)")
