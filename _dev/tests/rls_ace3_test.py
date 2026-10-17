@@ -2094,13 +2094,28 @@ check(bool(rt.eval("LAST_ERROR == nil or LAST_ERROR == None")), "no error render
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args.iconSize ~= nil")), "Appearance -> Icon size retained")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.height ~= nil")), "Size and Positions -> Height is configurable")
 check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().barHeight == RLSuite.db.profile.raidframe.appearance.barHeight")), "player bar height follows the configured Height value")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.verticalSpacing.min == -1 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.verticalSpacing.max == 50")), "Vertical Spacing slider matches the requested -1..50 range")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.width.min == 10 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.width.max == 500")), "Width slider matches the requested 10..500 range")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.height.min == 10 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.height.max == 500")), "Height slider matches the requested 10..500 range")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.verticalSpacing.min == -1 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.verticalSpacing.max == 32")), "Vertical Spacing slider matches the requested -1..32 range")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.width.min == 10 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.width.max == 256")), "Width slider matches the requested 10..256 range")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.height.min == 10 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.height.max == 32")), "Height slider matches the requested 10..32 range")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.numberOfGroups.min == 1 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.numberOfGroups.max == 8")), "Number of Groups slider matches the requested 1..8 range")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.groupsPerRow.min == 1 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.groupsPerRow.max == 8")), "Groups Per Row/Column slider matches the requested 1..8 range")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.horizontalSpacing.min == -1 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.horizontalSpacing.max == 50")), "Horizontal Spacing slider matches the requested -1..50 range")
-check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.groupSpacing.min == 0 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.groupSpacing.max == 50")), "Group Spacing slider matches the requested 0..50 range")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.horizontalSpacing.min == -1 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.horizontalSpacing.max == 32")), "Horizontal Spacing slider matches the requested -1..32 range")
+check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.groupSpacing.min == 0 and RLSuite.config:BuildOptionsTable().args.raidframe.args.sizeAndPositions.args.groupSpacing.max == 32")), "Group Spacing slider matches the requested 0..32 range")
+rt.execute("""
+local app = RLSuite.raidFrame.db.appearance
+local saved = { app.barWidth, app.barHeight, app.horizontalSpacing, app.rowSpacing, app.groupSpacing }
+app.barWidth, app.barHeight, app.horizontalSpacing, app.rowSpacing, app.groupSpacing = 900, 500, 50, 50, 50
+local hi = RLSuite.raidFrame:LayoutMetrics()
+RFG_EFFECTIVE_MAX_LIMITS = hi.barWidth == 256 and hi.barHeight == 32
+    and hi.horizontalSpacing == 32 and hi.verticalSpacing == 32 and hi.groupSpacing == 32
+app.barWidth, app.barHeight, app.horizontalSpacing, app.rowSpacing, app.groupSpacing = 0, 0, -50, -50, -50
+local lo = RLSuite.raidFrame:LayoutMetrics()
+RFG_EFFECTIVE_MIN_LIMITS = lo.barWidth == 10 and lo.barHeight == 10
+    and lo.horizontalSpacing == -1 and lo.verticalSpacing == -1 and lo.groupSpacing == 0
+app.barWidth, app.barHeight, app.horizontalSpacing, app.rowSpacing, app.groupSpacing = unpack(saved)
+""")
+check(bool(rt.eval("RFG_EFFECTIVE_MAX_LIMITS")), "Raid Frame layout also clamps Width, Height, and all spacing controls to the new maximums")
+check(bool(rt.eval("RFG_EFFECTIVE_MIN_LIMITS")), "Raid Frame layout preserves the configured minimums while enforcing the new maximums")
 check(bool(rt.eval("RLSuite.config:BuildOptionsTable().args.raidframe.args.appearance.args.nameFontSize ~= nil")), "Appearance -> Name font size retained")
 rt.execute("""
 local rf = RLSuite.raidFrame
@@ -2194,7 +2209,7 @@ check(bool(rt.eval("RLSuite.raidFrame.buffBar == nil and RLSuite.raidFrame.debuf
 check(bool(rt.eval("RLSuite.raidFrame.BuildAbilityBar == nil and RLSuite.raidFrame.RefreshAlertBars == nil and RLSuite.raidFrame.CheckCoverage == nil")), "buff-bar machinery functions are gone (UI code removed, not just hidden)")
 check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().rowWidth == RLSuite.raidFrame:LayoutMetrics().barWidth")), "Raid group rows reserve no width for removed cooldown icons or role icons")
 check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().gridWidth == RLSuite.raidFrame:LayoutMetrics().rowWidth")), "one-column group grid width equals the used player-bar width")
-check(bool(rt.eval("RLSuite.raidFrame.frame._w == RLSuite.raidFrame:LayoutMetrics().W")), "Raid Frame hitbox matches the visible groups/Tanks layout, not the removed CD columns")
+check(bool(rt.eval("RLSuite.raidFrame.frame._w == RLSuite.raidFrame:LayoutMetrics().W")), "Raid Frame hitbox covers only the visible Raid groups, not separate Tanks or removed CD columns")
 # fase: le icone flask/food per riga restano vive in ogni fase (lo stato non dipende piu' dalle barre)
 rt.execute("RLSuite:SetContextPhase('preboss')")
 rt.execute("RLSuite:SetContextPhase('infight')")
@@ -2580,19 +2595,31 @@ check(bool(rt.eval("#RLSuite.raidFrame.rows == 6")), "group rows unaffected by t
 # --- tank bars: MT/OT tag attached to the bar, no player CDs, target bar ---
 rt.execute("""
 RLSuite.raidFrame:ApplyLayout()
-local mtb = RLSuite.raidFrame.tankSlots[1]
+local rf = RLSuite.raidFrame
+local mtb = rf.tankSlots[1]
 local tp = mtb.tankTag._points[#mtb.tankTag._points]
 TANK_TAG_OK = (tp[1] == 'TOPLEFT' and tp[2] == mtb.bar and tp[3] == 'TOPLEFT' and tp[4] == 0 and tp[5] == 0)
+local m = rf:LayoutMetrics()
+local savedRank = mtb.member.rank
+mtb.member.rank = 2
+rf:UpdateRoleIcon(mtb)
+local rolePoint = mtb.roleIcon._points[#mtb.roleIcon._points]
+local barPoint = mtb.bar._points[#mtb.bar._points]
+TANK_ROLE_ICON_OUTSIDE = mtb.roleIcon:IsShown()
+    and rolePoint[2] == mtb.bar and rolePoint[4] == 3 - m.roleNameInset
+    and barPoint[4] == m.roleNameInset
+    and mtb._w == m.tankRowWidth
+mtb.member.rank = savedRank
+rf:UpdateRoleIcon(mtb)
 TANK_NOCD = true
 for ti = 1, 2 do
     TANK_NOCD = TANK_NOCD and (RLSuite.raidFrame.tankSlots[ti].cdIcons == nil)
 end
 local tb = mtb.targetBar
 local bp = tb._points[#tb._points]
-local m = RLSuite.raidFrame:LayoutMetrics()
 TANK_TBAR = (tb ~= nil and bp[1] == 'TOPLEFT' and bp[2] == mtb.bar and bp[3] == 'BOTTOMLEFT'
     and bp[5] == -m.tankTargetGap and tb._w == m.targetBarWidth
-    and mtb._w == m.rowWidth and mtb._h == m.tankRowHeight)
+    and mtb._w == m.tankRowWidth and mtb._h == m.tankRowHeight)
 
 -- barra target con unit reali mockate (salva/ripristina i global)
 local S_UE, S_UN, S_UH, S_UHM, S_UIP, S_UC = UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass
@@ -2615,8 +2642,9 @@ UnitExists, UnitName, UnitHealth, UnitHealthMax, UnitIsPlayer, UnitClass = S_UE,
 RLSuite.raidFrame:UpdateTankTargets()
 """)
 check(bool(rt.eval("TANK_TAG_OK")), "MT/OT tag sits inside its HP bar before the player name")
+check(bool(rt.eval("TANK_ROLE_ICON_OUTSIDE")), "rank/status role icon is outside the left edge of the HP bar only in the separate Tanks window")
 check(bool(rt.eval("TANK_NOCD")), "tank bars never show player CDs on the right")
-check(bool(rt.eval("TANK_TBAR")), "tank target bar is stacked below the MT/OT HP bar without widening the Raid rows")
+check(bool(rt.eval("TANK_TBAR")), "tank target bar is stacked below the MT/OT HP bar; Tanks alone has an external role-icon gutter")
 check(bool(rt.eval("TANK_TBAR_NAME")) and bool(rt.eval("TANK_TBAR_VAL")), "tank target bar shows current target name + HP% from real units")
 check(bool(rt.eval("TANK_TBAR_COL")), "tank target bar colors red for hostile targets")
 check(bool(rt.eval("TANK_TBAR_FAKE")), "debug/fake tanks leave the target bar empty (no fake-unit API queries)")
@@ -5349,7 +5377,7 @@ check(bool(rt.eval("RFW == RF_LIVE_W and RF_LIVE_W == RF_M.W * RF_SCALE")),
       "right offset = Raid Frame width (%d px at scale %s)" % (rt.eval("RF_M.W * RF_SCALE"), rt.eval("RF_SCALE")))
 check(bool(rt.eval("TB_ANCH_X == RFW")), "the offset IS the Raid Frame width, on the LEFT side (no other constant)")
 check(bool(rt.eval("BUFF_WINDOW_SEPARATE == true")), "the compact Raid Buffs matrix no longer changes the Raid Frame width")
-check(bool(rt.eval("RF_M.rowWidth == RF_M.barWidth and RF_M.gridWidth == RF_M.rowWidth and RF_M.W == RF_M.gridWidth and RF_M.tankRowWidth == RF_M.rowWidth")), "Raid Frame width contains only the configured bars; no cooldown or role-icon columns are reserved")
+check(bool(rt.eval("RF_M.rowWidth == RF_M.barWidth and RF_M.gridWidth == RF_M.rowWidth and RF_M.W == RF_M.gridWidth and RF_M.tankRowWidth == RF_M.rowWidth + RF_M.roleNameInset")), "Raid matrix reserves no role-icon column; only the separate Tanks window adds an external role-icon gutter")
 
 # -- il Raid Frame cambia -> la barra si riposiziona da sola ---------------
 rt.execute("""
@@ -8584,6 +8612,7 @@ local mtSlot = RF.tankSlots[1]
 RF:LayoutSlotGeometry(mtSlot, m)
 V109_MT_BAR_POINT, _, _, V109_MT_BAR_X = mtSlot.bar:GetPoint()
 V109_MT_TAG_POINT, _, _, V109_MT_TAG_X = mtSlot.tankTag:GetPoint()
+V109_ROLE_INSET = m.roleNameInset
 
 -- 3. Test Durability: cell text displays pct if known, OK if unknown, BROKEN if broken
 local durStPct = { state = "ok", pct = 74, broken = 0 }
@@ -8626,7 +8655,7 @@ end
 """)
 
 check(not bool(rt.eval("V109_TANK_ROLE_ICON_SHOWN")), "v1.11.109: Tank/DPS/Heal role does not display role icon (leader/assist/ML only)")
-check(rt.eval("V109_MT_BAR_X") == 0, "v1.11.109: MT bar starts at the left edge of its slot (no role-icon column)")
+check(rt.eval("V109_MT_BAR_X") == rt.eval("V109_ROLE_INSET"), "v1.11.109: MT bar shifts right to make room for its external role icon")
 check(rt.eval("V109_MT_TAG_X") == 0, "v1.11.109: MT tankTag aligned to the top-left of its stacked HP bar")
 check(rt.eval("V109_DUR_TXT_74") == "74%", "v1.11.109: Durability cell shows real percentage when known (74%)")
 check(rt.eval("V109_DUR_TXT_OK") == "-", "v1.11.109: Durability cell shows - instead of fake 100% when exact pct is not readable")

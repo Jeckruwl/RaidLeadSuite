@@ -587,8 +587,16 @@ function CFG:BuildOptionsTable()
     rf.appearance = rf.appearance or {}
     rf.numberOfGroups = rf.numberOfGroups or 8
     rf.groupsPerRow = rf.groupsPerRow or 1
-    rf.appearance.barWidth = rf.appearance.barWidth or 100
-    rf.appearance.barHeight = rf.appearance.barHeight or 20
+    local function clampRaidFrameValue(value, low, high, fallback)
+        value = tonumber(value) or fallback
+        value = math.floor(value + 0.5)
+        return math.max(low, math.min(high, value))
+    end
+    rf.appearance.barWidth = clampRaidFrameValue(rf.appearance.barWidth, 10, 256, 100)
+    rf.appearance.barHeight = clampRaidFrameValue(rf.appearance.barHeight, 10, 32, 20)
+    rf.appearance.horizontalSpacing = clampRaidFrameValue(rf.appearance.horizontalSpacing, -1, 32, -1)
+    rf.appearance.rowSpacing = clampRaidFrameValue(rf.appearance.rowSpacing, -1, 32, -1)
+    rf.appearance.groupSpacing = clampRaidFrameValue(rf.appearance.groupSpacing, 0, 32, 5)
     rf.appearance.nameFontSize = rf.appearance.nameFontSize or 11
 
     local function applyGroupSettings()
@@ -602,10 +610,10 @@ function CFG:BuildOptionsTable()
         anchors = toggle(L["Toggle Anchors"], L["Show anchor points for dragging."], 0,
             function() return RLSuite.db.profile.anchorMode == true end,
             function(_, v) RLSuite:ApplyAnchorMode(v) end),
-        width = slider(L["Width"], L["Width of each player health bar in pixels."], 1, 10, 500, 1,
+        width = slider(L["Width"], L["Width of each player health bar in pixels."], 1, 10, 256, 1,
             function() return rf.appearance.barWidth or 100 end,
             function(_, v) rf.appearance.barWidth = v; self:ApplyAll() end),
-        height = slider(L["Height"], L["Height of each player health bar in pixels."], 2, 10, 500, 1,
+        height = slider(L["Height"], L["Height of each player health bar in pixels."], 2, 10, 32, 1,
             function() return rf.appearance.barHeight or 20 end,
             function(_, v) rf.appearance.barHeight = v; self:ApplyAll() end),
         numberOfGroups = slider(L["Number of Groups"], L["Number of raid groups displayed by the Raid Frame."], 3, 1, 8, 1,
@@ -614,13 +622,13 @@ function CFG:BuildOptionsTable()
         groupsPerRow = slider(L["Groups Per Row/Column"], L["Number of raid groups arranged across each row."], 4, 1, 8, 1,
             function() return math.max(1, math.min(8, tonumber(rf.groupsPerRow) or 1)) end,
             function(_, v) rf.groupsPerRow = v; applyGroupSettings() end),
-        horizontalSpacing = slider(L["Horizontal Spacing"], L["Gap between raid groups arranged side by side."], 5, -1, 50, 1,
+        horizontalSpacing = slider(L["Horizontal Spacing"], L["Gap between raid groups arranged side by side."], 5, -1, 32, 1,
             function() return rf.appearance.horizontalSpacing or -1 end,
             function(_, v) rf.appearance.horizontalSpacing = v; self:ApplyAll() end),
-        verticalSpacing = slider(L["Vertical Spacing"], L["Gap between player bars inside each group."], 6, -1, 50, 1,
+        verticalSpacing = slider(L["Vertical Spacing"], L["Gap between player bars inside each group."], 6, -1, 32, 1,
             function() return rf.appearance.rowSpacing or -1 end,
             function(_, v) rf.appearance.rowSpacing = v; self:ApplyAll() end),
-        groupSpacing = slider(L["Group Spacing"], L["Gap between rows of raid groups."], 7, 0, 50, 1,
+        groupSpacing = slider(L["Group Spacing"], L["Gap between rows of raid groups."], 7, 0, 32, 1,
             function() return rf.appearance.groupSpacing or 5 end,
             function(_, v) rf.appearance.groupSpacing = v; self:ApplyAll() end),
     }

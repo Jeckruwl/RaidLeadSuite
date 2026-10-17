@@ -463,31 +463,31 @@ function RF:LayoutMetrics()
     local groupsPerRow = clamp(db.groupsPerRow, 1, RF_GROUPS, 1)
     groupsPerRow = math.min(groupsPerRow, numberOfGroups)
     local groupRows = math.ceil(numberOfGroups / groupsPerRow)
-    local barHeight = clamp(app.barHeight, 10, 500, tonumber(app.iconSize) or 20)
-    local barWidth = clamp(app.barWidth, 10, 500, 100)
+    local barHeight = clamp(app.barHeight, 10, 32, tonumber(app.iconSize) or 20)
+    local barWidth = clamp(app.barWidth, 10, 256, 100)
     local iconSize = math.min(clamp(app.iconSize, 10, 24, 16), barHeight)
     local nameFontSize = clamp(app.nameFontSize, 8, 32, 11)
     -- Spacing configurabili (Config -> Raid Frame -> Size and Positions).
     local iconSpacing = tonumber(app.iconSpacing) or 8 -- legacy Raid Buffs fallback
-    local verticalSpacing = clamp(app.rowSpacing, -1, 50, -1)
-    local horizontalSpacing = clamp(app.horizontalSpacing, -1, 50, -1)
-    local groupSpacing = clamp(app.groupSpacing, 0, 50, 5)
+    local verticalSpacing = clamp(app.rowSpacing, -1, 32, -1)
+    local horizontalSpacing = clamp(app.horizontalSpacing, -1, 32, -1)
+    local groupSpacing = clamp(app.groupSpacing, 0, 32, 5)
     local groupHeaderFontSize = clamp(app.groupHeaderFontSize, 8, 16, 10)
     local showGroupHeaders = db.showGroupHeaders ~= false
     local groupHeaderH = showGroupHeaders and (groupHeaderFontSize + 4) or 0
     local cellW = math.max(12, iconSize + iconSpacing) -- passo colonne matrice
     local abw = 0 -- buff bar / ability bar rimosse (redesign in corso)
     local gap = 0
-    -- La larghezza della riga e' esattamente quella della barra HP: icona
-    -- ruolo e tag MT/OT vivono all'interno della barra, prima del nome.
+    -- Le righe Raid normali hanno la sola larghezza della barra HP: le icone
+    -- di ruolo restano interne. Tanks usa una finestra separata e riserva invece
+    -- un gutter a sinistra per la sua icona esterna, senza allargare la matrice.
     local roleNameInset = iconSize + 6
     local rowWidth = barWidth
     local rowHeight = barHeight
-    -- Per non riservare una colonna vuota a destra della matrice, la barra
-    -- target dei Tanks resta attiva ma viene impilata sotto la barra HP MT/OT.
+    -- La barra target MT/OT resta attiva e viene impilata sotto la barra HP.
     local tankTargetGap = 2
     local targetBarWidth = barWidth
-    local tankRowWidth = rowWidth
+    local tankRowWidth = rowWidth + roleNameInset
     local tankRowHeight = (2 * barHeight) + tankTargetGap
     local groupBlockH = groupHeaderH + (RF_PER_GROUP * rowHeight)
         + ((RF_PER_GROUP - 1) * verticalSpacing)
@@ -774,12 +774,12 @@ function RF:CreateSlotFrame(slotIndex, group, tankTag, parent)
     bg:SetVertexColor(0, 0, 0, 0.45)
     bar.bg = bg
 
-    -- Role icon disegnata sopra il fill della barra, prima del testo del nome.
+    -- Icona di ruolo sopra il fill: interna alle righe Raid, esterna solo Tanks.
     local roleIcon = bar:CreateTexture(nil, "OVERLAY")
     roleIcon:Hide()
     row.roleIcon = roleIcon
 
-    -- Il tag MT/OT usa lo stesso slot interno dell'icona di ruolo.
+    -- MT/OT resta nello slot interno della barra HP, prima del nome.
     if row.isTank then
         local tag = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         tag:SetText(tankTag)
@@ -1021,11 +1021,11 @@ function RF:LayoutSlotGeometry(slot, m)
     if slot.bar then
         slot.bar:ClearAllPoints()
         slot.bar:SetSize(m.barWidth, m.barHeight)
-        slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", 0, 0)
+        slot.bar:SetPoint("TOPLEFT", slot, "TOPLEFT", slot.isTank and roleNameInset or 0, 0)
         if slot.roleIcon then
             slot.roleIcon:ClearAllPoints()
             slot.roleIcon:SetSize(iconSize, iconSize)
-            slot.roleIcon:SetPoint("LEFT", slot.bar, "LEFT", 3, 0)
+            slot.roleIcon:SetPoint("LEFT", slot.bar, "LEFT", slot.isTank and (3 - roleNameInset) or 3, 0)
         end
         if slot.offlineOverlay then
             slot.offlineOverlay:ClearAllPoints()
@@ -1591,11 +1591,6 @@ end
 
 function RF:UpdateRoleIcon(row)
     if not row or not row.roleIcon then return end
-    if row.isTank then
-        row.roleIcon:Hide()
-        self:SetRoleNameInset(row, false)
-        return
-    end
     local unit = row.unit
     local rank = 0
     local isML = false
