@@ -12,7 +12,7 @@ local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end 
 
 local ROW_H, HEADER_H, SUBHEADER_H = 24, 24, 18
 local TITLE_H, PAD, ICON_SIZE = 30, 8, 24
-local DEFAULT_BAR_WIDTH, INSPECT_W = 240, 390
+local DEFAULT_BAR_WIDTH, INSPECT_W = 130, 390
 local TANK_PROMPT_H = 38
 local DEAD_ICON = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
 local OFFLINE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up"
@@ -43,71 +43,71 @@ local CATEGORIES = {
     { key = "tank_defensive", title = "Tank Defensive", abilities = {
         { key="shield_wall", name="Shield Wall", class="WARRIOR", ids={871}, cd=300 },
         { key="last_stand", name="Last Stand", class="WARRIOR", ids={12975}, cd=180, specs={"Protection"}, tank=true },
-        { key="icebound_fortitude", name="Icebound Fortitude", class="DEATHKNIGHT", ids={48792}, cd=120 },
-        { key="anti_magic_shell", name="Anti-Magic Shell", class="DEATHKNIGHT", ids={48707}, cd=45 },
-        { key="vampiric_blood", name="Vampiric Blood", class="DEATHKNIGHT", ids={55233}, cd=60, specs={"Blood"}, tank=true },
+        { key="icebound_fortitude", name="Icebound Fortitude", abbreviation="IBF", class="DEATHKNIGHT", ids={48792}, cd=120 },
+        { key="anti_magic_shell", name="Anti-Magic Shell", abbreviation="AMS", class="DEATHKNIGHT", ids={48707}, cd=45 },
+        { key="vampiric_blood", name="Vampiric Blood", abbreviation="Vamp Blood", class="DEATHKNIGHT", ids={55233}, cd=60, specs={"Blood"}, tank=true },
         { key="barkskin", name="Barkskin", class="DRUID", ids={22812}, cd=60, tank=true },
-        { key="survival_instincts", name="Survival Instincts", class="DRUID", ids={61336}, cd=180, specs={"Feral"}, tank=true },
-        { key="frenzied_regeneration", name="Frenzied Regeneration", class="DRUID", ids={22842}, cd=180, specs={"Feral"}, tank=true },
-        { key="divine_protection", name="Divine Protection", class="PALADIN", ids={498}, cd=120 },
+        { key="survival_instincts", name="Survival Instincts", abbreviation="SI", class="DRUID", ids={61336}, cd=180, specs={"Feral"}, tank=true },
+        { key="frenzied_regeneration", name="Frenzied Regeneration", abbreviation="Frenzied Regen", class="DRUID", ids={22842}, cd=180, specs={"Feral"}, tank=true },
+        { key="divine_protection", name="Divine Protection", abbreviation="DP", class="PALADIN", ids={498}, cd=120 },
     } },
     { key = "raid_wide_offensive", title = "Raid Wide Offensive", abilities = {
-        { key="bloodlust", name="Bloodlust / Heroism", class="SHAMAN", ids={2825,32182}, cd=300, duration=40, auraIds={2825,32182} },
+        { key="bloodlust", name="Bloodlust", factionNames={Horde="Bloodlust", Alliance="Heroism"}, aliases={"Heroism", "Bloodlust / Heroism"}, class="SHAMAN", ids={2825,32182}, cd=300, duration=40, auraIds={2825,32182} },
         { key="shattering_throw", name="Shattering Throw", class="WARRIOR", ids={64382}, cd=300, specs={"Arms"}, duration=10, auraIds={64382} },
     } },
     { key = "raid_party_defensive", title = "Raid/Party Wide Defensive", abilities = {
-        { key="aura_mastery", name="Aura Mastery", class="PALADIN", ids={31821}, cd=120, specs={"Holy"}, duration=6, auraIds={31821} },
-        { key="divine_sacrifice", name="Divine Sacrifice", class="PALADIN", ids={64205}, cd=120, specs={"Protection"}, duration=10, auraIds={64205} },
+        { key="aura_mastery", name="Aura Mastery", abbreviation="AM", class="PALADIN", ids={31821}, cd=120, specs={"Holy"}, duration=6, auraIds={31821} },
+        { key="divine_sacrifice", name="Divine Sacrifice", abbreviation="DSAC", class="PALADIN", ids={64205}, cd=120, specs={"Protection"}, duration=10, auraIds={64205} },
         { key="divine_hymn", name="Divine Hymn", class="PRIEST", ids={64843}, cd=480, duration=8, auraIds={64843} },
-        { key="anti_magic_zone", name="Anti-Magic Zone", class="DEATHKNIGHT", ids={51052}, cd=120, specs={"Unholy"}, duration=10, auraIds={51052} },
-        { key="tranquility", name="Tranquility", class="DRUID", ids={48447,26983,9863,740}, cd=480, duration=8, auraIds={48447,26983} },
+        { key="anti_magic_zone", name="Anti-Magic Zone", abbreviation="AMZ", class="DEATHKNIGHT", ids={51052}, cd=120, specs={"Unholy"}, duration=10, auraIds={51052} },
+        { key="tranquility", name="Tranquility", abbreviation="Tranq", class="DRUID", ids={48447,26983,9863,740}, cd=480, duration=8, auraIds={48447,26983} },
     } },
     { key = "single_target_offensive", title = "Single Target Offensive", abilities = {
-        { key="power_infusion", name="Power Infusion", class="PRIEST", ids={10060}, cd=180, specs={"Discipline"}, duration=15, auraIds={10060}, target=true },
+        { key="power_infusion", name="Power Infusion", abbreviation="PI", class="PRIEST", ids={10060}, cd=180, specs={"Discipline"}, duration=15, auraIds={10060}, target=true },
         { key="hysteria", name="Hysteria", class="DEATHKNIGHT", ids={49016}, cd=180, specs={"Blood"}, duration=30, auraIds={49016}, target=true },
     } },
     { key = "single_target_defensive", title = "Single Target Defensive", abilities = {
-        { key="hand_of_sacrifice", name="Hand of Sacrifice", class="PALADIN", ids={6940}, cd=120, duration=12, auraIds={6940}, target=true },
-        { key="hand_of_protection", name="Hand of Protection", class="PALADIN", ids={1022,5599,10278}, cd=300, duration=10, auraIds={1022,5599,10278}, target=true },
-        { key="lay_on_hands", name="Lay on Hands", class="PALADIN", ids={633,2800,10310,27154,48788}, cd=1200, auraIds={633,2800,10310,27154,48788}, target=true },
-        { key="pain_suppression", name="Pain Suppression", class="PRIEST", ids={33206}, cd=180, specs={"Discipline"}, duration=8, auraIds={33206}, target=true },
-        { key="guardian_spirit", name="Guardian Spirit", class="PRIEST", ids={47788}, cd=180, specs={"Holy"}, duration=10, auraIds={47788}, target=true },
+        { key="hand_of_sacrifice", name="Hand of Sacrifice", abbreviation="HoSac", class="PALADIN", ids={6940}, cd=120, duration=12, auraIds={6940}, target=true },
+        { key="hand_of_protection", name="Hand of Protection", abbreviation="HOP", class="PALADIN", ids={1022,5599,10278}, cd=300, duration=10, auraIds={1022,5599,10278}, target=true },
+        { key="lay_on_hands", name="Lay on Hands", abbreviation="LoH", class="PALADIN", ids={633,2800,10310,27154,48788}, cd=1200, auraIds={633,2800,10310,27154,48788}, target=true },
+        { key="pain_suppression", name="Pain Suppression", abbreviation="PS", class="PRIEST", ids={33206}, cd=180, specs={"Discipline"}, duration=8, auraIds={33206}, target=true },
+        { key="guardian_spirit", name="Guardian Spirit", abbreviation="GS", class="PRIEST", ids={47788}, cd=180, specs={"Holy"}, duration=10, auraIds={47788}, target=true },
     } },
     { key = "battle_res", title = "Battle Resurrection", abilities = {
         { key="rebirth", name="Rebirth", class="DRUID", ids={48477,26994,20748,20484}, cd=600, target=true },
-        { key="soulstone", name="Soulstone", class="WARLOCK", ids={47884,47883,27239,20765,20764,20763,20762,20707}, cd=900, duration=900, auraIds={47883,47884}, state="soulstone", target=true },
+        { key="soulstone", name="Soulstone", abbreviation="SS", class="WARLOCK", ids={47884,47883,27239,20765,20764,20763,20762,20707}, cd=900, duration=900, auraIds={47883,47884}, state="soulstone", target=true },
     } },
     { key = "mana_regen", title = "Mana Regeneration", abilities = {
         { key="innervate", name="Innervate", class="DRUID", ids={29166}, cd=180, duration=10, auraIds={29166}, target=true },
-        { key="mana_tide_totem", name="Mana Tide Totem", class="SHAMAN", ids={16190}, cd=300, duration=12, auraIds={16190} },
-        { key="hymn_of_hope", name="Hymn of Hope", class="PRIEST", ids={64901}, cd=360, duration=8, auraIds={64901} },
+        { key="mana_tide_totem", name="Mana Tide Totem", abbreviation="Mana Tide", class="SHAMAN", ids={16190}, cd=300, duration=12, auraIds={16190} },
+        { key="hymn_of_hope", name="Hymn of Hope", abbreviation="HoH", class="PRIEST", ids={64901}, cd=360, duration=8, auraIds={64901} },
     } },
     { key = "threat", title = "Threat (Taunt and Aggro)", abilities = {
-        { key="misdirection", name="Misdirection", class="HUNTER", ids={34477}, cd=30, duration=4, auraIds={34477}, target=true },
-        { key="tricks_of_the_trade", name="Tricks of the Trade", class="ROGUE", ids={57934}, cd=30, duration=6, auraIds={57934}, target=true },
+        { key="misdirection", name="Misdirection", abbreviation="MD", class="HUNTER", ids={34477}, cd=30, duration=4, auraIds={34477}, target=true },
+        { key="tricks_of_the_trade", name="Tricks of the Trade", abbreviation="Tricks", class="ROGUE", ids={57934}, cd=30, duration=6, auraIds={57934}, target=true },
         { key="taunt", name="Taunt", class="WARRIOR", ids={355}, cd=8 },
-        { key="hand_of_reckoning", name="Hand of Reckoning", class="PALADIN", ids={62124}, cd=8 },
-        { key="righteous_defense", name="Righteous Defense", class="PALADIN", ids={31789}, cd=8 },
-        { key="hand_of_salvation", name="Hand of Salvation", class="PALADIN", ids={1038,25895}, cd=120, duration=10, auraIds={1038,25895}, target=true },
-        { key="dark_command", name="Dark Command", class="DEATHKNIGHT", ids={56222}, cd=8 },
-        { key="death_grip", name="Death Grip", class="DEATHKNIGHT", ids={49576}, cd=35 },
+        { key="hand_of_reckoning", name="Hand of Reckoning", abbreviation="HoR", class="PALADIN", ids={62124}, cd=8 },
+        { key="righteous_defense", name="Righteous Defense", abbreviation="RD", class="PALADIN", ids={31789}, cd=8 },
+        { key="hand_of_salvation", name="Hand of Salvation", abbreviation="HoSalv", class="PALADIN", ids={1038,25895}, cd=120, duration=10, auraIds={1038,25895}, target=true },
+        { key="dark_command", name="Dark Command", abbreviation="DC", class="DEATHKNIGHT", ids={56222}, cd=8 },
+        { key="death_grip", name="Death Grip", abbreviation="DG", class="DEATHKNIGHT", ids={49576}, cd=35 },
         { key="growl", name="Growl", class="DRUID", ids={6795}, cd=8 },
     } },
     { key = "interrupts", title = "Interrupt Rotation", abilities = {
         { key="pummel", name="Pummel", class="WARRIOR", ids={6552}, cd=10 },
-        { key="shield_bash", name="Shield Bash", class="WARRIOR", ids={72}, cd=12, shield=true },
+        { key="shield_bash", name="Shield Bash", abbreviation="SB", class="WARRIOR", ids={72}, cd=12, shield=true },
         { key="silencing_shot", name="Silencing Shot", class="HUNTER", ids={34490}, cd=20, specs={"Marksmanship"} },
         { key="kick", name="Kick", class="ROGUE", ids={1766}, cd=10 },
-        { key="mind_freeze", name="Mind Freeze", class="DEATHKNIGHT", ids={47528}, cd=10 },
+        { key="mind_freeze", name="Mind Freeze", abbreviation="MF", class="DEATHKNIGHT", ids={47528}, cd=10 },
         { key="strangulate", name="Strangulate", class="DEATHKNIGHT", ids={47476}, cd=120 },
         { key="wind_shear", name="Wind Shear", class="SHAMAN", ids={57994}, cd=6 },
-        { key="counterspell", name="Counterspell", class="MAGE", ids={2139}, cd=24 },
-        { key="spell_lock", name="Spell Lock (Felhunter)", class="WARLOCK", ids={19647}, cd=24, pet="Felhunter" },
+        { key="counterspell", name="Counterspell", abbreviation="CS", class="MAGE", ids={2139}, cd=24 },
+        { key="spell_lock", name="Spell Lock (Felhunter)", abbreviation="Spell Lock", class="WARLOCK", ids={19647}, cd=24, pet="Felhunter" },
     } },
     { key = "cc", title = "Crowd Control", abilities = {
-        { key="polymorph", name="Polymorph", class="MAGE", ids={118,12824,12825,12826,28271,28272,61025}, auraIds={118,12824,12825,12826,28271,28272,61025}, cd=1.5, duration=50, target=true },
+        { key="polymorph", name="Polymorph", abbreviation="Poly", class="MAGE", ids={118,12824,12825,12826,28271,28272,61025}, auraIds={118,12824,12825,12826,28271,28272,61025}, cd=1.5, duration=50, target=true },
         { key="cyclone", name="Cyclone", class="DRUID", ids={33786}, auraIds={33786}, cd=1.5, duration=6, target=true },
-        { key="entangling_roots", name="Entangling Roots", class="DRUID", ids={339,1062,5195,5196,9852,9853,26989}, auraIds={339,1062,5195,5196,9852,9853,26989}, cd=1.5, duration=27, target=true },
+        { key="entangling_roots", name="Entangling Roots", abbreviation="Roots", class="DRUID", ids={339,1062,5195,5196,9852,9853,26989}, auraIds={339,1062,5195,5196,9852,9853,26989}, cd=1.5, duration=27, target=true },
         { key="hex", name="Hex", class="SHAMAN", ids={51514}, auraIds={51514}, cd=45, duration=10, target=true },
         { key="blind", name="Blind", class="ROGUE", ids={2094}, auraIds={2094}, cd=180, duration=10, target=true },
         { key="freezing_trap", name="Freezing Trap", class="HUNTER", ids={14311,14310,14309,3355}, auraIds={3355}, cd=30, duration=60, target=true },
@@ -118,13 +118,13 @@ local CATEGORIES = {
     } },
     { key = "utility_dispel", title = "Utility / Dispel", abilities = {
         { key="fear_ward", name="Fear Ward", class="PRIEST", ids={6346}, auraIds={6346}, cd=180, duration=180, target=true },
-        { key="tremor_totem", name="Tremor Totem", class="SHAMAN", ids={8143}, cd=1.5, duration=120, totem=true },
+        { key="tremor_totem", name="Tremor Totem", abbreviation="Tremor", class="SHAMAN", ids={8143}, cd=1.5, duration=120, totem=true },
         { key="mass_dispel", name="Mass Dispel", class="PRIEST", ids={32375}, cd=15 },
-        { key="tranquilizing_shot", name="Tranquilizing Shot", class="HUNTER", ids={19801}, cd=10 },
+        { key="tranquilizing_shot", name="Tranquilizing Shot", abbreviation="Tranq Shot", class="HUNTER", ids={19801}, cd=10 },
         { key="purge", name="Purge", class="SHAMAN", ids={370,8012,27626,33625}, cd=1.5 },
-        { key="grounding_totem", name="Grounding Totem", class="SHAMAN", ids={8177}, cd=15, duration=45, totem=true },
+        { key="grounding_totem", name="Grounding Totem", abbreviation="Grounding", class="SHAMAN", ids={8177}, cd=15, duration=45, totem=true },
         { key="spellsteal", name="Spellsteal", class="MAGE", ids={30449}, cd=1.5 },
-        { key="divine_intervention", name="Divine Intervention", class="PALADIN", ids={19752}, auraIds={19752}, cd=1200, duration=120, target=true },
+        { key="divine_intervention", name="Divine Intervention", abbreviation="DI", class="PALADIN", ids={19752}, auraIds={19752}, cd=1200, duration=120, target=true },
     } },
 }
 
@@ -139,6 +139,8 @@ for _, category in ipairs(CATEGORIES) do
         ability.cd = tonumber(ability.cd) or 0
         ABILITY_BY_KEY[ability.key] = ability
         ABILITY_BY_NAME[ability.name] = ability
+        for _, alias in ipairs(ability.aliases or {}) do ABILITY_BY_NAME[alias] = ability end
+        for _, factionName in pairs(ability.factionNames or {}) do ABILITY_BY_NAME[factionName] = ability end
         for _, id in ipairs(ability.ids) do SPELL_TO_ABILITY[id] = ability end
         for _, id in ipairs(ability.auraIds) do AURA_TO_ABILITY[id] = ability end
     end
@@ -204,7 +206,9 @@ end
 
 function CDW:NormalizeSettings()
     local s = self:GetSettings()
-    if s.layoutMode ~= "separate" and s.layoutMode ~= "custom" and not isMacroLayout(s.layoutMode) then
+    if s.layoutMode == nil then
+        s.layoutMode = "custom"
+    elseif s.layoutMode ~= "separate" and s.layoutMode ~= "custom" and not isMacroLayout(s.layoutMode) then
         -- Retire the former single-panel and per-macro-group layouts.
         s.layoutMode = "macro"
     end
@@ -227,7 +231,7 @@ function CDW:NormalizeSettings()
         name = name:gsub("^%s+", ""):gsub("%s+$", "")
         if name == "" then name = L["Panel %d"]:format(index) end
         panel.name = string.sub(name, 1, 32)
-        panel.enabled = panel.enabled == true
+        panel.enabled = panel.enabled ~= false
         if panel.groupMode ~= "caster" and panel.groupMode ~= "spells" and panel.groupMode ~= "none" then
             -- Existing custom panels inherit the former global setting once,
             -- then keep their own persisted grouping mode independently.
@@ -252,18 +256,19 @@ function CDW:NormalizeSettings()
     end
     if s.autoInspect == nil then s.autoInspect = true end
     s.hideTooltips = s.hideTooltips == true
-    s.hideBackdrop = s.hideBackdrop == true
-    s.showIcons = s.showIcons ~= false
-    s.useClassColor = s.useClassColor ~= false
-    s.barHeight = math.max(10, math.min(32, tonumber(s.barHeight) or ROW_H))
+    if s.hideBackdrop == nil then s.hideBackdrop = true else s.hideBackdrop = s.hideBackdrop == true end
+    if s.showIcons == nil then s.showIcons = false else s.showIcons = s.showIcons == true end
+    if s.useClassColor == nil then s.useClassColor = false else s.useClassColor = s.useClassColor == true end
+    s.abbreviateSpellNames = s.abbreviateSpellNames ~= false
+    s.barHeight = math.max(10, math.min(32, tonumber(s.barHeight) or 16))
     s.barWidth = math.max(100, math.min(300, tonumber(s.barWidth) or DEFAULT_BAR_WIDTH))
     s.barTexture = type(s.barTexture) == "string" and s.barTexture or STATUSBAR_TEXTURE
-    s.readyColor = self:NormalizeColor(s.readyColor, { r=0.20, g=0.75, b=0.25 })
-    s.cooldownColor = self:NormalizeColor(s.cooldownColor, { r=0.95, g=0.60, b=0.12 })
-    s.deadColor = self:NormalizeColor(s.deadColor, { r=0.30, g=0.30, b=0.32 })
-    s.disconnectedColor = self:NormalizeColor(s.disconnectedColor, { r=0.48, g=0.40, b=0.18 })
+    s.readyColor = self:NormalizeColor(s.readyColor, { r=51/255, g=191/255, b=64/255 })
+    s.cooldownColor = self:NormalizeColor(s.cooldownColor, { r=242/255, g=153/255, b=31/255 })
+    s.deadColor = self:NormalizeColor(s.deadColor, { r=77/255, g=77/255, b=82/255 })
+    s.disconnectedColor = self:NormalizeColor(s.disconnectedColor, { r=75/255, g=0, b=1/255 })
     s.fontFace = type(s.fontFace) == "string" and s.fontFace or "Fonts\\FRIZQT__.TTF"
-    s.fontSize = math.max(8, math.min(24, tonumber(s.fontSize) or 11))
+    s.fontSize = math.max(8, math.min(24, tonumber(s.fontSize) or 12))
     if s.fontOutline == nil then s.fontOutline = true end
     s.fontColor = self:NormalizeColor(s.fontColor, { r=1, g=1, b=1 })
     local order, seen = {}, {}
@@ -273,6 +278,26 @@ function CDW:NormalizeSettings()
     for _, key in ipairs(ORDER_KEYS) do if not seen[key] then order[#order+1] = key end end
     s.categoryOrder = order
     return s
+end
+
+function CDW:GetSpellDisplayName(ability, fullName)
+    if type(ability) == "string" then
+        ability = ABILITY_BY_KEY[ability] or ABILITY_BY_NAME[ability]
+    end
+    if type(ability) ~= "table" then return tostring(ability or "?") end
+    local name = ability.name or "?"
+    if ability.factionNames then
+        local faction
+        if UnitFactionGroup then
+            local ok, value = pcall(UnitFactionGroup, "player")
+            if ok then faction = value end
+        end
+        name = ability.factionNames[faction] or ability.factionNames.default or name
+    end
+    if not fullName and self:NormalizeSettings().abbreviateSpellNames and ability.abbreviation then
+        return ability.abbreviation
+    end
+    return name
 end
 
 function CDW:IsMacroLayout(mode)
@@ -344,18 +369,22 @@ end
 function CDW:SetCustomPanelEnabled(index, enabled)
     index=tonumber(index)
     if not index or index<1 or index>6 then return false end
+    local wasOpen=self:IsOpen()
     local panel=self:NormalizeSettings().customPanels[index]
     panel.enabled=enabled and true or false
     self:RefreshAll()
     if self:NormalizeSettings().layoutMode=="custom" then
-        if panel.enabled then
-            self.isOpen=true
-            local window=self:EnsureCustomPanelWindow(index)
-            window:Show()
-            if self.customPanelEditMode then self:RaiseCustomSpellPicker() end
-        elseif self.customWindows and self.customWindows[index] then
-            self.customWindows[index]:Hide()
+        if self.customPanelEditMode or wasOpen then
+            if panel.enabled then
+                self:EnsureCustomPanelWindow(index):Show()
+                if self.customPanelEditMode then self:RaiseCustomSpellPicker() end
+            elseif self.customWindows and self.customWindows[index] then
+                self.customWindows[index]:Hide()
+            end
             self.isOpen=self:IsOpen()
+        else
+            if self.customWindows and self.customWindows[index] then self.customWindows[index]:Hide() end
+            self.isOpen=false
         end
     end
     return true
@@ -500,7 +529,7 @@ function CDW:AnnounceReadyBar(frame)
     if model.life and model.life~="alive" then return false end
     if not self:CursorInsideFrame(frame) then return false end
     local caster=model.sourceName or model.ownerName
-    local spellName=model.ability and model.ability.name
+    local spellName=model.ability and self:GetSpellDisplayName(model.ability,true)
     if not caster or caster=="" or not spellName or spellName=="" then return false end
     local message=caster.." cast "..spellName
     local target=model.assignedTarget
@@ -879,7 +908,7 @@ function CDW:PositionDefaultCustomPanels()
                 local col=(index-1)%3
                 local row=math.floor((index-1)/3)
                 local x=col*(panelWidth+gapX)
-                local y=0
+                local y=-200
                 for priorRow=1,row do y=y-(self:CustomPanelRowHeight(priorRow)+16) end
                 frame:ClearAllPoints()
                 frame:SetPoint("TOPLEFT",UIParent,"TOPLEFT",x,y)
@@ -1483,7 +1512,7 @@ function CDW:GroupModels(models, groupMode)
         local key, name
         if groupMode == "spells" then
             key=tostring(model.ability.key or model.ability.name)
-            name=model.ability.name
+            name=self:GetSpellDisplayName(model.ability)
         else
             key=shortName(model.ownerName)
             name=model.ownerName
@@ -1548,7 +1577,7 @@ function CDW:EnsureBar(window, model, width)
     row:SetScript("OnEnter", function(frame)
         if frame.data and frame.data.customCatalogSpell and GameTooltip and not CDW:NormalizeSettings().hideTooltips then
             GameTooltip:SetOwner(frame,"ANCHOR_TOPLEFT")
-            GameTooltip:SetText(frame.data.ability.name or "?")
+            GameTooltip:SetText(CDW:GetSpellDisplayName(frame.data.ability,true))
             GameTooltip:AddLine(L["Drag this spell to an active custom panel."],1,1,1)
             GameTooltip:Show()
         elseif frame.data and not frame.data.preview and not CDW:NormalizeSettings().hideTooltips then
@@ -1663,7 +1692,7 @@ function CDW:RenderBar(window, model, y, width, groupMode)
     row.bar:SetStatusBarColor(r,g,b,1)
     row.bar:SetAlpha(inCooldown and 0.6 or 1)
 
-    local spellName=model.ability.name or "?"
+    local spellName=self:GetSpellDisplayName(model.ability)
     local casterName=model.ownerName or "?"
     local labelText
     if model.customSpell then
@@ -1947,8 +1976,7 @@ function CDW:RenderCustomPanel(index)
         for row in pairs(usedBars) do self.rows[#self.rows+1]=row end
     end
     if count==0 then
-        window.emptyText:SetText(#panel.spells==0 and L["No spells assigned to this panel. Use Modify panels to add spells."]
-            or L["No cooldowns to display for this panel."])
+        window.emptyText:SetText(L["No cooldowns to display for this panel."])
         window.emptyText:Show()
         y=math.max(y,window.emptyText:GetStringHeight()+16)
     else
@@ -2072,9 +2100,14 @@ function CDW:RenderCustomSpellPicker()
             classHeader:SetPoint("TOPLEFT",window.content,"TOPLEFT",x,-y)
             classHeader:SetSize(columnWidth,SUBHEADER_H)
             classHeader.title:SetWidth(columnWidth-12)
-            classHeader.bg:SetVertexColor(r*0.22,g*0.22,b*0.22,0.95)
+            if class=="PRIEST" then
+                classHeader.bg:SetVertexColor(1,1,1,1)
+            else
+                classHeader.bg:SetVertexColor(r*0.22,g*0.22,b*0.22,0.95)
+            end
             classHeader.title:SetText(localizedClassName(class~="OTHER" and class or nil))
-            classHeader.title:SetTextColor(r,g,b,1)
+            if class=="PRIEST" then classHeader.title:SetTextColor(0,0,0,1)
+            else classHeader.title:SetTextColor(r,g,b,1) end
             classHeader:Show()
             usedClasses[classHeader]=true
             y=y+SUBHEADER_H
@@ -2385,7 +2418,7 @@ function CDW:ShowBarTooltip(frame)
     local model=frame and frame.data
     if not model or not GameTooltip or self:NormalizeSettings().hideTooltips then return end
     GameTooltip:SetOwner(frame,"ANCHOR_RIGHT")
-    GameTooltip:SetText(model.ability.name or L["Cooldown"])
+    GameTooltip:SetText(self:GetSpellDisplayName(model.ability,true) or L["Cooldown"])
     GameTooltip:AddLine(string.format(L["Caster: %s"],model.sourceName or model.ownerName or "?"),1,1,1)
     if model.nextInterrupt then GameTooltip:AddLine(L["Next interrupt"],1,0.35,0.25) end
     if model.targetName then GameTooltip:AddLine(string.format(L["Target: %s"],model.targetName),1,1,1) end

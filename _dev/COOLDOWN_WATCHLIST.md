@@ -92,6 +92,8 @@ Rotazione e prossimo pronto.
 
 ## UI and assignment behavior
 - Le etichette delle categorie sono mostrate per esteso, senza sigle.
+- `Bloodlust / Heroism` è mostrato come `Bloodlust` per la fazione Horde e `Heroism` per la fazione Alliance.
+- `Bar options > Abbreviate spell names` (attivo per default) accorcia solo le etichette delle barre e i raggruppamenti per spell; tooltip e annunci raid usano il nome completo. Le sigle attuali sono: Icebound Fortitude → IBF; Anti-Magic Shell → AMS; Vampiric Blood → Vamp Blood; Survival Instincts → SI; Frenzied Regeneration → Frenzied Regen; Divine Protection → DP; Aura Mastery → AM; Divine Sacrifice → DSAC; Anti-Magic Zone → AMZ; Tranquility → Tranq; Power Infusion → PI; Hand of Sacrifice → HoSac; Hand of Protection → HOP; Lay on Hands → LoH; Pain Suppression → PS; Guardian Spirit → GS; Soulstone → SS; Mana Tide Totem → Mana Tide; Hymn of Hope → HoH; Misdirection → MD; Tricks of the Trade → Tricks; Hand of Reckoning → HoR; Righteous Defense → RD; Hand of Salvation → HoSalv; Dark Command → DC; Death Grip → DG; Shield Bash → SB; Mind Freeze → MF; Counterspell → CS; Spell Lock (Felhunter) → Spell Lock; Polymorph → Poly; Entangling Roots → Roots; Tremor Totem → Tremor; Tranquilizing Shot → Tranq Shot; Grounding Totem → Grounding; Divine Intervention → DI.
 - Le barre riportano soltanto `Nome spell:Nome player  Cooldown`; target, stato, durata e altri dettagli sono nel tooltip.
 - Trascinare una barra CD Watcher su una riga giocatore del Raid Frame assegna il target della spell, non il caster.
 - Trascinare un giocatore dal Raid Frame sulla categoria Tank Defensive assegna il primo ruolo MT/OT libero. Se MT/OT non sono assegnati, la categoria mostra: `assign MT, OT or drag&drop Tanks here from Raid Frame`.

@@ -2137,10 +2137,14 @@ local size = options.args.sizeAndPositions.args
 local appearance = options.args.appearance.args
 local profile = RLSuite.db.profile.raidframe
 local app = profile.appearance
-RFG_DEFAULT_VALUES = size.width.get() == 100 and size.height.get() == 20
-    and size.numberOfGroups.get() == 8 and size.groupsPerRow.get() == 1
-    and size.horizontalSpacing.get() == -1 and size.verticalSpacing.get() == -1
-    and size.groupSpacing.get() == 5
+RFG_DEFAULT_VALUES = size.width.get() == 100 and size.height.get() == 18
+    and size.numberOfGroups.get() == 6 and size.groupsPerRow.get() == 6
+    and size.horizontalSpacing.get() == 6 and size.verticalSpacing.get() == 2
+    and size.groupSpacing.get() == 0 and size.anchors.get() == false
+    and appearance.alpha.get() == 1 and appearance.groupHeaderFontSize.get() == 14
+    and appearance.showGroupHeaders.get() == true and appearance.distanceFade.get() == true
+    and appearance.nameFontSize.get() == 14 and appearance.iconSize.get() == 20
+    and appearance.distanceAlpha.get() == 0.4 and appearance.fontOutline.get() == true
 local saved = {
     groups = profile.numberOfGroups, perRow = profile.groupsPerRow,
     width = app.barWidth, height = app.barHeight,
@@ -2187,7 +2191,7 @@ profile.showGroupHeaders = saved.headers
 app.distanceFade, app.distanceAlpha = saved.fade, saved.fadeAlpha
 rf:Rebuild()
 """)
-check(bool(rt.eval("RFG_DEFAULT_VALUES")), "Size and Positions controls start at Width 100, Height 20, Groups 8, Per Row 1, and screenshot spacing defaults")
+check(bool(rt.eval("RFG_DEFAULT_VALUES")), "Raid Frame new-install defaults match the screenshot, with Toggle Anchors off")
 check(bool(rt.eval("RFG_LAYOUT")), "Width, Height, group count, groups per row, and all three spacing controls affect the Raid Frame geometry")
 check(bool(rt.eval("RFG_HEADERS_HIDDEN")), "Show group headers checkbox hides group and Tanks headers and collapses their reserved height")
 check(bool(rt.eval("RFG_DISTANCE_FADE")), "Distance fade checkbox activates the out-of-sight fade")
@@ -2201,7 +2205,7 @@ check(bool(rt.eval("RLSuite.raidFrame.rows ~= nil and #RLSuite.raidFrame.rows >=
 rt.execute("E5_ROW = RLSuite.raidFrame.rows and RLSuite.raidFrame.rows[1] or nil; RLSuite.cdwatcher:RefreshRoster()")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar ~= nil and E5_ROW.bar.nameText ~= nil and E5_ROW.bar.hpText == nil")), "row has one HP bar with the name inside (no %% text)")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.flaskIcon == nil and E5_ROW.foodIcon == nil")), "v1.11.107: row has no left flask / food icons (moved to buff matrix)")
-check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.cdIcons == nil and RLSuite.cdwatcher.rows[1].icons[1].ability ~= nil")), "cooldown icons and tracking live in the standalone CD Watcher, not Raid Frame rows")
+check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.cdIcons == nil and RLSuite.cdwatcher.AbilitiesByKey.shield_wall ~= nil")), "cooldown tracking remains catalogued in CD Watcher and no longer creates icons in Raid Frame rows")
 check(bool(rt.eval("E5_ROW ~= nil and E5_ROW.bar:GetWidth() == RLSuite.db.profile.raidframe.appearance.barWidth")), "player HP bar uses the configured bar width")
 rt.execute("""
 local rf = RLSuite.raidFrame
@@ -2221,7 +2225,10 @@ check(bool(rt.eval("ROLE_WIDTH_NO_ICON_COLUMN")), "Raid row width is exactly the
 check(bool(rt.eval("RLSuite.raidFrame.buffBar == nil and RLSuite.raidFrame.debuffBar == nil and RLSuite.raidFrame.abilityBar == nil")), "no buff/debuff/ability bars exist anymore (eliminated for redesign)")
 check(bool(rt.eval("RLSuite.raidFrame.BuildAbilityBar == nil and RLSuite.raidFrame.RefreshAlertBars == nil and RLSuite.raidFrame.CheckCoverage == nil")), "buff-bar machinery functions are gone (UI code removed, not just hidden)")
 check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().rowWidth == RLSuite.raidFrame:LayoutMetrics().barWidth")), "Raid group rows reserve no width for removed cooldown icons or role icons")
-check(bool(rt.eval("RLSuite.raidFrame:LayoutMetrics().gridWidth == RLSuite.raidFrame:LayoutMetrics().rowWidth")), "one-column group grid width equals the used player-bar width")
+check(bool(rt.eval("""(function()
+local m=RLSuite.raidFrame:LayoutMetrics()
+return m.groupsPerRow==6 and m.gridWidth==m.groupsPerRow*m.rowWidth+(m.groupsPerRow-1)*m.horizontalSpacing
+end)()""")), "new-install Raid Frame grid defaults to six groups across with matching geometry")
 check(bool(rt.eval("RLSuite.raidFrame.frame._w == RLSuite.raidFrame:LayoutMetrics().W")), "Raid Frame hitbox covers only the visible Raid groups, not separate Tanks or removed CD columns")
 # fase: le icone flask/food per riga restano vive in ogni fase (lo stato non dipende piu' dalle barre)
 rt.execute("RLSuite:SetContextPhase('preboss')")
@@ -2232,7 +2239,13 @@ check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors
 
 print()
 print("== Scenario F: Raid Frame groups + pre-boss drag & drop ==")
-rt.execute("RLSuite:ResetDebugRaid()")
+rt.execute("""
+local profile=RLSuite.db.profile.raidframe
+RF_F_SAVED_GROUPS,RF_F_SAVED_PERROW=profile.numberOfGroups,profile.groupsPerRow
+profile.numberOfGroups,profile.groupsPerRow=8,1
+RLSuite.raidFrame:ApplyLayout()
+RLSuite:ResetDebugRaid()
+""")
 rt.execute("RLSuite.db.profile.debug = true; RLSuite:ApplyDebugMode()")
 rt.execute("for i=1,5 do RLSuite:DebugInviteAccept('F'..i, 'WARRIOR') end")
 
@@ -2689,7 +2702,7 @@ check(bool(rt.eval("TANK_TBAR_FAKE")), "debug/fake tanks leave the target bar em
 # Raid Buffs standalone matrix panel (Method style)
 check(bool(rt.eval("RLSuite.mainWindow.raidBuffBtn ~= nil and RLSuite.mainWindow.raidBuffBtn:GetText() == 'Raid Buffs'")), "Raid Buffs button is in the Raid Control matrix")
 check(bool(rt.eval("RLSuite.mainWindow.cdWatcherBtn ~= nil and RLSuite.mainWindow.cdWatcherBtn:GetText() == 'CD Watcher'")), "CD Watcher button is in the Raid Control matrix")
-check(bool(rt.eval("RLSuite.db.profile.cdwatcher.layoutMode=='macro'")), "CD Watcher defaults to all macro-group windows, not a single panel")
+check(bool(rt.eval("RLSuite.db.profile.cdwatcher.layoutMode=='custom'")), "CD Watcher defaults to Custom panels without opening them automatically")
 check(bool(rt.eval("""(function()
 local root=RLSuite.config:BuildOptionsTable().args.cdwatcher
 local bar,gen=root.args.baroptions.args,root.args.general.args
@@ -2700,6 +2713,7 @@ return root.childGroups=='tree'
     and bar.readyColor and bar.cooldownColor and bar.deadColor and bar.disconnectedColor
     and bar.previewSingle and bar.previewFake
     and bar.fontFace and bar.fontSize and bar.fontOutline and bar.fontColor
+    and bar.abbreviateSpellNames and bar.abbreviateSpellNames.get()==true
     and gen.layoutMode and gen.layoutMode.name=='Layout'
     and gen.layoutMode.values.separate=='Category Panels'
     and gen.layoutMode.values.macro=='Default panels'
@@ -2708,17 +2722,83 @@ return root.childGroups=='tree'
     and gen.layoutMode.values.macro_defensive==nil and gen.layoutMode.values.macro_tank_threat==nil
     and gen.layoutMode.values.macro_int_cc==nil
     and gen.groupMode and gen.groupMode.values.caster and gen.groupMode.values.spells and gen.groupMode.values.none
-    and gen.groupMode.hidden()==false
+    and gen.groupMode.hidden()==true
     and gen.groupByCaster==nil and gen.autoInspect and gen.retryInspection
     and gen.hideTooltips and gen.hideBackdrop and gen.category_tank_defensive
     and gen.category_raid_wide_offensive.name=='Raid Wide Offensive'
     and gen.category_raid_party_defensive.name=='Raid/Party Wide Defensive'
     and gen.category_cc.name=='Crowd Control' and gen.category_cc_toc==nil
     and gen.fontFace==nil and gen.fontSize==nil and gen.fontOutline==nil and gen.fontColor==nil
-    and gen.modifyPanels and gen.modifyPanels.hidden()==true
+    and gen.modifyPanels and gen.modifyPanels.hidden()==false
     and gen.customPanelsHead and gen.customPanel1 and gen.customPanel6
-    and gen.customPanelsHead.hidden()==true
-end)()""")), "CD Watcher Config keeps Bar options and General, extended category names, requested controls and exact size ranges")
+    and gen.customPanelsHead.hidden()==false
+end)()""")), "CD Watcher Config keeps Bar options and General, exact size ranges and the new abbreviation control")
+rt.execute("""
+local app=RLSuite.db.profile.raidframe.appearance
+local cdw=RLSuite.cdwatcher
+local s=cdw:NormalizeSettings()
+local panelsEnabled,panelsEmpty,windowsHidden,emptyText=true,true,true,true
+for index=1,6 do
+    local panel=s.customPanels[index]
+    local window=cdw.customWindows[index]
+    panelsEnabled=panelsEnabled and panel.enabled==true
+    panelsEmpty=panelsEmpty and #panel.spells==0
+    windowsHidden=windowsHidden and window~=nil and not window:IsShown()
+    emptyText=emptyText and window and window.emptyText:GetText()=='No cooldowns to display for this panel.'
+end
+local function near(a,b) return math.abs((tonumber(a) or 0)-b)<0.00001 end
+CDW_SCREENSHOT_DEFAULTS=s.layoutMode=='custom' and s.autoInspect==true and s.hideTooltips==false
+    and s.hideBackdrop==true and s.showIcons==false and s.useClassColor==false
+    and s.barHeight==16 and s.barWidth==130 and s.fontSize==12 and s.fontOutline==true
+    and s.fontColor.r==1 and s.fontColor.g==1 and s.fontColor.b==1
+    and near(s.readyColor.r,51/255) and near(s.readyColor.g,191/255) and near(s.readyColor.b,64/255)
+    and near(s.cooldownColor.r,242/255) and near(s.cooldownColor.g,153/255) and near(s.cooldownColor.b,31/255)
+    and near(s.deadColor.r,77/255) and near(s.deadColor.g,77/255) and near(s.deadColor.b,82/255)
+    and near(s.disconnectedColor.r,75/255) and near(s.disconnectedColor.g,0) and near(s.disconnectedColor.b,1/255)
+    and s.abbreviateSpellNames==true and RLSuite.db.profile.anchorMode==false
+    and app.barWidth==100 and app.barHeight==18 and app.horizontalSpacing==6 and app.rowSpacing==2
+    and app.groupSpacing==0 and app.distanceFade==true and near(app.distanceAlpha,0.4)
+    and panelsEnabled and panelsEmpty and windowsHidden and emptyText
+local button=RLSuite.mainWindow.cdWatcherBtn
+button._scripts.OnClick(button)
+local shownCount=0
+for index=1,6 do if cdw.customWindows[index]:IsShown() then shownCount=shownCount+1 end end
+button._scripts.OnClick(button)
+CDW_CUSTOM_PANELS_OPEN_ON_CLICK=shownCount==6 and not cdw:IsOpen()
+cdw:SetCustomPanelEnabled(1,false)
+cdw:SetCustomPanelEnabled(1,true)
+CDW_PANEL_ENABLE_STAYS_CLOSED=not cdw:IsOpen()
+""")
+check(bool(rt.eval("CDW_SCREENSHOT_DEFAULTS")), "fresh profiles receive editable screenshot-matched Raid Frame and CD Watcher defaults, six empty enabled panels and hidden windows")
+check(bool(rt.eval("CDW_CUSTOM_PANELS_OPEN_ON_CLICK")), "all six default custom panels stay hidden until the Raid Control CD Watcher button is clicked")
+check(bool(rt.eval("CDW_PANEL_ENABLE_STAYS_CLOSED")), "enabling a custom panel in Config does not open CD Watcher while it is closed")
+rt.execute("""
+local cdw=RLSuite.cdwatcher
+local s=cdw:NormalizeSettings()
+local bar=RLSuite.config:BuildOptionsTable().args.cdwatcher.args.baroptions.args
+local oldFaction=UnitFactionGroup
+local oldAbbreviate=bar.abbreviateSpellNames.get()
+UnitFactionGroup=function() return 'Horde' end
+local horde=cdw:GetSpellDisplayName('bloodlust',true)
+UnitFactionGroup=function() return 'Alliance' end
+local alliance=cdw:GetSpellDisplayName('bloodlust',true)
+s.abbreviateSpellNames=true
+local tranq=cdw:GetSpellDisplayName('tranquilizing_shot')
+local hop=cdw:GetSpellDisplayName('hand_of_protection')
+local dsac=cdw:GetSpellDisplayName('divine_sacrifice')
+bar.abbreviateSpellNames.set(nil,false)
+local fullName=cdw:GetSpellDisplayName('hand_of_protection')
+local fullSaved=bar.abbreviateSpellNames.get()==false
+bar.abbreviateSpellNames.set(nil,true)
+local compactSaved=bar.abbreviateSpellNames.get()==true
+local aliases=cdw.AbilitiesByName.Heroism==cdw.AbilitiesByKey.bloodlust
+UnitFactionGroup=oldFaction
+bar.abbreviateSpellNames.set(nil,oldAbbreviate)
+CDW_SPELL_NAMES=horde=='Bloodlust' and alliance=='Heroism' and not horde:find('/',1,true)
+    and tranq=='Tranq Shot' and hop=='HOP' and dsac=='DSAC'
+    and fullName=='Hand of Protection' and fullSaved and compactSaved and aliases
+""")
+check(bool(rt.eval("CDW_SPELL_NAMES")), "spell bars abbreviate names on request, retain full-name switching, and display faction-specific Bloodlust or Heroism")
 rt.execute("""
 local cdw=RLSuite.cdwatcher
 local opts=RLSuite.config:BuildOptionsTable().args.cdwatcher.args
@@ -2737,9 +2817,10 @@ CDW_OLD_SETTINGS={
 local wasClassColor=s.useClassColor
 cdw:ShowPreview('fake')
 local defaultReady=cdw.previewWindow.barFrames.preview_ready
-local cr,cg,cb=cdw:ClassColor('WARRIOR')
-CDW_CLASS_COLOR_DEFAULT=wasClassColor and defaultReady.bar._sbColor[1]==cr
-    and defaultReady.bar._sbColor[2]==cg and defaultReady.bar._sbColor[3]==cb
+CDW_CLASS_COLOR_DEFAULT=not wasClassColor
+    and math.abs(defaultReady.bar._sbColor[1]-s.readyColor.r)<0.001
+    and math.abs(defaultReady.bar._sbColor[2]-s.readyColor.g)<0.001
+    and math.abs(defaultReady.bar._sbColor[3]-s.readyColor.b)<0.001
 bar.barHeight.set(nil,40); bar.barWidth.set(nil,400)
 bar.barTexture.set(nil,'Interface\\\\Buttons\\\\WHITE8x8')
 bar.showIcons.set(nil,false); bar.useClassColor.set(nil,false)
@@ -2790,7 +2871,7 @@ CDW_PREVIEW_OK=p:IsShown() and ready and cooling and dead and disconnected
     and math.abs(ready.bar._sbColor[1]-0.12)<0.001
     and math.abs(ready.bar._sbColor[2]-0.34)<0.001
     and math.abs(ready.bar._sbColor[3]-0.56)<0.001
-    and cooling.label:GetText():find('Icebound Fortitude:Mira  ',1,true)~=nil
+    and cooling.label:GetText():find('IBF:Mira  ',1,true)~=nil
     and cooling.label:GetText():find('READY',1,true)==nil
     and math.abs(cooling.bar._value-47)<0.001
     and dead.data.life=='dead' and disconnected.data.life=='disconnected'
@@ -2819,7 +2900,7 @@ check(bool(rt.eval("CDW_LAYERED_TEXT")), "CD Watcher label is layered above the 
 check(bool(rt.eval("CDW_STATUS_MARKERS")), "ready uses a green square, offline a prohibition icon, dead the target-frame skull, and spell icons remain unchanged")
 check(bool(rt.eval("CDW_FULL_COOLDOWN_ALPHA")), "CD Watcher cooldown fill stays at 60% opacity even when empty")
 check(bool(rt.eval("CDW_SINGLE_PREVIEW")), "CD Watcher supports a single sample-bar preview")
-check(bool(rt.eval("CDW_CLASS_COLOR_DEFAULT")), "default ready/alive bar colors follow the caster's class color")
+check(bool(rt.eval("CDW_CLASS_COLOR_DEFAULT")), "default bars use the screenshot's custom state colors instead of class colors")
 rt.execute("""
 local cdw=RLSuite.cdwatcher
 local s=cdw:NormalizeSettings()
@@ -2986,8 +3067,8 @@ cdw:PositionDefaultCustomPanels()
 local p1,rel1,rp1,x1,y1=windowOne:GetPoint()
 local p2,rel2,rp2,x2,y2=windowTwo:GetPoint()
 local defaultGrid=p1=='TOPLEFT' and rel1==UIParent and rp1=='TOPLEFT'
-    and x1==0 and y1==0 and p2=='TOPLEFT' and rel2==UIParent and rp2=='TOPLEFT'
-    and math.abs(x2-(windowOne:GetWidth()+12))<0.01 and y2==0
+    and x1==0 and y1==-200 and p2=='TOPLEFT' and rel2==UIParent and rp2=='TOPLEFT'
+    and math.abs(x2-(windowOne:GetWidth()+12))<0.01 and y2==-200
 windowOne:ClearAllPoints(); windowOne:SetPoint('TOPLEFT',UIParent,'TOPLEFT',123,-77)
 RLSuite.utils:PersistFramePos(windowOne,cdw:CustomPanelLayoutKey(1))
 cdw:SetCustomPanelEnabled(1,false)
@@ -3038,6 +3119,24 @@ for _,category in ipairs(cdw.Categories) do
             seenClassHeaders[classKey]=true
             local classHeader=picker and picker.customClassHeaders[classKey]
             if not (classHeader and classHeader:IsShown()) then classHeadersAll=false end
+        end
+    end
+end
+local priestLabelStyle,otherClassStylesPreserved=true,true
+for classKey,classHeader in pairs(picker.customClassHeaders) do
+    local class=classKey:match(":([^:]+)$")
+    local bg=classHeader.bg._vertex or {}
+    local text=classHeader.title._tc or {}
+    if class=='PRIEST' then
+        if bg[1]~=1 or bg[2]~=1 or bg[3]~=1 or bg[4]~=1
+            or text[1]~=0 or text[2]~=0 or text[3]~=0 or text[4]~=1 then priestLabelStyle=false end
+    else
+        local r,g,b=cdw:ClassColor(class~='OTHER' and class or nil)
+        if math.abs((bg[1] or 0)-r*0.22)>0.001 or math.abs((bg[2] or 0)-g*0.22)>0.001
+            or math.abs((bg[3] or 0)-b*0.22)>0.001 or math.abs((bg[4] or 0)-0.95)>0.001
+            or math.abs((text[1] or 0)-r)>0.001 or math.abs((text[2] or 0)-g)>0.001
+            or math.abs((text[3] or 0)-b)>0.001 or math.abs((text[4] or 0)-1)>0.001 then
+            otherClassStylesPreserved=false
         end
     end
 end
@@ -3219,16 +3318,18 @@ local function hasAnySubheader(window)
 end
 cdw:RenderCustomPanel(1)
 local panelOneAlice=panelWindow.barFrames[firstAbility.key..'@Alice']
+local firstDisplayName=cdw:GetSpellDisplayName(firstAbility)
+local ccDisplayName=cdw:GetSpellDisplayName(ccAbility)
 local casterGroups=hasSubheader(panelWindow,'Alice') and hasSubheader(panelWindow,'Bob')
-    and panelOneAlice and panelOneAlice.label:GetText()==firstAbility.name
+    and panelOneAlice and panelOneAlice.label:GetText()==firstDisplayName
 cdw:RenderCustomPanel(2)
 local panelTwoAlice=panelWindowTwo.barFrames[firstAbility.key..'@Alice']
-local spellGroups=hasSubheader(panelWindowTwo,firstAbility.name) and hasSubheader(panelWindowTwo,ccAbility.name)
+local spellGroups=hasSubheader(panelWindowTwo,firstDisplayName) and hasSubheader(panelWindowTwo,ccDisplayName)
     and panelTwoAlice and panelTwoAlice.label:GetText()=='Alice'
 cdw:RenderCustomPanel(3)
 local panelThreeAlice=panelWindowThree.barFrames[firstAbility.key..'@Alice']
 local ungrouped=not hasAnySubheader(panelWindowThree) and panelThreeAlice
-    and panelThreeAlice.label:GetText()==firstAbility.name..':Alice'
+    and panelThreeAlice.label:GetText()==firstDisplayName..':Alice'
 local changedGlobalMode=oldGroupMode=='caster' and 'spells' or 'caster'
 s.groupMode=changedGlobalMode; s.groupByCaster=changedGlobalMode=='caster'
 cdw:NormalizeSettings()
@@ -3236,7 +3337,7 @@ local modesIndependent=s.customPanels[1].groupMode=='caster'
     and s.customPanels[2].groupMode=='spells' and s.customPanels[3].groupMode=='none'
 cdw:RenderCustomPanel(1)
 local casterStillIndependent=hasSubheader(panelWindow,'Alice')
-    and panelWindow.barFrames[firstAbility.key..'@Alice'].label:GetText()==firstAbility.name
+    and panelWindow.barFrames[firstAbility.key..'@Alice'].label:GetText()==firstDisplayName
 s.groupMode,s.groupByCaster=oldGroupMode,oldGroupBy
 cdw:NormalizeSettings()
 local legacyPanelGroupMode=s.customPanels[4].groupMode
@@ -3259,11 +3360,12 @@ CDW_CUSTOM_GROUP_MODE=CDW_PANEL_GROUPS_SAVED and CDW_PANEL_CASTER_RENDER
 CDW_GROUP_MIGRATION=migrated
 CDW_CUSTOM_PANEL_CORE=panelCoreBeforeGrouping
 CDW_CUSTOM_PANEL_POSITION=defaultGrid and restorePosition
+CDW_CUSTOM_PRIEST_LABEL=priestLabelStyle and otherClassStylesPreserved
 CDW_CUSTOM_CATALOG=editorOK and editClosed and catalogAll and catalogFound==spellCount
     and shownHeaders==categoryCount and catalogWidthAll and classHeadersAll
     and catalogLevelsUniform and catalogSpellsAboveBackdrop and maxCatalogFrameLevel<10000
     and staleLevelReset and editorPanelWindowsBelowPicker
-    and categoryColumns and barsOneColumn and classColored
+    and categoryColumns and barsOneColumn and classColored and CDW_CUSTOM_PRIEST_LABEL
 CDW_CUSTOM_LAYOUT_OPTIONS=general.layoutMode.values.custom=='Custom panels'
     and general.modifyPanels.hidden()==false and general.customPanel1.hidden()==false and general.customPanel6.hidden()==false
     and general.groupMode.hidden()==true
@@ -3296,8 +3398,9 @@ cdw.isOpen=oldOpen
 cdw:RefreshAll()
 """)
 check(bool(rt.eval("CDW_CUSTOM_PANEL_CORE")), "Custom panels support six persisted settings, rename, spell assignment, duplicate rejection and moves")
-check(bool(rt.eval("CDW_CUSTOM_PANEL_POSITION")), "custom panels default to a three-across grid and restore saved positions after toggling")
+check(bool(rt.eval("CDW_CUSTOM_PANEL_POSITION")), "fresh custom panels start 200px below the top in a three-across grid and restore saved positions after toggling")
 check(bool(rt.eval("CDW_CUSTOM_CATALOG")), "custom editor follows the four-column order and resets all spell rows to one bounded level above the backdrop")
+check(bool(rt.eval("CDW_CUSTOM_PRIEST_LABEL")), "only Priest class labels use a white background with black text")
 check(bool(rt.eval("CDW_CUSTOM_DND")), "manual left-button drag polling adds a catalog spell without client drag registrations or raising panel backdrops over the editor")
 check(bool(rt.eval("CDW_CUSTOM_BACKDROP")), "custom panel backdrops stay visible during editing, then follow Hide window backdrop again")
 check(bool(rt.eval("CDW_PANEL_GROUPS_SAVED")), "each custom panel stores its Group by selection without changing the other panels or global mode")
@@ -3827,13 +3930,13 @@ SP_WINDOW_STANDALONE = RF.buffWindow:GetParent() == UIParent and RF.buffWindow ~
 app.iconSpacing, app.rowSpacing, app.groupSpacing = oldIcon, oldRow, oldGroup
 app.groupHeaderFontSize, buff.matrixBackdrop, buff.spacing = oldHeader, oldBackdrop, oldBuffSpacing
 RF:ApplyLayout()
-SP_DEF = RF:LayoutMetrics().cellW == 24
+SP_DEF = app.iconSize == 20 and RF:LayoutMetrics().iconSize == 18 and RF:LayoutMetrics().cellW == 26
 """)
 check(bool(rt.eval("SP_CELLW and SP_ROWS and SP_GHFONT and SP_TKH")), "Raid Frame layout options still control its group/header spacing and typography")
 check(bool(rt.eval("SP_BG")), "Buff check backdrop color option recolors standalone player rows")
 check(bool(rt.eval("SP_BUFF_SPACING")), "Raid Buffs spacing setting updates the standalone column pitch")
 check(bool(rt.eval("SP_WINDOW_STANDALONE")), "Raid Buffs stays outside the Raid Frame while its layout options change")
-check(bool(rt.eval("SP_DEF")), "Raid Frame spacing options restore to defaults")
+check(bool(rt.eval("SP_DEF")), "Raid Frame restores the 20px icon setting, clamped to the 18px bar height, with 8px legacy spacing")
 
 rt.execute("""
 local MW, RF = RLSuite.mainWindow, RLSuite.raidFrame
@@ -4133,6 +4236,11 @@ o.alpha.set(nil, 1)
 """)
 
 check(rt.eval("LAST_ERROR") is None or rt.eval("LAST_ERROR") == None, "no errors during Scenario F (LAST_ERROR=%r)" % rt.eval("LAST_ERROR"))
+rt.execute("""
+local profile=RLSuite.db.profile.raidframe
+profile.numberOfGroups,profile.groupsPerRow=RF_F_SAVED_GROUPS,RF_F_SAVED_PERROW
+RLSuite.raidFrame:Rebuild()
+""")
 
 print()
 print("== Scenario G: main bar MT/OT + realtime config, loot pickup stack, debug-off clear, WL gold drag, real-raid join ==")
@@ -5427,13 +5535,14 @@ check(bool(rt.eval("RFW == RF_LIVE_W and RF_LIVE_W == RF_M.W * RF_SCALE")),
       "right offset = Raid Frame width (%d px at scale %s)" % (rt.eval("RF_M.W * RF_SCALE"), rt.eval("RF_SCALE")))
 check(bool(rt.eval("TB_ANCH_X == RFW")), "the offset IS the Raid Frame width, on the LEFT side (no other constant)")
 check(bool(rt.eval("BUFF_WINDOW_SEPARATE == true")), "the compact Raid Buffs matrix no longer changes the Raid Frame width")
-check(bool(rt.eval("RF_M.rowWidth == RF_M.barWidth and RF_M.gridWidth == RF_M.rowWidth and RF_M.W == RF_M.gridWidth and RF_M.tankRowWidth == RF_M.tankBarLeftInset + RF_M.barWidth + RF_M.tankTargetGap + RF_M.targetBarWidth")), "Raid matrix excludes Tanks; separate Tanks window reserves left-side labels and side-by-side HP/target bars")
+check(bool(rt.eval("RF_M.rowWidth == RF_M.barWidth and RF_M.groupsPerRow == 6 and RF_M.gridWidth == RF_M.groupsPerRow * RF_M.rowWidth + (RF_M.groupsPerRow - 1) * RF_M.horizontalSpacing and RF_M.W == RF_M.gridWidth and RF_M.tankRowWidth == RF_M.tankBarLeftInset + RF_M.barWidth + RF_M.tankTargetGap + RF_M.targetBarWidth")), "six-column Raid matrix excludes Tanks; separate Tanks window reserves labels and side-by-side HP/target bars")
 
 # -- il Raid Frame cambia -> la barra si riposiziona da sola ---------------
 rt.execute("""
     MW = RLSuite.mainWindow
     local app = RLSuite.raidFrame.db.appearance
     local old = app.barWidth
+    RFW_GROUPS_PER_ROW = RLSuite.raidFrame:LayoutMetrics().groupsPerRow
     app.barWidth = old + 40
     RLSuite.raidFrame:ApplyLayout()
     local _, _, _, xNew = MW.titleBar:GetPoint(1)
@@ -5445,8 +5554,8 @@ rt.execute("""
     local _, _, _, xBack = MW.titleBar:GetPoint(1)
     ANCH_X_BACK = xBack
 """)
-check(bool(rt.eval("RFW_NEW == RFW + 40 and ANCH_X_NEW == (RFW + 40)")),
-      "player bar +40px -> the bar moves 40px right (offset follows the Raid Frame)")
+check(bool(rt.eval("RFW_NEW == RFW + 40 * RFW_GROUPS_PER_ROW and ANCH_X_NEW == (RFW + 40 * RFW_GROUPS_PER_ROW)")),
+      "player bar +40px -> the offset follows the six-column Raid Frame width")
 check(bool(rt.eval("FOLLOWS == true")), "the panel keeps following the title bar when the bar moves")
 check(bool(rt.eval("ANCH_X_BACK == RFW")), "restoring the Raid Frame restores the bar position")
 
@@ -6222,8 +6331,13 @@ rt.execute("""
 _IM_GM = GetNumRaidMembers
 _IM_GR = GetRaidRosterInfo
 _IM_CTX = RLSuite.context
+_IM_GROUPS = RLSuite.db.profile.raidframe.numberOfGroups
+_IM_PER_ROW = RLSuite.db.profile.raidframe.groupsPerRow
 RLSuite.db.profile.debug = false
+RLSuite.db.profile.raidframe.numberOfGroups = 8
+RLSuite.db.profile.raidframe.groupsPerRow = 1
 IMRF = RLSuite.raidFrame
+IMRF:Rebuild()
 IM_M = IMRF:LayoutMetrics()
 IM_BAND = IM_M.groupHeaderH + 5 * IM_M.rowHeight + 4 * IM_M.rowSpacing + IM_M.groupSpacing
 function IM_SetRoster(list)
@@ -6296,6 +6410,8 @@ IM_SetRoster({})
 local mt2 = IMRF.tankSlots[1]
 local mp2 = mt2 and mt2._points and mt2._points[1]
 IM_MT_Y_FULL = mp2 and mp2[5]
+RLSuite.db.profile.raidframe.numberOfGroups = _IM_GROUPS
+RLSuite.db.profile.raidframe.groupsPerRow = _IM_PER_ROW
 
 GetNumRaidMembers = _IM_GM
 GetRaidRosterInfo = _IM_GR
@@ -7788,10 +7904,10 @@ RFM:RefreshBuffMatrix()
 
 -- --- font dei CD nel pannello standalone ---
 local CDW = RLSuite.cdwatcher
-CDW:RefreshRoster()
-local cdRow = CDW.rows[1]
-local cd = cdRow and cdRow.icons and cdRow.icons[1]
+CDW:ShowPreview('fake')
+local cd = CDW.previewWindow and CDW.previewWindow.barFrames.preview_ready
 V90.cd_font = cd and cd.timer and cd.timer._fontArgs and cd.timer._fontArgs[2]
+if CDW.previewWindow then CDW.previewWindow:Hide() end
 
 -- --- durability: colonna di servizio in fondo, con l'icona dell'equip ---
 local cols = RFM:_MatrixCols()
@@ -8035,7 +8151,7 @@ RFM:HideBuffCatTip()
 UnitInRange = nil
 """)
 
-check(bool(rt.eval("V90.cd_font == 11")), "CD Watcher timer labels use the readable 11px font")
+check(bool(rt.eval("V90.cd_font == 12")), "CD Watcher timer labels use the screenshot's 12px font")
 check(bool(rt.eval("V90.dur_key == 'durability' and V90.dur_kind == 'durability'")), "v1.11.90: la colonna Durability e' una colonna di servizio della matrice (kind = durability)")
 check(bool(rt.eval("V90.n_cols == 13")), "v1.11.90: 13 colonne (10 buff incl. Focus Magic + 2 consumabili + Durability), Durability resta l'ultima")
 check(bool(rt.eval("V90.dur_icon:find('PaperDoll', 1, true) ~= nil")), "v1.11.90: la colonna durability usa l'icona dell'equipaggiamento del client")
@@ -8754,9 +8870,10 @@ if row then
     row.fake = false
     row.unit = "raid1"
     local cdw = RLSuite.cdwatcher
-    cdw:RefreshRoster()
-    local cdIcon = cdw.rows[1] and cdw.rows[1].icons[1]
+    cdw:ShowPreview('fake')
+    local cdIcon = cdw.previewWindow and cdw.previewWindow.barFrames.preview_ready
     V112.cdFont = cdIcon and cdIcon.timer and cdIcon.timer._fontArgs and cdIcon.timer._fontArgs[2]
+    if cdw.previewWindow then cdw.previewWindow:Hide() end
     local oldExists, oldConnected, oldReady = UnitExists, UnitIsConnected, GetReadyCheckStatus
     local oldGuid, oldName = UnitGUID, UnitName
     UnitExists = function() return true end
@@ -8796,7 +8913,7 @@ check(bool(rt.eval("V112.waiting:find('ReadyCheck%-Waiting') ~= nil")), "v1.11.1
 check(bool(rt.eval("V112.notready:find('ReadyCheck%-NotReady') ~= nil")), "v1.11.112: ready check no = red X")
 check(bool(rt.eval("V112.ready:find('ReadyCheck%-Ready') ~= nil")), "v1.11.112: ready check yes = green check")
 check(bool(rt.eval("V112.aliasReady")), "v1.11.139: READY_CHECK_CONFIRM player alias overrides stale waiting on raidN row")
-check(bool(rt.eval("V112.cdFont == 11")), "CD Watcher cooldown labels use the 11px font")
+check(bool(rt.eval("V112.cdFont == 12")), "CD Watcher cooldown labels use the 12px default font")
 check(bool(rt.eval("RLSuite.utils:FormatCD(120) == '2m' and RLSuite.utils:FormatCD(119) == '2m' and RLSuite.utils:FormatCD(60) == '1m' and RLSuite.utils:FormatCD(59.1) == '60' and RLSuite.utils:FormatCD(58.1) == '59'")), "v1.11.140: cooldown minutes/seconds always round upward and switch below 60s")
 check(bool(rt.eval("V112.offline:find('UI%-GroupLoot%-Pass%-Up') ~= nil and V112.overlay and V112.text")), "v1.11.112: offline = red pass icon plus red OFFLINE overlay")
 check(bool(rt.eval("V112.overlayAlpha == 0.20 and V112.textRight")), "v1.11.114: offline overlay alpha 0.20 and OFFLINE text right-aligned with 4px inset")

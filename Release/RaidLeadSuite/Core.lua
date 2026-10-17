@@ -90,6 +90,26 @@ local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end 
 local AceAddon = LibStub("AceAddon-3.0")
 local AceDB = LibStub("AceDB-3.0")
 
+-- Prefer the exact ElvUI/LibSharedMedia assets shown by the UI when they are
+-- installed; clean installs without those media keep a valid Blizzard fallback.
+local function defaultMediaPath(kind, mediaName, elvUIKey, fallback)
+    local E = _G.ElvUI and _G.ElvUI[1]
+    local path = E and E.media and elvUIKey and E.media[elvUIKey]
+    if type(path) == "string" and path ~= "" then return path end
+    local media = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if media and media.Fetch then
+        local ok, fetched = pcall(media.Fetch, media, kind, mediaName, true)
+        if ok and type(fetched) == "string" and fetched ~= "" then return fetched end
+    end
+    return fallback
+end
+
+local DEFAULT_ELVUI_FONT = defaultMediaPath("font", "normFont", "normFont", "Fonts\\FRIZQT__.TTF")
+local DEFAULT_RAID_BAR_TEXTURE = defaultMediaPath("statusbar", "glossTex", "glossTex",
+    "Interface\\TargetingFrame\\UI-StatusBar")
+local DEFAULT_CDW_BAR_TEXTURE = defaultMediaPath("statusbar", "Minimalist", "Minimalist",
+    "Interface\\TargetingFrame\\UI-StatusBar")
+
 -- ============================================================
 -- Defaults (AceDB-3.0). Everything lives in the shared "profile"
 -- section; the database uses the global "Default" profile so the
@@ -168,8 +188,8 @@ local defaults = {
             showFlask = true,
             showFood = true,
             showGroupHeaders = true,
-            numberOfGroups = 8,
-            groupsPerRow = 1,
+            numberOfGroups = 6,
+            groupsPerRow = 6,
             locked = true,
             scale = 1.0,
             width = 380,
@@ -181,51 +201,63 @@ local defaults = {
             alpha = 1.0,            -- overall HUD transparency
             appearance = {
                 barWidth = 100,
-                barHeight = 20,
-                iconSize = 16,
-                nameFontSize = 11,
+                barHeight = 18,
+                iconSize = 20,
+                nameFontSize = 14,
                 iconSpacing = 8,        -- legacy spacing fallback for Raid Buffs profiles
-                horizontalSpacing = -1, -- gap fra gruppi affiancati
-                rowSpacing = -1,        -- vertical spacing fra le barre nel gruppo
-                groupSpacing = 5,       -- gap fra le righe di gruppi
-                groupHeaderFontSize = 10,
+                horizontalSpacing = 6,  -- gap fra gruppi affiancati
+                rowSpacing = 2,         -- vertical spacing fra le barre nel gruppo
+                groupSpacing = 0,       -- gap fra le righe di gruppi
+                groupHeaderFontSize = 14,
+                distanceFade = true,
+                distanceAlpha = 0.4,
                 fontColor = { r = 1, g = 1, b = 1, a = 1 },
                 border = true,
-                font = "Fonts\\FRIZQT__.TTF",
+                font = DEFAULT_ELVUI_FONT,
                 fontOutline = true,
-                barTexture = "Interface\\TargetingFrame\\UI-StatusBar",
+                barTexture = DEFAULT_RAID_BAR_TEXTURE,
             },
             alerts = {},
         },
+
         -- Standalone Raid Buffs window controls. Empty defaults preserve old
         -- profiles' Raid Frame iconSpacing/backdrop until first saved change.
         raidbuffs = {},
         cdwatcher = {
-            layoutMode = "macro",
+            layoutMode = "custom",
             groupByCaster = false, -- legacy saved profiles migrate this to groupMode
             autoInspect = true,
             hideTooltips = false,
-            hideBackdrop = false,
-            showIcons = true,
-            useClassColor = true,
+            hideBackdrop = true,
+            showIcons = false,
+            useClassColor = false,
             categories = {},
             collapsed = {},
             categoryOrder = {},
             targetAssignments = {},
             tankAssignments = {},
-            customPanels = {},
-            barHeight = 24,
-            barWidth = 240,
-            barTexture = "Interface\\TargetingFrame\\UI-StatusBar",
-            readyColor = { r = 0.20, g = 0.75, b = 0.25, a = 1 },
-            cooldownColor = { r = 0.95, g = 0.60, b = 0.12, a = 1 },
-            deadColor = { r = 0.30, g = 0.30, b = 0.32, a = 1 },
-            disconnectedColor = { r = 0.48, g = 0.40, b = 0.18, a = 1 },
-            fontFace = "Fonts\\FRIZQT__.TTF",
-            fontSize = 11,
+            customPanels = {
+                { enabled = true, spells = {} },
+                { enabled = true, spells = {} },
+                { enabled = true, spells = {} },
+                { enabled = true, spells = {} },
+                { enabled = true, spells = {} },
+                { enabled = true, spells = {} },
+            },
+            barHeight = 16,
+            barWidth = 130,
+            barTexture = DEFAULT_CDW_BAR_TEXTURE,
+            readyColor = { r = 51 / 255, g = 191 / 255, b = 64 / 255, a = 1 },
+            cooldownColor = { r = 242 / 255, g = 153 / 255, b = 31 / 255, a = 1 },
+            deadColor = { r = 77 / 255, g = 77 / 255, b = 82 / 255, a = 1 },
+            disconnectedColor = { r = 75 / 255, g = 0, b = 1 / 255, a = 1 },
+            fontFace = DEFAULT_ELVUI_FONT,
+            fontSize = 12,
             fontOutline = true,
             fontColor = { r = 1, g = 1, b = 1, a = 1 },
+            abbreviateSpellNames = true,
         },
+
         mschanges = {},
         loot = {
             history = {},
@@ -264,6 +296,20 @@ local defaults = {
     },
 }
 
+local function refreshDefaultMedia()
+    -- Resolve once more during addon initialization, after addons loaded before
+    -- RLSuite have had a chance to register their LibSharedMedia assets.
+    DEFAULT_ELVUI_FONT = defaultMediaPath("font", "normFont", "normFont", "Fonts\\FRIZQT__.TTF")
+    DEFAULT_RAID_BAR_TEXTURE = defaultMediaPath("statusbar", "glossTex", "glossTex",
+        "Interface\\TargetingFrame\\UI-StatusBar")
+    DEFAULT_CDW_BAR_TEXTURE = defaultMediaPath("statusbar", "Minimalist", "Minimalist",
+        "Interface\\TargetingFrame\\UI-StatusBar")
+    defaults.profile.raidframe.appearance.font = DEFAULT_ELVUI_FONT
+    defaults.profile.raidframe.appearance.barTexture = DEFAULT_RAID_BAR_TEXTURE
+    defaults.profile.cdwatcher.fontFace = DEFAULT_ELVUI_FONT
+    defaults.profile.cdwatcher.barTexture = DEFAULT_CDW_BAR_TEXTURE
+end
+
 -- ============================================================
 -- AceAddon-3.0 addon object. AceEvent and AceConsole are embedded, so
 -- RLSuite gains RegisterEvent / RegisterChatCommand. AceDB-3.0 is not
@@ -295,6 +341,7 @@ function RLSuite:OnInitialize()
         legacy = sv
     end
 
+    refreshDefaultMedia()
     self.db = AceDB:New("RLSuiteDB", defaults, true)
 
     if legacy then

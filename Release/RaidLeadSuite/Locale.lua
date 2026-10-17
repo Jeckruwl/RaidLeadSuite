@@ -276,7 +276,6 @@ do
     L["Open the spell catalog and assign abilities to enabled custom panels."] = true
     L["Custom panel editor"] = true
     L["Drag this spell to an active custom panel."] = true
-    L["No spells assigned to this panel. Use Modify panels to add spells."] = true
     L["No cooldowns to display for this panel."] = true
     L["Panel %d"] = true
     L["Panel name"] = true
@@ -331,6 +330,8 @@ do
     L["Draw an outline around cooldown bar text."] = true
     L["Bar text color"] = true
     L["Color for the cooldown label text."] = true
+    L["Abbreviate spell names"] = true
+    L["Use concise cooldown names such as Tranq Shot, HOP, and DSAC instead of full spell names."] = true
     L["Hide bar tooltips"] = true
     L["Hide cooldown bar tooltips."] = true
     L["Hide window backdrop"] = true

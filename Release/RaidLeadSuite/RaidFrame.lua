@@ -460,20 +460,20 @@ function RF:LayoutMetrics()
         return math.max(low, math.min(high, value))
     end
 
-    local numberOfGroups = clamp(db.numberOfGroups, 1, RF_GROUPS, RF_GROUPS)
-    local groupsPerRow = clamp(db.groupsPerRow, 1, RF_GROUPS, 1)
+    local numberOfGroups = clamp(db.numberOfGroups, 1, RF_GROUPS, 6)
+    local groupsPerRow = clamp(db.groupsPerRow, 1, RF_GROUPS, 6)
     groupsPerRow = math.min(groupsPerRow, numberOfGroups)
     local groupRows = math.ceil(numberOfGroups / groupsPerRow)
-    local barHeight = clamp(app.barHeight, 10, 32, tonumber(app.iconSize) or 20)
+    local barHeight = clamp(app.barHeight, 10, 32, 18)
     local barWidth = clamp(app.barWidth, 10, 256, 100)
-    local iconSize = math.min(clamp(app.iconSize, 10, 24, 16), barHeight)
-    local nameFontSize = clamp(app.nameFontSize, 8, 32, 11)
+    local iconSize = math.min(clamp(app.iconSize, 10, 24, 20), barHeight)
+    local nameFontSize = clamp(app.nameFontSize, 8, 32, 14)
     -- Spacing configurabili (Config -> Raid Frame -> Size and Positions).
     local iconSpacing = tonumber(app.iconSpacing) or 8 -- legacy Raid Buffs fallback
-    local verticalSpacing = clamp(app.rowSpacing, -1, 32, -1)
-    local horizontalSpacing = clamp(app.horizontalSpacing, -1, 32, -1)
-    local groupSpacing = clamp(app.groupSpacing, 0, 32, 5)
-    local groupHeaderFontSize = clamp(app.groupHeaderFontSize, 8, 16, 10)
+    local verticalSpacing = clamp(app.rowSpacing, -1, 32, 2)
+    local horizontalSpacing = clamp(app.horizontalSpacing, -1, 32, 6)
+    local groupSpacing = clamp(app.groupSpacing, 0, 32, 0)
+    local groupHeaderFontSize = clamp(app.groupHeaderFontSize, 8, 16, 14)
     local showGroupHeaders = db.showGroupHeaders ~= false
     local groupHeaderH = showGroupHeaders and (groupHeaderFontSize + 4) or 0
     local cellW = math.max(12, iconSize + iconSpacing) -- passo colonne matrice
