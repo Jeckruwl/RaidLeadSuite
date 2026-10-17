@@ -437,12 +437,17 @@ function CDW:IsCategoryEnabled(key) return self:NormalizeSettings().categories[k
 function CDW:GetBarHeight() return self:NormalizeSettings().barHeight end
 function CDW:GetBarWidth() return self:NormalizeSettings().barWidth end
 
+function CDW:ShouldForceCustomPanelBackdrop(frame)
+    return self.customPanelEditMode == true and frame ~= nil
+        and (frame.customPanelIndex ~= nil or frame._cdwCustomSpellPicker == true)
+end
+
 function CDW:ApplyBackdropSettings()
     local settings = self:NormalizeSettings()
     for _, frame in ipairs(self:GetWindows()) do
         frame._cdwWindow = true
         frame._noOuterBorder = true
-        frame._cdwHideBackdrop = settings.hideBackdrop
+        frame._cdwHideBackdrop = settings.hideBackdrop and not self:ShouldForceCustomPanelBackdrop(frame)
         if RLSuite.utils and RLSuite.utils.SkinFrame then RLSuite.utils:SkinFrame(frame) end
     end
 end
@@ -509,7 +514,8 @@ end
 function CDW:PrepareWindow(frame, key)
     frame._cdwWindow = true
     frame._noOuterBorder = true
-    frame._cdwHideBackdrop = self:NormalizeSettings().hideBackdrop
+    local hideBackdrop=self:NormalizeSettings().hideBackdrop
+    frame._cdwHideBackdrop=hideBackdrop and not self:ShouldForceCustomPanelBackdrop(frame)
     RLSuite.utils:MakeDraggable(frame, key)
     RLSuite.utils:MakeClickToFront(frame)
     frame._noOuterBorder = true
@@ -688,10 +694,13 @@ function CDW:EnsureCustomSpellPickerWindow()
     window.columnCount=CUSTOM_PICKER_COLUMNS
     window.customCategoryHeaders={}
     window.customClassHeaders={}
+    window._cdwCustomSpellPicker=true
     self.customSpellPickerFrame=window
+    self:ApplyBackdropSettings()
     window:SetScript("OnHide",function()
         local wasEditing=CDW.customPanelEditMode
         CDW.customPanelEditMode=false
+        CDW:ApplyBackdropSettings()
         CDW.isOpen=CDW:IsOpen()
         if wasEditing and RLSuite.config and RLSuite.config.NotifyChange then
             RLSuite.config:NotifyChange()
@@ -754,7 +763,10 @@ function CDW:ShowCurrentMode()
     self._inspectDismissed = false
     local mode, shown = self:NormalizeSettings().layoutMode, false
     if mode == "separate" then
-        self.customPanelEditMode=false
+        if self.customPanelEditMode then
+            self.customPanelEditMode=false
+            self:ApplyBackdropSettings()
+        end
         if self.customSpellPickerFrame then self.customSpellPickerFrame:Hide() end
         for _, frame in pairs(self.groupWindows or {}) do frame:Hide() end
         for _, frame in pairs(self.customWindows or {}) do frame:Hide() end
@@ -766,7 +778,10 @@ function CDW:ShowCurrentMode()
             end
         end
     elseif self:IsMacroLayout(mode) then
-        self.customPanelEditMode=false
+        if self.customPanelEditMode then
+            self.customPanelEditMode=false
+            self:ApplyBackdropSettings()
+        end
         if self.customSpellPickerFrame then self.customSpellPickerFrame:Hide() end
         for _, frame in pairs(self.categoryWindows) do frame:Hide() end
         for _, frame in pairs(self.customWindows or {}) do frame:Hide() end
@@ -819,6 +834,7 @@ function CDW:Toggle()
     if displayOpen then
         self.isOpen=false
         self.customPanelEditMode=false
+        self:ApplyBackdropSettings()
         if self.inspectFrame then self.inspectFrame:Hide() end
         if self.customSpellPickerFrame then self.customSpellPickerFrame:Hide() end
         for _, frame in pairs(self.categoryWindows) do frame:Hide() end
@@ -834,6 +850,7 @@ function CDW:SetLayoutMode(mode)
     local wasOpen = self:IsOpen()
     self:NormalizeSettings().layoutMode = mode
     self.customPanelEditMode=false
+    self:ApplyBackdropSettings()
     if self.inspectFrame then self.inspectFrame:Hide() end
     if self.customSpellPickerFrame then self.customSpellPickerFrame:Hide() end
     for _, frame in pairs(self.categoryWindows) do frame:Hide() end
@@ -847,6 +864,7 @@ end
 function CDW:SetCustomPanelEditMode(enabled)
     if self:NormalizeSettings().layoutMode~="custom" then return false end
     self.customPanelEditMode=enabled and true or false
+    self:ApplyBackdropSettings()
     if self.customPanelEditMode then
         self.isOpen=true
         self:RefreshAll()

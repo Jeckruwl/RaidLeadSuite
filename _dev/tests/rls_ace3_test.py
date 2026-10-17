@@ -2776,12 +2776,16 @@ cdw:SetCustomPanelEnabled(1,true)
 local savedPoint,savedRel,savedRelPoint,savedX,savedY=windowOne:GetPoint()
 local restorePosition=savedPoint=='TOPLEFT' and savedRel==UIParent and savedRelPoint=='TOPLEFT'
     and savedX==123 and savedY==-77
-local oldClassColor=s.useClassColor
+local oldClassColor,oldHideBackdrop=s.useClassColor,s.hideBackdrop
 s.useClassColor=false
+s.hideBackdrop=true
+cdw:ApplyBackdropSettings()
+local panelBackdropWasHidden=cdw.customWindows[1]:GetBackdrop()==nil
 local modify=general.modifyPanels
 local labelBefore=modify.name()
 modify.func()
 local picker=cdw.customSpellPickerFrame
+local editorBackdropsForced=cdw.customWindows[1]:GetBackdrop()~=nil and picker:GetBackdrop()~=nil
 local catalogFound,catalogAll,catalogWidthAll=0,true,true
 local classHeadersAll,seenClassHeaders=true,{}
 for _,category in ipairs(cdw.Categories) do
@@ -2828,7 +2832,10 @@ local editorOK=cdw:IsCustomPanelEditMode() and picker and picker:IsShown()
     and modify.name()=='Finish editing panels' and labelBefore=='Modify panels'
 modify.func()
 local editClosed=not cdw:IsCustomPanelEditMode() and not picker:IsShown()
-s.useClassColor=oldClassColor
+    and cdw.customWindows[1]:GetBackdrop()==nil and picker:GetBackdrop()==nil
+s.useClassColor,s.hideBackdrop=oldClassColor,oldHideBackdrop
+cdw:ApplyBackdropSettings()
+CDW_CUSTOM_BACKDROP=panelBackdropWasHidden and editorBackdropsForced and editClosed
 local oldGroupMode,oldGroupBy= s.groupMode,s.groupByCaster
 local oldModelsByCategory=cdw.modelsByCategory
 s.customPanels[1].spells={firstAbility.key,ccAbility.key}
@@ -2899,6 +2906,7 @@ cdw:RefreshAll()
 check(bool(rt.eval("CDW_CUSTOM_PANEL_CORE")), "Custom panels support six persisted settings, rename, spell assignment, duplicate rejection and moves")
 check(bool(rt.eval("CDW_CUSTOM_PANEL_POSITION")), "custom panels default to a three-across grid and restore saved positions after toggling")
 check(bool(rt.eval("CDW_CUSTOM_CATALOG")), "custom editor shows all spells grouped by class within four category columns, with 200px class-colored bars")
+check(bool(rt.eval("CDW_CUSTOM_BACKDROP")), "custom panel backdrops stay visible during editing, then follow Hide window backdrop again")
 check(bool(rt.eval("CDW_CUSTOM_GROUP_MODE")), "Custom panels honor Caster, Spells and None grouping labels and headers")
 check(bool(rt.eval("CDW_CUSTOM_LAYOUT_OPTIONS")),  "Custom panels controls are available only under the Custom panels layout")
 rt.execute("""
