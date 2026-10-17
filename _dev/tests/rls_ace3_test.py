@@ -2481,17 +2481,24 @@ return root.childGroups=='tree'
     and bar.barTexture and bar.showIcons and bar.useClassColor
     and bar.readyColor and bar.cooldownColor and bar.deadColor and bar.disconnectedColor
     and bar.previewSingle and bar.previewFake
-    and gen.layoutMode and gen.layoutMode.values.combined==nil and gen.layoutMode.values.macro
-    and gen.layoutMode.values.macro_offensive and gen.layoutMode.values.macro_defensive
-    and gen.layoutMode.values.macro_tank_threat
-    and gen.layoutMode.values.macro_int_cc
+    and bar.fontFace and bar.fontSize and bar.fontOutline and bar.fontColor
+    and gen.layoutMode and gen.layoutMode.name=='Layout'
+    and gen.layoutMode.values.separate=='Category Panels'
+    and gen.layoutMode.values.macro=='Default panels'
+    and gen.layoutMode.values.custom=='Custom panels'
+    and gen.layoutMode.values.combined==nil and gen.layoutMode.values.macro_offensive==nil
+    and gen.layoutMode.values.macro_defensive==nil and gen.layoutMode.values.macro_tank_threat==nil
+    and gen.layoutMode.values.macro_int_cc==nil
     and gen.groupMode and gen.groupMode.values.caster and gen.groupMode.values.spells and gen.groupMode.values.none
     and gen.groupByCaster==nil and gen.autoInspect and gen.retryInspection
     and gen.hideTooltips and gen.hideBackdrop and gen.category_tank_defensive
     and gen.category_raid_wide_offensive.name=='Raid Wide Offensive'
     and gen.category_raid_party_defensive.name=='Raid/Party Wide Defensive'
     and gen.category_cc.name=='Crowd Control' and gen.category_cc_toc==nil
-    and gen.fontFace and gen.fontSize and gen.fontOutline and gen.fontColor
+    and gen.fontFace==nil and gen.fontSize==nil and gen.fontOutline==nil and gen.fontColor==nil
+    and gen.modifyPanels and gen.modifyPanels.hidden()==true
+    and gen.customPanelsHead and gen.customPanel1 and gen.customPanel6
+    and gen.customPanelsHead.hidden()==true
 end)()""")), "CD Watcher Config keeps Bar options and General, extended category names, requested controls and exact size ranges")
 rt.execute("""
 local cdw=RLSuite.cdwatcher
@@ -2518,7 +2525,7 @@ bar.barHeight.set(nil,40); bar.barWidth.set(nil,400)
 bar.barTexture.set(nil,'Interface\\\\Buttons\\\\WHITE8x8')
 bar.showIcons.set(nil,false); bar.useClassColor.set(nil,false)
 bar.readyColor.set(nil,0.12,0.34,0.56)
-gen.fontSize.set(nil,16); gen.fontFace.set(nil,'Fonts\\\\ARIALN.TTF'); gen.fontOutline.set(nil,false)
+bar.fontSize.set(nil,16); bar.fontFace.set(nil,'Fonts\\\\ARIALN.TTF'); bar.fontOutline.set(nil,false)
 -- Life-state icons belong to the right-hand marker, never to spell icons.
 local oldSpellInfo=GetSpellInfo
 bar.showIcons.set(nil,true)
@@ -2586,7 +2593,7 @@ bar.cooldownColor.set(nil,CDW_OLD_SETTINGS.cooldownColor.r,CDW_OLD_SETTINGS.cool
 bar.deadColor.set(nil,CDW_OLD_SETTINGS.deadColor.r,CDW_OLD_SETTINGS.deadColor.g,CDW_OLD_SETTINGS.deadColor.b)
 bar.disconnectedColor.set(nil,CDW_OLD_SETTINGS.disconnectedColor.r,CDW_OLD_SETTINGS.disconnectedColor.g,CDW_OLD_SETTINGS.disconnectedColor.b)
 gen.hideTooltips.set(nil,CDW_OLD_SETTINGS.hideTooltips); gen.hideBackdrop.set(nil,CDW_OLD_SETTINGS.hideBackdrop)
-gen.fontSize.set(nil,CDW_OLD_SETTINGS.fontSize); gen.fontFace.set(nil,CDW_OLD_SETTINGS.fontFace); gen.fontOutline.set(nil,CDW_OLD_SETTINGS.fontOutline)
+bar.fontSize.set(nil,CDW_OLD_SETTINGS.fontSize); bar.fontFace.set(nil,CDW_OLD_SETTINGS.fontFace); bar.fontOutline.set(nil,CDW_OLD_SETTINGS.fontOutline)
 """)
 check(bool(rt.eval("CDW_PREVIEW_OK")), "CD Watcher preview applies dimensions, custom colors, icon visibility and omits the timer when cooldown is zero")
 check(bool(rt.eval("CDW_LAYERED_TEXT")), "CD Watcher label is layered above the StatusBar fill and the status marker is aligned at the right edge")
@@ -2653,6 +2660,8 @@ local cdw,s=RLSuite.cdwatcher,RLSuite.cdwatcher:NormalizeSettings()
 local oldLayout=s.layoutMode
 s.layoutMode='combined'
 CDW_LEGACY_LAYOUT=cdw:NormalizeSettings().layoutMode=='macro'
+s.layoutMode='macro_offensive'
+CDW_LEGACY_GROUP_LAYOUT=cdw:NormalizeSettings().layoutMode=='macro'
 s.layoutMode=oldLayout
 cdw:NormalizeSettings()
 local groups={}
@@ -2673,14 +2682,20 @@ CDW_MACRO_MAPPING=#cdw.MacroGroups==4 and allCovered
     and has(groups.tank_threat,'tank_defensive') and has(groups.tank_threat,'threat')
     and has(groups.int_cc,'interrupts') and has(groups.int_cc,'cc')
 local all=cdw:GetMacroGroupsForLayout('macro')
-local one=cdw:GetMacroGroupsForLayout('macro_tank_threat')
-CDW_MACRO_SELECTION=#all==4 and #one==1 and one[1].key=='tank_threat'
+local retired=cdw:GetMacroGroupsForLayout('macro_tank_threat')
+CDW_MACRO_SELECTION=#all==4 and #retired==0
 local layoutOpt=RLSuite.config:BuildOptionsTable().args.cdwatcher.args.general.args.layoutMode
+local choiceCount=0
+for _ in pairs(layoutOpt.values) do choiceCount=choiceCount+1 end
 local oldSetLayout,selectedLayout=cdw.SetLayoutMode,nil
 cdw.SetLayoutMode=function(_,value) selectedLayout=value end
-layoutOpt.set(nil,'macro_tank_threat')
+layoutOpt.set(nil,'custom')
 cdw.SetLayoutMode=oldSetLayout
-CDW_MACRO_LAYOUT_SET=selectedLayout=='macro_tank_threat'
+local actualOldLayout=cdw:NormalizeSettings().layoutMode
+cdw:SetLayoutMode('custom')
+local actualCustom=cdw:NormalizeSettings().layoutMode=='custom'
+cdw:SetLayoutMode(actualOldLayout)
+CDW_MACRO_LAYOUT_SET=choiceCount==3 and selectedLayout=='custom' and actualCustom
 cdw:RenderMacroGroup(groups.offensive)
 local w=cdw.groupWindows.offensive
 CDW_MACRO_RENDER=w and w.titleText:GetText()=='Offensive'
@@ -2691,11 +2706,139 @@ CDW_MACRO_RENDER=w and w.titleText:GetText()=='Offensive'
     and w.headerFrames.single_target_offensive:IsShown()
     and not (cdw.groupWindows.defensive and cdw.groupWindows.defensive:IsShown())
 """)
-check(bool(rt.eval("CDW_LEGACY_LAYOUT")), "legacy single-panel profiles migrate to the all-macro-groups layout")
-check(bool(rt.eval("CDW_MACRO_MAPPING")), "macro groups contain the requested categories and every existing category exactly once")
-check(bool(rt.eval("CDW_MACRO_SELECTION")), "Window layout selects all macro groups or a specific group")
-check(bool(rt.eval("CDW_MACRO_LAYOUT_SET")), "Window layout dropdown activates a specific macro-group window")
-check(bool(rt.eval("CDW_MACRO_RENDER")), "selected macro-group layout renders its categories in a titled group window")
+check(bool(rt.eval("CDW_LEGACY_LAYOUT")), "legacy single-panel profiles migrate to the default macro-group layout")
+check(bool(rt.eval("CDW_LEGACY_GROUP_LAYOUT")), "legacy per-macro-group profiles migrate to Default panels")
+check(bool(rt.eval("CDW_MACRO_MAPPING")),  "macro groups contain the requested categories and every existing category exactly once")
+check(bool(rt.eval("CDW_MACRO_SELECTION")), "Default panels include every macro group and retired per-group layouts expose none")
+check(bool(rt.eval("CDW_MACRO_LAYOUT_SET")), "Layout dropdown exposes only three choices and activates Custom panels")
+check(bool(rt.eval("CDW_MACRO_RENDER")), "macro-group renderer still produces titled grouped windows")
+rt.execute("""
+local cdw=RLSuite.cdwatcher
+local s=cdw:NormalizeSettings()
+local oldLayout=s.layoutMode
+local oldOpen=cdw.isOpen
+local oldEdit=cdw.customPanelEditMode
+local oldDrafts={}
+for key,value in pairs(cdw.customPanelNameDrafts or {}) do oldDrafts[key]=value end
+local oldPanels={}
+for index,panel in ipairs(s.customPanels) do
+    oldPanels[index]={name=panel.name,enabled=panel.enabled,spells={}}
+    for _,key in ipairs(panel.spells) do oldPanels[index].spells[#oldPanels[index].spells+1]=key end
+end
+local oldWindowState={}
+for _,window in ipairs(cdw:GetWindows()) do oldWindowState[window]=window:IsShown() end
+local categoryCount,spellCount=0,0
+local largeCategory
+for _,category in ipairs(cdw.Categories) do
+    categoryCount=categoryCount+1
+    spellCount=spellCount+#category.abilities
+    if not largeCategory and #category.abilities>=3 then largeCategory=category end
+end
+local firstCategory=cdw.Categories[1]
+local firstAbility=firstCategory.abilities[1]
+local ccCategory
+for _,category in ipairs(cdw.Categories) do if category.key=='cc' then ccCategory=category end end
+local ccAbility=ccCategory and ccCategory.abilities[1]
+s.layoutMode='custom'
+for index=1,6 do
+    s.customPanels[index].enabled=false
+    s.customPanels[index].spells={}
+end
+s.customPanels[1].enabled=true
+s.customPanels[1].name='Panel 1'
+local cfg=RLSuite.config
+local general=cfg:BuildOptionsTable().args.cdwatcher.args.general.args
+cdw:SetCustomPanelNameDraft(1,'  Healers  ')
+general.customPanel1.args.rename.func()
+local renameOK=s.customPanels[1].name=='Healers'
+local emptyRenameRejected=not cdw:RenameCustomPanel(1) and s.customPanels[1].name=='Healers'
+local assignFirst=cdw:AddCustomPanelSpell(1,firstAbility.key)
+local assignCC=cdw:AddCustomPanelSpell(1,ccAbility.key)
+s.customPanels[2].enabled=true
+local moveCC=cdw:MoveCustomPanelSpell(1,2,ccAbility.key)
+local duplicateRejected=not cdw:AddCustomPanelSpell(2,ccAbility.key)
+local windowOne=cdw:EnsureCustomPanelWindow(1)
+local windowTwo=cdw:EnsureCustomPanelWindow(2)
+local layoutOne=RLSuite.utils:WindowLayout(cdw:CustomPanelLayoutKey(1))
+local layoutTwo=RLSuite.utils:WindowLayout(cdw:CustomPanelLayoutKey(2))
+local savedOne={point=layoutOne.point,relPoint=layoutOne.relPoint,x=layoutOne.x,y=layoutOne.y}
+local savedTwo={point=layoutTwo.point,relPoint=layoutTwo.relPoint,x=layoutTwo.x,y=layoutTwo.y}
+cdw:PositionDefaultCustomPanels()
+local p1,rel1,rp1,x1,y1=windowOne:GetPoint()
+local p2,rel2,rp2,x2,y2=windowTwo:GetPoint()
+local defaultGrid=p1=='TOPLEFT' and rel1==UIParent and rp1=='TOPLEFT'
+    and x1==0 and y1==0 and p2=='TOPLEFT' and rel2==UIParent and rp2=='TOPLEFT'
+    and math.abs(x2-(windowOne:GetWidth()+12))<0.01 and y2==0
+windowOne:ClearAllPoints(); windowOne:SetPoint('TOPLEFT',UIParent,'TOPLEFT',123,-77)
+RLSuite.utils:PersistFramePos(windowOne,cdw:CustomPanelLayoutKey(1))
+cdw:SetCustomPanelEnabled(1,false)
+cdw:SetCustomPanelEnabled(1,true)
+local savedPoint,savedRel,savedRelPoint,savedX,savedY=windowOne:GetPoint()
+local restorePosition=savedPoint=='TOPLEFT' and savedRel==UIParent and savedRelPoint=='TOPLEFT'
+    and savedX==123 and savedY==-77
+local modify=general.modifyPanels
+local labelBefore=modify.name()
+modify.func()
+local picker=cdw.customSpellPickerFrame
+local catalogFound,catalogAll=0,true
+for _,category in ipairs(cdw.Categories) do
+    for _,ability in ipairs(category.abilities) do
+        local row=picker and picker.barFrames['custom_catalog_'..ability.key]
+        if row and row:IsShown() and row.data.customCatalogSpell
+            and row.data.ability.category==category.key then catalogFound=catalogFound+1
+        else catalogAll=false end
+    end
+end
+local shownHeaders=0
+for _,category in ipairs(cdw.Categories) do
+    local header=picker and picker.customCategoryHeaders[category.key]
+    if header and header:IsShown() then shownHeaders=shownHeaders+1 end
+end
+local threeColumns=false
+if largeCategory then
+    local a=picker.barFrames['custom_catalog_'..largeCategory.abilities[1].key]
+    local b=picker.barFrames['custom_catalog_'..largeCategory.abilities[2].key]
+    local c=picker.barFrames['custom_catalog_'..largeCategory.abilities[3].key]
+    local _,_,_,ax=a:GetPoint(); local _,_,_,bx=b:GetPoint(); local _,_,_,cx=c:GetPoint()
+    threeColumns=ax==0 and bx>ax and cx>bx
+end
+local editorOK=cdw:IsCustomPanelEditMode() and picker and picker:IsShown()
+    and modify.name()=='Finish editing panels' and labelBefore=='Modify panels'
+modify.func()
+local editClosed=not cdw:IsCustomPanelEditMode() and not picker:IsShown()
+CDW_CUSTOM_PANEL_CORE=categoryCount>0 and spellCount>0 and renameOK and emptyRenameRejected
+    and assignFirst and assignCC and moveCC and duplicateRejected and s.customPanels[1].spells[1]==firstAbility.key
+    and #s.customPanels[2].spells==1 and s.customPanels[2].spells[1]==ccAbility.key
+CDW_CUSTOM_PANEL_POSITION=defaultGrid and restorePosition
+CDW_CUSTOM_CATALOG=editorOK and editClosed and catalogAll and catalogFound==spellCount
+    and shownHeaders==categoryCount and threeColumns
+CDW_CUSTOM_LAYOUT_OPTIONS=general.layoutMode.values.custom=='Custom panels'
+    and general.modifyPanels.hidden()==false and general.customPanel1.hidden()==false and general.customPanel6.hidden()==false
+    and general.customPanel1.args.enabled.type=='toggle'
+    and general.customPanel1.args.name.type=='input'
+    and general.customPanel1.args.rename.type=='execute'
+
+cdw.customPanelEditMode=false
+if cdw.customSpellPickerFrame then cdw.customSpellPickerFrame:Hide() end
+s.layoutMode=oldLayout
+s.customPanels=oldPanels
+cdw.customPanelNameDrafts=oldDrafts
+layoutOne.point,layoutOne.relPoint,layoutOne.x,layoutOne.y=savedOne.point,savedOne.relPoint,savedOne.x,savedOne.y
+layoutTwo.point,layoutTwo.relPoint,layoutTwo.x,layoutTwo.y=savedTwo.point,savedTwo.relPoint,savedTwo.x,savedTwo.y
+RLSuite.utils:ApplySavedPos(windowOne,cdw:CustomPanelLayoutKey(1))
+RLSuite.utils:ApplySavedPos(windowTwo,cdw:CustomPanelLayoutKey(2))
+cdw:PositionDefaultCustomPanels()
+for _,window in ipairs(cdw:GetWindows()) do
+    if oldWindowState[window] then window:Show() else window:Hide() end
+end
+cdw.customPanelEditMode=oldEdit
+cdw.isOpen=oldOpen
+cdw:RefreshAll()
+""")
+check(bool(rt.eval("CDW_CUSTOM_PANEL_CORE")), "Custom panels support six persisted settings, rename, spell assignment, duplicate rejection and moves")
+check(bool(rt.eval("CDW_CUSTOM_PANEL_POSITION")), "custom panels default to a three-across grid and restore saved positions after toggling")
+check(bool(rt.eval("CDW_CUSTOM_CATALOG")), "custom editor catalogs every spell in every CD category in a three-column layout")
+check(bool(rt.eval("CDW_CUSTOM_LAYOUT_OPTIONS")), "Custom panels controls are available only under the Custom panels layout")
 rt.execute("""
 local cfg=RLSuite.config
 local wasOpen=cfg:IsOpen()
@@ -2855,10 +2998,11 @@ local noEdges,noScroll,noConfig=true,true,true
 for _,frame in ipairs(cdw:GetWindows()) do
     local b=frame:GetBackdrop()
     if not frame._cdwWindow or (b and b.edgeFile~=nil) then noEdges=false end
-    if frame.scroll~=nil then noScroll=false end
+    if frame.scroll~=nil and frame~=cdw.customSpellPickerFrame then noScroll=false end
     if frame.optionsBtn~=nil then noConfig=false end
 end
 CDW_BORDERLESS=tankWindow._cdwWindow and tankWindow._noOuterBorder and tankWindow.scroll==nil
+    and cdw.customSpellPickerFrame and cdw.customSpellPickerFrame.scroll~=nil
     and tankWindow.content:GetParent()==tankWindow and backdrop and backdrop.edgeFile==nil and noEdges and noScroll
 CDW_NO_CONFIG_BUTTON=noConfig
 s.hideBackdrop=true; cdw:ApplyBackdropSettings()
@@ -2892,7 +3036,7 @@ check(bool(rt.eval("CDW_TANK_RAIDFRAME_DROP")), "Raid Frame drag release assigns
 check(bool(rt.eval("CDW_TARGET_ASSIGN")), "CD Watcher bar drag assigns a target, not a caster")
 check(bool(rt.eval("CDW_TOOLTIP_DETAILS")), "bar tooltip contains caster, target and cooldown details")
 check(bool(rt.eval("CDW_TOOLTIP_HIDDEN")), "General hide-tooltip option suppresses bar tooltips")
-check(bool(rt.eval("CDW_BORDERLESS")), "CD Watcher windows omit the universal Dialog border and do not use a ScrollFrame")
+check(bool(rt.eval("CDW_BORDERLESS")), "CD Watcher panels stay borderless; only the custom spell catalog is scrollable")
 check(bool(rt.eval("CDW_NO_CONFIG_BUTTON")), "CD Watcher windows no longer include a Config button")
 check(bool(rt.eval("CDW_BACKDROP_HIDDEN")), "General hide-backdrop option removes the background from CD Watcher windows")
 check(bool(rt.eval("CDW_NO_SCROLL_CLIP")), "floating CD Watcher windows expand to show every bar without scroll clipping")

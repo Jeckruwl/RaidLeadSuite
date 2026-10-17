@@ -210,6 +210,7 @@ local defaults = {
             categoryOrder = {},
             targetAssignments = {},
             tankAssignments = {},
+            customPanels = {},
             barHeight = 24,
             barWidth = 240,
             barTexture = "Interface\\TargetingFrame\\UI-StatusBar",

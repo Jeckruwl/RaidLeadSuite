@@ -770,12 +770,9 @@ function CFG:BuildOptionsTable()
     }
 
     local cdwLayoutValues = {
-        separate = L["Floating window per category"],
-        macro = L["All macro groups (one window each)"],
-        macro_offensive = L["Macro group: Offensive"],
-        macro_defensive = L["Macro group: Defensive"],
-        macro_tank_threat = L["Macro group: Tank & Threat"],
-        macro_int_cc = L["Macro group: Int & CC"],
+        separate = L["Category Panels"],
+        macro = L["Default panels"],
+        custom = L["Custom panels"],
     }
     local cdwGroupModeValues = {
         caster = L["Caster"],
@@ -783,8 +780,27 @@ function CFG:BuildOptionsTable()
         none = L["None"],
     }
     local fontValues = mediaValues("font", cdwGet("fontFace", "Fonts\\FRIZQT__.TTF"))
+    cdwBarOptions.fontHead = { type = "header", name = L["Font options"], order = 13 }
+    cdwBarOptions.fontFace = select(L["Font face"], L["Font used for the cooldown bar label."], 14, fontValues,
+        function() return cdwGet("fontFace", "Fonts\\FRIZQT__.TTF") end,
+        function(_, value) cdwSet("fontFace", value) end)
+    cdwBarOptions.fontSize = slider(L["Font size"], L["Font size for cooldown bar text."], 15, 8, 24, 1,
+        function() return cdwGet("fontSize", 11) end,
+        function(_, value) cdwSet("fontSize", value) end)
+    cdwBarOptions.fontOutline = toggle(L["Font outline"], L["Draw an outline around cooldown bar text."], 16,
+        function() return cdwGet("fontOutline", true) end,
+        function(_, value) cdwSet("fontOutline", value) end)
+    cdwBarOptions.fontColor = {
+        type = "color", name = L["Bar text color"], desc = L["Color for the cooldown label text."],
+        hasAlpha = false, order = 17,
+        get = function()
+            local c = cdwGet("fontColor", { r = 1, g = 1, b = 1 })
+            return c.r or 1, c.g or 1, c.b or 1
+        end,
+        set = function(_, r, g, b) cdwSet("fontColor", { r = r, g = g, b = b, a = 1 }) end,
+    }
     local cdwGeneral = {
-        layoutMode = select(L["Window layout"], L["Choose separate windows for each category or organize categories into selectable macro-group windows."], 1,
+        layoutMode = select(L["Layout"], L["Choose between Category Panels, Default panels and Custom panels."], 1,
             cdwLayoutValues,
             function() return cdwGet("layoutMode", "macro") end,
             function(_, value) if cdw and cdw.SetLayoutMode then cdw:SetLayoutMode(value); self:NotifyChange() end end),
@@ -821,26 +837,72 @@ function CFG:BuildOptionsTable()
             end)
     end
     local categoryCount = #(cdw and cdw.Categories or {})
-    local fontOrder = 8 + categoryCount
-    cdwGeneral.fontHead = { type = "header", name = L["Font options"], order = fontOrder }
-    cdwGeneral.fontFace = select(L["Font face"], L["Font used for the cooldown bar label."], fontOrder + 1, fontValues,
-        function() return cdwGet("fontFace", "Fonts\\FRIZQT__.TTF") end,
-        function(_, value) cdwSet("fontFace", value) end)
-    cdwGeneral.fontSize = slider(L["Font size"], L["Font size for cooldown bar text."], fontOrder + 2, 8, 24, 1,
-        function() return cdwGet("fontSize", 11) end,
-        function(_, value) cdwSet("fontSize", value) end)
-    cdwGeneral.fontOutline = toggle(L["Font outline"], L["Draw an outline around cooldown bar text."], fontOrder + 3,
-        function() return cdwGet("fontOutline", true) end,
-        function(_, value) cdwSet("fontOutline", value) end)
-    cdwGeneral.fontColor = {
-        type = "color", name = L["Bar text color"], desc = L["Color for the cooldown label text."],
-        hasAlpha = false, order = fontOrder + 4,
-        get = function()
-            local c = cdwGet("fontColor", { r = 1, g = 1, b = 1 })
-            return c.r or 1, c.g or 1, c.b or 1
+    local customPanelOrder = 8 + categoryCount
+    cdwGeneral.modifyPanels = {
+        type = "execute",
+        name = function()
+            return cdw and cdw.IsCustomPanelEditMode and cdw:IsCustomPanelEditMode()
+                and L["Finish editing panels"] or L["Modify panels"]
         end,
-        set = function(_, r, g, b) cdwSet("fontColor", { r = r, g = g, b = b, a = 1 }) end,
+        desc = L["Open the spell catalog and assign abilities to enabled custom panels."],
+        order = customPanelOrder,
+        hidden = function() return cdwGet("layoutMode", "macro") ~= "custom" end,
+        func = function()
+            if cdw and cdw.SetCustomPanelEditMode then
+                cdw:SetCustomPanelEditMode(not cdw:IsCustomPanelEditMode())
+            end
+            self:NotifyChange()
+        end,
     }
+    cdwGeneral.customPanelsHead = {
+        type = "header", name = L["Custom panels"], order = customPanelOrder + 1,
+        hidden = function() return cdwGet("layoutMode", "macro") ~= "custom" end,
+    }
+    local function customPanelAt(index)
+        if cdw and cdw.GetCustomPanels then return cdw:GetCustomPanels()[index] end
+        local saved = cdwGet("customPanels", {})
+        return type(saved) == "table" and saved[index] or {}
+    end
+    for index = 1, 6 do
+        local panelIndex = index
+        local panelOrder = customPanelOrder + 1 + panelIndex
+        local panelArgs = {
+            enabled = toggle(L["Enabled"], L["Show this custom panel."], 1,
+                function()
+                    local panel = customPanelAt(panelIndex)
+                    return panel and panel.enabled == true or false
+                end,
+                function(_, value)
+                    if cdw and cdw.SetCustomPanelEnabled then cdw:SetCustomPanelEnabled(panelIndex, value) end
+                    self:NotifyChange()
+                end),
+            name = {
+                type = "input", name = L["Panel name"], order = 2, width = "double",
+                get = function()
+                    local draft = cdw and cdw.customPanelNameDrafts and cdw.customPanelNameDrafts[panelIndex]
+                    if draft ~= nil then return draft end
+                    local panel = customPanelAt(panelIndex)
+                    return panel and panel.name or (L["Panel %d"]:format(panelIndex))
+                end,
+                set = function(_, value)
+                    if cdw and cdw.SetCustomPanelNameDraft then cdw:SetCustomPanelNameDraft(panelIndex, value) end
+                end,
+            },
+            rename = execute(L["Rename"], L["Save the new panel name."], 3,
+                function()
+                    if cdw and cdw.RenameCustomPanel then cdw:RenameCustomPanel(panelIndex) end
+                    self:NotifyChange()
+                end),
+        }
+        panelArgs.enabled.width = "half"
+        panelArgs.rename.width = "half"
+        cdwGeneral["customPanel" .. panelIndex] = {
+            type = "group", name = L["Panel %d"]:format(panelIndex), order = panelOrder,
+            inline = true,
+            hidden = function() return cdwGet("layoutMode", "macro") ~= "custom" end,
+            args = panelArgs,
+        }
+    end
 
     -- --- Loot ----------------------------------------------------
     -- La LISTA IGNORA (item singoli) sta qui, modificabile a mano: una riga
