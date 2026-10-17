@@ -2490,6 +2490,7 @@ return root.childGroups=='tree'
     and gen.layoutMode.values.macro_defensive==nil and gen.layoutMode.values.macro_tank_threat==nil
     and gen.layoutMode.values.macro_int_cc==nil
     and gen.groupMode and gen.groupMode.values.caster and gen.groupMode.values.spells and gen.groupMode.values.none
+    and gen.groupMode.hidden()==false
     and gen.groupByCaster==nil and gen.autoInspect and gen.retryInspection
     and gen.hideTooltips and gen.hideBackdrop and gen.category_tank_defensive
     and gen.category_raid_wide_offensive.name=='Raid Wide Offensive'
@@ -2654,7 +2655,7 @@ check(bool(rt.eval("CDW_GROUP_OPTION")), "CD Watcher group-by dropdown stores th
 check(bool(rt.eval("CDW_GROUP_CASTER")), "Caster grouping shows spell names under caster headers and preserves cooldown text")
 check(bool(rt.eval("CDW_GROUP_SPELLS")), "Spells grouping shows caster names under spell headers and preserves cooldown text")
 check(bool(rt.eval("CDW_GROUP_NONE")), "None grouping shows spell and caster names without group subheaders")
-check(bool(rt.eval("CDW_GROUP_MIGRATION")), "legacy group-by-caster profiles migrate to the Caster dropdown option")
+check(bool(rt.eval("CDW_GROUP_MIGRATION")), "legacy group-by-caster profiles and unset custom panels migrate to Caster")
 rt.execute("""
 local cdw,s=RLSuite.cdwatcher,RLSuite.cdwatcher:NormalizeSettings()
 local oldLayout=s.layoutMode
@@ -2722,7 +2723,7 @@ local oldDrafts={}
 for key,value in pairs(cdw.customPanelNameDrafts or {}) do oldDrafts[key]=value end
 local oldPanels={}
 for index,panel in ipairs(s.customPanels) do
-    oldPanels[index]={name=panel.name,enabled=panel.enabled,spells={}}
+    oldPanels[index]={name=panel.name,enabled=panel.enabled,groupMode=panel.groupMode,spells={}}
     for _,key in ipairs(panel.spells) do oldPanels[index].spells[#oldPanels[index].spells+1]=key end
 end
 local oldWindowState={}
@@ -2786,7 +2787,15 @@ local labelBefore=modify.name()
 modify.func()
 local picker=cdw.customSpellPickerFrame
 local editorBackdropsForced=cdw.customWindows[1]:GetBackdrop()~=nil and picker:GetBackdrop()~=nil
+local staleLevelRow=picker.barFrames['custom_catalog_'..firstAbility.key]
+staleLevelRow:SetFrameLevel(8000000000)
+staleLevelRow.bar:SetFrameLevel(8000000001)
+cdw:RenderCustomSpellPicker()
+local staleLevelReset=staleLevelRow:GetFrameLevel()==picker:GetFrameLevel()+5
+    and staleLevelRow.bar:GetFrameLevel()==picker:GetFrameLevel()+6
 local catalogFound,catalogAll,catalogWidthAll=0,true,true
+local catalogFrameLevel,catalogBarFrameLevel,maxCatalogFrameLevel=nil,nil,0
+local catalogLevelsUniform,catalogSpellsAboveBackdrop=true,true
 local classHeadersAll,seenClassHeaders=true,{}
 for _,category in ipairs(cdw.Categories) do
     for _,ability in ipairs(category.abilities) do
@@ -2795,6 +2804,16 @@ for _,category in ipairs(cdw.Categories) do
             and row.data.ability.category==category.key then
             catalogFound=catalogFound+1
             if row:GetWidth()~=200 then catalogWidthAll=false end
+            local rowLevel=row:GetFrameLevel()
+            local barLevel=row.bar:GetFrameLevel()
+            if catalogFrameLevel==nil then
+                catalogFrameLevel,catalogBarFrameLevel=rowLevel,barLevel
+            elseif rowLevel~=catalogFrameLevel or barLevel~=catalogBarFrameLevel then
+                catalogLevelsUniform=false
+            end
+            if rowLevel<=picker:GetFrameLevel() or rowLevel<=picker.content:GetFrameLevel()
+                or barLevel~=rowLevel+1 then catalogSpellsAboveBackdrop=false end
+            maxCatalogFrameLevel=math.max(maxCatalogFrameLevel,rowLevel,barLevel)
         else catalogAll=false end
         local classKey=category.key..':'..tostring(ability.class or 'OTHER')
         if not seenClassHeaders[classKey] then
@@ -2858,6 +2877,15 @@ local classColored=math.abs((firstBarColor[1] or 0)-classR)<0.001
     and math.abs((firstBarColor[3] or 0)-classB)<0.001
 local editorOK=cdw:IsCustomPanelEditMode() and picker and picker:IsShown()
     and modify.name()=='Finish editing panels' and labelBefore=='Modify panels'
+local editorPanelWindowsBelowPicker=true
+for index=1,6 do
+    local panel=s.customPanels[index]
+    local panelFrame=cdw.customWindows[index]
+    if panel.enabled and panelFrame and panelFrame:IsShown()
+        and panelFrame:GetFrameLevel()>=picker:GetFrameLevel() then
+        editorPanelWindowsBelowPicker=false
+    end
+end
 local dragAbility
 for _,category in ipairs(cdw.Categories) do
     for _,ability in ipairs(category.abilities) do
@@ -2866,6 +2894,8 @@ for _,category in ipairs(cdw.Categories) do
     if dragAbility then break end
 end
 local dragRow=dragAbility and picker.barFrames['custom_catalog_'..dragAbility.key]
+local pickerLevelBeforeDrag,panelLevelBeforeDrag=picker:GetFrameLevel(),windowOne:GetFrameLevel()
+local catalogRowLevelBeforeDrag=dragRow and dragRow:GetFrameLevel()
 local oldCursor=GetCursorPosition
 local oldPickerBounds={picker.GetLeft,picker.GetRight,picker.GetBottom,picker.GetTop}
 local oldPanelBounds={windowOne.GetLeft,windowOne.GetRight,windowOne.GetBottom,windowOne.GetTop}
@@ -2906,22 +2936,33 @@ buttonDown=false
 if poller and poller._scripts.OnUpdate then poller._scripts.OnUpdate(poller,0.04) end
 local dragAssigned=false
 for _,key in ipairs(s.customPanels[1].spells) do if dragAbility and key==dragAbility.key then dragAssigned=true end end
+local dragStackStable=picker:GetFrameLevel()>windowOne:GetFrameLevel()
+    and picker:GetFrameLevel()==pickerLevelBeforeDrag
+    and windowOne:GetFrameLevel()==panelLevelBeforeDrag
+    and dragRow:GetFrameLevel()==catalogRowLevelBeforeDrag
+    and dragRow:GetFrameLevel()==catalogFrameLevel
 GetCursorPosition=oldCursor
 IsMouseButtonDown=oldMouseDown
 picker.GetLeft,picker.GetRight,picker.GetBottom,picker.GetTop=unpack(oldPickerBounds)
 windowOne.GetLeft,windowOne.GetRight,windowOne.GetBottom,windowOne.GetTop=unpack(oldPanelBounds)
 dragRow.GetLeft,dragRow.GetRight,dragRow.GetBottom,dragRow.GetTop=unpack(oldDragRowBounds)
 CDW_CUSTOM_DND=dragHandlers and noClientDrag and manualStarted and dragAssigned
-    and poller~=nil and cdw._barDragSource==nil
+    and poller~=nil and cdw._barDragSource==nil and dragStackStable
 modify.func()
 local editClosed=not cdw:IsCustomPanelEditMode() and not picker:IsShown()
     and cdw.customWindows[1]:GetBackdrop()==nil and picker:GetBackdrop()==nil
 s.useClassColor,s.hideBackdrop=oldClassColor,oldHideBackdrop
 cdw:ApplyBackdropSettings()
 CDW_CUSTOM_BACKDROP=panelBackdropWasHidden and editorBackdropsForced and editClosed
-local oldGroupMode,oldGroupBy= s.groupMode,s.groupByCaster
+local oldGroupMode,oldGroupBy=s.groupMode,s.groupByCaster
 local oldModelsByCategory=cdw.modelsByCategory
+local panelCoreBeforeGrouping=categoryCount>0 and spellCount>0 and renameOK and emptyRenameRejected
+    and assignFirst and assignCC and moveCC and duplicateRejected
+    and s.customPanels[1].spells[1]==firstAbility.key
+    and #s.customPanels[2].spells==1 and s.customPanels[2].spells[1]==ccAbility.key
 s.customPanels[1].spells={firstAbility.key,ccAbility.key}
+s.customPanels[2].spells={firstAbility.key,ccAbility.key}
+s.customPanels[3].spells={firstAbility.key,ccAbility.key}
 local function groupTestModel(ability,owner,order)
     return {key=ability.key..'@'..owner,ability=ability,ownerName=owner,sourceName=owner,
         member={name=owner,class=ability.class},life='alive',ready=true,cooldown=0,
@@ -2931,43 +2972,93 @@ cdw.modelsByCategory={}
 cdw.modelsByCategory[firstAbility.category]={groupTestModel(firstAbility,'Alice',1),groupTestModel(firstAbility,'Bob',2)}
 cdw.modelsByCategory[ccAbility.category]={groupTestModel(ccAbility,'Alice',1)}
 local panelWindow=cdw.customWindows[1]
-local function hasSubheader(text)
-    for _,header in pairs(panelWindow.subheaderFrames) do
+local panelWindowTwo=cdw:EnsureCustomPanelWindow(2)
+local panelWindowThree=cdw:EnsureCustomPanelWindow(3)
+local groupByOne=general.customPanel1.args.groupBy
+local groupByTwo=general.customPanel2.args.groupBy
+local groupByThree=general.customPanel3.args.groupBy
+cdw:SetGroupMode('none')
+groupByOne.set(nil,'caster')
+groupByTwo.set(nil,'spells')
+groupByThree.set(nil,'none')
+local panelModesSaved=s.groupMode=='none' and s.customPanels[1].groupMode=='caster'
+    and s.customPanels[2].groupMode=='spells' and s.customPanels[3].groupMode=='none'
+    and groupByOne.get()=='caster' and groupByTwo.get()=='spells' and groupByThree.get()=='none'
+-- The setters refresh the live roster models; restore our deterministic test
+-- models after those refreshes so each renderer sees the same three spells.
+cdw.modelsByCategory={}
+cdw.modelsByCategory[firstAbility.category]={groupTestModel(firstAbility,'Alice',1),groupTestModel(firstAbility,'Bob',2)}
+cdw.modelsByCategory[ccAbility.category]={groupTestModel(ccAbility,'Alice',1)}
+local function hasSubheader(window,text)
+    for _,header in pairs(window.subheaderFrames) do
         if header:IsShown() and header.text:GetText()==text then return true end
     end
     return false
 end
-local function hasAnySubheader()
-    for _,header in pairs(panelWindow.subheaderFrames) do if header:IsShown() then return true end end
+local function hasAnySubheader(window)
+    for _,header in pairs(window.subheaderFrames) do if header:IsShown() then return true end end
     return false
 end
-s.groupMode='caster'; s.groupByCaster=true
 cdw:RenderCustomPanel(1)
-local casterGroups=hasSubheader('Alice') and hasSubheader('Bob')
+local panelOneAlice=panelWindow.barFrames[firstAbility.key..'@Alice']
+local casterGroups=hasSubheader(panelWindow,'Alice') and hasSubheader(panelWindow,'Bob')
+    and panelOneAlice and panelOneAlice.label:GetText()==firstAbility.name
+cdw:RenderCustomPanel(2)
+local panelTwoAlice=panelWindowTwo.barFrames[firstAbility.key..'@Alice']
+local spellGroups=hasSubheader(panelWindowTwo,firstAbility.name) and hasSubheader(panelWindowTwo,ccAbility.name)
+    and panelTwoAlice and panelTwoAlice.label:GetText()=='Alice'
+cdw:RenderCustomPanel(3)
+local panelThreeAlice=panelWindowThree.barFrames[firstAbility.key..'@Alice']
+local ungrouped=not hasAnySubheader(panelWindowThree) and panelThreeAlice
+    and panelThreeAlice.label:GetText()==firstAbility.name..':Alice'
+local changedGlobalMode=oldGroupMode=='caster' and 'spells' or 'caster'
+s.groupMode=changedGlobalMode; s.groupByCaster=changedGlobalMode=='caster'
+cdw:NormalizeSettings()
+local modesIndependent=s.customPanels[1].groupMode=='caster'
+    and s.customPanels[2].groupMode=='spells' and s.customPanels[3].groupMode=='none'
+cdw:RenderCustomPanel(1)
+local casterStillIndependent=hasSubheader(panelWindow,'Alice')
     and panelWindow.barFrames[firstAbility.key..'@Alice'].label:GetText()==firstAbility.name
-s.groupMode='spells'; s.groupByCaster=false
-cdw:RenderCustomPanel(1)
-local spellGroups=hasSubheader(firstAbility.name) and hasSubheader(ccAbility.name)
-    and panelWindow.barFrames[firstAbility.key..'@Alice'].label:GetText()=='Alice'
-s.groupMode='none'; s.groupByCaster=false
-cdw:RenderCustomPanel(1)
-local ungrouped=not hasAnySubheader()
-    and panelWindow.barFrames[firstAbility.key..'@Alice'].label:GetText()==firstAbility.name..':Alice'
 s.groupMode,s.groupByCaster=oldGroupMode,oldGroupBy
+cdw:NormalizeSettings()
+local legacyPanelGroupMode=s.customPanels[4].groupMode
+s.customPanels[4].groupMode=nil
+s.groupMode=nil; s.groupByCaster=true
+local migrated=cdw:NormalizeSettings().groupMode=='caster'
+    and s.customPanels[4].groupMode=='caster'
+s.customPanels[4].groupMode=legacyPanelGroupMode
+s.groupMode,s.groupByCaster=oldGroupMode,oldGroupBy
+cdw:NormalizeSettings()
 cdw.modelsByCategory=oldModelsByCategory
-CDW_CUSTOM_GROUP_MODE=casterGroups and spellGroups and ungrouped
-CDW_CUSTOM_PANEL_CORE=categoryCount>0 and spellCount>0 and renameOK and emptyRenameRejected
-    and assignFirst and assignCC and moveCC and duplicateRejected and s.customPanels[1].spells[1]==firstAbility.key
-    and #s.customPanels[2].spells==1 and s.customPanels[2].spells[1]==ccAbility.key
+CDW_PANEL_GROUPS_SAVED=panelModesSaved and modesIndependent
+CDW_PANEL_CASTER_RENDER=casterGroups and casterStillIndependent
+CDW_PANEL_SPELL_RENDER=spellGroups
+CDW_PANEL_NONE_RENDER=ungrouped
+CDW_PANEL_ROWS_EXIST=panelOneAlice~=nil and panelTwoAlice~=nil and panelThreeAlice~=nil
+CDW_PANEL_TEST_CATEGORIES_ENABLED=cdw:IsCategoryEnabled(firstAbility.category) and cdw:IsCategoryEnabled(ccAbility.category)
+CDW_CUSTOM_GROUP_MODE=CDW_PANEL_GROUPS_SAVED and CDW_PANEL_CASTER_RENDER
+    and CDW_PANEL_SPELL_RENDER and CDW_PANEL_NONE_RENDER
+CDW_GROUP_MIGRATION=migrated
+CDW_CUSTOM_PANEL_CORE=panelCoreBeforeGrouping
 CDW_CUSTOM_PANEL_POSITION=defaultGrid and restorePosition
 CDW_CUSTOM_CATALOG=editorOK and editClosed and catalogAll and catalogFound==spellCount
     and shownHeaders==categoryCount and catalogWidthAll and classHeadersAll
+    and catalogLevelsUniform and catalogSpellsAboveBackdrop and maxCatalogFrameLevel<10000
+    and staleLevelReset and editorPanelWindowsBelowPicker
     and categoryColumns and barsOneColumn and classColored
 CDW_CUSTOM_LAYOUT_OPTIONS=general.layoutMode.values.custom=='Custom panels'
     and general.modifyPanels.hidden()==false and general.customPanel1.hidden()==false and general.customPanel6.hidden()==false
+    and general.groupMode.hidden()==true
     and general.customPanel1.args.enabled.type=='toggle'
     and general.customPanel1.args.name.type=='input'
+    and general.customPanel1.args.name.width=='normal'
     and general.customPanel1.args.rename.type=='execute'
+    and general.customPanel1.args.groupBy.type=='select'
+    and general.customPanel1.args.groupBy.values.caster=='Caster'
+    and general.customPanel1.args.groupBy.values.spells=='Spells'
+    and general.customPanel1.args.groupBy.values.none=='None'
+    and general.customPanel1.args.groupBy.width=='normal'
+    and general.customPanel6.args.groupBy.type=='select'
 
 cdw.customPanelEditMode=false
 if cdw.customSpellPickerFrame then cdw.customSpellPickerFrame:Hide() end
@@ -2988,10 +3079,16 @@ cdw:RefreshAll()
 """)
 check(bool(rt.eval("CDW_CUSTOM_PANEL_CORE")), "Custom panels support six persisted settings, rename, spell assignment, duplicate rejection and moves")
 check(bool(rt.eval("CDW_CUSTOM_PANEL_POSITION")), "custom panels default to a three-across grid and restore saved positions after toggling")
-check(bool(rt.eval("CDW_CUSTOM_CATALOG")), "custom editor follows the requested category order, stacking categories down each of four 200px columns")
-check(bool(rt.eval("CDW_CUSTOM_DND")), "manual left-button drag polling adds a catalog spell to an overlapping active custom panel without client drag registrations")
+check(bool(rt.eval("CDW_CUSTOM_CATALOG")), "custom editor follows the four-column order and resets all spell rows to one bounded level above the backdrop")
+check(bool(rt.eval("CDW_CUSTOM_DND")), "manual left-button drag polling adds a catalog spell without client drag registrations or raising panel backdrops over the editor")
 check(bool(rt.eval("CDW_CUSTOM_BACKDROP")), "custom panel backdrops stay visible during editing, then follow Hide window backdrop again")
-check(bool(rt.eval("CDW_CUSTOM_GROUP_MODE")), "Custom panels honor Caster, Spells and None grouping labels and headers")
+check(bool(rt.eval("CDW_PANEL_GROUPS_SAVED")), "each custom panel stores its Group by selection without changing the other panels or global mode")
+check(bool(rt.eval("CDW_PANEL_TEST_CATEGORIES_ENABLED")), "custom grouping test categories remain enabled")
+check(bool(rt.eval("CDW_PANEL_ROWS_EXIST")), "all three test panels render their expected caster rows")
+check(bool(rt.eval("CDW_PANEL_CASTER_RENDER")), "Caster grouping remains panel-specific after changing the global grouping mode")
+check(bool(rt.eval("CDW_PANEL_SPELL_RENDER")), "Spells grouping remains isolated to its selected custom panel")
+check(bool(rt.eval("CDW_PANEL_NONE_RENDER")), "None grouping remains isolated to its selected custom panel")
+check(bool(rt.eval("CDW_CUSTOM_GROUP_MODE")), "each custom panel independently renders Caster, Spells or None grouping")
 check(bool(rt.eval("CDW_CUSTOM_LAYOUT_OPTIONS")),  "Custom panels controls are available only under the Custom panels layout")
 rt.execute("""
 local cfg=RLSuite.config

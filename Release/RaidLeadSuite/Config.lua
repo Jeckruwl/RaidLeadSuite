@@ -825,6 +825,9 @@ function CFG:BuildOptionsTable()
             function(_, value) cdwSet("hideBackdrop", value) end),
         categoriesHead = { type = "header", name = L["Visible categories"], order = 7 },
     }
+    -- Custom panels each own their grouping selector; keep the global selector
+    -- only for Category Panels and Default panels to avoid conflicting controls.
+    cdwGeneral.groupMode.hidden = function() return cdwGet("layoutMode", "macro") == "custom" end
     for i, category in ipairs((cdw and cdw.Categories) or {}) do
         local categoryKey = category.key
         cdwGeneral["category_" .. categoryKey] = toggle(
@@ -877,7 +880,7 @@ function CFG:BuildOptionsTable()
                     self:NotifyChange()
                 end),
             name = {
-                type = "input", name = L["Panel name"], order = 2, width = "double",
+                type = "input", name = L["Panel name"], order = 2, width = "normal",
                 get = function()
                     local draft = cdw and cdw.customPanelNameDrafts and cdw.customPanelNameDrafts[panelIndex]
                     if draft ~= nil then return draft end
@@ -893,9 +896,30 @@ function CFG:BuildOptionsTable()
                     if cdw and cdw.RenameCustomPanel then cdw:RenameCustomPanel(panelIndex) end
                     self:NotifyChange()
                 end),
+            groupBy = select(L["Group by"], L["Group the bars by caster, by spell, or do not group them."], 4,
+                cdwGroupModeValues,
+                function()
+                    local panel = customPanelAt(panelIndex)
+                    return panel and panel.groupMode or cdwGet("groupMode", "none")
+                end,
+                function(_, value)
+                    if cdw and cdw.SetCustomPanelGroupMode then
+                        cdw:SetCustomPanelGroupMode(panelIndex, value)
+                    else
+                        local panels = cdwGet("customPanels", {})
+                        if type(panels) ~= "table" then panels = {} end
+                        local panel = type(panels[panelIndex]) == "table" and panels[panelIndex] or {}
+                        panel.groupMode = value
+                        panels[panelIndex] = panel
+                        cdwSet("customPanels", panels)
+                    end
+                    self:NotifyChange()
+                end),
         }
         panelArgs.enabled.width = "half"
         panelArgs.rename.width = "half"
+        panelArgs.name.width = "normal"
+        panelArgs.groupBy.width = "normal"
         cdwGeneral["customPanel" .. panelIndex] = {
             type = "group", name = L["Panel %d"]:format(panelIndex), order = panelOrder,
             inline = true,

@@ -211,6 +211,12 @@ function CDW:NormalizeSettings()
     s.categories, s.collapsed = s.categories or {}, s.collapsed or {}
     s.targetAssignments = type(s.targetAssignments) == "table" and s.targetAssignments or {}
     s.tankAssignments = type(s.tankAssignments) == "table" and s.tankAssignments or {}
+    if s.groupMode ~= "caster" and s.groupMode ~= "spells" and s.groupMode ~= "none" then
+        -- Migrate profiles saved with the former boolean checkbox.
+        if s.groupMode == nil and s.groupByCaster == true then s.groupMode = "caster"
+        else s.groupMode = "none" end
+    end
+    s.groupByCaster = s.groupMode == "caster" -- legacy compatibility
     s.customPanels = type(s.customPanels) == "table" and s.customPanels or {}
     for key in pairs(s.customPanels) do
         if type(key) ~= "number" or key < 1 or key > 6 or key % 1 ~= 0 then s.customPanels[key] = nil end
@@ -222,6 +228,11 @@ function CDW:NormalizeSettings()
         if name == "" then name = L["Panel %d"]:format(index) end
         panel.name = string.sub(name, 1, 32)
         panel.enabled = panel.enabled == true
+        if panel.groupMode ~= "caster" and panel.groupMode ~= "spells" and panel.groupMode ~= "none" then
+            -- Existing custom panels inherit the former global setting once,
+            -- then keep their own persisted grouping mode independently.
+            panel.groupMode = s.groupMode
+        end
         local spells, seen = {}, {}
         local function addSpell(key)
             key = tostring(key or "")
@@ -239,12 +250,6 @@ function CDW:NormalizeSettings()
         panel.spells = spells
         s.customPanels[index] = panel
     end
-    if s.groupMode ~= "caster" and s.groupMode ~= "spells" and s.groupMode ~= "none" then
-        -- Migrate profiles saved with the former boolean checkbox.
-        if s.groupMode == nil and s.groupByCaster == true then s.groupMode = "caster"
-        else s.groupMode = "none" end
-    end
-    s.groupByCaster = s.groupMode == "caster" -- legacy compatibility
     if s.autoInspect == nil then s.autoInspect = true end
     s.hideTooltips = s.hideTooltips == true
     s.hideBackdrop = s.hideBackdrop == true
@@ -347,9 +352,7 @@ function CDW:SetCustomPanelEnabled(index, enabled)
             self.isOpen=true
             local window=self:EnsureCustomPanelWindow(index)
             window:Show()
-            if self.customPanelEditMode and RLSuite.utils and RLSuite.utils.RaiseWindow then
-                RLSuite.utils:RaiseWindow(window)
-            end
+            if self.customPanelEditMode then self:RaiseCustomSpellPicker() end
         elseif self.customWindows and self.customWindows[index] then
             self.customWindows[index]:Hide()
             self.isOpen=self:IsOpen()
@@ -403,7 +406,7 @@ function CDW:IsCustomSpellPickerAtCursor(ignorePanelOcclusion)
     return true
 end
 
-function CDW:GetCustomPanelAtCursor(ignorePickerOcclusion)
+function CDW:GetCustomPanelAtCursor(ignorePickerOcclusion,excludeIndex)
     local picker=self.customSpellPickerFrame
     local pickerAtCursor=picker and picker:IsShown() and self:CursorInsideFrame(picker)
     local pickerLevel=pickerAtCursor and picker.GetFrameLevel and picker:GetFrameLevel() or -1
@@ -411,7 +414,7 @@ function CDW:GetCustomPanelAtCursor(ignorePickerOcclusion)
     for index=1,6 do
         local panel=self:NormalizeSettings().customPanels[index]
         local window=self.customWindows and self.customWindows[index]
-        if panel.enabled and window and window:IsShown() and self:CursorInsideFrame(window) then
+        if index~=excludeIndex and panel.enabled and window and window:IsShown() and self:CursorInsideFrame(window) then
             local level=window.GetFrameLevel and window:GetFrameLevel() or 0
             if (ignorePickerOcclusion or not pickerAtCursor or level>pickerLevel) and level>targetLevel then
                 target,targetLevel=index,level
@@ -419,15 +422,6 @@ function CDW:GetCustomPanelAtCursor(ignorePickerOcclusion)
         end
     end
     return target
-end
-
-function CDW:RaiseCustomPanelWindows()
-    if not (RLSuite.utils and RLSuite.utils.RaiseWindow) then return end
-    for index=1,6 do
-        local panel=self:NormalizeSettings().customPanels[index]
-        local window=self.customWindows and self.customWindows[index]
-        if panel.enabled and window and window:IsShown() then RLSuite.utils:RaiseWindow(window) end
-    end
 end
 
 function CDW:RaiseCustomSpellPicker()
@@ -449,10 +443,13 @@ function CDW:OnCustomPanelBarDragStop(frame)
     if not self.customPanelEditMode or not (model and model.ability and model.ability.key) then
         return self:OnBarDragStop(frame)
     end
-    local targetIndex=self:GetCustomPanelAtCursor()
-    if targetIndex and targetIndex~=model.customPanelIndex then
+    -- In edit mode the spell picker intentionally stays above all custom
+    -- panels; resolve drop targets by geometry rather than obscuring catalog
+    -- rows by raising the panel windows over the editor.
+    local targetIndex=self:GetCustomPanelAtCursor(true,model.customPanelIndex)
+    if targetIndex then
         self:MoveCustomPanelSpell(model.customPanelIndex,targetIndex,model.ability.key)
-    elseif not targetIndex and self:IsCustomSpellPickerAtCursor(true) then
+    elseif self:IsCustomSpellPickerAtCursor(true) then
         self:RemoveCustomPanelSpell(model.customPanelIndex,model.ability.key)
     end
 end
@@ -504,10 +501,8 @@ function CDW:StartManualBarDrag(frame)
     local model=frame.data
     if model.customCatalogSpell then
         self.draggedCustomSpell=frame
-        self:RaiseCustomPanelWindows()
     elseif model.customPanelIndex and self.customPanelEditMode then
         self.draggedCustomPanelSpell=frame
-        self:RaiseCustomPanelWindows()
     else
         self.draggedBar=frame
     end
@@ -671,6 +666,16 @@ function CDW:SetGroupByCaster(enabled)
     self:SetGroupMode(enabled and "caster" or "none")
 end
 
+function CDW:SetCustomPanelGroupMode(index, mode)
+    index=tonumber(index)
+    if not index or index<1 or index>6 or index%1~=0 then return false end
+    if mode~="caster" and mode~="spells" and mode~="none" then return false end
+    local panel=self:NormalizeSettings().customPanels[index]
+    panel.groupMode=mode
+    self:RefreshAll()
+    return true
+end
+
 function CDW:SetAutoInspect(enabled)
     self:NormalizeSettings().autoInspect = enabled and true or false
     self:RefreshAll()
@@ -735,7 +740,22 @@ function CDW:PrepareWindow(frame, key)
             end
         end)
     end
-    RLSuite.utils:MakeClickToFront(frame)
+    if frame.customPanelIndex then
+        -- Editing keeps the spell catalog in front; panel windows remain
+        -- valid drop targets by bounds and must not cover catalog spells.
+        frame._rlsFront = true
+        local oldMouseDown=frame:GetScript("OnMouseDown")
+        frame:SetScript("OnMouseDown",function(self2,button)
+            if CDW.customPanelEditMode then
+                CDW:RaiseCustomSpellPicker()
+            elseif RLSuite.utils and RLSuite.utils.RaiseWindow then
+                RLSuite.utils:RaiseWindow(frame)
+            end
+            if oldMouseDown then oldMouseDown(self2,button) end
+        end)
+    else
+        RLSuite.utils:MakeClickToFront(frame)
+    end
     frame._noOuterBorder = true
     if RLSuite.utils.SkinFrame then RLSuite.utils:SkinFrame(frame) end
 end
@@ -1092,10 +1112,10 @@ function CDW:SetCustomPanelEditMode(enabled)
             if panel.enabled then self:EnsureCustomPanelWindow(index):Show() end
         end
         self:EnsureCustomSpellPickerWindow():Show()
-        if RLSuite.utils and RLSuite.utils.RaiseWindow then
-            self:RaiseCustomPanelWindows()
-            self:RaiseCustomSpellPicker()
-        end
+        -- Keep the picker above panel backdrops throughout editing. Panel drop
+        -- targets are resolved from cursor geometry, so their windows never
+        -- need to be raised over (and obscure) the spell catalog.
+        self:RaiseCustomSpellPicker()
     else
         if self.customSpellPickerFrame then self.customSpellPickerFrame:Hide() end
         self:RefreshAll()
@@ -1434,9 +1454,11 @@ function CDW:SortModels(models)
     return models
 end
 
-function CDW:GroupModels(models)
+function CDW:GroupModels(models, groupMode)
     local groups, lookup = {}, {}
-    local groupMode=self:NormalizeSettings().groupMode
+    if groupMode~="caster" and groupMode~="spells" and groupMode~="none" then
+        groupMode=self:NormalizeSettings().groupMode
+    end
     for _, model in ipairs(models) do
         local key, name
         if groupMode == "spells" then
@@ -1532,7 +1554,7 @@ function CDW:FormatTime(value)
     return tostring(math.ceil(value)) .. "s"
 end
 
-function CDW:RenderBar(window, model, y, width)
+function CDW:RenderBar(window, model, y, width, groupMode)
     local row = self:EnsureBar(window, model, width)
     local settings = self:NormalizeSettings()
     local height = self:GetBarHeight()
@@ -1625,12 +1647,17 @@ function CDW:RenderBar(window, model, y, width)
     local labelText
     if model.customSpell then
         labelText=spellName
-    elseif settings.groupMode == "caster" then
-        labelText=spellName
-    elseif settings.groupMode == "spells" then
-        labelText=casterName
     else
-        labelText=spellName..":"..casterName
+        if groupMode~="caster" and groupMode~="spells" and groupMode~="none" then
+            groupMode=settings.groupMode
+        end
+        if groupMode == "caster" then
+            labelText=spellName
+        elseif groupMode == "spells" then
+            labelText=casterName
+        else
+            labelText=spellName..":"..casterName
+        end
     end
     if inCooldown then labelText=labelText.."  "..self:FormatTime(model.cooldown) end
     row.label:SetWidth(math.max(20,width-barLeft-22))
@@ -1758,31 +1785,34 @@ function CDW:OnCategoryDragStop(source)
     if target and target~=from then self:MoveCategory(from,target,before) end
 end
 
-function CDW:RenderRows(window,key,models,y,width,usedBars,usedSubs)
+function CDW:RenderRows(window,key,models,y,width,usedBars,usedSubs,groupMode)
     local s=self:NormalizeSettings()
     if s.collapsed[key] then return y end
+    if groupMode~="caster" and groupMode~="spells" and groupMode~="none" then
+        groupMode=s.groupMode
+    end
     local sorted={}; for _,m in ipairs(models or {}) do sorted[#sorted+1]=m end
     self:SortModels(sorted)
     local function renderOne(model)
         if key=="interrupts" and model.ready and not self._nextInterruptMarked then model.nextInterrupt=true; self._nextInterruptMarked=true else model.nextInterrupt=false end
-        local row=self:RenderBar(window,model,y,width); usedBars[row]=true; y=y+self:GetBarHeight()
+        local row=self:RenderBar(window,model,y,width,groupMode); usedBars[row]=true; y=y+self:GetBarHeight()
     end
     self._nextInterruptMarked=false
     local function renderGroups(list)
-        for _,group in ipairs(self:GroupModels(list)) do
+        for _,group in ipairs(self:GroupModels(list,groupMode)) do
             local h=self:EnsureSubheader(window,group.name); h:ClearAllPoints(); h:SetPoint("TOPLEFT",window.content,"TOPLEFT",0,-y)
             h:SetSize(width-10,SUBHEADER_H); h:Show(); usedSubs[h]=true; y=y+SUBHEADER_H
             for _,model in ipairs(group.models) do renderOne(model) end
         end
     end
-    if s.groupMode == "caster" then
+    if groupMode == "caster" then
         local ready, cooling = {}, {}
         for _, model in ipairs(sorted) do
             if model.ready then ready[#ready+1]=model else cooling[#cooling+1]=model end
         end
         renderGroups(ready)
         renderGroups(cooling)
-    elseif s.groupMode == "spells" then
+    elseif groupMode == "spells" then
         renderGroups(sorted)
     else
         for _,model in ipairs(sorted) do renderOne(model) end
@@ -1892,7 +1922,7 @@ function CDW:RenderCustomPanel(index)
     end
     count=#models
     if count>0 then
-        y=self:RenderRows(window,"custom_panel_"..index,models,y,width-40,usedBars,usedSubs)
+        y=self:RenderRows(window,"custom_panel_"..index,models,y,width-40,usedBars,usedSubs,panel.groupMode)
         for row in pairs(usedBars) do self.rows[#self.rows+1]=row end
     end
     if count==0 then
@@ -1909,6 +1939,16 @@ end
 function CDW:RenderCustomSpellPicker()
     local window=self:EnsureCustomSpellPickerWindow()
     local width=window:GetWidth()
+    -- Pin the editor hierarchy to small, predictable levels above its backdrop.
+    -- Every catalog spell button uses the SAME level (and every status bar the
+    -- same child level); never assign per-spell or increasing frame levels.
+    local pickerLevel=window.GetFrameLevel and window:GetFrameLevel() or 1
+    if window.scroll and window.scroll.SetFrameLevel then
+        window.scroll:SetFrameLevel(pickerLevel+2)
+    end
+    if window.content.SetFrameLevel then window.content:SetFrameLevel(pickerLevel+3) end
+    local catalogHeaderFrameLevel=pickerLevel+4
+    local catalogSpellFrameLevel=pickerLevel+5
     local columnWidth,barHeight=CUSTOM_PICKER_BAR_WIDTH,self:GetBarHeight()
     local columnGap=CUSTOM_PICKER_COLUMN_GAP
     local gridWidth=CUSTOM_PICKER_COLUMNS*columnWidth+(CUSTOM_PICKER_COLUMNS-1)*columnGap
@@ -1983,6 +2023,7 @@ function CDW:RenderCustomSpellPicker()
             header.title:SetPoint("LEFT",header,"LEFT",6,0)
             window.customCategoryHeaders[category.key]=header
         end
+        if header.SetFrameLevel then header:SetFrameLevel(catalogHeaderFrameLevel) end
         header:ClearAllPoints()
         header:SetPoint("TOPLEFT",window.content,"TOPLEFT",x,-y)
         header:SetSize(columnWidth,HEADER_H)
@@ -2004,6 +2045,7 @@ function CDW:RenderCustomSpellPicker()
                 classHeader.title:SetPoint("LEFT",classHeader,"LEFT",6,0)
                 window.customClassHeaders[classHeaderKey]=classHeader
             end
+            if classHeader.SetFrameLevel then classHeader:SetFrameLevel(catalogHeaderFrameLevel) end
             local r,g,b=self:ClassColor(class~="OTHER" and class or nil)
             classHeader:ClearAllPoints()
             classHeader:SetPoint("TOPLEFT",window.content,"TOPLEFT",x,-y)
@@ -2029,6 +2071,8 @@ function CDW:RenderCustomSpellPicker()
                     customCatalogSpell=true,
                 }
                 local row=self:RenderBar(window,model,y,columnWidth)
+                if row.SetFrameLevel then row:SetFrameLevel(catalogSpellFrameLevel) end
+                if row.bar and row.bar.SetFrameLevel then row.bar:SetFrameLevel(catalogSpellFrameLevel+1) end
                 row:ClearAllPoints()
                 row:SetPoint("TOPLEFT",window.content,"TOPLEFT",x,-y)
                 row:SetSize(columnWidth,barHeight)
