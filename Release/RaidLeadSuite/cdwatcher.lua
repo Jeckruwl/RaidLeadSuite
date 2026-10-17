@@ -2,17 +2,18 @@
 -- RLSuite - CD Watcher (WotLK 3.3.5)
 -- ============================================================
 -- Categorized cooldown/debuff monitor. This window is independent from the
--- Raid Frame; the Raid Frame is used only as a manual caster-assignment target.
+-- Raid Frame; bars may be dropped on player rows to assign targets, and players
+-- may be dropped into Tank Defensive to fill empty MT/OT assignments.
 -- ============================================================
 
 RLSuite.cdwatcher = {}
 local CDW = RLSuite.cdwatcher
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
 
-local ROW_H, HEADER_H, SUBHEADER_H = 34, 24, 18
+local ROW_H, HEADER_H, SUBHEADER_H = 24, 24, 18
 local TITLE_H, PAD, ICON_SIZE = 30, 8, 24
-local MAIN_W, INSPECT_W = 570, 390
-local MAX_SCROLL_H = 620
+local DEFAULT_BAR_WIDTH, INSPECT_W = 240, 390
+local TANK_PROMPT_H = 38
 local DEAD_ICON = "Interface\\Icons\\INV_Misc_Bone_Skull_01"
 local OFFLINE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up"
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -32,39 +33,38 @@ local CATEGORIES = {
         { key="frenzied_regeneration", name="Frenzied Regeneration", class="DRUID", ids={22842}, cd=180, specs={"Feral"}, tank=true },
         { key="divine_protection", name="Divine Protection", class="PALADIN", ids={498}, cd=120 },
     } },
-    { key = "raid_wide_offensive", title = "RWO — Raid Wide Offensive", abilities = {
+    { key = "raid_wide_offensive", title = "Raid Wide Offensive", abilities = {
         { key="bloodlust", name="Bloodlust / Heroism", class="SHAMAN", ids={2825,32182}, cd=300, duration=40, auraIds={2825,32182} },
-        { key="sated_state", name="Sated / Exhaustion", allPlayers=true, auraIds={57724,57723}, cd=0, duration=600, stateOnly=true },
         { key="shattering_throw", name="Shattering Throw", class="WARRIOR", ids={64382}, cd=300, specs={"Arms"}, duration=10, auraIds={64382} },
     } },
-    { key = "raid_party_defensive", title = "RPWD — Raid/Party Wide Defensive", abilities = {
+    { key = "raid_party_defensive", title = "Raid/Party Wide Defensive", abilities = {
         { key="aura_mastery", name="Aura Mastery", class="PALADIN", ids={31821}, cd=120, specs={"Holy"}, duration=6, auraIds={31821} },
         { key="divine_sacrifice", name="Divine Sacrifice", class="PALADIN", ids={64205}, cd=120, specs={"Protection"}, duration=10, auraIds={64205} },
         { key="divine_hymn", name="Divine Hymn", class="PRIEST", ids={64843}, cd=480, duration=8, auraIds={64843} },
         { key="anti_magic_zone", name="Anti-Magic Zone", class="DEATHKNIGHT", ids={51052}, cd=120, specs={"Unholy"}, duration=10, auraIds={51052} },
         { key="tranquility", name="Tranquility", class="DRUID", ids={48447,26983,9863,740}, cd=480, duration=8, auraIds={48447,26983} },
     } },
-    { key = "single_target_offensive", title = "STO — Single Target Offensive", abilities = {
+    { key = "single_target_offensive", title = "Single Target Offensive", abilities = {
         { key="power_infusion", name="Power Infusion", class="PRIEST", ids={10060}, cd=180, specs={"Discipline"}, duration=15, auraIds={10060}, target=true },
         { key="hysteria", name="Hysteria", class="DEATHKNIGHT", ids={49016}, cd=180, specs={"Blood"}, duration=30, auraIds={49016}, target=true },
     } },
-    { key = "single_target_defensive", title = "STD — Single Target Defensive", abilities = {
+    { key = "single_target_defensive", title = "Single Target Defensive", abilities = {
         { key="hand_of_sacrifice", name="Hand of Sacrifice", class="PALADIN", ids={6940}, cd=120, duration=12, auraIds={6940}, target=true },
         { key="hand_of_protection", name="Hand of Protection", class="PALADIN", ids={1022,5599,10278}, cd=300, duration=10, auraIds={1022,5599,10278}, target=true },
         { key="lay_on_hands", name="Lay on Hands", class="PALADIN", ids={633,2800,10310,27154,48788}, cd=1200, auraIds={633,2800,10310,27154,48788}, target=true },
         { key="pain_suppression", name="Pain Suppression", class="PRIEST", ids={33206}, cd=180, specs={"Discipline"}, duration=8, auraIds={33206}, target=true },
         { key="guardian_spirit", name="Guardian Spirit", class="PRIEST", ids={47788}, cd=180, specs={"Holy"}, duration=10, auraIds={47788}, target=true },
     } },
-    { key = "battle_res", title = "BR — Battle Res", abilities = {
+    { key = "battle_res", title = "Battle Resurrection", abilities = {
         { key="rebirth", name="Rebirth", class="DRUID", ids={48477,26994,20748,20484}, cd=600, target=true },
         { key="soulstone", name="Soulstone", class="WARLOCK", ids={47884,47883,27239,20765,20764,20763,20762,20707}, cd=900, duration=900, auraIds={47883,47884}, state="soulstone", target=true },
     } },
-    { key = "mana_regen", title = "Mana Regen", abilities = {
+    { key = "mana_regen", title = "Mana Regeneration", abilities = {
         { key="innervate", name="Innervate", class="DRUID", ids={29166}, cd=180, duration=10, auraIds={29166}, target=true },
         { key="mana_tide_totem", name="Mana Tide Totem", class="SHAMAN", ids={16190}, cd=300, duration=12, auraIds={16190} },
         { key="hymn_of_hope", name="Hymn of Hope", class="PRIEST", ids={64901}, cd=360, duration=8, auraIds={64901} },
     } },
-    { key = "threat", title = "Threat — Taunt & Aggro", abilities = {
+    { key = "threat", title = "Threat (Taunt and Aggro)", abilities = {
         { key="misdirection", name="Misdirection", class="HUNTER", ids={34477}, cd=30, duration=4, auraIds={34477}, target=true },
         { key="tricks_of_the_trade", name="Tricks of the Trade", class="ROGUE", ids={57934}, cd=30, duration=6, auraIds={57934}, target=true },
         { key="taunt", name="Taunt", class="WARRIOR", ids={355}, cd=8 },
@@ -75,7 +75,7 @@ local CATEGORIES = {
         { key="death_grip", name="Death Grip", class="DEATHKNIGHT", ids={49576}, cd=35 },
         { key="growl", name="Growl", class="DRUID", ids={6795}, cd=8 },
     } },
-    { key = "interrupts", title = "INT — Interrupt rotation", abilities = {
+    { key = "interrupts", title = "Interrupt Rotation", abilities = {
         { key="pummel", name="Pummel", class="WARRIOR", ids={6552}, cd=10 },
         { key="shield_bash", name="Shield Bash", class="WARRIOR", ids={72}, cd=12, shield=true },
         { key="silencing_shot", name="Silencing Shot", class="HUNTER", ids={34490}, cd=20, specs={"Marksmanship"} },
@@ -86,7 +86,7 @@ local CATEGORIES = {
         { key="counterspell", name="Counterspell", class="MAGE", ids={2139}, cd=24 },
         { key="spell_lock", name="Spell Lock (Felhunter)", class="WARLOCK", ids={19647}, cd=24, pet="Felhunter" },
     } },
-    { key = "cc", title = "CC — Active state, target and expiration", abilities = {
+    { key = "cc", title = "Crowd Control", abilities = {
         { key="polymorph", name="Polymorph", class="MAGE", ids={118,12824,12825,12826,28271,28272,61025}, auraIds={118,12824,12825,12826,28271,28272,61025}, cd=1.5, duration=50, target=true },
         { key="cyclone", name="Cyclone", class="DRUID", ids={33786}, auraIds={33786}, cd=1.5, duration=6, target=true },
         { key="entangling_roots", name="Entangling Roots", class="DRUID", ids={339,1062,5195,5196,9852,9853,26989}, auraIds={339,1062,5195,5196,9852,9853,26989}, cd=1.5, duration=27, target=true },
@@ -95,10 +95,8 @@ local CATEGORIES = {
         { key="freezing_trap", name="Freezing Trap", class="HUNTER", ids={14311,14310,14309,3355}, auraIds={3355}, cd=30, duration=60, target=true },
         { key="sap", name="Sap", class="ROGUE", ids={6770,2070,11297,51724}, auraIds={6770,2070,11297,51724}, cd=1.5, duration=25, target=true },
         { key="wyvern_sting", name="Wyvern Sting", class="HUNTER", ids={49012,49011}, auraIds={49012,49011}, cd=60, duration=12, target=true },
-    } },
-    { key = "cc_toc", title = "CC — Solo ToC", abilities = {
-        { key="fear", name="Fear", class="WARLOCK", ids={5782,6213,6215}, auraIds={5782,6213,6215}, cd=1.5, duration=20, target=true },
-        { key="banish", name="Banish", class="WARLOCK", ids={710,18647,18648}, auraIds={710,18647,18648}, cd=1.5, duration=60, target=true },
+        { key="fear", name="Fear", class="WARLOCK", ids={5782,6213,6215}, auraIds={5782,6213,6215}, cd=1.5, duration=20, target=true, encounter="toc" },
+        { key="banish", name="Banish", class="WARLOCK", ids={710,18647,18648}, auraIds={710,18647,18648}, cd=1.5, duration=60, target=true, encounter="toc" },
     } },
     { key = "utility_dispel", title = "Utility / Dispel", abilities = {
         { key="fear_ward", name="Fear Ward", class="PRIEST", ids={6346}, auraIds={6346}, cd=180, duration=180, target=true },
@@ -149,23 +147,39 @@ function CDW:GetSettings()
     return profile.cdwatcher
 end
 
+function CDW:NormalizeColor(color, fallback)
+    if type(color) ~= "table" then color = fallback end
+    return {
+        r = tonumber(color and (color.r or color[1])) or fallback.r,
+        g = tonumber(color and (color.g or color[2])) or fallback.g,
+        b = tonumber(color and (color.b or color[3])) or fallback.b,
+        a = 1,
+    }
+end
+
 function CDW:NormalizeSettings()
     local s = self:GetSettings()
     if s.layoutMode ~= "combined" and s.layoutMode ~= "separate" then s.layoutMode = "combined" end
-    s.categories, s.collapsed, s.assignments = s.categories or {}, s.collapsed or {}, s.assignments or {}
+    s.categories, s.collapsed = s.categories or {}, s.collapsed or {}
+    s.targetAssignments = type(s.targetAssignments) == "table" and s.targetAssignments or {}
+    s.tankAssignments = type(s.tankAssignments) == "table" and s.tankAssignments or {}
     if s.groupByCaster == nil then s.groupByCaster = false end
     if s.autoInspect == nil then s.autoInspect = true end
-    s.barHeight = math.max(26, math.min(60, tonumber(s.barHeight) or ROW_H))
-    s.barWidth = math.max(300, math.min(900, tonumber(s.barWidth) or MAIN_W - 40))
+    s.hideTooltips = s.hideTooltips == true
+    s.hideBackdrop = s.hideBackdrop == true
+    s.showIcons = s.showIcons ~= false
+    s.useClassColor = s.useClassColor ~= false
+    s.barHeight = math.max(10, math.min(32, tonumber(s.barHeight) or ROW_H))
+    s.barWidth = math.max(100, math.min(300, tonumber(s.barWidth) or DEFAULT_BAR_WIDTH))
     s.barTexture = type(s.barTexture) == "string" and s.barTexture or STATUSBAR_TEXTURE
-    s.showAbilityText = s.showAbilityText ~= false
-    s.showPlayerText = s.showPlayerText ~= false
-    s.showTimerText = s.showTimerText ~= false
-    s.showDetailText = s.showDetailText ~= false
+    s.readyColor = self:NormalizeColor(s.readyColor, { r=0.20, g=0.75, b=0.25 })
+    s.cooldownColor = self:NormalizeColor(s.cooldownColor, { r=0.95, g=0.60, b=0.12 })
+    s.deadColor = self:NormalizeColor(s.deadColor, { r=0.30, g=0.30, b=0.32 })
+    s.disconnectedColor = self:NormalizeColor(s.disconnectedColor, { r=0.48, g=0.40, b=0.18 })
     s.fontFace = type(s.fontFace) == "string" and s.fontFace or "Fonts\\FRIZQT__.TTF"
     s.fontSize = math.max(8, math.min(24, tonumber(s.fontSize) or 11))
     if s.fontOutline == nil then s.fontOutline = true end
-    if type(s.fontColor) ~= "table" then s.fontColor = { r = 1, g = 1, b = 1, a = 1 } end
+    s.fontColor = self:NormalizeColor(s.fontColor, { r=1, g=1, b=1 })
     local order, seen = {}, {}
     for _, key in ipairs(s.categoryOrder or {}) do
         if CATEGORY_BY_KEY[key] and not seen[key] then order[#order+1], seen[key] = key, true end
@@ -180,8 +194,20 @@ function CDW:IsCategoryEnabled(key) return self:NormalizeSettings().categories[k
 function CDW:GetBarHeight() return self:NormalizeSettings().barHeight end
 function CDW:GetBarWidth() return self:NormalizeSettings().barWidth end
 
+function CDW:ApplyBackdropSettings()
+    local settings = self:NormalizeSettings()
+    for _, frame in ipairs(self:GetWindows()) do
+        frame._cdwWindow = true
+        frame._noOuterBorder = true
+        frame._cdwHideBackdrop = settings.hideBackdrop
+        if RLSuite.utils and RLSuite.utils.SkinFrame then RLSuite.utils:SkinFrame(frame) end
+    end
+end
+
 function CDW:ApplyBarSettings()
-    self:NormalizeSettings()
+    local settings=self:NormalizeSettings()
+    self:ApplyBackdropSettings()
+    if settings.hideTooltips and GameTooltip then GameTooltip:Hide() end
     self:RefreshAll()
 end
 
@@ -220,6 +246,16 @@ function CDW:IsOpen()
     return false
 end
 
+function CDW:PrepareWindow(frame, key)
+    frame._cdwWindow = true
+    frame._noOuterBorder = true
+    frame._cdwHideBackdrop = self:NormalizeSettings().hideBackdrop
+    RLSuite.utils:MakeDraggable(frame, key)
+    RLSuite.utils:MakeClickToFront(frame)
+    frame._noOuterBorder = true
+    if RLSuite.utils.SkinFrame then RLSuite.utils:SkinFrame(frame) end
+end
+
 function CDW:CreateWindow(name, title, key, width, categoryKey)
     local frame = CreateFrame("Frame", name, UIParent)
     frame:SetSize(width, 260)
@@ -227,8 +263,8 @@ function CDW:CreateWindow(name, title, key, width, categoryKey)
     frame:EnableMouse(true)
     frame:Hide()
     frame.categoryKey = categoryKey
-    frame.barFrames, frame.headerFrames, frame.subheaderFrames = {}, {}, {}
-    RLSuite.utils:MakeUniversalWindow(frame, key)
+    frame.barFrames, frame.headerFrames, frame.subheaderFrames, frame.promptFrames = {}, {}, {}, {}
+    self:PrepareWindow(frame, key)
     RLSuite.utils:ApplySavedPos(frame, key, function()
         local idx = 1
         for i, cat in ipairs(self:GetCategoryOrder()) do if cat == categoryKey then idx = i break end end
@@ -249,16 +285,9 @@ function CDW:CreateWindow(name, title, key, width, categoryKey)
     frame.optionsBtn:SetText(L["Config"])
     frame.optionsBtn:SetScript("OnClick", function() CDW:OpenConfig() end)
 
-    frame.scroll = CreateFrame("ScrollFrame", name .. "Scroll", frame, "UIPanelScrollFrameTemplate")
-    frame.scroll:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -TITLE_H)
-    frame.scroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -28, PAD)
-    frame.content = CreateFrame("Frame", nil, frame.scroll)
+    frame.content = CreateFrame("Frame", nil, frame)
+    frame.content:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -TITLE_H)
     frame.content:SetSize(width - 40, 1)
-    frame.scroll:SetScrollChild(frame.content)
-    RLSuite.utils:RegisterScrollClip(frame.scroll, frame.content)
-    frame.scroll:SetScript("OnSizeChanged", function(_, w)
-        if w and w > 40 then frame.content:SetWidth(w) end
-    end)
     frame:SetScript("OnShow", function() CDW:RefreshAll() end)
     frame:SetScript("OnHide", function()
         if frame == CDW.frame and CDW:NormalizeSettings().layoutMode == "combined" then CDW.isOpen = false end
@@ -320,6 +349,9 @@ function CDW:Init()
     self:RegisterEvent("PARTY_MEMBERS_CHANGED", "OnRosterChanged")
     self:RegisterEvent("INSPECT_READY", "OnInspectReady")
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnInspectPermissionChanged")
+    self:RegisterEvent("ZONE_CHANGED_NEW_AREA", "OnRosterChanged")
+    self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnRosterChanged")
+    self:RegisterEvent("UPDATE_INSTANCE_INFO", "OnRosterChanged")
     self:ScheduleRepeatingTimer("Update", 0.5)
     self:RefreshAll()
 end
@@ -420,17 +452,52 @@ function CDW:GetSpec(member)
     return nil
 end
 
-function CDW:IsTank(member)
-    if not member then return nil end
-    local role = string.upper(tostring(member.role or ""))
-    if role == "TANK" or role == "MAINTANK" or role == "MAIN TANK" then return true end
-    for _, slot in ipairs((RLSuite.raidFrame and RLSuite.raidFrame.tankSlots) or {}) do
-        if slot and (sameName(slot.name, member.name) or (slot.member and sameName(slot.member.name, member.name))) then return true end
+function CDW:GetTankAssignments(roster)
+    roster = roster or self.roster or self:GetRoster()
+    local members, assigned, roles = {}, {}, { mt=nil, ot=nil }
+    for _, member in ipairs(roster) do members[shortName(member.name)] = member end
+    local function add(role, name, source)
+        if not name then return end
+        local key = shortName(name)
+        local member = members[key]
+        if not member then return end
+        roles[role] = member.name
+        assigned[key] = assigned[key] or { name=member.name, role=role, source=source }
     end
-    local spec = self:GetSpec(member)
-    if spec == "Protection" or spec == "Blood" or spec == "Feral" then return true end
-    if spec then return false end
-    return nil
+
+    local rf = RLSuite.raidFrame
+    local slots = rf and rf.tankSlots or {}
+    for index, slot in ipairs(slots) do
+        local role = index == 1 and "mt" or (index == 2 and "ot" or nil)
+        local name = slot and slot.member and slot.member.name or (slot and slot.name)
+        if role and name then add(role, name, "raidframe") end
+    end
+    if GetPartyAssignment then
+        for _, member in ipairs(roster) do
+            local unit = member.unit or member.name
+            if unit then
+                if not roles.mt and GetPartyAssignment("MAINTANK", unit) then add("mt", member.name, "raidframe") end
+                if not roles.ot and GetPartyAssignment("MAINASSIST", unit) then add("ot", member.name, "raidframe") end
+            end
+        end
+    end
+
+    local settings = self:NormalizeSettings()
+    for _, role in ipairs({ "mt", "ot" }) do
+        if not roles[role] and settings.tankAssignments[role] then
+            add(role, settings.tankAssignments[role], "cdwatcher")
+        elseif settings.tankAssignments[role] and not members[shortName(settings.tankAssignments[role])] then
+            settings.tankAssignments[role] = nil
+        end
+    end
+    self.assignedTankMembers, self.tankAssignmentRoles = assigned, roles
+    return assigned, roles
+end
+
+function CDW:IsTank(member)
+    if not member or not member.name then return false end
+    local assigned = self.assignedTankMembers or self:GetTankAssignments(self.roster)
+    return assigned[shortName(member.name)] ~= nil
 end
 
 function CDW:AddInspectNeed(needs, member, reason)
@@ -465,7 +532,32 @@ function CDW:HasFelhunter(member)
     return string.find(lowered,"felhunter",1,true)~=nil or string.find(lowered,"vilsegugio",1,true)~=nil
 end
 
+function CDW:IsTrialOfTheCrusader10Or25()
+    local instanceName, instanceType, difficultyID, difficultyName, maxPlayers
+    if GetInstanceInfo then
+        instanceName, instanceType, difficultyID, difficultyName, maxPlayers = GetInstanceInfo()
+    end
+    local zone = GetRealZoneText and GetRealZoneText() or nil
+    local name = string.lower(tostring(instanceName or zone or ""))
+    local isTrial = name == "trial of the crusader" or name == "trial of the grand crusader"
+    if not isTrial or (instanceType and instanceType ~= "raid") then return false end
+
+    local size = tonumber(maxPlayers)
+    local difficulty = tonumber(difficultyID)
+    if size ~= 10 and size ~= 25 then
+        if difficulty == 3 or difficulty == 5 then size = 10
+        elseif difficulty == 4 or difficulty == 6 then size = 25 end
+    end
+    if size ~= 10 and size ~= 25 then
+        local label = string.lower(tostring(difficultyName or ""))
+        if string.find(label, "10", 1, true) then size = 10
+        elseif string.find(label, "25", 1, true) then size = 25 end
+    end
+    return size == 10 or size == 25
+end
+
 function CDW:CanTrack(ability, member, needs)
+    if ability.encounter == "toc" and not self:IsTrialOfTheCrusader10Or25() then return false, false end
     if ability.allPlayers then return true, false end
     if not member or member.class ~= ability.class then return false, false end
     local unknown, spec = false, self:GetSpec(member)
@@ -559,24 +651,31 @@ function CDW:BuildModels()
         orderByName[shortName(member.name)] = i
         memberByName[shortName(member.name)] = member
     end
+    local assignedTanks, tankRoles = self:GetTankAssignments(roster)
+    local settings = self:NormalizeSettings()
     local needs, modelsByCategory = {}, {}
     for _, category in ipairs(CATEGORIES) do
-        local candidates, models, seen = {}, {}, {}
+        local candidates, models = {}, {}
         for _, ability in ipairs(category.abilities) do
             for _, member in ipairs(roster) do
-                local canTrack, unknown
-                if ability.allPlayers then canTrack, unknown = true, false
-                else canTrack, unknown = self:CanTrack(ability, member, needs) end
-                if canTrack then
-                    local key = ability.key .. "@" .. shortName(member.name)
-                    local assigned = not ability.allPlayers and self:NormalizeSettings().assignments[key] or nil
-                    local owner = assigned and memberByName[shortName(assigned)] or member
-                    candidates[#candidates + 1] = {
-                        key=key, assignmentKey=key, ability=ability, sourceName=member.name,
-                        ownerName=(owner and owner.name) or assigned or member.name, member=owner or member,
-                        unknown=unknown, assigned=assigned and not sameName(assigned, member.name) or false,
-                        rosterOrder=orderByName[shortName(owner and owner.name or member.name)] or orderByName[shortName(member.name)] or 999,
-                    }
+                local selectedTank = category.key ~= "tank_defensive"
+                    or assignedTanks[shortName(member.name)] ~= nil
+                if selectedTank then
+                    local canTrack, unknown
+                    if ability.allPlayers then canTrack, unknown = true, false
+                    else canTrack, unknown = self:CanTrack(ability, member, needs) end
+                    if canTrack then
+                        local key = ability.key .. "@" .. shortName(member.name)
+                        local targetAssigned = settings.targetAssignments[key]
+                        candidates[#candidates + 1] = {
+                            key=key, assignmentKey=key, ability=ability,
+                            sourceName=member.name, ownerName=member.name, member=member,
+                            unknown=unknown, assignedTarget=targetAssigned,
+                            assigned=targetAssigned ~= nil,
+                            tankRole=assignedTanks[shortName(member.name)] and assignedTanks[shortName(member.name)].role,
+                            rosterOrder=orderByName[shortName(member.name)] or 999,
+                        }
+                    end
                 end
             end
         end
@@ -587,19 +686,14 @@ function CDW:BuildModels()
             return tostring(a.sourceName or "") < tostring(b.sourceName or "")
         end)
         for _, model in ipairs(candidates) do
-            local ownerKey = model.ability.key .. "@" .. shortName(model.ownerName)
-            if not seen[ownerKey] then
-                seen[ownerKey] = true
-                model.cooldown = self:GetAbilityRemaining(model.ownerName, model.member.unit, model.ability)
-                model.active = self:GetActive(model.ability, model.ownerName, model.ownerName)
-                model.activeLeft = model.active and model.active.remaining or nil
-                model.ready = model.cooldown <= 0 and not (model.ability.stateOnly and model.active)
-                model.life = self:LifeState(model.member)
-                model.rosterOrder = orderByName[shortName(model.ownerName)] or model.rosterOrder
-                model.categoryOrder = model.ability.order
-                if model.active and model.ability.target then model.targetName = model.active.targetName end
-                models[#models+1] = model
-            end
+            model.cooldown = self:GetAbilityRemaining(model.sourceName, model.member.unit, model.ability)
+            model.active = self:GetActive(model.ability, model.sourceName, model.sourceName)
+            model.activeLeft = model.active and model.active.remaining or nil
+            model.ready = model.cooldown <= 0 and not (model.ability.stateOnly and model.active)
+            model.life = self:LifeState(model.member)
+            model.categoryOrder = model.ability.order
+            model.targetName = model.assignedTarget or (model.active and model.ability.target and model.active.targetName)
+            models[#models+1] = model
         end
         modelsByCategory[category.key] = models
     end
@@ -614,6 +708,8 @@ function CDW:BuildModels()
     end
     table.sort(inspectItems, function(a,b) return a.name < b.name end)
     self.modelsByCategory, self.inspectItems, self.memberByName = modelsByCategory, inspectItems, memberByName
+    self.tankAssignmentRoles, self.assignedTankMembers = tankRoles, assignedTanks
+    self.hasTankAssignments = next(assignedTanks) ~= nil
     self._rosterSignature = self:RosterSignature(roster)
     self._rosterDirty = false
 end
@@ -672,33 +768,20 @@ function CDW:EnsureBar(window, model, width)
     row.icon:SetTexCoord(0.08,0.92,0.08,0.92)
     row.icons = {row.icon}
     row.bar = CreateFrame("StatusBar", nil, row)
-    row.bar:SetPoint("TOPLEFT", row, "TOPLEFT", ICON_SIZE+6, -3)
-    row.bar:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -14, 3)
     row.bar:SetStatusBarTexture(self:NormalizeSettings().barTexture or STATUSBAR_TEXTURE)
-    row.abilityText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.abilityText:SetPoint("TOPLEFT", row.bar, "TOPLEFT", 6, -2)
-    row.abilityText:SetWidth(math.floor((width-ICON_SIZE-28)*0.47))
-    row.playerText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.playerText:SetPoint("TOPRIGHT", row.bar, "TOPRIGHT", -48, -2)
-    row.playerText:SetWidth(math.floor((width-ICON_SIZE-28)*0.36))
-    row.playerText:SetJustifyH("RIGHT")
-    row.detailText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.detailText:SetPoint("BOTTOMLEFT", row.bar, "BOTTOMLEFT", 6, 2)
-    row.detailText:SetWidth(math.floor((width-ICON_SIZE-28)*0.72))
-    row.timer = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.timer:SetPoint("BOTTOMRIGHT", row.bar, "BOTTOMRIGHT", -5, 2)
-    row.timer:SetWidth(44)
-    row.timer:SetJustifyH("RIGHT")
-    row.timer:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
-    row.icon.timer = row.timer
-    row.alive = row:CreateTexture(nil, "OVERLAY")
-    row.alive:SetTexture(WHITE_TEXTURE)
-    row.alive:SetSize(8,8)
-    row.alive:SetPoint("RIGHT", row, "RIGHT", -1, 0)
-    row.alive:Hide()
+    row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    row.label:SetPoint("CENTER", row.bar, "CENTER", 0, 0)
+    row.label:SetJustifyH("CENTER")
+    row.label:SetWordWrap(false)
+    -- Legacy consumers read the cooldown FontString through icon.timer.
+    -- It aliases the one visible label; no additional text is rendered.
+    row.timer = row.label
+    row.icon.timer = row.label
     row:SetScript("OnDragStart", function(frame) if frame.data and not frame.data.preview then CDW.draggedBar = frame end end)
     row:SetScript("OnDragStop", function(frame) if frame.data and not frame.data.preview then CDW:OnBarDragStop(frame) end end)
-    row:SetScript("OnEnter", function(frame) if frame.data and not frame.data.preview then CDW:ShowBarTooltip(frame) end end)
+    row:SetScript("OnEnter", function(frame)
+        if frame.data and not frame.data.preview and not CDW:NormalizeSettings().hideTooltips then CDW:ShowBarTooltip(frame) end
+    end)
     row:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
     row:Hide()
     window.barFrames[model.key] = row
@@ -710,8 +793,7 @@ function CDW:IconFor(ability)
         local _, _, icon = GetSpellInfo(ability.ids[1])
         if icon and icon ~= QUESTION_ICON then return icon end
     end
-    local meta = RLSuite.abilityByName and RLSuite.abilityByName[ability.name]
-    return (meta and meta.icon) or ability.icon or QUESTION_ICON
+    return ability.icon or QUESTION_ICON
 end
 
 function CDW:FormatTime(value)
@@ -724,75 +806,65 @@ function CDW:RenderBar(window, model, y, width)
     local row = self:EnsureBar(window, model, width)
     local settings = self:NormalizeSettings()
     local height = self:GetBarHeight()
-    local textWidth = math.max(100, width - ICON_SIZE - 28)
     local font = settings.fontFace or "Fonts\\FRIZQT__.TTF"
-    local fontSize = tonumber(settings.fontSize) or 11
+    local fontSize = math.min(tonumber(settings.fontSize) or 11, math.max(8,height-2))
     local fontFlags = settings.fontOutline and "OUTLINE" or nil
     local fontColor = settings.fontColor or { r=1, g=1, b=1 }
+    local iconSize = math.min(ICON_SIZE, math.max(8, height - 2))
+    local barLeft = 4
 
     row.data, row.modelKey, row.ability = model, model.key, model.ability.key
     row.icons[1].ability = model.ability.key
     row:EnableMouse(not model.preview)
-    row.icon:SetTexture(self:IconFor(model.ability))
-    row.icon:SetVertexColor(1,1,1,1)
     row.bg:SetVertexColor(0.08,0.08,0.1,0.92)
     row.bar:SetStatusBarTexture(settings.barTexture or STATUSBAR_TEXTURE)
-    row.abilityText:SetWidth(math.floor(textWidth*0.47))
-    row.playerText:SetWidth(math.floor(textWidth*0.36))
-    row.detailText:SetWidth(math.floor(textWidth*0.72))
-    row.timer:SetWidth(math.min(52, math.floor(textWidth*0.20)))
-    row.abilityText:SetFont(font,fontSize,fontFlags)
-    row.playerText:SetFont(font,fontSize,fontFlags)
-    row.detailText:SetFont(font,fontSize,fontFlags)
-    row.timer:SetFont(font,fontSize,fontFlags)
-
-    local r,g,b = self:ClassColor(model.member and model.member.class)
-    local max = model.ability.cd > 0 and model.ability.cd or (model.ability.duration or 1)
-    if model.ability.stateOnly and model.activeLeft then
-        row.bar:SetMinMaxValues(0, max)
-        row.bar:SetValue(math.max(0,math.min(max,model.activeLeft)))
+    row.bar:ClearAllPoints()
+    row.icon:ClearAllPoints()
+    row.icon:SetSize(iconSize,iconSize)
+    if settings.showIcons then
+        row.icon:SetPoint("LEFT",row,"LEFT",0,0)
+        barLeft=iconSize+4
+        row.icon:SetTexture(self:IconFor(model.ability))
+        if model.life=="dead" then row.icon:SetTexture(DEAD_ICON)
+        elseif model.life=="disconnected" then row.icon:SetTexture(OFFLINE_ICON) end
+        row.icon:SetVertexColor(1,1,1,1)
+        row.icon:Show()
     else
-        row.bar:SetMinMaxValues(0,max)
-        row.bar:SetValue(math.max(0,math.min(max,model.cooldown or 0)))
+        row.icon:Hide()
+    end
+    row.bar:SetPoint("TOPLEFT",row,"TOPLEFT",barLeft,-2)
+    row.bar:SetPoint("BOTTOMRIGHT",row,"BOTTOMRIGHT",-2,2)
+    row.bar:SetMinMaxValues(0,model.ability.stateOnly and (model.ability.duration or 1)
+        or (model.ability.cd>0 and model.ability.cd or (model.ability.duration or 1)))
+    local max = model.ability.stateOnly and (model.ability.duration or 1)
+        or (model.ability.cd>0 and model.ability.cd or (model.ability.duration or 1))
+    local remaining = model.ability.stateOnly and model.activeLeft or (model.cooldown or 0)
+    remaining = math.max(0,math.min(max,tonumber(remaining) or 0))
+    local fill = max - remaining
+    row.bar:SetValue(math.max(0,math.min(max,fill)))
+
+    local r,g,b
+    if model.life=="dead" then
+        r,g,b=settings.deadColor.r,settings.deadColor.g,settings.deadColor.b
+        row.bg:SetVertexColor(0.10,0.10,0.11,1)
+    elseif model.life=="disconnected" then
+        r,g,b=settings.disconnectedColor.r,settings.disconnectedColor.g,settings.disconnectedColor.b
+        row.bg:SetVertexColor(0.10,0.10,0.11,1)
+    elseif settings.useClassColor then
+        r,g,b=self:ClassColor(model.member and model.member.class)
+    elseif model.ready then
+        r,g,b=settings.readyColor.r,settings.readyColor.g,settings.readyColor.b
+    else
+        r,g,b=settings.cooldownColor.r,settings.cooldownColor.g,settings.cooldownColor.b
     end
     row.bar:SetStatusBarColor(r,g,b,1)
 
-    if model.life == "dead" then
-        row.icon:SetTexture(DEAD_ICON)
-        row.bg:SetVertexColor(0.10,0.10,0.11,1)
-        row.bar:SetStatusBarColor(0.30,0.30,0.32,1)
-    elseif model.life == "disconnected" then
-        row.icon:SetTexture(OFFLINE_ICON)
-        row.bg:SetVertexColor(0.10,0.10,0.11,1)
-        row.bar:SetStatusBarColor(0.30,0.30,0.32,1)
-    end
-
-    row.abilityText:SetText(model.ability.name)
-    row.abilityText:SetTextColor(fontColor.r or 1,fontColor.g or 1,fontColor.b or 1,1)
-    if settings.showAbilityText then row.abilityText:Show() else row.abilityText:Hide() end
-    local player = model.ownerName or "?"
-    if model.nextInterrupt then player = "[NEXT] " .. player end
-    row.playerText:SetText(player)
-    row.playerText:SetTextColor(r,g,b,1)
-    if settings.showPlayerText then row.playerText:Show() else row.playerText:Hide() end
-    local detail = model.life == "dead" and L["DEAD"] or (model.life == "disconnected" and L["DISCONNECTED"] or (model.life == "alive" and L["ALIVE"] or ""))
-    if model.unknown then detail = detail ~= "" and (detail .. " · ") or ""; detail = detail .. L["Inspect needed"] end
-    if model.targetName then detail = detail ~= "" and (detail .. " · ") or ""; detail = detail .. string.format(L["Target: %s"],model.targetName) end
-    if model.active and model.active.status then detail = detail ~= "" and (detail .. " · ") or ""; detail = detail .. model.active.status end
-    if model.activeLeft and model.activeLeft > 0 then detail = detail ~= "" and (detail .. " · ") or ""; detail = detail .. string.format(L["Expires in %s"],self:FormatTime(model.activeLeft)) end
-    row.detailText:SetText(detail)
-    row.detailText:SetTextColor(fontColor.r or 1,fontColor.g or 1,fontColor.b or 1,1)
-    if settings.showDetailText then row.detailText:Show() else row.detailText:Hide() end
-    if model.cooldown and model.cooldown > 0 then row.timer:SetText(self:FormatTime(model.cooldown))
-    elseif model.activeLeft and model.activeLeft > 0 then row.timer:SetText(self:FormatTime(model.activeLeft))
-    elseif model.active and model.active.status then row.timer:SetText(model.active.status)
-    else row.timer:SetText(L["READY"]) end
-    row.timer:SetTextColor(fontColor.r or 1,fontColor.g or 1,fontColor.b or 1,1)
-    if settings.showTimerText then row.timer:Show() else row.timer:Hide() end
-    if model.life == "alive" then
-        if model.ready then row.alive:SetVertexColor(0.10,0.9,0.2,1) else row.alive:SetVertexColor(0.10,0.55,0.18,1) end
-        row.alive:Show()
-    else row.alive:Hide() end
+    local cooldownText = model.cooldown and model.cooldown>0 and self:FormatTime(model.cooldown) or "0s"
+    row.label:SetWidth(math.max(20,width-barLeft-8))
+    row.label:SetFont(font,fontSize,fontFlags)
+    row.label:SetTextColor(fontColor.r or 1,fontColor.g or 1,fontColor.b or 1,1)
+    row.label:SetText((model.ability.name or "?")..":"..(model.ownerName or "?").."  "..cooldownText)
+    row.label:Show()
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT",window.content,"TOPLEFT",0,-y)
     row:SetSize(width,height)
@@ -826,7 +898,11 @@ function CDW:EnsureCategoryHeader(window,key,width)
     header:SetScript("OnDragStart",function() CDW.dragCategory=key end)
     header:SetScript("OnDragStop",function() CDW:OnCategoryDragStop(key) end)
     header:SetScript("OnEnter",function(frame)
-        if GameTooltip then GameTooltip:SetOwner(frame,"ANCHOR_TOPLEFT"); GameTooltip:SetText(L["Drag this category header to change its order."]); GameTooltip:Show() end
+        if GameTooltip and not CDW:NormalizeSettings().hideTooltips then
+            GameTooltip:SetOwner(frame,"ANCHOR_TOPLEFT")
+            GameTooltip:SetText(L["Drag this category header to change its order."])
+            GameTooltip:Show()
+        end
     end)
     header:SetScript("OnLeave",function() if GameTooltip then GameTooltip:Hide() end end)
     header:Hide()
@@ -845,6 +921,30 @@ function CDW:EnsureSubheader(window,name)
     end
     h.text:SetText(name)
     return h
+end
+
+function CDW:EnsurePrompt(window,key,width)
+    local prompt=window.promptFrames[key]
+    if not prompt then
+        prompt=CreateFrame("Frame",nil,window.content)
+        prompt:EnableMouse(false)
+        prompt.bg=prompt:CreateTexture(nil,"BACKGROUND")
+        prompt.bg:SetTexture(WHITE_TEXTURE)
+        prompt.bg:SetAllPoints(prompt)
+        prompt.bg:SetVertexColor(0.16,0.12,0.04,0.9)
+        prompt.text=prompt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+        prompt.text:SetPoint("LEFT",prompt,"LEFT",6,0)
+        prompt.text:SetJustifyH("LEFT")
+        prompt.text:SetWordWrap(true)
+        prompt.text:SetTextColor(1,0.82,0.25,1)
+        window.promptFrames[key]=prompt
+    end
+    prompt:SetWidth(width)
+    prompt.text:SetWidth(math.max(50,width-12))
+    prompt.text:SetText(L["assign MT, OT or drag&drop Tanks here from Raid Frame"])
+    local textHeight=prompt.text.GetStringHeight and prompt.text:GetStringHeight() or TANK_PROMPT_H-6
+    prompt:SetHeight(math.max(TANK_PROMPT_H,textHeight+6))
+    return prompt
 end
 
 function CDW:CategoryAtCursor()
@@ -902,17 +1002,18 @@ function CDW:RenderRows(window,key,models,y,width,usedBars,usedSubs)
     return y
 end
 
-function CDW:FinalizeWindow(window,height,width,usedBars,usedHeads,usedSubs)
+function CDW:FinalizeWindow(window,height,width,usedBars,usedHeads,usedSubs,usedPrompts)
     for _,row in pairs(window.barFrames) do if not usedBars[row] then row:Hide() end end
     for _,row in pairs(window.headerFrames) do if not usedHeads[row] then row:Hide() end end
     for _,row in pairs(window.subheaderFrames) do if not usedSubs[row] then row:Hide() end end
+    for _,row in pairs(window.promptFrames or {}) do if not usedPrompts or not usedPrompts[row] then row:Hide() end end
     window.content:SetSize(width-40,math.max(1,height))
-    window:SetSize(width,TITLE_H+math.min(math.max(self:GetBarHeight(),height),MAX_SCROLL_H)+PAD*2)
+    window:SetSize(width,TITLE_H+math.max(self:GetBarHeight(),height)+PAD*2)
 end
 
 function CDW:RenderCombined()
     local width=self:GetBarWidth()+40; local contentWidth=width-40
-    local window=self:EnsureWindow(); local usedBars,usedHeads,usedSubs={}, {}, {}; local y=4
+    local window=self:EnsureWindow(); local usedBars,usedHeads,usedSubs,usedPrompts={}, {}, {}, {}; local y=4
     self.rows={}
     for _,key in ipairs(self:GetCategoryOrder()) do
         local cat=CATEGORY_BY_KEY[key]
@@ -922,12 +1023,18 @@ function CDW:RenderCombined()
         h.collapse:SetText(self:NormalizeSettings().collapsed[key] and "+" or "−")
         h:Show(); usedHeads[h]=true; y=y+HEADER_H
         if self:IsCategoryEnabled(key) then
-            y=self:RenderRows(window,key,self.modelsByCategory[key],y,contentWidth,usedBars,usedSubs)+4
+            if key=="tank_defensive" and not self.hasTankAssignments then
+                local prompt=self:EnsurePrompt(window,key,contentWidth)
+                prompt:ClearAllPoints(); prompt:SetPoint("TOPLEFT",window.content,"TOPLEFT",0,-y)
+                prompt:Show(); usedPrompts[prompt]=true; y=y+prompt:GetHeight()+4
+            else
+                y=self:RenderRows(window,key,self.modelsByCategory[key],y,contentWidth,usedBars,usedSubs)+4
+            end
         else
             y=y+2
         end
     end
-    self:FinalizeWindow(window,y,width,usedBars,usedHeads,usedSubs)
+    self:FinalizeWindow(window,y,width,usedBars,usedHeads,usedSubs,usedPrompts)
     for _,key in ipairs(self:GetCategoryOrder()) do
         for _,row in pairs(window.barFrames) do if row:IsShown() and row.data and row.data.ability.category==key then self.rows[#self.rows+1]=row end end
     end
@@ -938,9 +1045,15 @@ function CDW:RenderSeparate()
     self.rows={}
     for _,key in ipairs(self:GetCategoryOrder()) do
         if self:IsCategoryEnabled(key) then
-            local w=self:EnsureCategoryWindow(key); local usedBars,usedHeads,usedSubs={}, {}, {}; local y=2
-            y=self:RenderRows(w,key,self.modelsByCategory[key],y,contentWidth,usedBars,usedSubs)
-            self:FinalizeWindow(w,y,width,usedBars,usedHeads,usedSubs)
+            local w=self:EnsureCategoryWindow(key); local usedBars,usedHeads,usedSubs,usedPrompts={}, {}, {}, {}; local y=2
+            if key=="tank_defensive" and not self.hasTankAssignments then
+                local prompt=self:EnsurePrompt(w,key,contentWidth)
+                prompt:ClearAllPoints(); prompt:SetPoint("TOPLEFT",w.content,"TOPLEFT",0,-y)
+                prompt:Show(); usedPrompts[prompt]=true; y=y+prompt:GetHeight()
+            else
+                y=self:RenderRows(w,key,self.modelsByCategory[key],y,contentWidth,usedBars,usedSubs)
+            end
+            self:FinalizeWindow(w,y,width,usedBars,usedHeads,usedSubs,usedPrompts)
             if #self.rows==0 then for _,row in pairs(w.barFrames) do if row:IsShown() then self.rows[#self.rows+1]=row end end end
         elseif self.categoryWindows[key] then self.categoryWindows[key]:Hide() end
     end
@@ -1018,7 +1131,7 @@ function CDW:RenderInspector()
         row:Show(); used[row]=true; y=y+ROW_H
     end
     for key,row in pairs(w.inspectRows) do if not used[row] then row:Hide() end end
-    w.content:SetSize(INSPECT_W-40,math.max(1,y)); w:SetSize(INSPECT_W,TITLE_H+math.min(y,MAX_SCROLL_H)+PAD*2)
+    w.content:SetSize(INSPECT_W-40,math.max(1,y)); w:SetSize(INSPECT_W,TITLE_H+y+PAD*2)
     if not self._inspectDismissed and (self.isOpen or self:NormalizeSettings().layoutMode=="combined") then w:Show() end
 end
 
@@ -1108,27 +1221,112 @@ end
 
 function CDW:OnInspectPermissionChanged() self._nextInspectAt=0; self:TryInspectQueue(true) end
 
+function CDW:CursorInsideFrame(frame)
+    if not frame or not GetCursorPosition then return false end
+    local x, y = GetCursorPosition()
+    if not x or not y then return false end
+    local scale = frame.GetEffectiveScale and frame:GetEffectiveScale() or 1
+    if not scale or scale <= 0 then scale = 1 end
+    x, y = x / scale, y / scale
+    local left, right = frame:GetLeft(), frame:GetRight()
+    local bottom, top = frame:GetBottom(), frame:GetTop()
+    return type(left)=="number" and type(right)=="number" and type(bottom)=="number" and type(top)=="number"
+        and x>=left and x<=right and y>=bottom and y<=top
+end
+
 function CDW:OnBarDragStop(frame)
     local model=frame and frame.data; if not model then return end
     local target=RLSuite.raidFrame and RLSuite.raidFrame.MemberRowAtCursor and RLSuite.raidFrame:MemberRowAtCursor(14)
-    if not target or not target.name then RLSuite.utils:Print(L["Drop the cooldown bar on a player row in the Raid Frame."]); return end
-    self:AssignCaster(model,target.name)
+    if not target or not target.name then
+        RLSuite.utils:Print(L["Drop the cooldown bar on a player row in the Raid Frame."])
+        return
+    end
+    self:AssignTarget(model,target.name)
 end
 
-function CDW:AssignCaster(model,name)
+function CDW:AssignTarget(model,name)
     if not model or not name then return false end
-    local assignments=self:NormalizeSettings().assignments
-    if sameName(model.sourceName,name) then assignments[model.assignmentKey]=nil else assignments[model.assignmentKey]=name end
-    self:RefreshAll(); return true
+    local targets=self:NormalizeSettings().targetAssignments
+    local key=model.assignmentKey or model.key
+    if sameName(model.assignedTarget,name) then targets[key]=nil else targets[key]=name end
+    self:RefreshAll()
+    return true
+end
+
+function CDW:TryRaidFrameTankDrop(name,role)
+    if not name or not self:IsCategoryEnabled("tank_defensive") then return false end
+    local settings=self:NormalizeSettings()
+    local windows={}
+    if settings.layoutMode=="combined" then
+        if self.frame and self.frame:IsShown() then windows[#windows+1]=self.frame end
+    else
+        local tankWindow=self.categoryWindows and self.categoryWindows.tank_defensive
+        if tankWindow and tankWindow:IsShown() then windows[#windows+1]=tankWindow end
+    end
+    if #windows==0 then return false end
+
+    local hit=false
+    for _,window in ipairs(windows) do
+        local prompt=window.promptFrames and window.promptFrames.tank_defensive
+        local header=window.headerFrames and window.headerFrames.tank_defensive
+        if prompt and prompt:IsShown() and self:CursorInsideFrame(prompt) then hit=true end
+        if header and header:IsShown() and self:CursorInsideFrame(header) then hit=true end
+        for _,bar in pairs(window.barFrames or {}) do
+            if bar:IsShown() and bar.data and bar.data.ability.category=="tank_defensive"
+                and self:CursorInsideFrame(bar) then hit=true end
+        end
+    end
+    if not hit then return false end
+
+    local assigned,roles=self:GetTankAssignments(self.roster or self:GetRoster())
+    if role~="mt" and role~="ot" then role=nil end
+    if not role then
+        if sameName(roles.mt,name) then role="mt"
+        elseif sameName(roles.ot,name) then role="ot"
+        elseif not roles.mt then role="mt"
+        elseif not roles.ot then role="ot"
+        else
+            RLSuite.utils:Print(L["Both MT and OT are already assigned."])
+            return true
+        end
+    end
+    if (roles.mt and sameName(roles.mt,name) and role~="mt") or (roles.ot and sameName(roles.ot,name) and role~="ot") then
+        RLSuite.utils:Print(L["This player is already assigned to a tank role."])
+        return true
+    end
+    settings.tankAssignments[role]=name
+    self._rosterDirty=true
+    self:RefreshAll()
+    return true
 end
 
 function CDW:ShowBarTooltip(frame)
-    local model=frame and frame.data; if not model or not GameTooltip then return end
-    GameTooltip:SetOwner(frame,"ANCHOR_RIGHT"); GameTooltip:SetText(model.ability.name)
-    GameTooltip:AddLine(string.format(L["Caster: %s"],model.ownerName or "?"),1,1,1)
+    local model=frame and frame.data
+    if not model or not GameTooltip or self:NormalizeSettings().hideTooltips then return end
+    GameTooltip:SetOwner(frame,"ANCHOR_RIGHT")
+    GameTooltip:SetText(model.ability.name or L["Cooldown"])
+    GameTooltip:AddLine(string.format(L["Caster: %s"],model.sourceName or model.ownerName or "?"),1,1,1)
+    if model.nextInterrupt then GameTooltip:AddLine(L["Next interrupt"],1,0.35,0.25) end
     if model.targetName then GameTooltip:AddLine(string.format(L["Target: %s"],model.targetName),1,1,1) end
-    GameTooltip:AddLine(L["Drag this cooldown bar onto a player row in the Raid Frame to assign its caster."],0.8,0.8,0.8)
-    GameTooltip:AddLine(L["Drop it on the original caster to clear the override."],0.8,0.8,0.8)
+    if model.assignedTarget then GameTooltip:AddLine(L["Manually assigned target"],0.8,0.8,0.8) end
+    local cooldownText=model.cooldown and model.cooldown>0 and self:FormatTime(model.cooldown) or "0s"
+    GameTooltip:AddLine(string.format(L["Cooldown: %s"],cooldownText),1,0.82,0.25)
+    if not model.cooldown or model.cooldown<=0 then GameTooltip:AddLine(L["READY"],0.25,1,0.25) end
+    if model.life=="dead" then GameTooltip:AddLine(L["DEAD"],1,0.3,0.3)
+    elseif model.life=="disconnected" then GameTooltip:AddLine(L["DISCONNECTED"],1,0.7,0.2)
+    else GameTooltip:AddLine(L["ALIVE"],0.25,1,0.25) end
+    if model.unknown then GameTooltip:AddLine(L["Inspect needed"],1,0.82,0.25) end
+    if model.active then
+        GameTooltip:AddLine(model.active.status or L["ACTIVE"],0.4,0.9,1)
+        if model.activeLeft and model.activeLeft>0 then
+            GameTooltip:AddLine(string.format(L["Expires in %s"],self:FormatTime(model.activeLeft)),0.8,0.8,0.8)
+        end
+    end
+    if model.tankRole then
+        GameTooltip:AddLine(model.tankRole=="mt" and L["Main Tank"] or L["Off Tank"],1,0.82,0.25)
+    end
+    GameTooltip:AddLine(L["Drag this cooldown bar onto a player row in the Raid Frame to assign its target."],0.8,0.8,0.8)
+    if model.assignedTarget then GameTooltip:AddLine(L["Drop it on its assigned target to clear the target override."],0.8,0.8,0.8) end
     GameTooltip:Show()
 end
 
@@ -1142,12 +1340,9 @@ function CDW:OnCombatLog(event,...)
 end
 
 function CDW:OnSpellCast(sourceName,spellId,destName)
+    spellId=tonumber(spellId)
     if not sourceName or not spellId then return end
     local ability=SPELL_TO_ABILITY[spellId]
-    if not ability then
-        local oldName=RLSuite.abilityBySpellId and RLSuite.abilityBySpellId[spellId]
-        ability=oldName and ABILITY_BY_NAME[oldName]
-    end
     if not ability then return end
     if ability.cd>0 then self.cdTracker[shortName(sourceName)]=self.cdTracker[shortName(sourceName)] or {}; self.cdTracker[shortName(sourceName)][ability.key]=clock()+ability.cd end
     if ability.totem then self.totemStates[shortName(sourceName)]=self.totemStates[shortName(sourceName)] or {}; self.totemStates[shortName(sourceName)][ability.key]={expiresAt=clock()+(ability.duration or 120),status=L["TOTEM ACTIVE"]} end
@@ -1156,6 +1351,7 @@ function CDW:OnSpellCast(sourceName,spellId,destName)
 end
 
 function CDW:OnAuraApplied(sourceName,destName,spellId)
+    spellId=tonumber(spellId)
     local ability=AURA_TO_ABILITY[spellId]; if not ability then return end
     local state={expiresAt=clock()+(ability.duration or 0),targetName=destName,sourceName=sourceName,status=L["ACTIVE"]}
     if ability.allPlayers then
@@ -1170,6 +1366,7 @@ function CDW:OnAuraApplied(sourceName,destName,spellId)
 end
 
 function CDW:OnAuraRemoved(sourceName,destName,spellId)
+    spellId=tonumber(spellId)
     local ability=AURA_TO_ABILITY[spellId]; if not ability then return end
     if ability.allPlayers then
         local p=self.activePlayerStates[shortName(destName)]; if p then p[ability.key]=nil end
@@ -1192,7 +1389,7 @@ function CDW:OnUnitDied(name)
 end
 
 function CDW:UpdateCooldownIcons() if self:IsOpen() then self:RefreshAll() end end
-function CDW:ApplyAppearance() for _,f in ipairs(self:GetWindows()) do if RLSuite.utils and RLSuite.utils.SkinFrame then RLSuite.utils:SkinFrame(f) end end end
+function CDW:ApplyAppearance() self:ApplyBackdropSettings() end
 function CDW:ApplyLayoutMode() self:SetLayoutMode(self:NormalizeSettings().layoutMode) end
 
 CDW.Categories, CDW.AbilitiesByKey, CDW.AbilitiesByName = CATEGORIES, ABILITY_BY_KEY, ABILITY_BY_NAME

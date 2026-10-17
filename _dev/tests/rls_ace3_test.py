@@ -2471,16 +2471,47 @@ check(bool(rt.eval("TANK_TBAR_FAKE")), "debug/fake tanks leave the target bar em
 # Raid Buffs standalone matrix panel (Method style)
 check(bool(rt.eval("RLSuite.mainWindow.raidBuffBtn ~= nil and RLSuite.mainWindow.raidBuffBtn:GetText() == 'Raid Buffs'")), "Raid Buffs button is in the Raid Control matrix")
 check(bool(rt.eval("RLSuite.mainWindow.cdWatcherBtn ~= nil and RLSuite.mainWindow.cdWatcherBtn:GetText() == 'CD Watcher'")), "CD Watcher button is in the Raid Control matrix")
-check(bool(rt.eval("""(function() local root=RLSuite.config:BuildOptionsTable().args.cdwatcher; local bar=root.args.baroptions.args; local gen=root.args.general.args; return root.childGroups=='tree' and bar.barHeight and bar.barWidth and bar.barTexture and bar.showAbilityText and bar.showPlayerText and bar.showTimerText and bar.showDetailText and bar.previewSingle and bar.previewFake and gen.layoutMode and gen.groupByCaster and gen.autoInspect and gen.retryInspection and gen.category_tank_defensive and gen.fontFace and gen.fontSize and gen.fontOutline and gen.fontColor end)()""")), "CD Watcher Config has Bar options and General subsections with previews, categories, Inspect and font controls")
+check(bool(rt.eval("""(function()
+local root=RLSuite.config:BuildOptionsTable().args.cdwatcher
+local bar,gen=root.args.baroptions.args,root.args.general.args
+return root.childGroups=='tree'
+    and bar.barHeight and bar.barHeight.min==10 and bar.barHeight.max==32
+    and bar.barWidth and bar.barWidth.min==100 and bar.barWidth.max==300
+    and bar.barTexture and bar.showIcons and bar.useClassColor
+    and bar.readyColor and bar.cooldownColor and bar.deadColor and bar.disconnectedColor
+    and bar.previewSingle and bar.previewFake
+    and gen.layoutMode and gen.groupByCaster and gen.autoInspect and gen.retryInspection
+    and gen.hideTooltips and gen.hideBackdrop and gen.category_tank_defensive
+    and gen.category_raid_wide_offensive.name=='Raid Wide Offensive'
+    and gen.category_raid_party_defensive.name=='Raid/Party Wide Defensive'
+    and gen.category_cc.name=='Crowd Control' and gen.category_cc_toc==nil
+    and gen.fontFace and gen.fontSize and gen.fontOutline and gen.fontColor
+end)()""")), "CD Watcher Config keeps Bar options and General, extended category names, requested controls and exact size ranges")
 rt.execute("""
 local cdw=RLSuite.cdwatcher
 local opts=RLSuite.config:BuildOptionsTable().args.cdwatcher.args
 local bar,gen=opts.baroptions.args,opts.general.args
 local s=cdw:NormalizeSettings()
-CDW_OLD_SETTINGS={barHeight=s.barHeight,barWidth=s.barWidth,barTexture=s.barTexture,showTimerText=s.showTimerText,fontSize=s.fontSize,fontFace=s.fontFace,fontOutline=s.fontOutline}
+CDW_OLD_SETTINGS={
+    barHeight=s.barHeight,barWidth=s.barWidth,barTexture=s.barTexture,
+    showIcons=s.showIcons,useClassColor=s.useClassColor,
+    readyColor={r=s.readyColor.r,g=s.readyColor.g,b=s.readyColor.b},
+    cooldownColor={r=s.cooldownColor.r,g=s.cooldownColor.g,b=s.cooldownColor.b},
+    deadColor={r=s.deadColor.r,g=s.deadColor.g,b=s.deadColor.b},
+    disconnectedColor={r=s.disconnectedColor.r,g=s.disconnectedColor.g,b=s.disconnectedColor.b},
+    hideTooltips=s.hideTooltips,hideBackdrop=s.hideBackdrop,
+    fontSize=s.fontSize,fontFace=s.fontFace,fontOutline=s.fontOutline,
+}
+local wasClassColor=s.useClassColor
+cdw:ShowPreview('fake')
+local defaultReady=cdw.previewWindow.barFrames.preview_ready
+local cr,cg,cb=cdw:ClassColor('WARRIOR')
+CDW_CLASS_COLOR_DEFAULT=wasClassColor and defaultReady.bar._sbColor[1]==cr
+    and defaultReady.bar._sbColor[2]==cg and defaultReady.bar._sbColor[3]==cb
 bar.barHeight.set(nil,40); bar.barWidth.set(nil,400)
 bar.barTexture.set(nil,'Interface\\\\Buttons\\\\WHITE8x8')
-bar.showTimerText.set(nil,false)
+bar.showIcons.set(nil,false); bar.useClassColor.set(nil,false)
+bar.readyColor.set(nil,0.12,0.34,0.56)
 gen.fontSize.set(nil,16); gen.fontFace.set(nil,'Fonts\\\\ARIALN.TTF'); gen.fontOutline.set(nil,false)
 cdw:ShowPreview('fake')
 local p=cdw.previewWindow
@@ -2489,11 +2520,18 @@ local cooling=p.barFrames.preview_cooldown
 local dead=p.barFrames.preview_dead
 local disconnected=p.barFrames.preview_disconnected
 CDW_PREVIEW_OK=p:IsShown() and ready and cooling and dead and disconnected
-    and ready:GetHeight()==40 and ready:GetWidth()==400
+    and ready:GetHeight()==32 and ready:GetWidth()==300
     and ready.bar._statusbarTex=='Interface\\\\Buttons\\\\WHITE8x8'
-    and ready.timer:IsShown()==false and ready.abilityText:IsShown()
+    and ready.label:IsShown() and ready.label:GetText()=='Shield Wall:Aldor  0s'
     and ready.timer._fontArgs[2]==16 and ready.timer._fontArgs[3]==nil
-    and ready.data.life=='alive' and ready.data.ready
+    and ready.icon:IsShown()==false and ready.data.life=='alive' and ready.data.ready
+    and math.abs(ready.bar._value-300)<0.001
+    and math.abs(ready.bar._sbColor[1]-0.12)<0.001
+    and math.abs(ready.bar._sbColor[2]-0.34)<0.001
+    and math.abs(ready.bar._sbColor[3]-0.56)<0.001
+    and cooling.label:GetText():find('Icebound Fortitude:Mira  ',1,true)~=nil
+    and cooling.label:GetText():find('READY',1,true)==nil
+    and math.abs(cooling.bar._value-47)<0.001
     and dead.data.life=='dead' and disconnected.data.life=='disconnected'
 cdw:ShowPreview('single')
 local shown=0
@@ -2501,11 +2539,18 @@ for _,row in pairs(p.barFrames) do if row:IsShown() then shown=shown+1 end end
 CDW_SINGLE_PREVIEW=(shown==1)
 p:Hide()
 bar.barHeight.set(nil,CDW_OLD_SETTINGS.barHeight); bar.barWidth.set(nil,CDW_OLD_SETTINGS.barWidth)
-bar.barTexture.set(nil,CDW_OLD_SETTINGS.barTexture); bar.showTimerText.set(nil,CDW_OLD_SETTINGS.showTimerText)
+bar.barTexture.set(nil,CDW_OLD_SETTINGS.barTexture)
+bar.showIcons.set(nil,CDW_OLD_SETTINGS.showIcons); bar.useClassColor.set(nil,CDW_OLD_SETTINGS.useClassColor)
+bar.readyColor.set(nil,CDW_OLD_SETTINGS.readyColor.r,CDW_OLD_SETTINGS.readyColor.g,CDW_OLD_SETTINGS.readyColor.b)
+bar.cooldownColor.set(nil,CDW_OLD_SETTINGS.cooldownColor.r,CDW_OLD_SETTINGS.cooldownColor.g,CDW_OLD_SETTINGS.cooldownColor.b)
+bar.deadColor.set(nil,CDW_OLD_SETTINGS.deadColor.r,CDW_OLD_SETTINGS.deadColor.g,CDW_OLD_SETTINGS.deadColor.b)
+bar.disconnectedColor.set(nil,CDW_OLD_SETTINGS.disconnectedColor.r,CDW_OLD_SETTINGS.disconnectedColor.g,CDW_OLD_SETTINGS.disconnectedColor.b)
+gen.hideTooltips.set(nil,CDW_OLD_SETTINGS.hideTooltips); gen.hideBackdrop.set(nil,CDW_OLD_SETTINGS.hideBackdrop)
 gen.fontSize.set(nil,CDW_OLD_SETTINGS.fontSize); gen.fontFace.set(nil,CDW_OLD_SETTINGS.fontFace); gen.fontOutline.set(nil,CDW_OLD_SETTINGS.fontOutline)
 """)
-check(bool(rt.eval("CDW_PREVIEW_OK")), "CD Watcher preview applies bar dimensions, texture, font, visibility and ready/dead/disconnected sample states")
+check(bool(rt.eval("CDW_PREVIEW_OK")), "CD Watcher preview applies dimensions, custom colors, icon visibility and the one-line spell:player/cooldown label")
 check(bool(rt.eval("CDW_SINGLE_PREVIEW")), "CD Watcher supports a single sample-bar preview")
+check(bool(rt.eval("CDW_CLASS_COLOR_DEFAULT")), "default ready/alive bar colors follow the caster's class color")
 rt.execute("""
 local cfg=RLSuite.config
 local wasOpen=cfg:IsOpen()
@@ -2523,6 +2568,185 @@ rt.execute("local b=RLSuite.mainWindow.cdWatcherBtn; b._scripts.OnClick(b); CDW_
 check(bool(rt.eval("CDW_OPENED == true and CDW_CLOSED == true")), "CD Watcher matrix button opens and closes its standalone cooldown panel")
 rt.execute("local w=RLSuite.cdwatcher; w.cdTracker={}; local t=GetTime(); w:OnCombatLog('COMBAT_LOG_EVENT_UNFILTERED', t, 'SPELL_CAST_SUCCESS', 'Player-1', 'WatcherTest', 0, 'Player-2', 'Target', 0, 871); CDW_TRACK_REMAINING=w:GetAbilityRemaining('WatcherTest', nil, 'Shield Wall')")
 check(bool(rt.eval("CDW_TRACK_REMAINING ~= nil and CDW_TRACK_REMAINING > 299 and CDW_TRACK_REMAINING <= 300")), "CD Watcher tracks raid cooldown casts from the combat log")
+
+# CD Watcher corrections: instance scope, MT/OT filter and prompt, target drag,
+# borderless/no-scroll windows and tooltip-only details.
+rt.execute("""
+local cdw,rf=RLSuite.cdwatcher,RLSuite.raidFrame
+local s=cdw:NormalizeSettings()
+local oldGetRoster,oldTankSlots=cdw.GetRoster,rf.tankSlots
+local oldGetInfo,oldZone=GetInstanceInfo,GetRealZoneText
+local oldPartyAssignment=GetPartyAssignment
+local oldTankCategory,oldTankCollapsed=s.categories.tank_defensive,s.collapsed.tank_defensive
+local oldMemberAt=rf.MemberRowAtCursor
+local oldBuffAt,oldRefreshTargets=rf._BuffHeaderAtCursor,rf.RefreshDropTargets
+local oldCursor=GetCursorPosition
+local oldLayout,oldHideTips,oldHideBackdrop=s.layoutMode,s.hideTooltips,s.hideBackdrop
+local oldTankAssignments,oldTargetAssignments={},{}
+for k,v in pairs(s.tankAssignments) do oldTankAssignments[k]=v end
+for k,v in pairs(s.targetAssignments) do oldTargetAssignments[k]=v end
+local testRoster={
+    {name='TankOne',class='WARRIOR',fake=true},
+    {name='TankTwo',class='PALADIN',fake=true},
+    {name='Bench',class='WARRIOR',fake=true},
+    {name='CasterDK',class='DEATHKNIGHT',fake=true},
+    {name='Lock',class='WARLOCK',fake=true},
+}
+cdw.GetRoster=function() return testRoster end
+s.layoutMode='combined'; s.hideTooltips=false; s.hideBackdrop=false
+s.categories.tank_defensive=true; s.collapsed.tank_defensive=false
+s.tankAssignments={}; s.targetAssignments={}
+GetPartyAssignment=function() return nil end
+rf.tankSlots={{member={name='TankOne'}},{member={name='TankTwo'}}}
+cdw:BuildModels()
+local tankRows=cdw.modelsByCategory.tank_defensive
+local tankNames={}
+for _,m in ipairs(tankRows) do tankNames[m.sourceName]=true end
+CDW_TANK_FILTER=(cdw.hasTankAssignments and tankNames.TankOne and tankNames.TankTwo and not tankNames.Bench
+    and cdw.tankAssignmentRoles.mt=='TankOne' and cdw.tankAssignmentRoles.ot=='TankTwo')
+
+-- ToC Fear/Banish use current instance name, raid type and 10/25-player size.
+local fear,banish=cdw.AbilitiesByKey.fear,cdw.AbilitiesByKey.banish
+local catByKey={}
+local retiredSated=false
+for _,c in ipairs(cdw.Categories) do
+    catByKey[c.key]=c
+    for _,a in ipairs(c.abilities) do
+        if a.key=='sated' or a.key=='exhaustion' or a.name=='Sated' or a.name=='Exhaustion' then retiredSated=true end
+    end
+end
+CDW_NO_SATED=not retiredSated
+local member={name='Lock',class='WARLOCK',fake=true}
+GetInstanceInfo=function() return 'Trial of the Crusader','raid',3,'10 Player',10 end
+local toc10=cdw:CanTrack(fear,member,{})
+GetInstanceInfo=function() return 'Trial of the Grand Crusader','raid',6,'25 Player Heroic',25 end
+local toc25=cdw:CanTrack(banish,member,{})
+GetInstanceInfo=function() return 'Naxxramas','raid',3,'10 Player',10 end
+local otherRaid=cdw:CanTrack(fear,member,{})
+GetInstanceInfo=function() return 'Trial of the Crusader','party',2,'5 Player Heroic',5 end
+local fivePlayer=cdw:CanTrack(banish,member,{})
+CDW_TOC_SCOPE=(toc10==true and toc25==true and otherRaid==false and fivePlayer==false
+    and fear.category=='cc' and banish.category=='cc' and catByKey.cc_toc==nil)
+local oldFallbackName=RLSuite.abilityBySpellId[987654]
+local oldTracker=cdw.cdTracker
+RLSuite.abilityBySpellId[987654]='Shield Wall'
+cdw.cdTracker={}
+cdw:OnSpellCast('NameLookupOnly',987654)
+CDW_ID_ONLY=cdw.cdTracker['NameLookupOnly']==nil
+RLSuite.abilityBySpellId[987654]=oldFallbackName; cdw.cdTracker=oldTracker
+GetInstanceInfo,GetRealZoneText=oldGetInfo,oldZone
+
+-- With neither MT nor OT, no Tank Defensive spell models are shown and the
+-- exact requested empty-state prompt is rendered.
+rf.tankSlots={{member=nil},{member=nil}}
+s.tankAssignments={}
+cdw:BuildModels()
+local noneTankRows=#cdw.modelsByCategory.tank_defensive==0 and not cdw.hasTankAssignments
+local main=cdw:EnsureWindow(); main:Show(); cdw:RenderCombined()
+local prompt=main.promptFrames.tank_defensive
+CDW_TANK_PROMPT=noneTankRows and prompt and prompt:IsShown()
+    and prompt.text:GetText()=='assign MT, OT or drag&drop Tanks here from Raid Frame'
+local savedPromptBounds={prompt.GetLeft,prompt.GetRight,prompt.GetBottom,prompt.GetTop}
+prompt.GetLeft=function() return 10 end; prompt.GetRight=function() return 120 end
+prompt.GetBottom=function() return 10 end; prompt.GetTop=function() return 70 end
+GetCursorPosition=function() return 30,30 end
+local mtDrop=cdw:TryRaidFrameTankDrop('TankOne')
+local mtAssigned=s.tankAssignments.mt=='TankOne' and cdw.tankAssignmentRoles.mt=='TankOne'
+local header=main.headerFrames.tank_defensive
+local savedHeaderBounds={header.GetLeft,header.GetRight,header.GetBottom,header.GetTop}
+header.GetLeft=function() return 10 end; header.GetRight=function() return 120 end
+header.GetBottom=function() return 10 end; header.GetTop=function() return 70 end
+local otDrop=cdw:TryRaidFrameTankDrop('TankTwo')
+CDW_TANK_MANUAL_ASSIGN=mtDrop and otDrop and mtAssigned and s.tankAssignments.ot=='TankTwo'
+
+-- Exercise the Raid Frame's actual drag-release handoff to CD Watcher.
+s.tankAssignments={}; rf.tankSlots={{member=nil},{member=nil}}
+cdw:RefreshAll(); prompt=main.promptFrames.tank_defensive
+prompt.GetLeft=function() return 10 end; prompt.GetRight=function() return 120 end
+prompt.GetBottom=function() return 10 end; prompt.GetTop=function() return 70 end
+rf._BuffHeaderAtCursor=function() return nil end
+rf.RefreshDropTargets=function() end
+rf._rfDragSource={member={name='TankOne'}}
+rf:_FinishDrag()
+CDW_TANK_RAIDFRAME_DROP=(rf._rfDragSource==nil and s.tankAssignments.mt=='TankOne')
+
+-- Bar drag/drop assigns a TARGET while preserving the caster identity.
+rf.MemberRowAtCursor=function() return {name='TargetPlayer'} end
+local targetModel={ability=cdw.AbilitiesByKey.hysteria,sourceName='CasterDK',ownerName='CasterDK',assignmentKey='hysteria@CasterDK'}
+cdw:OnBarDragStop({data=targetModel})
+local hysteria
+for _,m in ipairs(cdw.modelsByCategory.single_target_offensive or {}) do if m.ability.key=='hysteria' then hysteria=m end end
+local genericModel={ability=cdw.AbilitiesByKey.shield_wall,sourceName='TankOne',ownerName='TankOne',assignmentKey='shield_wall@TankOne'}
+cdw:OnBarDragStop({data=genericModel})
+local shieldWall
+for _,m in ipairs(cdw.modelsByCategory.tank_defensive or {}) do if m.ability.key=='shield_wall' then shieldWall=m end end
+CDW_TARGET_ASSIGN=(s.targetAssignments['hysteria@CasterDK']=='TargetPlayer' and hysteria
+    and hysteria.sourceName=='CasterDK' and hysteria.targetName=='TargetPlayer'
+    and s.targetAssignments['shield_wall@TankOne']=='TargetPlayer' and shieldWall
+    and shieldWall.targetName=='TargetPlayer' and shieldWall.sourceName=='TankOne')
+
+-- Tooltip contains the details omitted from the one-line label, and the
+-- General checkbox suppresses it without affecting the bar.
+local targetRow=main.barFrames['hysteria@CasterDK']
+local lines={}
+local oldAdd=GameTooltip.AddLine
+GameTooltip.AddLine=function(_,line) lines[#lines+1]=tostring(line) end
+GameTooltip:Hide()
+if targetRow and targetRow._scripts.OnEnter then targetRow._scripts.OnEnter(targetRow) end
+CDW_TOOLTIP_DETAILS=GameTooltip:IsShown() and table.concat(lines,' | '):find('Caster: CasterDK',1,true)~=nil
+    and table.concat(lines,' | '):find('Target: TargetPlayer',1,true)~=nil
+    and table.concat(lines,' | '):find('Cooldown:',1,true)~=nil
+s.hideTooltips=true; cdw:ApplyBarSettings(); targetRow=main.barFrames['hysteria@CasterDK']
+GameTooltip:Hide()
+if targetRow and targetRow._scripts.OnEnter then targetRow._scripts.OnEnter(targetRow) end
+CDW_TOOLTIP_HIDDEN=not GameTooltip:IsShown()
+GameTooltip.AddLine=oldAdd; s.hideTooltips=false; cdw:ApplyBarSettings()
+
+-- Every CDW window is created without the universal Dialog border path.
+local backdrop=main:GetBackdrop()
+cdw:EnsureCategoryWindow('tank_defensive'); cdw:EnsureInspectWindow()
+local noEdges,noScroll=true,true
+for _,frame in ipairs(cdw:GetWindows()) do
+    local b=frame:GetBackdrop()
+    if not frame._cdwWindow or (b and b.edgeFile~=nil) then noEdges=false end
+    if frame.scroll~=nil then noScroll=false end
+end
+CDW_BORDERLESS=main._cdwWindow and main._noOuterBorder and main.scroll==nil
+    and main.content:GetParent()==main and backdrop and backdrop.edgeFile==nil and noEdges and noScroll
+s.hideBackdrop=true; cdw:ApplyBackdropSettings()
+local everyBackdropHidden=true
+for _,frame in ipairs(cdw:GetWindows()) do if frame:GetBackdrop()~=nil then everyBackdropHidden=false end end
+CDW_BACKDROP_HIDDEN=main:GetBackdrop()==nil and everyBackdropHidden
+s.hideBackdrop=false; cdw:ApplyBackdropSettings()
+cdw:FinalizeWindow(main,1600,cdw:GetBarWidth()+40,{},{},{},{})
+CDW_NO_SCROLL_CLIP=main.scroll==nil and main.content:GetHeight()==1600 and main:GetHeight()>1500
+cdw:RefreshAll()
+
+-- Restore all shared state before later unrelated tests.
+cdw.GetRoster=oldGetRoster; rf.tankSlots=oldTankSlots
+rf.MemberRowAtCursor=oldMemberAt; rf._BuffHeaderAtCursor=oldBuffAt; rf.RefreshDropTargets=oldRefreshTargets
+GetCursorPosition=oldCursor; GetPartyAssignment=oldPartyAssignment
+s.categories.tank_defensive=oldTankCategory; s.collapsed.tank_defensive=oldTankCollapsed
+prompt.GetLeft,prompt.GetRight,prompt.GetBottom,prompt.GetTop=unpack(savedPromptBounds)
+if header then header.GetLeft,header.GetRight,header.GetBottom,header.GetTop=unpack(savedHeaderBounds) end
+s.tankAssignments={}; for k,v in pairs(oldTankAssignments) do s.tankAssignments[k]=v end
+s.targetAssignments={}; for k,v in pairs(oldTargetAssignments) do s.targetAssignments[k]=v end
+s.layoutMode,s.hideTooltips,s.hideBackdrop=oldLayout,oldHideTips,oldHideBackdrop
+cdw:ApplyBarSettings(); cdw:RefreshRoster()
+""")
+check(bool(rt.eval("CDW_TANK_FILTER")), "Tank Defensive only builds bars for assigned MT/OT players")
+check(bool(rt.eval("CDW_TOC_SCOPE")), "Fear and Banish stay in Crowd Control and track only in ToC 10/25")
+check(bool(rt.eval("CDW_ID_ONLY")), "CD Watcher spell detection uses the combat-log Spell ID, not a spell name fallback")
+check(bool(rt.eval("CDW_NO_SATED")), "Sated and Exhaustion are absent from the CD Watcher list")
+check(bool(rt.eval("CDW_TANK_PROMPT")),  "unassigned Tank Defensive shows the exact MT/OT prompt")
+check(bool(rt.eval("CDW_TANK_MANUAL_ASSIGN")), "dropping raid players into Tank Defensive fills MT then OT")
+check(bool(rt.eval("CDW_TANK_RAIDFRAME_DROP")), "Raid Frame drag release assigns a tank through the CD Watcher drop zone")
+check(bool(rt.eval("CDW_TARGET_ASSIGN")), "CD Watcher bar drag assigns a target, not a caster")
+check(bool(rt.eval("CDW_TOOLTIP_DETAILS")), "bar tooltip contains caster, target and cooldown details")
+check(bool(rt.eval("CDW_TOOLTIP_HIDDEN")), "General hide-tooltip option suppresses bar tooltips")
+check(bool(rt.eval("CDW_BORDERLESS")), "CD Watcher windows omit the universal Dialog border and do not use a ScrollFrame")
+check(bool(rt.eval("CDW_BACKDROP_HIDDEN")), "General hide-backdrop option removes the background from CD Watcher windows")
+check(bool(rt.eval("CDW_NO_SCROLL_CLIP")), "floating CD Watcher windows expand to show every bar without scroll clipping")
 check(bool(rt.eval("(function() local n,d=0,0 for _,c in ipairs(RLSuite.raidFrame:_MatrixCols()) do n=n+1 if c.kind=='durability' then d=d+1 end end return n==13 and d==1 end)()")), "13 columns: 10 buff categories including Focus Magic, 2 consumables, and Durability")
 rt.execute("""
 local function colHas(key, id)

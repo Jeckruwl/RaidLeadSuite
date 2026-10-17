@@ -731,33 +731,41 @@ function CFG:BuildOptionsTable()
     end
 
     local barTextureValues = mediaValues("statusbar", cdwGet("barTexture", "Interface\\TargetingFrame\\UI-StatusBar"))
+    local function cdwColorOption(optionKey, labelKey, descKey, order)
+        return {
+            type = "color", name = L[labelKey], desc = L[descKey], hasAlpha = false, order = order,
+            disabled = function() return cdwGet("useClassColor", true) end,
+            get = function()
+                local c = cdwGet(optionKey, { r = 1, g = 1, b = 1 })
+                return c.r or 1, c.g or 1, c.b or 1
+            end,
+            set = function(_, r, g, b) cdwSet(optionKey, { r = r, g = g, b = b, a = 1 }) end,
+        }
+    end
     local cdwBarOptions = {
-        barHeight = slider(L["Bar height"], L["Height of each cooldown bar in pixels."], 1, 26, 60, 1,
-            function() return cdwGet("barHeight", 34) end,
+        barHeight = slider(L["Bar height"], L["Height of each cooldown bar in pixels."], 1, 10, 32, 1,
+            function() return cdwGet("barHeight", 24) end,
             function(_, value) cdwSet("barHeight", value) end),
-        barWidth = slider(L["Bar width"], L["Width of each cooldown bar in pixels."], 2, 300, 900, 10,
-            function() return cdwGet("barWidth", 530) end,
+        barWidth = slider(L["Bar width"], L["Width of each cooldown bar in pixels."], 2, 100, 300, 10,
+            function() return cdwGet("barWidth", 240) end,
             function(_, value) cdwSet("barWidth", value) end),
         barTexture = select(L["Bar texture"], L["Status-bar texture used by cooldown bars."], 3, barTextureValues,
             function() return cdwGet("barTexture", "Interface\\TargetingFrame\\UI-StatusBar") end,
             function(_, value) cdwSet("barTexture", value) end),
-        textHead = { type = "header", name = L["Bar text"], order = 4 },
-        showAbilityText = toggle(L["Show ability name"], L["Show the monitored ability name on each bar."], 5,
-            function() return cdwGet("showAbilityText", true) end,
-            function(_, value) cdwSet("showAbilityText", value) end),
-        showPlayerText = toggle(L["Show player name"], L["Show the caster name on each bar."], 6,
-            function() return cdwGet("showPlayerText", true) end,
-            function(_, value) cdwSet("showPlayerText", value) end),
-        showTimerText = toggle(L["Show cooldown timer"], L["Show the remaining cooldown or active-state timer."], 7,
-            function() return cdwGet("showTimerText", true) end,
-            function(_, value) cdwSet("showTimerText", value) end),
-        showDetailText = toggle(L["Show target and status text"], L["Show target, inspect, death, and active-effect details."], 8,
-            function() return cdwGet("showDetailText", true) end,
-            function(_, value) cdwSet("showDetailText", value) end),
-        previewHead = { type = "header", name = L["Preview"], order = 9 },
-        previewSingle = execute(L["Preview a single bar"], L["Open a live sample bar using the current bar and font settings."], 10,
+        showIcons = toggle(L["Show spell icons"], L["Show each ability icon at the left of its cooldown bar."], 4,
+            function() return cdwGet("showIcons", true) end,
+            function(_, value) cdwSet("showIcons", value) end),
+        useClassColor = toggle(L["Use class colors"], L["Color bars with the caster's class color instead of the custom state colors below."], 5,
+            function() return cdwGet("useClassColor", true) end,
+            function(_, value) cdwSet("useClassColor", value) end),
+        readyColor = cdwColorOption("readyColor", "Ready / alive color", "Custom color for ready bars when class colors are disabled.", 6),
+        cooldownColor = cdwColorOption("cooldownColor", "Cooldown color", "Custom color for bars that are still on cooldown.", 7),
+        deadColor = cdwColorOption("deadColor", "Dead color", "Custom color for bars belonging to dead players.", 8),
+        disconnectedColor = cdwColorOption("disconnectedColor", "Disconnected color", "Custom color for bars belonging to disconnected players.", 9),
+        previewHead = { type = "header", name = L["Preview"], order = 10 },
+        previewSingle = execute(L["Preview a single bar"], L["Open a live sample bar using the current bar and font settings."], 11,
             function() if cdw and cdw.ShowPreview then cdw:ShowPreview("single") end end),
-        previewFake = execute(L["Preview fake CD bars"], L["Show sample ready, cooldown, dead, and disconnected bars without changing the raid roster."], 11,
+        previewFake = execute(L["Preview fake CD bars"], L["Show sample ready, cooldown, dead, and disconnected bars without changing the raid roster."], 12,
             function() if cdw and cdw.ShowPreview then cdw:ShowPreview("fake") end end),
     }
 
@@ -779,32 +787,40 @@ function CFG:BuildOptionsTable()
             function(_, value) if cdw and cdw.SetAutoInspect then cdw:SetAutoInspect(value); self:NotifyChange() end end),
         retryInspection = execute(L["Retry required inspections"], L["Retry inspections for players whose specialization or required capability is unknown."], 4,
             function() if cdw and cdw.RetryInspection then cdw:RetryInspection() end end),
-        categoriesHead = { type = "header", name = L["Visible categories"], order = 5 },
+        hideTooltips = toggle(L["Hide bar tooltips"], L["Hide cooldown bar tooltips."], 5,
+            function() return cdwGet("hideTooltips", false) end,
+            function(_, value) cdwSet("hideTooltips", value) end),
+        hideBackdrop = toggle(L["Hide window backdrop"], L["Hide the background fill of all CD Watcher windows."], 6,
+            function() return cdwGet("hideBackdrop", false) end,
+            function(_, value) cdwSet("hideBackdrop", value) end),
+        categoriesHead = { type = "header", name = L["Visible categories"], order = 7 },
     }
     for i, category in ipairs((cdw and cdw.Categories) or {}) do
         local categoryKey = category.key
         cdwGeneral["category_" .. categoryKey] = toggle(
             L[category.title] or category.title,
-            L["Show or hide this cooldown category independently."], 5 + i,
+            L["Show or hide this cooldown category independently."], 7 + i,
             function() return cdw and cdw.IsCategoryEnabled and cdw:IsCategoryEnabled(categoryKey) or false end,
             function(_, value)
                 if cdw and cdw.SetCategoryEnabled then cdw:SetCategoryEnabled(categoryKey, value) end
                 self:NotifyChange()
             end)
     end
-    cdwGeneral.fontHead = { type = "header", name = L["Font options"], order = 20 }
-    cdwGeneral.fontFace = select(L["Font face"], L["Font used for ability, player, timer, and detail text."], 21, fontValues,
+    local categoryCount = #(cdw and cdw.Categories or {})
+    local fontOrder = 8 + categoryCount
+    cdwGeneral.fontHead = { type = "header", name = L["Font options"], order = fontOrder }
+    cdwGeneral.fontFace = select(L["Font face"], L["Font used for the cooldown bar label."], fontOrder + 1, fontValues,
         function() return cdwGet("fontFace", "Fonts\\FRIZQT__.TTF") end,
         function(_, value) cdwSet("fontFace", value) end)
-    cdwGeneral.fontSize = slider(L["Font size"], L["Font size for cooldown bar text."], 22, 8, 24, 1,
+    cdwGeneral.fontSize = slider(L["Font size"], L["Font size for cooldown bar text."], fontOrder + 2, 8, 24, 1,
         function() return cdwGet("fontSize", 11) end,
         function(_, value) cdwSet("fontSize", value) end)
-    cdwGeneral.fontOutline = toggle(L["Font outline"], L["Draw an outline around cooldown bar text."], 23,
+    cdwGeneral.fontOutline = toggle(L["Font outline"], L["Draw an outline around cooldown bar text."], fontOrder + 3,
         function() return cdwGet("fontOutline", true) end,
         function(_, value) cdwSet("fontOutline", value) end)
     cdwGeneral.fontColor = {
-        type = "color", name = L["Bar text color"], desc = L["Color for ability, timer, and detail text; player names retain their class color."],
-        hasAlpha = false, order = 24,
+        type = "color", name = L["Bar text color"], desc = L["Color for the cooldown label text."],
+        hasAlpha = false, order = fontOrder + 4,
         get = function()
             local c = cdwGet("fontColor", { r = 1, g = 1, b = 1 })
             return c.r or 1, c.g or 1, c.b or 1

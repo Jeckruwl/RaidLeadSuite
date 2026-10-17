@@ -831,10 +831,13 @@ function Utils:WindowBackdrop(f)
         local minSide = math.min(w, h)
         if minSide < 80 and edge > 10 then edge = 10 end
     end
+    local edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border"
+    if f and f._cdwWindow then edgeFile = nil end
     return {
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = edge,
+        -- CD Watcher windows intentionally have no Dialog/Tooltip edge.
+        edgeFile = edgeFile,
+        tile = true, tileSize = 16, edgeSize = f and f._cdwWindow and 0 or edge,
         insets = {left = 0, right = 0, top = 0, bottom = 0},
     }
 end
@@ -895,15 +898,18 @@ function Utils:SkinFrame(f)
     if not f or not f.SetBackdrop then return end
     local c = self:GetThemeColors()
     f:SetAlpha(1)
-    if f.rlsBgFill then
-        f.rlsBgFill:Hide()
+    if f.rlsBgFill then f.rlsBgFill:Hide() end
+    if f._cdwWindow and f._cdwHideBackdrop then
+        f:SetBackdrop(nil)
+        f:SetBackdropColor(0, 0, 0, 0)
+        f:SetBackdropBorderColor(0, 0, 0, 0)
+        return
     end
     f:SetBackdrop(self:WindowBackdrop(f))
     f:SetBackdropColor(c.fill[1], c.fill[2], c.fill[3], 1)
-    -- Le finestre marcate _noOuterBorder (main bar, Groupmaking, Invite
-    -- engine, MS Manager, Loot Manager) non hanno il bordo esterno del
-    -- dialog: il riempimento resta, il Tooltip-Border diventa invisibile.
-    if f._noOuterBorder then
+    -- CD Watcher omits the Dialog edge entirely; other _noOuterBorder
+    -- windows retain their existing transparent-edge treatment.
+    if f._noOuterBorder or f._cdwWindow then
         f:SetBackdropBorderColor(0, 0, 0, 0)
     else
         f:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
@@ -1659,10 +1665,9 @@ function Utils:ClampWindow(frame)
     end
 end
 
--- Finestra UNIVERSALE come tutte le altre: MakeDraggable + stesso layer
--- finale + BORDO tematico (ricostruito da SkinFrame con _noOuterBorder
--- OFF). Tutte le finestre dell'addon sono cosi': il riush non esce mai
--- dallo schermo (SetClampedToScreen + guard) ed e' SARIAMO come le altre.
+-- Finestra universale per i pannelli standard con bordo tematico.
+-- CD Watcher non usa questo helper: le sue finestre sono senza bordo.
+-- Entrambi i percorsi condividono il trascinamento e la posizione salvata.
 function Utils:MakeUniversalWindow(frame, key)
     self:MakeDraggable(frame, key)
     self:MakeClickToFront(frame)

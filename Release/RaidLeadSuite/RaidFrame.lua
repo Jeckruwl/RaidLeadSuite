@@ -1968,6 +1968,20 @@ function RF:_FinishDrag()
             return
         end
     end
+    -- Il drop sulla categoria Tank Defensive del CD Watcher assegna il
+    -- player trascinato al primo ruolo MT/OT libero, senza cambiare il roster.
+    local cdw = RLSuite.cdwatcher
+    if src.member and src.member.name and cdw and cdw.TryRaidFrameTankDrop
+        and cdw:TryRaidFrameTankDrop(src.member.name) then
+        self._rfDragSource = nil
+        src._manualDrag = nil
+        src._pendingRowClick = nil
+        if src._scripts and src._scripts.OnUpdate then src:SetScript("OnUpdate", nil) end
+        self._dropActive = nil
+        self:RefreshDropTargets()
+        return
+    end
+
     -- Bersaglio calcolato PRIMA di azzerare la sorgente (l'hit-test conta
     -- sulla geometria, non sulla visibilita' delle righe).
     local t = self:SlotAtCursor()
