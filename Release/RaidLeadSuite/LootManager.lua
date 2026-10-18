@@ -266,17 +266,17 @@ function LM:CreateFrame()
     self.selectedItemText:SetJustifyH("LEFT")
     self.selectedItemText:SetText(L["No item selected"])
 
-    -- Quantità riservate per User (U) e Raid (R). I valori sono persistenti;
-    -- U parte da 1, R vuoto significa che non è previsto un secondo roll.
-    local function createRessCountField(key, labelText, rightAnchor, rightPoint, xOffset, savedKey)
-        local edit = CreateFrame("EditBox", "RLSuiteLootRess" .. key .. "Count", self.selBox, "InputBoxTemplate")
-        edit:SetSize(34, 20)
-        edit:SetPoint("RIGHT", rightAnchor, rightPoint, xOffset, 0)
-
-        local label = self.selBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        label:SetPoint("RIGHT", edit, "LEFT", -3, 0)
+    -- Campi quantità U/R: restano vicini al pulsante Roll RES nella fila
+    -- dei comandi, invece che occupare lo spazio del nome dell'item selezionato.
+    local function createRessCountField(key, labelText, leftAnchor, leftOffset, savedKey)
+        local label = self.frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("LEFT", leftAnchor, "RIGHT", leftOffset, 0)
         label:SetText(labelText)
         label:SetTextColor(1, 0.82, 0)
+
+        local edit = CreateFrame("EditBox", "RLSuiteLootRess" .. key .. "Count", self.frame, "InputBoxTemplate")
+        edit:SetSize(34, 20)
+        edit:SetPoint("LEFT", label, "RIGHT", 3, 0)
         edit:SetAutoFocus(false)
         edit:SetMaxLetters(3)
         if edit.SetNumeric then edit:SetNumeric(true) end
@@ -297,20 +297,34 @@ function LM:CreateFrame()
         return label, edit
     end
 
-    self.ressRaidLabel, self.ressRaidCountEdit = createRessCountField(
-        "R", "R", self.selBox, "RIGHT", -8, "ressRaidCount")
-    self.ressUserLabel, self.ressUserCountEdit = createRessCountField(
-        "U", "U", self.ressRaidLabel, "LEFT", -8, "ressUserCount")
     self.selectedItemText:ClearAllPoints()
     self.selectedItemText:SetPoint("LEFT", self.selectedItemIcon, "RIGHT", 8, 0)
-    self.selectedItemText:SetPoint("RIGHT", self.ressUserLabel, "LEFT", -6, 0)
+    self.selectedItemText:SetPoint("RIGHT", self.selBox, "RIGHT", -8, 0)
 
-    -- I cinque comandi di roll stanno su una riga; Announce MS occupa, sotto,
-    -- la larghezza complessiva della stessa fila.
-    local buttonWidth, buttonGap = 80, 5
-    local commandRowWidth = buttonWidth * 5 + buttonGap * 4
+    -- La larghezza dei pulsanti è il minimo che contiene "Roll RES" con
+    -- un piccolo padding. I campi U/R completano la stessa riga, subito dopo
+    -- Roll RES; Announce MS resta allineato alla larghezza totale della fila.
+    local rollTextMeasure = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    rollTextMeasure:SetText("Roll RES")
+    local rollTextWidth = math.ceil(rollTextMeasure:GetStringWidth() or 0)
+    rollTextMeasure:Hide()
+    if rollTextWidth <= 0 then rollTextWidth = #"Roll RES" * 7 end
+
+    local countTextMeasure = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    countTextMeasure:SetText("U")
+    local countLabelWidth = math.ceil(countTextMeasure:GetStringWidth() or 0)
+    countTextMeasure:Hide()
+    if countLabelWidth <= 0 then countLabelWidth = 7 end
+
+    local buttonWidth = rollTextWidth + 8
+    local buttonGap, fieldGap, countEditWidth = 4, 6, 34
+    local countFieldWidth = fieldGap + countLabelWidth + 3 + countEditWidth
+    local commandRowWidth = buttonWidth * 5 + buttonGap * 4 + countFieldWidth * 2
     local commandRowLeft = (LM_FIXED_WIDTH - commandRowWidth) / 2
     local commandRowBottom = 40
+    self.rollButtonWidth = buttonWidth
+    self.rollCommandRowWidth = commandRowWidth
+    self.rollCommandRowLeft = commandRowLeft
 
     self.rollMSBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.rollMSBtn)
@@ -345,8 +359,13 @@ function LM:CreateFrame()
     RLSuite.utils:SkinButton(self.rollRessBtn)
     self.rollRessBtn:SetSize(buttonWidth, 24)
     self.rollRessBtn:SetPoint("LEFT", self.rerollBtn, "RIGHT", buttonGap, 0)
-    self.rollRessBtn:SetText("Roll RESS")
+    self.rollRessBtn:SetText("Roll RES")
     self.rollRessBtn:SetScript("OnClick", function() self:StartRessRoll() end)
+
+    self.ressUserLabel, self.ressUserCountEdit = createRessCountField(
+        "U", "U", self.rollRessBtn, fieldGap, "ressUserCount")
+    self.ressRaidLabel, self.ressRaidCountEdit = createRessCountField(
+        "R", "R", self.ressUserCountEdit, fieldGap, "ressRaidCount")
 
     -- Stesso comando dell'MS Manager, spostato sotto i roll e largo quanto
     -- l'intera fila dei comandi.

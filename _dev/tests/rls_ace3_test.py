@@ -5217,7 +5217,15 @@ local lm = RLSuite.lootManager
 local il = lm.ignoreLabel._points[1] or {}
 local ic = lm.ignoreChecks.recipes._points[1] or {}
 local ms = lm.rollMSBtn._points[1] or {}
+local os = lm.rollOSBtn._points[1] or {}
+local other = lm.rollOtherBtn._points[1] or {}
 local rr = lm.rerollBtn._points[1] or {}
+local res = lm.rollRessBtn._points[1] or {}
+local uLabel = lm.ressUserLabel._points[1] or {}
+local uEdit = lm.ressUserCountEdit._points[1] or {}
+local rLabel = lm.ressRaidLabel._points[1] or {}
+local rEdit = lm.ressRaidCountEdit._points[1] or {}
+local selectedTextRight = lm.selectedItemText._points[2] or {}
 local titleP = lm.titleFS._points[1] or {}
 local histLabelP = lm.histLabel._points[1] or {}
 local histHeaderP = lm.histHeader._points[1] or {}
@@ -5237,9 +5245,32 @@ LM_LAYOUT_117 = {
     compactTop = (histLabelP[5] == -64 and histHeaderP[5] == -86),
     compactBottom = (lm.histBox:GetHeight() == 220 and selP[2] == lm.histBox
         and preP[2] == lm.selBox and preP[5] == -8 and ms[2] == lm.frame and ms[4] == 8),
-    oneButtonRow = (rr[2] == lm.rollOtherBtn and lm.announceMSBtn._points[1][2] == lm.rerollBtn),
-    buttonSpan = (lm.rollMSBtn:GetWidth() + lm.rollOSBtn:GetWidth() + lm.rollOtherBtn:GetWidth()
-        + lm.rerollBtn:GetWidth() + lm.announceMSBtn:GetWidth() + 24),
+    rollText = lm.rollRessBtn:GetText(),
+    rollButtonsCompact = (lm.rollButtonWidth < 80 and lm.rollMSBtn:GetWidth() == lm.rollButtonWidth
+        and lm.rollOSBtn:GetWidth() == lm.rollButtonWidth
+        and lm.rollOtherBtn:GetWidth() == lm.rollButtonWidth
+        and lm.rerollBtn:GetWidth() == lm.rollButtonWidth
+        and lm.rollRessBtn:GetWidth() == lm.rollButtonWidth),
+    oneButtonRow = (os[1] == 'LEFT' and os[2] == lm.rollMSBtn and os[3] == 'RIGHT'
+        and other[1] == 'LEFT' and other[2] == lm.rollOSBtn and other[3] == 'RIGHT'
+        and rr[1] == 'LEFT' and rr[2] == lm.rollOtherBtn and rr[3] == 'RIGHT'
+        and res[1] == 'LEFT' and res[2] == lm.rerollBtn and res[3] == 'RIGHT'),
+    ressFieldsBesideRES = (uLabel[1] == 'LEFT' and uLabel[2] == lm.rollRessBtn and uLabel[3] == 'RIGHT'
+        and uEdit[1] == 'LEFT' and uEdit[2] == lm.ressUserLabel and uEdit[3] == 'RIGHT'
+        and rLabel[1] == 'LEFT' and rLabel[2] == lm.ressUserCountEdit and rLabel[3] == 'RIGHT'
+        and rEdit[1] == 'LEFT' and rEdit[2] == lm.ressRaidLabel and rEdit[3] == 'RIGHT'
+        and selectedTextRight[2] == lm.selBox),
+    rowWidth = lm.rollCommandRowWidth,
+    expectedRowWidth = (lm.rollButtonWidth * 5 + (os[4] or 0) + (other[4] or 0)
+        + (rr[4] or 0) + (res[4] or 0)
+        + (uLabel[4] or 0) + math.ceil(lm.ressUserLabel:GetStringWidth())
+        + (uEdit[4] or 0) + lm.ressUserCountEdit:GetWidth()
+        + (rLabel[4] or 0) + math.ceil(lm.ressRaidLabel:GetStringWidth())
+        + (rEdit[4] or 0) + lm.ressRaidCountEdit:GetWidth()),
+    rowFits = (lm.rollCommandRowLeft >= 8
+        and lm.rollCommandRowLeft + lm.rollCommandRowWidth <= LM_MINW - 8),
+    announceWidth = (lm.announceMSBtn:GetWidth() == lm.rollCommandRowWidth
+        and lm.announceMSBtn._points[1][4] == lm.rollCommandRowLeft),
     announceText = lm.announceMSBtn:GetText(),
     rarityWithHistory = (lm.filterFS._points[1][1] == 'RIGHT'
         and lm.filterFS._points[1][2] == lm.rarityDropdown
@@ -5255,8 +5286,10 @@ check(bool(rt.eval("LM_LAYOUT_117.checksWithLabel")), "v1.11.120: ignore categor
 check(bool(rt.eval("LM_LAYOUT_117.noNumberColumn")), "v1.11.121: Loot History has no # column and Item reclaims its space")
 check(bool(rt.eval("LM_LAYOUT_117.tightColumns and LM_LAYOUT_117.bossGetsReclaimed")), "v1.11.133: Type/Assigned fit their headers and all reclaimed width goes to Boss")
 check(bool(rt.eval("LM_LAYOUT_117.compactTop and LM_LAYOUT_117.compactBottom")), "v1.11.122: no stale vertical gaps remain after checkbox/button reflow")
-check(bool(rt.eval("LM_LAYOUT_117.oneButtonRow")), "v1.11.119: all five Loot Manager buttons are on one row")
-check(bool(rt.eval("LM_LAYOUT_117.buttonSpan == LM_MINW - 16")), "v1.11.129: button row fills the reduced 8px side insets")
+check(bool(rt.eval("LM_LAYOUT_117.rollText == 'Roll RES'")), "Loot Manager resource-roll button uses the shorter 'Roll RES' label")
+check(bool(rt.eval("LM_LAYOUT_117.rollButtonsCompact")), "all five roll buttons use the minimum width of the Roll RES label")
+check(bool(rt.eval("LM_LAYOUT_117.oneButtonRow and LM_LAYOUT_117.ressFieldsBesideRES")), "U and R fields sit in the same row immediately after Roll RES")
+check(bool(rt.eval("LM_LAYOUT_117.rowWidth == LM_LAYOUT_117.expectedRowWidth and LM_LAYOUT_117.rowFits and LM_LAYOUT_117.announceWidth")), "roll buttons and U/R fields fit within the fixed Loot Manager width")
 check(bool(rt.eval("LM_LAYOUT_117.announceText == 'Announce MSCh'")), "v1.11.119: announce button uses the shortened label")
 check(bool(rt.eval("LM_LAYOUT_117.rarityWithHistory")), "v1.11.119: Rarity threshold shares the Loot History row")
 check(bool(rt.eval("LM_LAYOUT_117.timer == '1h 1m'")), "v1.11.117: trade timer uses Xh Ym with no seconds")
