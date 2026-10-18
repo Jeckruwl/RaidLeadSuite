@@ -90,6 +90,26 @@ local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end 
 local AceAddon = LibStub("AceAddon-3.0")
 local AceDB = LibStub("AceDB-3.0")
 
+-- Prefer the exact ElvUI/LibSharedMedia assets shown by the UI when they are
+-- installed; clean installs without those media keep a valid Blizzard fallback.
+local function defaultMediaPath(kind, mediaName, elvUIKey, fallback)
+    local E = _G.ElvUI and _G.ElvUI[1]
+    local path = E and E.media and elvUIKey and E.media[elvUIKey]
+    if type(path) == "string" and path ~= "" then return path end
+    local media = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if media and media.Fetch then
+        local ok, fetched = pcall(media.Fetch, media, kind, mediaName, true)
+        if ok and type(fetched) == "string" and fetched ~= "" then return fetched end
+    end
+    return fallback
+end
+
+local DEFAULT_ELVUI_FONT = defaultMediaPath("font", "normFont", "normFont", "Fonts\\FRIZQT__.TTF")
+local DEFAULT_RAID_BAR_TEXTURE = defaultMediaPath("statusbar", "glossTex", "glossTex",
+    "Interface\\TargetingFrame\\UI-StatusBar")
+local DEFAULT_CDW_BAR_TEXTURE = defaultMediaPath("statusbar", "Minimalist", "Minimalist",
+    "Interface\\TargetingFrame\\UI-StatusBar")
+
 -- ============================================================
 -- Defaults (AceDB-3.0). Everything lives in the shared "profile"
 -- section; the database uses the global "Default" profile so the
@@ -146,7 +166,7 @@ local defaults = {
             spamChannels = {"General"},
             spamChannelNums = {},
             spamInterval = 60,
-            showSpecsInMessage = false,
+            -- GroupMaking:Init creates per-role spec flags after legacy migration.
         },
         whisplist = {
             entries = {},
@@ -168,6 +188,8 @@ local defaults = {
             showFlask = true,
             showFood = true,
             showGroupHeaders = true,
+            numberOfGroups = 6,
+            groupsPerRow = 6,
             locked = true,
             scale = 1.0,
             width = 380,
@@ -178,22 +200,64 @@ local defaults = {
             y = 0,
             alpha = 1.0,            -- overall HUD transparency
             appearance = {
-                barWidth = 180,
-                iconSize = 16,
-                nameFontSize = 11,
-                iconSpacing = 8,        -- gap tra le icone della matrice Raid Buffs
-                rowSpacing = 0,         -- gap tra le barre dentro i gruppi
-                groupSpacing = 8,       -- gap tra i gruppi
-                groupHeaderFontSize = 10,
-                matrixBackdrop = { r = 0.5, g = 0.5, b = 0.5, a = 0.35 },
+                barWidth = 100,
+                barHeight = 18,
+                iconSize = 20,
+                nameFontSize = 14,
+                iconSpacing = 8,        -- legacy spacing fallback for Raid Buffs profiles
+                horizontalSpacing = 6,  -- gap fra gruppi affiancati
+                rowSpacing = 2,         -- vertical spacing fra le barre nel gruppo
+                groupSpacing = 0,       -- gap fra le righe di gruppi
+                groupHeaderFontSize = 14,
+                distanceFade = true,
+                distanceAlpha = 0.4,
                 fontColor = { r = 1, g = 1, b = 1, a = 1 },
                 border = true,
-                font = "Fonts\\FRIZQT__.TTF",
+                font = DEFAULT_ELVUI_FONT,
                 fontOutline = true,
-                barTexture = "Interface\\TargetingFrame\\UI-StatusBar",
+                barTexture = DEFAULT_RAID_BAR_TEXTURE,
             },
             alerts = {},
         },
+
+        -- Standalone Raid Buffs window controls. Empty defaults preserve old
+        -- profiles' Raid Frame iconSpacing/backdrop until first saved change.
+        raidbuffs = {},
+        cdwatcher = {
+            layoutMode = "custom",
+            groupByCaster = false, -- legacy saved profiles migrate this to groupMode
+            autoInspect = true,
+            hideTooltips = false,
+            hideBackdrop = true,
+            showIcons = false,
+            useClassColor = false,
+            categories = {},
+            collapsed = {},
+            categoryOrder = {},
+            targetAssignments = {},
+            tankAssignments = {},
+            customPanels = {
+                { enabled = true, spells = {} },
+                { enabled = true, spells = {} },
+                { enabled = true, spells = {} },
+                { enabled = true, spells = {} },
+                { enabled = true, spells = {} },
+                { enabled = true, spells = {} },
+            },
+            barHeight = 16,
+            barWidth = 130,
+            barTexture = DEFAULT_CDW_BAR_TEXTURE,
+            readyColor = { r = 51 / 255, g = 191 / 255, b = 64 / 255, a = 1 },
+            cooldownColor = { r = 242 / 255, g = 153 / 255, b = 31 / 255, a = 1 },
+            deadColor = { r = 77 / 255, g = 77 / 255, b = 82 / 255, a = 1 },
+            disconnectedColor = { r = 75 / 255, g = 0, b = 1 / 255, a = 1 },
+            fontFace = DEFAULT_ELVUI_FONT,
+            fontSize = 12,
+            fontOutline = true,
+            fontColor = { r = 1, g = 1, b = 1, a = 1 },
+            abbreviateSpellNames = true,
+        },
+
         mschanges = {},
         loot = {
             history = {},
@@ -201,6 +265,8 @@ local defaults = {
             rerollDuration = 15,
             rarityFilter = "all",
             tradeWindow = 7200,
+            ressUserCount = 1,
+            ressRaidCount = 0,
             filters = { recipes = false, boe = false, gems = false, shards = false,
                         projectiles = false },
             ignoredItems = {},
@@ -229,6 +295,20 @@ local defaults = {
         },
     },
 }
+
+local function refreshDefaultMedia()
+    -- Resolve once more during addon initialization, after addons loaded before
+    -- RLSuite have had a chance to register their LibSharedMedia assets.
+    DEFAULT_ELVUI_FONT = defaultMediaPath("font", "normFont", "normFont", "Fonts\\FRIZQT__.TTF")
+    DEFAULT_RAID_BAR_TEXTURE = defaultMediaPath("statusbar", "glossTex", "glossTex",
+        "Interface\\TargetingFrame\\UI-StatusBar")
+    DEFAULT_CDW_BAR_TEXTURE = defaultMediaPath("statusbar", "Minimalist", "Minimalist",
+        "Interface\\TargetingFrame\\UI-StatusBar")
+    defaults.profile.raidframe.appearance.font = DEFAULT_ELVUI_FONT
+    defaults.profile.raidframe.appearance.barTexture = DEFAULT_RAID_BAR_TEXTURE
+    defaults.profile.cdwatcher.fontFace = DEFAULT_ELVUI_FONT
+    defaults.profile.cdwatcher.barTexture = DEFAULT_CDW_BAR_TEXTURE
+end
 
 -- ============================================================
 -- AceAddon-3.0 addon object. AceEvent and AceConsole are embedded, so
@@ -261,11 +341,16 @@ function RLSuite:OnInitialize()
         legacy = sv
     end
 
+    refreshDefaultMedia()
     self.db = AceDB:New("RLSuiteDB", defaults, true)
 
     if legacy then
         MergeLegacy(self.db.profile, legacy)
     end
+
+    -- The matrix backdrop belongs to the standalone Raid Buffs window, not
+    -- the Raid Frame. Move the saved value without discarding old profiles.
+    self:MigrateRaidBuffBackdrop()
 
     -- Folder name is the addon name. Canonical: RaidLeadSuite (RLSuite kept
     -- for backward compatibility). AceAddon stores it on baseName.
@@ -283,6 +368,18 @@ function RLSuite:OnInitialize()
     end
 end
 
+function RLSuite:MigrateRaidBuffBackdrop()
+    local profile = self.db and self.db.profile
+    if not profile then return end
+    profile.raidbuffs = profile.raidbuffs or {}
+    local appearance = profile.raidframe and profile.raidframe.appearance
+    if appearance and appearance.matrixBackdrop ~= nil then
+        if profile.raidbuffs.matrixBackdrop == nil then
+            profile.raidbuffs.matrixBackdrop = appearance.matrixBackdrop
+        end
+        appearance.matrixBackdrop = nil
+    end
+end
 
 -- ------------------------------------------------------------------
 -- Durability Addon Communication via AceComm-3.0
@@ -431,13 +528,16 @@ function RLSuite:OnRaidRosterUpdate()
 end
 
 function RLSuite:OnPlayerRegenEnabled()
-    self.context = "preboss"
-    self:UpdatePhaseUI()
+    self:UpdateRaidContext()
+    -- Reflow della matrice sospeso se era arrivato un aggiornamento UI durante
+    -- combat; le posizioni dei secure button si applicano ora fuori combat.
+    if self.mainWindow and self.mainWindow._layoutPending and self.mainWindow.ApplyLayout then
+        self.mainWindow:ApplyLayout()
+    end
 end
 
 function RLSuite:OnPlayerRegenDisabled()
-    self.context = "infight"
-    self:UpdatePhaseUI()
+    self:UpdateRaidContext()
 end
 
 -- Il target e' cambiato: se siamo in fight, la MacroBar deve passare al
@@ -1143,6 +1243,11 @@ RLSuite.raidBuffColumns = {
       spells = { 48932, 48934, 47436 } },
     { key = "hp",          label = "HP",      fullName = "Health (HP)", icon = "Interface\\Icons\\Ability_Warrior_RallyingCry",
       classes = { "WARRIOR", "WARLOCK" }, spells = { 47440, 27267, 47982 } },
+    -- Focus Magic: una aura per mago (scope single); il relativo tracking
+    -- del caster via combat log e' gestito da RaidFrame.lua.
+    { key = "focusMagic",  label = "FM",      fullName = "Focus Magic", icon = "Interface\\Icons\\Spell_Arcane_MindMastery",
+      classes = { "MAGE" }, beneficiaries = BUFF_CLASSES_CASTER,
+      scope = "single", spells = { 54646 } },
     { key = "flask",       label = "Flask",   fullName = "Flask", icon = "Interface\\Icons\\INV_Alchemy_EndlessFlask_05",
       classes = {}, spells = {
         53755, 53760, 54212, 53758, 67016, 67017, 67018,
@@ -1363,8 +1468,8 @@ end
 -- senza dover "ricompattare" la lista. DebugRoster() restituisce una vista
 -- DENSA (senza buchi) per chi vuole solo la lista dei membri (Raid Frame).
 -- ============================================================
-local DEBUG_MAX_SLOTS = 30
-local DEBUG_MAX_GROUPS = 6
+local DEBUG_MAX_SLOTS = 40
+local DEBUG_MAX_GROUPS = 8
 
 -- Vista DENSA del roster simulato (gli slot vuoti vengono saltati): usata
 -- dal Raid Frame, dai test e ovunque serva una lista compatta dei membri.
@@ -1378,7 +1483,7 @@ function RLSuite:DebugRoster()
     return list
 end
 
--- Array sparso degli slot (1..30): la fonte di verita' per la disposizione
+-- Array sparso degli slot (1..40): la fonte di verita' per la disposizione
 -- dei gruppi. Lo slot i-esimo sta nella colonna floor((i-1)/5)+1, riga
 -- (i-1)%5+1.
 function RLSuite:DebugRaidSlots()
@@ -1704,20 +1809,19 @@ function RLSuite:AnchorDebugPanel()
     local f = self.debugPanel
     if not f then return end
     local mw = self.mainWindow
-    local raidW = (mw and mw.RaidFrameWidth and mw:RaidFrameWidth()) or 0
-    local matrixW = 0
-    if mw and mw.frame then
-        local scale = (mw.frame.GetScale and mw.frame:GetScale()) or 1
-        matrixW = (mw.frame:GetWidth() or 0) * scale
-    end
     f:ClearAllPoints()
-    f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", raidW + matrixW, 0)
+    if mw and mw.frame then
+        -- I comandi di debug stanno sotto la matrice Raid Control 2x4.
+        f:SetPoint("TOPLEFT", mw.frame, "BOTTOMLEFT", 0, -2)
+    else
+        -- Fallback solo durante l'inizializzazione prima della MainWindow.
+        f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -28)
+    end
 end
 
 function RLSuite:EnsureDebugPanel()
     if self.debugPanel then return end
-    -- Pannello indipendente dalla Raid Control bar: fisso al bordo superiore,
-    -- dopo la larghezza del Raid Frame e della matrice pulsanti.
+    -- Pannello indipendente dal toggle: si apre sotto la matrice Raid Control.
     local f = CreateFrame("Frame", "RLSuiteDebugPanel", UIParent)
     f:SetSize(126, 60)
     f:SetFrameStrata("HIGH")
@@ -2218,14 +2322,15 @@ function RLSuite:ApplyDebugMode()
 end
 
 function RLSuite:UpdateRaidContext()
-    local inRaid = self:InRaid()
-    local inCombat = UnitAffectingCombat("player")
-    if not inRaid then
-        self.context = "preraid"
-    elseif inCombat then
-        self.context = "infight"
+    -- PRERAID is a deliberate, manual phase: joining/leaving a group or
+    -- entering combat must not move it on. Once the user selects PREBOSS,
+    -- combat state may automatically switch only between PREBOSS/INFIGHT.
+    local current = self.context or "preraid"
+    if current ~= "preraid" then
+        local inCombat = UnitAffectingCombat and UnitAffectingCombat("player")
+        self.context = inCombat and "infight" or "preboss"
     else
-        self.context = "preboss"
+        self.context = "preraid"
     end
     self:UpdatePhaseUI()
     if self.mainWindow and self.mainWindow.SyncVisibilityWithRaidFrame then
@@ -2234,8 +2339,8 @@ function RLSuite:UpdateRaidContext()
 end
 
 -- Forza la fase dell'addon (preraid / preboss / infight) dai bottoni
--- della barra. Il contesto automatico torna a prevalere al prossimo
--- evento (roster/regen), come prima.
+-- della barra. PRERAID resta manuale; una volta passati a PREBOSS,
+-- gli eventi di combattimento alternano automaticamente PREBOSS/INFIGHT.
 function RLSuite:SetContextPhase(phase)
     if phase ~= "preraid" and phase ~= "preboss" and phase ~= "infight" then return end
     self.context = phase
@@ -2283,11 +2388,11 @@ end
 -- ============================================================
 -- Saved Raids (SaveRaid)
 -- Salva: Comp (groupmaking + whisplist), MacroBar e i pannelli di
--- Config esclusa la categoria General (quindi scale delle finestre e
--- impostazioni macrobar/raidframe, non aspetto/font/finestra/debug).
+-- Config esclusa la categoria General (quindi scale e impostazioni di
+-- macrobar, Raid Frame e finestra Raid Buffs; non aspetto/font globali).
 -- ============================================================
 
-local SAVED_RAID_BRANCHES = { "groupmaking", "whisplist", "macrobar", "raidframe" }
+local SAVED_RAID_BRANCHES = { "groupmaking", "whisplist", "macrobar", "raidframe", "raidbuffs" }
 local SAVED_RAID_LAYOUT_KEYS = { "groupmaking", "raidframe", "ms", "loot", "config" }
 
 function RLSuite:SaveRaid(title)
@@ -2460,7 +2565,7 @@ function RLSuite:ApplySavedRaidToUI()
 end
 
 -- ============================================================
--- Anchors stile ElvUI per le HUD (Raid Frame + MacroBar)
+-- Anchors stile ElvUI per le HUD (Raid Frame, Tanks separati + MacroBar)
 -- ============================================================
 function RLSuite:ApplyAnchorMode(on)
     self.db.profile.anchorMode = on and true or false
@@ -2471,6 +2576,14 @@ function RLSuite:ApplyAnchorMode(on)
             if not self.raidFrame.frame:IsShown() then
                 self.raidFrame.frame:Show()
                 if self.raidFrame.ApplyLayout then self.raidFrame:ApplyLayout() end
+            end
+        end
+        if self.raidFrame.tankFrame then
+            u:SetAnchorVisual(self.raidFrame.tankFrame, self.db.profile.anchorMode)
+            if self.db.profile.anchorMode and self.db.profile.raidframe and self.db.profile.raidframe.enabled ~= false then
+                self.raidFrame.tankFrame:Show()
+            elseif not self.raidFrame.frame:IsShown() then
+                self.raidFrame.tankFrame:Hide()
             end
         end
     end
@@ -2497,6 +2610,7 @@ function RLSuite:InitModules()
     if self.lootManager and self.lootManager.Init then self.lootManager:Init() end
     if self.config and self.config.Init then self.config:Init() end
     if self.mainWindow and self.mainWindow.Init then self.mainWindow:Init() end
+    if self.cdwatcher and self.cdwatcher.Init then self.cdwatcher:Init() end
     if self.config and self.config.ApplyTheme then
         self.config:ApplyTheme(self.db.profile.appearance and self.db.profile.appearance.theme)
     end

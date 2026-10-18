@@ -134,6 +134,11 @@ local CATEGORIES = {
         { value = "editor", text = "Macro Editor" },
     } },
     { value = "raidframe", text = "Raid Frame" },
+    { value = "raidbuffs", text = "Raid Buffs" },
+    { value = "cdwatcher", text = L["CD Watcher"], children = {
+        { value = "baroptions", text = L["Bar options"] },
+        { value = "general", text = L["General"] },
+    } },
     { value = "savedraids", text = "Saved Raids" },
     -- Lista ignora degli item di loot (v1.11.94): la voce va anche QUI,
     -- non solo nella tabella opzioni, altrimenti nel pannello non compare.
@@ -153,6 +158,10 @@ local NODES = {
     -- Raid Frame e' un nodo singolo: solo il contenuto Layout (checks,
     -- positions e alerts sono stati eliminati dal pannello).
     ["raidframe"]          = { "raidframe" },
+    ["raidbuffs"]          = { "raidbuffs" },
+    ["cdwatcher"]          = { "cdwatcher", "general" },
+    ["cdwatcher\001baroptions"] = { "cdwatcher", "baroptions" },
+    ["cdwatcher\001general"]    = { "cdwatcher", "general" },
     ["savedraids"]         = { "savedraids" },
     ["loot"]               = { "loot" },
     ["debug"]              = { "debug" },
@@ -192,6 +201,12 @@ function CFG:Open()
     else
         self:SelectNode("general\001look")
     end
+end
+
+function CFG:OpenCDWatcher(section)
+    local node = section == "baroptions" and "cdwatcher\001baroptions" or "cdwatcher\001general"
+    self:Open()
+    self:SelectNode(node)
 end
 
 function CFG:CloseWindow()
@@ -352,22 +367,13 @@ function CFG:BuildOptionsTable()
 
     -- --- Module Menu (ex General/Window): voce top-level a se' -------
     local main = self:Layout("main")
-    main.matrixCols = main.matrixCols or 2
-    main.matrixRows = main.matrixRows or 4
 
     local moduleMenu = {
-        -- Le tre opzioni della barra moduli (scala, colonne, righe)
-        -- applicano il layout SUBITO: ApplyAll rilancia
-        -- RLSuite.mainWindow:ApplyLayout() ad ogni cambio dello slider.
+        -- La matrice è fissa a una riga e otto colonne; solo la scala della
+        -- barra moduli resta configurabile.
         barScale = slider(L["Bar scale"], nil, 1, 0.70, 1.30, 0.05,
             function() return main.scale or 1 end,
             function(_, v) main.scale = v; self:ApplyAll() end),
-        matrixCols = slider(L["Columns"], L["Columns in the bar button matrix."], 2, 1, 8, 1,
-            function() return main.matrixCols end,
-            function(_, v) main.matrixCols = v; self:ApplyAll() end),
-        matrixRows = slider(L["Buttons per column"], nil, 3, 1, 8, 1,
-            function() return main.matrixRows end,
-            function(_, v) main.matrixRows = v; self:ApplyAll() end),
     }
 
     -- --- General / Debug -----------------------------------------
@@ -413,7 +419,7 @@ function CFG:BuildOptionsTable()
         end
     end
 
-    local savedraids = { type = "group", name = L["Saved Raids"], order = 6, args = savedArgs }
+    local savedraids = { type = "group", name = L["Saved Raids"], order = 8, args = savedArgs }
 
     -- --- Groupmaking ---------------------------------------------
     -- Canali per lo spam LFM (General/Trade/LFG/World e il custom "global")
@@ -445,21 +451,46 @@ function CFG:BuildOptionsTable()
     end
     -- (lo slider Scale per-modulo e' eliminato: tutti i moduli seguono lo
     -- snapshot Scale in General)
+    local spamIntervalValues = {}
+    for seconds = 20, 60, 5 do
+        local key = tostring(seconds)
+        spamIntervalValues[key] = string.format(L["%ds"], seconds)
+    end
     local groupmaking = {
-        spamDesc = { type = "description", name = L["Spam channels"] .. ":", order = 1, fontSize = "medium" },
+        spamInterval = select(L["Spam interval"], L["Interval between spam messages; choose 20 to 60 seconds in 5-second steps."], 1,
+            spamIntervalValues,
+            function()
+                local groupmaking = RLSuite.groupmaking
+                if groupmaking and groupmaking.GetSpamInterval then
+                    return tostring(groupmaking:GetSpamInterval())
+                end
+                return "60"
+            end,
+            function(_, value)
+                local d = RLSuite.groupmaking and RLSuite.groupmaking.db
+                if not d then return end
+                d.spamInterval = tonumber(value) or 60
+                if RLSuite.groupmaking.ApplySpamInterval then
+                    RLSuite.groupmaking:ApplySpamInterval()
+                end
+            end),
+        spamDesc = { type = "description", name = L["Spam channels"] .. ":", order = 2, fontSize = "medium" },
     }
     -- Canali standard WoW (Guild, Yell) e numerati (General, global).
     -- Per i canali numerati: numero 0 o vuoto = risoluzione automatica da GetChannelName;
     -- un numero esplicito > 0 ha la precedenza.
     -- Per Guild e Yell il campo numero non serve perche' non sono canali custom numerati.
-    local _gmChans = { "General", "Guild", "Yell", "global" }
+    -- Ordinamento visuale richiesto nella riga: global, General, Yell, Guild.
+    local _gmChans = { "global", "General", "Yell", "Guild" }
     for i, ch in ipairs(_gmChans) do
-        local tgl = toggle(L[ch], nil, 1 + i, gmSpamGet(ch), gmSpamSet(ch))
+        local tgl = toggle(L[ch], nil, 2 + i, gmSpamGet(ch), gmSpamSet(ch))
+        -- Tutte le checkbox e i due campi numerici usano mezza larghezza:
+        -- Guild e Yell non riservano spazio per un numero di canale.
+        tgl.width = "half"
         local isNumbered = (ch ~= "Guild" and ch ~= "Yell")
         if isNumbered then
-            tgl.width = "half"
             groupmaking["spam_" .. ch] = tgl
-            groupmaking["spamNum_" .. ch] = numinput(L["Channel #"], L["Explicit channel number; leave empty (or 0) to auto-detect by name."], 1 + i + 0.01,
+            groupmaking["spamNum_" .. ch] = numinput(L["Channel #"], L["Explicit channel number; leave empty (or 0) to auto-detect by name."], 2 + i + 0.01,
                 (function(c) return function()
                     local d = RLSuite.groupmaking and RLSuite.groupmaking.db
                     local n = d and d.spamChannelNums and tonumber(d.spamChannelNums[c])
@@ -473,7 +504,6 @@ function CFG:BuildOptionsTable()
                     d.spamChannelNums[c] = (n and n > 0) and n or nil
                 end end)(ch))
         else
-            tgl.width = "normal"
             groupmaking["spam_" .. ch] = tgl
         end
     end
@@ -555,85 +585,72 @@ function CFG:BuildOptionsTable()
     -- --- Raid Frame ----------------------------------------------
     local rf = p.raidframe
     rf.appearance = rf.appearance or {}
-    rf.width = rf.width or 380
-    rf.scale = rf.scale or 1
-    rf.appearance.barWidth = rf.appearance.barWidth or 180
-    rf.appearance.nameFontSize = rf.appearance.nameFontSize or 11
+    rf.numberOfGroups = rf.numberOfGroups or 6
+    rf.groupsPerRow = rf.groupsPerRow or 6
+    local function clampRaidFrameValue(value, low, high, fallback)
+        value = tonumber(value) or fallback
+        value = math.floor(value + 0.5)
+        return math.max(low, math.min(high, value))
+    end
+    rf.appearance.barWidth = clampRaidFrameValue(rf.appearance.barWidth, 10, 256, 100)
+    rf.appearance.barHeight = clampRaidFrameValue(rf.appearance.barHeight, 10, 32, 18)
+    rf.appearance.horizontalSpacing = clampRaidFrameValue(rf.appearance.horizontalSpacing, -1, 32, 6)
+    rf.appearance.rowSpacing = clampRaidFrameValue(rf.appearance.rowSpacing, -1, 32, 2)
+    rf.appearance.groupSpacing = clampRaidFrameValue(rf.appearance.groupSpacing, 0, 32, 0)
+    rf.appearance.nameFontSize = rf.appearance.nameFontSize or 14
+    if rf.appearance.distanceFade == nil then rf.appearance.distanceFade = true end
+    rf.appearance.groupHeaderFontSize = rf.appearance.groupHeaderFontSize or 14
+    rf.appearance.iconSize = rf.appearance.iconSize or 20
 
-    local raidLayout = {
+    local function applyGroupSettings()
+        self:ApplyAll()
+        if RLSuite.raidFrame and RLSuite.raidFrame.Rebuild then
+            RLSuite.raidFrame:Rebuild()
+        end
+    end
+
+    local sizePositions = {
         anchors = toggle(L["Toggle Anchors"], L["Show anchor points for dragging."], 0,
             function() return RLSuite.db.profile.anchorMode == true end,
             function(_, v) RLSuite:ApplyAnchorMode(v) end),
-        iconSize = slider(L["Icon size"], nil, 1, 10, 24, 1,
-            function() return rf.appearance.iconSize or 16 end,
-            function(_, v) rf.appearance.iconSize = v; self:ApplyAll() end),
-        barWidth = slider(L["Player bar width"], nil, 3, 100, 300, 5,
-            function() return rf.appearance.barWidth or 180 end,
+        width = slider(L["Width"], L["Width of each player health bar in pixels."], 1, 10, 256, 1,
+            function() return rf.appearance.barWidth or 100 end,
             function(_, v) rf.appearance.barWidth = v; self:ApplyAll() end),
-        nameFontSize = slider(L["Name font size"], nil, 4, 8, 16, 1,
-            function() return rf.appearance.nameFontSize or 11 end,
-            function(_, v) rf.appearance.nameFontSize = v; self:ApplyAll() end),
-        font = select(L["Font"], L["Font used for Raid Frame names, headers and cooldowns. Includes media registered by ElvUI/LibSharedMedia."], 7,
-            function() return mediaValues("font", rf.appearance.font) end,
-            function() return rf.appearance.font or "Fonts\\FRIZQT__.TTF" end,
-            function(_, v) rf.appearance.font = v; self:ApplyAll() end),
-        fontOutline = toggle(L["Font outline"], L["Draw the player name with an outline."], 8,
-            function() return rf.appearance.fontOutline ~= false end,
-            function(_, v) rf.appearance.fontOutline = v; self:ApplyAll() end),
-        barTexture = select(L["Bar texture"], L["Texture of the player HP bars. Includes statusbar textures registered by ElvUI/LibSharedMedia."], 9,
-            function() return mediaValues("statusbar", rf.appearance.barTexture) end,
+        height = slider(L["Height"], L["Height of each player health bar in pixels."], 2, 10, 32, 1,
+            function() return rf.appearance.barHeight or 18 end,
+            function(_, v) rf.appearance.barHeight = v; self:ApplyAll() end),
+        numberOfGroups = slider(L["Number of Groups"], L["Number of raid groups displayed by the Raid Frame."], 3, 1, 8, 1,
+            function() return math.max(1, math.min(8, tonumber(rf.numberOfGroups) or 6)) end,
+            function(_, v) rf.numberOfGroups = v; applyGroupSettings() end),
+        groupsPerRow = slider(L["Groups Per Row/Column"], L["Number of raid groups arranged across each row."], 4, 1, 8, 1,
+            function() return math.max(1, math.min(8, tonumber(rf.groupsPerRow) or 6)) end,
+            function(_, v) rf.groupsPerRow = v; applyGroupSettings() end),
+        horizontalSpacing = slider(L["Horizontal Spacing"], L["Gap between raid groups arranged side by side."], 5, -1, 32, 1,
+            function() return rf.appearance.horizontalSpacing or 6 end,
+            function(_, v) rf.appearance.horizontalSpacing = v; self:ApplyAll() end),
+        verticalSpacing = slider(L["Vertical Spacing"], L["Gap between player bars inside each group."], 6, -1, 32, 1,
+            function() return rf.appearance.rowSpacing or 2 end,
+            function(_, v) rf.appearance.rowSpacing = v; self:ApplyAll() end),
+        groupSpacing = slider(L["Group Spacing"], L["Gap between rows of raid groups."], 7, 0, 32, 1,
+            function() return rf.appearance.groupSpacing or 0 end,
+            function(_, v) rf.appearance.groupSpacing = v; self:ApplyAll() end),
+    }
+
+    local fontValues = mediaValues("font", rf.appearance.font or "Fonts\\FRIZQT__.TTF")
+    local barTextureValues = mediaValues("statusbar", rf.appearance.barTexture or "Interface\\TargetingFrame\\UI-StatusBar")
+    local raidAppearance = {
+        barTexture = select(L["Bar texture"], L["Texture of the player HP bars. Includes statusbar textures registered by ElvUI/LibSharedMedia."], 1, barTextureValues,
             function() return rf.appearance.barTexture or "Interface\\TargetingFrame\\UI-StatusBar" end,
             function(_, v) rf.appearance.barTexture = v; self:ApplyAll() end),
-        alpha = slider(L["Opacity"], L["Overall transparency of the Raid Frame HUD."], 10, 0.30, 1.00, 0.05,
+        alpha = slider(L["Opacity"], L["Overall transparency of the Raid Frame HUD."], 2, 0.30, 1.00, 0.05,
             function() return rf.alpha or 1 end,
             function(_, v) rf.alpha = v; self:ApplyAll() end),
-        distanceFade = select(L["Distance fade"], L["Fade player bars only when the client can no longer see the unit (approximately 100 yards or outside the visible area)."], 17, {
-            ["0"] = L["Off"],
-            ["100"] = "Out of sight (~100 yards)",
-        },
-            -- Migrazione trasparente: ogni vecchia soglia 10-40 diventa il
-            -- nuovo unico modo, senza lasciare la select su un valore sparito.
-            function() return ((tonumber(rf.appearance.distanceFade) or 0) > 0) and "100" or "0" end,
-            function(_, v) rf.appearance.distanceFade = tonumber(v) or 0; self:ApplyAll() end),
-        distanceAlpha = slider(L["Fade transparency"], L["Transparency of the bars beyond the distance."], 18, 0.20, 1.00, 0.05,
-            function() return rf.appearance.distanceAlpha or 0.40 end,
-            function(_, v) rf.appearance.distanceAlpha = v; self:ApplyAll() end),
-        iconSpacing = slider(L["Icon spacing"], L["Gap between the Raid Buffs matrix icons."], 12, 0, 16, 1,
-            function() return rf.appearance.iconSpacing or 8 end,
-            function(_, v) rf.appearance.iconSpacing = v; self:ApplyAll() end),
-        rowSpacing = slider(L["Row spacing"], L["Gap between the player bars inside each group."], 13, -10, 12, 1,
-            function() return rf.appearance.rowSpacing or 0 end,
-            function(_, v) rf.appearance.rowSpacing = v; self:ApplyAll() end),
-        groupSpacing = slider(L["Group spacing"], L["Gap between the groups (Tanks, G1..G6)."], 14, 0, 24, 1,
-            function() return rf.appearance.groupSpacing or 8 end,
-            function(_, v) rf.appearance.groupSpacing = v; self:ApplyAll() end),
-        groupHeaderFontSize = slider(L["Group header font size"], L["Font size of the group labels (Tanks, G1..G6)."], 15, 8, 16, 1,
-            function() return rf.appearance.groupHeaderFontSize or 10 end,
-            function(_, v) rf.appearance.groupHeaderFontSize = v; self:ApplyAll() end),
-        showGroupHeaders = toggle(L["Show group headers"], L["Show or hide the Group headers (Group 1..Group 6)."], 16,
-            function() return rf.showGroupHeaders ~= false end,
-            function(_, v) rf.showGroupHeaders = v; self:ApplyAll() end),
-        matrixBackdrop = {
-            name = L["Buff check backdrop"],
-            desc = L["Backdrop color and transparency of the Raid Buffs matrix rows."],
-            type = "color",
-            hasAlpha = true,
-            order = 16,
-            get = function()
-                local c = rf.appearance.matrixBackdrop or { r = 0.5, g = 0.5, b = 0.5, a = 0.35 }
-                return c.r or 0.5, c.g or 0.5, c.b or 0.5, c.a or 0.35
-            end,
-            set = function(_, r, g, b, a)
-                rf.appearance.matrixBackdrop = { r = r, g = g, b = b, a = a }
-                self:ApplyAll()
-            end,
-        },
         fontColor = {
             name = L["Font color"],
             desc = L["Color of the player name on the bars."],
             type = "color",
             hasAlpha = false,
-            order = 11,
+            order = 3,
             get = function()
                 local c = rf.appearance.fontColor or { r = 1, g = 1, b = 1 }
                 return c.r or 1, c.g or 1, c.b or 1
@@ -643,12 +660,323 @@ function CFG:BuildOptionsTable()
                 self:ApplyAll()
             end,
         },
+        groupHeaderFontSize = slider(L["Group header font size"], L["Font size of the group labels (Tanks, G1..G8)."], 4, 8, 16, 1,
+            function() return rf.appearance.groupHeaderFontSize or 14 end,
+            function(_, v) rf.appearance.groupHeaderFontSize = v; self:ApplyAll() end),
+        showGroupHeaders = toggle(L["Show group headers"], L["Show or hide the group headers (Tanks, Group 1..Group 8)."], 5,
+            function() return rf.showGroupHeaders ~= false end,
+            function(_, v) rf.showGroupHeaders = v; self:ApplyAll() end),
+        distanceFade = toggle(L["Distance fade"], L["Fade player bars only when the client can no longer see the unit (approximately 100 yards or outside the visible area)."], 6,
+            function()
+                return rf.appearance.distanceFade == true or (tonumber(rf.appearance.distanceFade) or 0) > 0
+            end,
+            function(_, v) rf.appearance.distanceFade = v; self:ApplyAll() end),
+        nameFontSize = slider(L["Name font size"], nil, 7, 8, 16, 1,
+            function() return rf.appearance.nameFontSize or 14 end,
+            function(_, v) rf.appearance.nameFontSize = v; self:ApplyAll() end),
+        font = select(L["Font"], L["Font used for Raid Frame names, headers and cooldowns. Includes media registered by ElvUI/LibSharedMedia."], 8, fontValues,
+            function() return rf.appearance.font or "Fonts\\FRIZQT__.TTF" end,
+            function(_, v) rf.appearance.font = v; self:ApplyAll() end),
+        fontOutline = toggle(L["Font outline"], L["Draw the player name with an outline."], 9,
+            function() return rf.appearance.fontOutline ~= false end,
+            function(_, v) rf.appearance.fontOutline = v; self:ApplyAll() end),
+        iconSize = slider(L["Icon size"], nil, 10, 10, 24, 1,
+            function() return rf.appearance.iconSize or 20 end,
+            function(_, v) rf.appearance.iconSize = v; self:ApplyAll() end),
+        distanceAlpha = slider(L["Fade transparency"], L["Transparency of the bars beyond the distance."], 11, 0.20, 1.00, 0.05,
+            function() return rf.appearance.distanceAlpha or 0.40 end,
+            function(_, v) rf.appearance.distanceAlpha = v; self:ApplyAll() end),
     }
 
-    -- Checks, Alert Messages e Position: eliminati dal pannello (solo
-    -- Layout resta configurabile per il Raid Frame).
+    -- Checks, Alert Messages e Position restano fuori dal pannello Raid Frame.
+    local raidframe = {
+        sizeAndPositions = {
+            type = "group", name = L["Size and Positions"], order = 1, inline = true,
+            args = sizePositions,
+        },
+        appearance = {
+            type = "group", name = L["Appearance"], order = 2, inline = true,
+            args = raidAppearance,
+        },
+    }
 
-    local raidframe = raidLayout
+    -- --- Raid Buffs (standalone window) --------------------------
+    local function getBuffSettings()
+        local rf = RLSuite.raidFrame
+        if rf and rf.GetBuffWindowSettings then return rf:GetBuffWindowSettings() end
+        local saved = p.raidbuffs or {}
+        local legacy = p.raidframe and p.raidframe.appearance
+        return {
+            iconSize = tonumber(saved.iconSize) or 16,
+            headerIconSize = tonumber(saved.headerIconSize) or 20,
+            spacing = tonumber(saved.spacing) or tonumber(legacy and legacy.iconSpacing) or 8,
+            fontSize = tonumber(saved.fontSize) or 10,
+            matrixBackdrop = saved.matrixBackdrop or (legacy and legacy.matrixBackdrop)
+                or { r = 0.5, g = 0.5, b = 0.5, a = 0.35 },
+        }
+    end
+    local function setBuffSetting(key, value)
+        p.raidbuffs = p.raidbuffs or {}
+        p.raidbuffs[key] = value
+        self:ApplyAll()
+    end
+    local raidbuffs = {
+        iconSize = slider(L["Buff icon size"], L["Size of buff icons in the player rows."],
+            1, 12, 24, 1,
+            function() return getBuffSettings().iconSize end,
+            function(_, v) setBuffSetting("iconSize", v) end),
+        headerIconSize = slider(L["Header icon size"], L["Size of category icons in the Raid Buffs header."],
+            2, 20, 60, 1,
+            function() return getBuffSettings().headerIconSize end,
+            function(_, v) setBuffSetting("headerIconSize", v) end),
+        spacing = slider(L["Buff spacing"], L["Spacing between the buff columns and category groups."],
+            3, 0, 16, 1,
+            function() return getBuffSettings().spacing end,
+            function(_, v) setBuffSetting("spacing", v) end),
+        fontSize = slider(L["Font size"], L["Font size for player names in the Raid Buffs window."],
+            4, 8, 20, 1,
+            function() return getBuffSettings().fontSize end,
+            function(_, v) setBuffSetting("fontSize", v) end),
+        matrixBackdrop = {
+            name = L["Buff check backdrop"],
+            desc = L["Backdrop color and transparency of the Raid Buffs matrix rows."],
+            type = "color",
+            hasAlpha = true,
+            order = 5,
+            get = function()
+                local c = getBuffSettings().matrixBackdrop or { r = 0.5, g = 0.5, b = 0.5, a = 0.35 }
+                return c.r or 0.5, c.g or 0.5, c.b or 0.5, c.a or 0.35
+            end,
+            set = function(_, r, g, b, a)
+                setBuffSetting("matrixBackdrop", { r = r, g = g, b = b, a = a })
+            end,
+        },
+    }
+
+    -- --- CD Watcher: bar appearance + general behavior ------------
+    local cdw = RLSuite.cdwatcher
+    local function cdwGet(key, fallback)
+        if not (cdw and cdw.GetSettings) then return fallback end
+        local value = cdw:GetSettings()[key]
+        if value == nil then return fallback end
+        return value
+    end
+    local function cdwSet(key, value)
+        if not (cdw and cdw.GetSettings) then return end
+        cdw:GetSettings()[key] = value
+        if cdw.ApplyBarSettings then cdw:ApplyBarSettings()
+        elseif cdw.RefreshAll then cdw:RefreshAll() end
+        self:NotifyChange()
+    end
+
+    local barTextureValues = mediaValues("statusbar", cdwGet("barTexture", "Interface\\TargetingFrame\\UI-StatusBar"))
+    local cdwColorDefaults = {
+        readyColor = { r = 51 / 255, g = 191 / 255, b = 64 / 255 },
+        cooldownColor = { r = 242 / 255, g = 153 / 255, b = 31 / 255 },
+        deadColor = { r = 77 / 255, g = 77 / 255, b = 82 / 255 },
+        disconnectedColor = { r = 75 / 255, g = 0, b = 1 / 255 },
+    }
+    local function cdwColorOption(optionKey, labelKey, descKey, order)
+        return {
+            type = "color", name = L[labelKey], desc = L[descKey], hasAlpha = false, order = order,
+            disabled = function() return cdwGet("useClassColor", false) end,
+            get = function()
+                local c = cdwGet(optionKey, cdwColorDefaults[optionKey] or { r = 1, g = 1, b = 1 })
+                return c.r or 1, c.g or 1, c.b or 1
+            end,
+            set = function(_, r, g, b) cdwSet(optionKey, { r = r, g = g, b = b, a = 1 }) end,
+        }
+    end
+    local cdwBarOptions = {
+        barHeight = slider(L["Bar height"], L["Height of each cooldown bar in pixels."], 1, 10, 32, 1,
+            function() return cdwGet("barHeight", 16) end,
+            function(_, value) cdwSet("barHeight", value) end),
+        barWidth = slider(L["Bar width"], L["Width of each cooldown bar in pixels."], 2, 100, 300, 10,
+            function() return cdwGet("barWidth", 130) end,
+            function(_, value) cdwSet("barWidth", value) end),
+        barTexture = select(L["Bar texture"], L["Status-bar texture used by cooldown bars."], 3, barTextureValues,
+            function() return cdwGet("barTexture", "Interface\\TargetingFrame\\UI-StatusBar") end,
+            function(_, value) cdwSet("barTexture", value) end),
+        showIcons = toggle(L["Show spell icons"], L["Show each ability icon at the left of its cooldown bar."], 4,
+            function() return cdwGet("showIcons", false) end,
+            function(_, value) cdwSet("showIcons", value) end),
+        useClassColor = toggle(L["Use class colors"], L["Color bars with the caster's class color instead of the custom state colors below."], 5,
+            function() return cdwGet("useClassColor", false) end,
+            function(_, value) cdwSet("useClassColor", value) end),
+        readyColor = cdwColorOption("readyColor", "Ready / alive color", "Custom color for ready bars when class colors are disabled.", 6),
+        cooldownColor = cdwColorOption("cooldownColor", "Cooldown color", "Custom color for bars that are still on cooldown.", 7),
+        deadColor = cdwColorOption("deadColor", "Dead color", "Custom color for bars belonging to dead players.", 8),
+        disconnectedColor = cdwColorOption("disconnectedColor", "Disconnected color", "Custom color for bars belonging to disconnected players.", 9),
+        previewHead = { type = "header", name = L["Preview"], order = 10 },
+        previewSingle = execute(L["Preview a single bar"], L["Open a live sample bar using the current bar and font settings."], 11,
+            function() if cdw and cdw.ShowPreview then cdw:ShowPreview("single") end end),
+        previewFake = execute(L["Preview fake CD bars"], L["Show sample ready, cooldown, dead, and disconnected bars without changing the raid roster."], 12,
+            function() if cdw and cdw.ShowPreview then cdw:ShowPreview("fake") end end),
+    }
+
+    local cdwLayoutValues = {
+        separate = L["Category Panels"],
+        macro = L["Default panels"],
+        custom = L["Custom panels"],
+    }
+    local cdwGroupModeValues = {
+        caster = L["Caster"],
+        spells = L["Spells"],
+        none = L["None"],
+    }
+    local fontValues = mediaValues("font", cdwGet("fontFace", "Fonts\\FRIZQT__.TTF"))
+    cdwBarOptions.fontHead = { type = "header", name = L["Font options"], order = 13 }
+    cdwBarOptions.fontFace = select(L["Font face"], L["Font used for the cooldown bar label."], 14, fontValues,
+        function() return cdwGet("fontFace", "Fonts\\FRIZQT__.TTF") end,
+        function(_, value) cdwSet("fontFace", value) end)
+    cdwBarOptions.fontSize = slider(L["Font size"], L["Font size for cooldown bar text."], 15, 8, 24, 1,
+        function() return cdwGet("fontSize", 12) end,
+        function(_, value) cdwSet("fontSize", value) end)
+    cdwBarOptions.fontOutline = toggle(L["Font outline"], L["Draw an outline around cooldown bar text."], 16,
+        function() return cdwGet("fontOutline", true) end,
+        function(_, value) cdwSet("fontOutline", value) end)
+    cdwBarOptions.fontColor = {
+        type = "color", name = L["Bar text color"], desc = L["Color for the cooldown label text."],
+        hasAlpha = false, order = 17,
+        get = function()
+            local c = cdwGet("fontColor", { r = 1, g = 1, b = 1 })
+            return c.r or 1, c.g or 1, c.b or 1
+        end,
+        set = function(_, r, g, b) cdwSet("fontColor", { r = r, g = g, b = b, a = 1 }) end,
+    }
+    cdwBarOptions.abbreviateSpellNames = toggle(
+        L["Abbreviate spell names"],
+        L["Use concise cooldown names such as Tranq Shot, HOP, and DSAC instead of full spell names."], 18,
+        function() return cdwGet("abbreviateSpellNames", true) end,
+        function(_, value) cdwSet("abbreviateSpellNames", value) end)
+    local cdwGeneral = {
+        layoutMode = select(L["Layout"], L["Choose between Category Panels, Default panels and Custom panels."], 1,
+            cdwLayoutValues,
+            function() return cdwGet("layoutMode", "custom") end,
+            function(_, value) if cdw and cdw.SetLayoutMode then cdw:SetLayoutMode(value); self:NotifyChange() end end),
+        groupMode = select(L["Group by"], L["Group the bars by caster, by spell, or do not group them."], 2,
+            cdwGroupModeValues,
+            function() return cdwGet("groupMode", "none") end,
+            function(_, value)
+                if cdw and cdw.SetGroupMode then cdw:SetGroupMode(value)
+                else cdwSet("groupMode", value) end
+                self:NotifyChange()
+            end),
+        autoInspect = toggle(L["Inspect raid composition automatically"], L["Inspect nearby players to identify talent specializations and required capabilities needed by the cooldown watchlist."], 3,
+            function() return cdwGet("autoInspect", true) end,
+            function(_, value) if cdw and cdw.SetAutoInspect then cdw:SetAutoInspect(value); self:NotifyChange() end end),
+        retryInspection = execute(L["Retry required inspections"], L["Retry inspections for players whose specialization or required capability is unknown."], 4,
+            function() if cdw and cdw.RetryInspection then cdw:RetryInspection() end end),
+        hideTooltips = toggle(L["Hide bar tooltips"], L["Hide cooldown bar tooltips."], 5,
+            function() return cdwGet("hideTooltips", false) end,
+            function(_, value) cdwSet("hideTooltips", value) end),
+        hideBackdrop = toggle(L["Hide window backdrop"], L["Hide the background fill of all CD Watcher windows."], 6,
+            function() return cdwGet("hideBackdrop", true) end,
+            function(_, value) cdwSet("hideBackdrop", value) end),
+        categoriesHead = { type = "header", name = L["Visible categories"], order = 7 },
+    }
+    -- Custom panels each own their grouping selector; keep the global selector
+    -- only for Category Panels and Default panels to avoid conflicting controls.
+    cdwGeneral.groupMode.hidden = function() return cdwGet("layoutMode", "custom") == "custom" end
+    for i, category in ipairs((cdw and cdw.Categories) or {}) do
+        local categoryKey = category.key
+        cdwGeneral["category_" .. categoryKey] = toggle(
+            L[category.title] or category.title,
+            L["Show or hide this cooldown category independently."], 7 + i,
+            function() return cdw and cdw.IsCategoryEnabled and cdw:IsCategoryEnabled(categoryKey) or false end,
+            function(_, value)
+                if cdw and cdw.SetCategoryEnabled then cdw:SetCategoryEnabled(categoryKey, value) end
+                self:NotifyChange()
+            end)
+    end
+    local categoryCount = #(cdw and cdw.Categories or {})
+    local customPanelOrder = 8 + categoryCount
+    cdwGeneral.modifyPanels = {
+        type = "execute",
+        name = function()
+            return cdw and cdw.IsCustomPanelEditMode and cdw:IsCustomPanelEditMode()
+                and L["Finish editing panels"] or L["Modify panels"]
+        end,
+        desc = L["Open the spell catalog and assign abilities to enabled custom panels."],
+        order = customPanelOrder,
+        hidden = function() return cdwGet("layoutMode", "custom") ~= "custom" end,
+        func = function()
+            if cdw and cdw.SetCustomPanelEditMode then
+                cdw:SetCustomPanelEditMode(not cdw:IsCustomPanelEditMode())
+            end
+            self:NotifyChange()
+        end,
+    }
+    cdwGeneral.customPanelsHead = {
+        type = "header", name = L["Custom panels"], order = customPanelOrder + 1,
+        hidden = function() return cdwGet("layoutMode", "custom") ~= "custom" end,
+    }
+    local function customPanelAt(index)
+        if cdw and cdw.GetCustomPanels then return cdw:GetCustomPanels()[index] end
+        local saved = cdwGet("customPanels", {})
+        return type(saved) == "table" and saved[index] or {}
+    end
+    for index = 1, 6 do
+        local panelIndex = index
+        local panelOrder = customPanelOrder + 1 + panelIndex
+        local panelArgs = {
+            enabled = toggle(L["Enabled"], L["Show this custom panel."], 1,
+                function()
+                    local panel = customPanelAt(panelIndex)
+                    return panel and panel.enabled == true or false
+                end,
+                function(_, value)
+                    if cdw and cdw.SetCustomPanelEnabled then cdw:SetCustomPanelEnabled(panelIndex, value) end
+                    self:NotifyChange()
+                end),
+            name = {
+                type = "input", name = L["Panel name"], order = 2, width = "normal",
+                get = function()
+                    local draft = cdw and cdw.customPanelNameDrafts and cdw.customPanelNameDrafts[panelIndex]
+                    if draft ~= nil then return draft end
+                    local panel = customPanelAt(panelIndex)
+                    return panel and panel.name or (L["Panel %d"]:format(panelIndex))
+                end,
+                set = function(_, value)
+                    if cdw and cdw.SetCustomPanelNameDraft then cdw:SetCustomPanelNameDraft(panelIndex, value) end
+                end,
+            },
+            rename = execute(L["Rename"], L["Save the new panel name."], 3,
+                function()
+                    if cdw and cdw.RenameCustomPanel then cdw:RenameCustomPanel(panelIndex) end
+                    self:NotifyChange()
+                end),
+            groupBy = select(L["Group by"], L["Group the bars by caster, by spell, or do not group them."], 4,
+                cdwGroupModeValues,
+                function()
+                    local panel = customPanelAt(panelIndex)
+                    return panel and panel.groupMode or cdwGet("groupMode", "none")
+                end,
+                function(_, value)
+                    if cdw and cdw.SetCustomPanelGroupMode then
+                        cdw:SetCustomPanelGroupMode(panelIndex, value)
+                    else
+                        local panels = cdwGet("customPanels", {})
+                        if type(panels) ~= "table" then panels = {} end
+                        local panel = type(panels[panelIndex]) == "table" and panels[panelIndex] or {}
+                        panel.groupMode = value
+                        panels[panelIndex] = panel
+                        cdwSet("customPanels", panels)
+                    end
+                    self:NotifyChange()
+                end),
+        }
+        panelArgs.enabled.width = "half"
+        panelArgs.rename.width = "half"
+        panelArgs.name.width = "normal"
+        panelArgs.groupBy.width = "normal"
+        cdwGeneral["customPanel" .. panelIndex] = {
+            type = "group", name = L["Panel %d"]:format(panelIndex), order = panelOrder,
+            inline = true,
+            hidden = function() return cdwGet("layoutMode", "custom") ~= "custom" end,
+            args = panelArgs,
+        }
+    end
 
     -- --- Loot ----------------------------------------------------
     -- La LISTA IGNORA (item singoli) sta qui, modificabile a mano: una riga
@@ -713,9 +1041,14 @@ function CFG:BuildOptionsTable()
             groupmaking = { type = "group", name = L["Pugger"], order = 3, args = groupmaking },
             macros = { type = "group", name = L["Macros"], order = 4, args = macros },
             raidframe = { type = "group", name = L["Raid Frame"], order = 5, args = raidframe },
+            raidbuffs = { type = "group", name = L["Raid Buffs"], order = 6, args = raidbuffs },
+            cdwatcher = { type = "group", name = L["CD Watcher"], order = 7, childGroups = "tree", args = {
+                baroptions = { type = "group", name = L["Bar options"], order = 1, args = cdwBarOptions },
+                general = { type = "group", name = L["General"], order = 2, args = cdwGeneral },
+            } },
             savedraids = savedraids,
-            loot = { type = "group", name = L["Loot"], order = 7, args = loot },
-            debug = { type = "group", name = L["Debug"], order = 8, args = debug },
+            loot = { type = "group", name = L["Loot"], order = 9, args = loot },
+            debug = { type = "group", name = L["Debug"], order = 10, args = debug },
         },
     }
 end

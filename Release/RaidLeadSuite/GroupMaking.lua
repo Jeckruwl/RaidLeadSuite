@@ -38,6 +38,14 @@ local WL_BORDER = 14
 -- Bordo dorato dello slot-drop durante il drag nel pannello Raid Group
 -- (bordino che evidenzia il riquadro in cui il player sta per essere rilasciato).
 local WL_GOLD_R, WL_GOLD_G, WL_GOLD_B = 1, 0.82, 0
+local WL_ACCEPTED_R, WL_ACCEPTED_G, WL_ACCEPTED_B = 0.16, 0.95, 0.32
+
+local function WhisperNameKey(name)
+    if type(name) ~= "string" or name == "" then return nil end
+    -- Whisper senders may include a realm while the raid roster does not.
+    name = name:match("^([^-]+)") or name
+    return string.lower(name)
+end
 
 -- All Groupmaking window fonts are +2pt over the default game fonts
 -- (window titles keep their large size).
@@ -56,6 +64,40 @@ local ROLE_COLORS = {
     dps    = {r=1.0, g=0.2, b=0.2},
 }
 
+local REQUEST_SPEC_ROLES = {"tank", "healer", "dps"}
+
+-- Convert the old all-or-nothing option into the new per-role settings once.
+-- The legacy key is intentionally not a Core.lua default for new profiles:
+-- keeping it out of the defaults lets this function distinguish old profiles
+-- from profiles that already have the new table.
+local function EnsureRequestSpecsFor(db)
+    if type(db.requestSpecsFor) ~= "table" then
+        local legacyEnabled = db.showSpecsInMessage == true
+        db.requestSpecsFor = {
+            tank = legacyEnabled,
+            healer = legacyEnabled,
+            dps = legacyEnabled,
+        }
+    else
+        for _, role in ipairs(REQUEST_SPEC_ROLES) do
+            if type(db.requestSpecsFor[role]) ~= "boolean" then
+                db.requestSpecsFor[role] = false
+            end
+        end
+    end
+    db.showSpecsInMessage = nil
+    return db.requestSpecsFor
+end
+
+local function RequestsSpecificSpecForRole(settings, role)
+    if role == "tank" then return settings.tank == true end
+    if role == "healer" then return settings.healer == true end
+    if role == "mdps" or role == "rdps" or role == "dps" then
+        return settings.dps == true
+    end
+    return false
+end
+
 -- Icone di ruolo di default WotLK (LFG frame, quadranti tank/healer/dps).
 local ROLE_ICON_TEXTURE = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"
 local ROLE_ICON_COORDS = {
@@ -73,6 +115,7 @@ end
 
 function GM:Init()
     self.db = RLSuite.db.profile.groupmaking
+    EnsureRequestSpecsFor(self.db)
     self.whisperDB = RLSuite.db.profile.whisplist
     -- Autoinviter: stato salvato + default per i campi mancanti. "enabled"
     -- torna sempre false al reload (i timer AceTimer non sopravvivono).
@@ -199,6 +242,7 @@ function GM:CreateMainWindow()
     local raidLabel = FontStr(f, "OVERLAY", 14)
     raidLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -36)
     raidLabel:SetText("Raid:")
+    self.raidLabel = raidLabel
 
     self.raidDropdown = RLSuite.utils:CreateDropdown(f, "RLSuiteRaidDropdown", 180, 22)
     self.raidDropdown:SetPoint("LEFT", raidLabel, "RIGHT", 8, 0)
@@ -211,6 +255,7 @@ function GM:CreateMainWindow()
     local diffLabel = FontStr(f, "OVERLAY", 14)
     diffLabel:SetPoint("LEFT", self.raidDropdown, "RIGHT", 12, 0)
     diffLabel:SetText("Diff:")
+    self.diffLabel = diffLabel
 
     -- Due tasti al posto del dropdown: il tasto attivo resta evidenziato.
     self.diffBtn10 = CreateFrame("Button", "RLSuiteDiffBtn10", f, "UIPanelButtonTemplate")
@@ -244,6 +289,7 @@ function GM:CreateMainWindow()
     hcLbl:SetPoint("LEFT", self.hcCheck, "RIGHT", 0, 0)
     hcLbl:SetText("HC")
     hcLbl:SetTextColor(1, 0.82, 0)
+    self.hcLbl = hcLbl
 
     self.topRow = CreateFrame("Frame", nil, f)
     self.topRow:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -66)
@@ -289,9 +335,8 @@ function GM:CreateMainWindow()
     self.reqBox:SetPoint("TOPLEFT", self.topRow, "BOTTOMLEFT", 0, -8)
     self.reqBox:SetPoint("TOPRIGHT", self.topRow, "BOTTOMRIGHT", 0, -8)
     -- L'altezza NON e' fissa: il bordo inferiore viene ancorato sopra la
-    -- fila di bottoni (vedi sotto, dopo spamBtn), cosi' tra la fine del
-    -- riquadro delle caselle di testo e i tasti non resta spazio morto a
-    -- nessuna dimensione della finestra.
+    -- sezione delle richieste di spec, che si trova tra il box richieste e
+    -- la fila dei pulsanti.
     RLSuite.utils:SkinBox(self.reqBox)
 
     -- Campo "Aim": nota libera del raid leader, sopra a Reserved items.
@@ -306,7 +351,10 @@ function GM:CreateMainWindow()
     self.aimEdit:SetPoint("RIGHT", self.reqBox, "RIGHT", -12, 0)
     self.aimEdit:SetAutoFocus(false)
     self.aimEdit:SetMaxLetters(250)
-    self.aimEdit:SetScript("OnTextChanged", function() self:SaveComp() end)
+    self.aimEdit:SetScript("OnTextChanged", function()
+        self:SaveComp()
+        self:UpdateMessagePreview()
+    end)
     self.aimEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
     self.aimEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
     RLSuite.utils:RegisterInsertLink(self.aimEdit, function()
@@ -324,7 +372,10 @@ function GM:CreateMainWindow()
     self.reservedEdit:SetPoint("TOPLEFT", reservedLabel, "BOTTOMLEFT", 4, -4)
     self.reservedEdit:SetAutoFocus(false)
     self.reservedEdit:SetMaxLetters(250)
-    self.reservedEdit:SetScript("OnTextChanged", function() self:SaveComp() end)
+    self.reservedEdit:SetScript("OnTextChanged", function()
+        self:SaveComp()
+        self:UpdateMessagePreview()
+    end)
     self.reservedEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
     self.reservedEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
     RLSuite.utils:RegisterInsertLink(self.reservedEdit, function()
@@ -354,7 +405,10 @@ function GM:CreateMainWindow()
     self.otherEdit:SetPoint("RIGHT", self.reqBox, "RIGHT", -12, 0)
     self.otherEdit:SetAutoFocus(false)
     self.otherEdit:SetMaxLetters(250)
-    self.otherEdit:SetScript("OnTextChanged", function() self:SaveComp() end)
+    self.otherEdit:SetScript("OnTextChanged", function()
+        self:SaveComp()
+        self:UpdateMessagePreview()
+    end)
     self.otherEdit:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
     self.otherEdit:SetScript("OnEnterPressed", function(s) s:ClearFocus() end)
     RLSuite.utils:RegisterInsertLink(self.otherEdit, function()
@@ -382,12 +436,6 @@ function GM:CreateMainWindow()
     self.spamBtn:SetText("Start Spam")
     self.spamBtn:SetScript("OnClick", function() self:ToggleSpam() end)
 
-    -- Il riquadro delle richieste (Aim/Reserved/Other) si estende in basso
-    -- fino a 8px sopra la fila di bottoni: spamBtn parte dallo stesso
-    -- margine sinistro del contenuto (16), quindi BOTTOMLEFT non sposta la
-    -- geometria orizzontale; gli edit restano ancorati in alto dentro il box.
-    self.reqBox:SetPoint("BOTTOMLEFT", self.spamBtn, "TOPLEFT", 0, 8)
-
     self.previewBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.previewBtn)
     self.previewBtn:SetSize(100, 24)
@@ -395,30 +443,62 @@ function GM:CreateMainWindow()
     self.previewBtn:SetText("Preview Msg")
     self.previewBtn:SetScript("OnClick", function() self:ShowMessagePreview() end)
 
-    self.showSpecsCheck = CreateFrame("CheckButton", "RLSuiteShowSpecsCheck", f, "UICheckButtonTemplate")
-    self.showSpecsCheck:SetSize(24, 24)
-    self.showSpecsCheck:SetPoint("LEFT", self.previewBtn, "RIGHT", 6, 0)
-    self.showSpecsCheck:SetChecked(self.db.showSpecsInMessage and true or false)
-    self.showSpecsCheck:SetScript("OnClick", function(s)
-        self.db.showSpecsInMessage = s:GetChecked() and true or false
-        self:UpdateMessagePreview()
-        self:SaveComp()
-    end)
-
-    local specsLbl = FontStr(f, "OVERLAY", 12)
-    specsLbl:SetPoint("LEFT", self.showSpecsCheck, "RIGHT", 0, 0)
-    specsLbl:SetText("Show specs in message")
-    specsLbl:SetTextColor(1, 0.82, 0)
-    self.specsLbl = specsLbl -- usata da MinWidth() per la fila di bottoni
-
-    -- InviteEngine (ex-Whisplist): il bottone sta a DESTRA della checkbox
-    -- "Show specs in message", come richiesto.
     self.whisplistBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.whisplistBtn)
     self.whisplistBtn:SetSize(100, 24)
-    self.whisplistBtn:SetPoint("LEFT", specsLbl, "RIGHT", 10, 0)
+    self.whisplistBtn:SetPoint("LEFT", self.previewBtn, "RIGHT", 8, 0)
     self.whisplistBtn:SetText("InviteEngine")
     self.whisplistBtn:SetScript("OnClick", function() self:ToggleWhisplist() end)
+
+    -- Le preferenze per ruolo sono una sezione dedicata sopra la fila dei
+    -- pulsanti, con l'intestazione sopra alle tre caselle.
+    self.specsSection = CreateFrame("Frame", nil, f)
+    self.specsSection:SetHeight(44)
+    self.specsSection:SetPoint("BOTTOMLEFT", self.spamBtn, "TOPLEFT", 0, 8)
+    self.specsSection:SetPoint("BOTTOMRIGHT", self.previewBox, "TOPRIGHT", 0, 40)
+
+    self.specsLbl = FontStr(self.specsSection, "OVERLAY", 12)
+    self.specsLbl:SetPoint("TOPLEFT", self.specsSection, "TOPLEFT", 0, -2)
+    self.specsLbl:SetText(L["Request specific specs for"] or "Request specific specs for")
+    self.specsLbl:SetTextColor(1, 0.82, 0)
+
+    self.specChecks = {}
+    self.specLabels = {}
+    local specRoleControls = {
+        { key = "tank", label = L["Tank"] or "Tank", name = "RLSuiteRequestTankSpecsCheck" },
+        { key = "healer", label = L["Healer"] or "Healer", name = "RLSuiteRequestHealerSpecsCheck" },
+        { key = "dps", label = L["DPS"] or "DPS", name = "RLSuiteRequestDPSSpecsCheck" },
+    }
+    local previousSpecLabel
+    for _, control in ipairs(specRoleControls) do
+        local check = CreateFrame("CheckButton", control.name, self.specsSection, "UICheckButtonTemplate")
+        check:SetSize(24, 24)
+        if previousSpecLabel then
+            check:SetPoint("LEFT", previousSpecLabel, "RIGHT", 8, 0)
+        else
+            check:SetPoint("TOPLEFT", self.specsLbl, "BOTTOMLEFT", -2, -2)
+        end
+        check:SetChecked(self.db.requestSpecsFor[control.key] == true)
+
+        local label = FontStr(self.specsSection, "OVERLAY", 12)
+        label:SetPoint("LEFT", check, "RIGHT", 0, 0)
+        label:SetText(control.label)
+
+        local role = control.key
+        check:SetScript("OnClick", function(button)
+            self.db.requestSpecsFor[role] = button:GetChecked() and true or false
+            self:UpdateMessagePreview()
+            self:SaveComp()
+        end)
+        self.specChecks[role] = check
+        self.specLabels[role] = label
+        previousSpecLabel = label
+    end
+
+    -- Il box richieste termina sopra la nuova sezione ruolo, mentre la
+    -- sezione resta separata dalla fila dei pulsanti.
+    self.reqBox:SetPoint("BOTTOMLEFT", self.specsSection, "TOPLEFT", 0, 8)
+    self.reqBox:SetPoint("BOTTOMRIGHT", self.specsSection, "TOPRIGHT", 0, 8)
 
     f.closeBtn = RLSuite.utils:MakeCloseX(f, function() f:Hide() end)
     f.closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
@@ -589,19 +669,19 @@ function GM:LayoutGroupPanels(rowW)
     self:SyncWhisplistHeight()
 end
 
--- Altezza minima di resize di Groupmaking, SOMMATA dal layout reale cosi'
--- da non lasciare spazio morto tra il box richieste e la fila di bottoni:
+-- Altezza minima di resize di Groupmaking, calcolata sul layout effettivo:
 --   66  intestazione (title + riga raid/diff/hc)
---    8  gap
 -- topRow (topH: comp + class/spec bar, dipende da 10/25 e dal resize)
 --    8  gap
---  140  box richieste (3 label + 3 edit + padding interno: misura del contenuto)
+--  140  box richieste (3 label + 3 edit + padding interno)
 --    8  gap
---   24  fila bottoni (Start Spam / Preview / specs / InviteEngine)
+--   44  selettore delle spec (intestazione + caselle Tank/Healer/DPS)
+--    8  gap
+--   24  fila pulsanti (Start Spam / Preview Msg / InviteEngine)
 --    8  gap
 --   58  box anteprima messaggio
 --   16  margine inferiore
--- Totale fisso = 66+8+8+140+8+24+8+58+16 = 328 + topH.
+-- Totale fisso = 66+8+140+8+44+8+24+8+58+16 = 380 + topH.
 -- IE_TAB_EXTRA (striscia tab della costola InviteEngine) non e' piu' sommato:
 -- il minimo calcolato copre comunque il contenuto dei tab del pannello.
 function GM:MinHeight()
@@ -610,29 +690,45 @@ function GM:MinHeight()
         local th = self.topRow:GetHeight()
         if th and th > 60 then topH = th end
     end
-    return topH + 328
+    return topH + 380
 end
 
--- Larghezza minima della finestra: la fila di controllo in basso deve
--- restare interamente visibile. Somma dei pezzi reali della fila:
---   16   margine sinistro (previewBox/spamBtn partono a x=16)
---  100   Start Spam
---    8
---  100   Preview Msg
---    6
---   24   checkbox
---    w   label "Show specs in message" (misurata via GetStringWidth)
---   10
---  100   InviteEngine
---   16   margine destro (simmetrico al sinistro)
--- Fisso = 16+100+8+100+6+24+10+100+16 = 380 + larghezza del testo.
+-- Larghezza minima: copre intestazione, selettore, fila pulsanti e i due
+-- pannelli affiancati (Composizione 204 + gap 8 + barra classi min. 160).
 function GM:MinWidth()
-    local labelW = 0
-    if self.specsLbl and self.specsLbl.GetStringWidth then
-        labelW = math.ceil(self.specsLbl:GetStringWidth() or 0)
+    local function textWidth(fontString, fallback)
+        if fontString and fontString.GetStringWidth then
+            local width = math.ceil(fontString:GetStringWidth() or 0)
+            if width > 0 then return width end
+        end
+        return fallback
     end
-    if labelW <= 0 then labelW = 140 end -- fallback per "Show specs in message"
-    return 380 + labelW
+
+    local actionRowW = 16 + 100 + 8 + 100 + 8 + 100 + 16
+    local groupPanelsW = 16 + 204 + 8 + 160 + 16
+    local headerRowW = 16
+        + textWidth(self.raidLabel, 35) + 8
+        + (self.raidDropdown and self.raidDropdown:GetWidth() or 180) + 12
+        + textWidth(self.diffLabel, 35) + 8
+        + (self.diffBtn10 and self.diffBtn10:GetWidth() or 30) + 4
+        + (self.diffBtn25 and self.diffBtn25:GetWidth() or 30) + 10
+        + (self.hcCheck and self.hcCheck:GetWidth() or 24)
+        + textWidth(self.hcLbl, 14) + 16
+
+    local selectorChecksW = 0
+    local roleLabelFallbacks = {tank = 28, healer = 42, dps = 21}
+    for index, role in ipairs(REQUEST_SPEC_ROLES) do
+        if index > 1 then selectorChecksW = selectorChecksW + 8 end
+        local check = self.specChecks and self.specChecks[role]
+        selectorChecksW = selectorChecksW + (check and check:GetWidth() or 24)
+            + textWidth(self.specLabels and self.specLabels[role], roleLabelFallbacks[role])
+    end
+    local selectorW = 32 + math.max(
+        textWidth(self.specsLbl, #"Request specific specs for" * 7),
+        selectorChecksW
+    )
+
+    return math.max(actionRowW, groupPanelsW, headerRowW, selectorW)
 end
 
 -- L'InviteEngine e' una costola di Groupmaking: la sua altezza segue sempre
@@ -940,6 +1036,50 @@ function GM:RaidShortName(raid)
     return RAID_SHORT[raid] or raid
 end
 
+local function PlainifySpamLinks(message)
+    message = tostring(message or "")
+    message = message:gsub("|H.-|h(.-)|h", function(displayText)
+        displayText = (displayText or "")
+            :gsub("|c%x%x%x%x%x%x%x%x", "")
+            :gsub("|r", "")
+        local unwrapped = displayText:match("^%[(.*)%]$")
+        if unwrapped then displayText = unwrapped end
+        return "[" .. displayText .. "]"
+    end)
+    return message:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+end
+
+local function TruncateUTF8(message, limit)
+    if #message <= limit then return message end
+    local cut = message:sub(1, limit)
+    local index = #cut
+    local byte = cut:byte(index)
+    while byte and byte >= 0x80 and byte < 0xC0 do
+        index = index - 1
+        byte = cut:byte(index)
+    end
+    if byte and byte >= 0xC0 then
+        local expected = byte >= 0xF0 and 4 or (byte >= 0xE0 and 3 or 2)
+        if #cut - index + 1 < expected then
+            cut = cut:sub(1, index - 1)
+        end
+    end
+    return cut
+end
+
+function GM:LimitSpamMessage(message)
+    message = tostring(message or "")
+    if #message > 255 then
+        -- Hyperlink payloads count toward WoW's chat limit. Keep the visible
+        -- name, in square brackets, but drop the link/color markup first.
+        message = PlainifySpamLinks(message)
+    end
+    if #message > 255 then
+        message = TruncateUTF8(message, 255)
+    end
+    return message
+end
+
 function GM:BuildSpamMessage()
     local raid = self.db.raid
     local legacyAchievement = PUGGER_LEGACY_ACHIEVEMENTS[raid]
@@ -953,8 +1093,8 @@ function GM:BuildSpamMessage()
     end
 
     local msg = "LFM " .. raidText
+    local diff = self.db.difficulty or "10"
     if not isLegacy then
-        local diff = self.db.difficulty or "10"
         msg = msg .. tostring(diff)
         if self.db.hc then msg = msg .. " HC" end
     end
@@ -966,8 +1106,9 @@ function GM:BuildSpamMessage()
         msg = msg .. " - " .. aimText
     end
 
-    local needed = {tank = 0, healer = 0, mdps = 0, rdps = 0}
-    local specLists = {tank = {}, healer = {}, mdps = {}, rdps = {}}
+    local requestSpecsFor = (self.db and self.db.requestSpecsFor) or {}
+    local unspecifiedNeeded = {tank = 0, healer = 0, mdps = 0, rdps = 0}
+    local specCounts, specOrder = {}, {}
     local hasComp = false
     local numSlots = tonumber(diff) or 10
     for i = 1, numSlots do
@@ -976,12 +1117,22 @@ function GM:BuildSpamMessage()
             hasComp = true
             if not slot.playerName then
                 local role = RLSuite.utils:NormalizeRole(slot.role, slot.class, slot.spec)
-                needed[role] = (needed[role] or 0) + 1
-                if specLists[role] then
-                    local specName = RLSuite.utils:SpecShortName(slot.class, slot.spec)
-                    if specName and specName ~= "" then
-                        table.insert(specLists[role], specName)
+                local specName = RLSuite.utils:SpecShortName(slot.class, slot.spec)
+                if specName and specName ~= "" and RequestsSpecificSpecForRole(requestSpecsFor, role) then
+                    local upperSpec = string.upper(tostring(specName))
+                    local specKey = role .. ":" .. upperSpec
+                    if not specCounts[specKey] then
+                        specCounts[specKey] = 0
+                        specOrder[#specOrder + 1] = {
+                            key = specKey,
+                            name = upperSpec,
+                        }
                     end
+                    specCounts[specKey] = specCounts[specKey] + 1
+                else
+                    -- Se il ruolo non richiede le spec (o lo slot non ne ha
+                    -- una salvata), conserva il conteggio aggregato del ruolo.
+                    unspecifiedNeeded[role] = (unspecifiedNeeded[role] or 0) + 1
                 end
             end
         end
@@ -997,37 +1148,19 @@ function GM:BuildSpamMessage()
         if n > 5 then return "rest" end
         return tostring(n)
     end
-    -- Spec duplicate nella comp ideale: nome UNA sola volta + numero
-    -- ("holy x2" invece di "holy, holy"), ordine di prima comparsa.
-    local function fmtSpecList(list)
-        local seen, order = {}, {}
-        for _, s in ipairs(list) do
-            if not seen[s] then
-                seen[s] = 0
-                table.insert(order, s)
-            end
-            seen[s] = seen[s] + 1
-        end
-        local parts = {}
-        for _, s in ipairs(order) do
-            local n = seen[s]
-            table.insert(parts, n > 1 and (s .. " x" .. n) or s)
-        end
-        return table.concat(parts, ", ")
-    end
     local roles = {}
-    local showSpecs = self.db and self.db.showSpecsInMessage
-    if showSpecs then
-        for _, def in ipairs(roleOrder) do
-            if needed[def.key] and needed[def.key] > 0 then
-                table.insert(roles, def.label .. "(" .. fmtSpecList(specLists[def.key]) .. ")")
-            end
-        end
-    else
-        for _, def in ipairs(roleOrder) do
-            if needed[def.key] and needed[def.key] > 0 then
-                table.insert(roles, fmtCount(needed[def.key]) .. " " .. def.label)
-            end
+    -- Le spec abilitate sono raggruppate e mostrate nell'ordine della comp.
+    for _, spec in ipairs(specOrder) do
+        table.insert(roles, tostring(specCounts[spec.key]) .. " " .. spec.name)
+    end
+    -- I ruoli disattivati (e gli slot senza spec salvata) restano conteggiati
+    -- come ruolo, senza perdere requisiti dal messaggio.
+    for _, def in ipairs(roleOrder) do
+        local n = unspecifiedNeeded[def.key] or 0
+        if n > 0 then
+            local count = RequestsSpecificSpecForRole(requestSpecsFor, def.key)
+                and tostring(n) or fmtCount(n)
+            table.insert(roles, count .. " " .. def.label)
         end
     end
     if #roles > 0 then
@@ -1046,7 +1179,7 @@ function GM:BuildSpamMessage()
         msg = msg .. " | " .. otherText
     end
 
-    return msg
+    return self:LimitSpamMessage(msg)
 end
 
 function GM:UpdateMessagePreview()
@@ -1093,13 +1226,28 @@ function GM:ToggleSpam()
     end
 end
 
+function GM:GetSpamInterval()
+    local seconds = tonumber(self.db and self.db.spamInterval) or 60
+    seconds = math.floor((seconds + 2.5) / 5) * 5
+    if seconds < 20 then seconds = 20 end
+    if seconds > 60 then seconds = 60 end
+    return seconds
+end
+
+function GM:ApplySpamInterval()
+    if not self.spamActive then return end
+    if self.spamTimer then
+        self:CancelTimer(self.spamTimer, true)
+        self.spamTimer = nil
+    end
+    self.spamTimer = self:ScheduleRepeatingTimer("DoSpam", self:GetSpamInterval())
+end
+
 function GM:StartSpam()
     self.spamActive = true
     if self.spamBtn then self.spamBtn:SetText("Stop Spam") end
     self:DoSpam()
-    local interval = self.db.spamInterval or 60
-    if self.spamTimer then self:CancelTimer(self.spamTimer) end
-    self.spamTimer = self:ScheduleRepeatingTimer("DoSpam", interval)
+    self:ApplySpamInterval()
     -- NIENTE whisper fittizi automatici: li invia SOLO il tasto "Whisp
     -- test" della debug bar (GM:DebugWhisperBurst).
     RLSuite.utils:Print(L["Spammer started."])
@@ -2043,15 +2191,6 @@ function GM:BuildCalendarPage()
     self.ieCalMain:SetPoint("TOPRIGHT", self.ieCalSidebar, "TOPLEFT", -8, 0)
     self.ieCalMain:SetPoint("BOTTOMRIGHT", self.ieCalSidebar, "BOTTOMLEFT", -8, 0)
 
-    -- stato vuoto
-    self.ieCalEmptyLabel = FontStr(self.ieCalMain, "OVERLAY", 13)
-    self.ieCalEmptyLabel:SetPoint("TOP", self.ieCalMain, "TOP", 0, -30)
-    self.ieCalEmptyLabel:SetPoint("LEFT", self.ieCalMain, "LEFT", 2, 0)
-    self.ieCalEmptyLabel:SetPoint("RIGHT", self.ieCalMain, "RIGHT", -2, 0)
-    self.ieCalEmptyLabel:SetJustifyH("CENTER")
-    self.ieCalEmptyLabel:SetText(L["No event linked yet."])
-    self.ieCalEmptyLabel:SetTextColor(1, 0.82, 0)
-
     -- Titolo
     self.ieCalTitleEdit = CreateFrame("EditBox", "RLSuiteIECalTitle", self.ieCalMain, "InputBoxTemplate")
     self.ieCalTitleEdit:SetHeight(20)
@@ -2073,6 +2212,7 @@ function GM:BuildCalendarPage()
     -- Tipo
     self.ieCalTypeDD = RLSuite.utils:CreateDropdown(self.ieCalMain, "RLSuiteIECalType", 150, 20)
     self.ieCalTypeDD:SetPoint("TOPLEFT", self.ieCalMain, "TOPLEFT", 42, -26)
+    self:RefreshCalendarTypeDropdown(1)
 
     local typeLbl = FontStr(self.ieCalMain, "OVERLAY", 12)
     typeLbl:SetPoint("RIGHT", self.ieCalTypeDD, "LEFT", -6, 0)
@@ -2099,6 +2239,7 @@ function GM:BuildCalendarPage()
 
     self.ieCalMonthDD = RLSuite.utils:CreateDropdown(self.ieCalMain, "RLSuiteIECalMonth", 74, 20)
     self.ieCalMonthDD:SetPoint("LEFT", self.ieCalDayEdit, "RIGHT", 4, 0)
+    self:RefreshCalendarMonthDropdown(1)
 
     self.ieCalYearEdit = CreateFrame("EditBox", "RLSuiteIECalYear", self.ieCalMain, "InputBoxTemplate")
     self.ieCalYearEdit:SetSize(38, 20)
@@ -2474,7 +2615,7 @@ end
 function GM:UpdateLinkedCalendarEvent()
     local link = self.autoinvite and self.autoinvite.linkedEvent
     if not link or not link.title then
-        RLSuite.utils:Print(L["No event linked yet."])
+        RLSuite.utils:Print(L["No calendar event linked"])
         return
     end
     if not self.calDirty then return end
@@ -2718,9 +2859,9 @@ end
 function GM:RenderLinkedEvent()
     local link = self.autoinvite and self.autoinvite.linkedEvent
 
-    -- stato vuoto
+    -- Form vuoto: le dropdown restano inizializzate e apribili anche prima
+    -- di collegare un evento del calendario.
     if not link or not link.title then
-        if self.ieCalEmptyLabel then self.ieCalEmptyLabel:Show() end
         if self.ieCalTitleEdit then
             self._calRendering = true
             self.ieCalTitleEdit:SetText("")
@@ -2735,13 +2876,18 @@ function GM:RenderLinkedEvent()
             self.ieAutoMirrorDesc:SetText("")
             self._calRendering = false
         end
+        self:RefreshCalendarTypeDropdown(1)
+        local month = 1
+        if CalendarGetDate then
+            local ok, currentMonth = pcall(CalendarGetDate)
+            if ok and tonumber(currentMonth) then month = tonumber(currentMonth) end
+        end
+        self:RefreshCalendarMonthDropdown(month)
         self:ClearAutoinviteMirrorInvites()
         self:RenderClassSidebar()
         self:RefreshCalendarButtons()
         return
     end
-
-    if self.ieCalEmptyLabel then self.ieCalEmptyLabel:Hide() end
 
     -- Popola i campi solo se non ci sono modifiche pendenti (per non
     -- sovrascrivere le digitazioni dell'utente).
@@ -3117,7 +3263,7 @@ function GM:AddAutoName(name)
     self:RefreshAutoinviterStatus()
 end
 
--- Clic destro su un nome della lista = rimozione.
+-- Il tasto X bianco a destra della riga rimuove il nome dalla lista.
 function GM:RemoveAutoName(name)
     local names = self:AutoNameList()
     for i, n in ipairs(names) do
@@ -3150,7 +3296,7 @@ function GM:BuildAutoNameListUI()
         row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
         row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
         row:EnableMouse(true)
-        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        row:RegisterForClicks("LeftButtonUp")
 
         local text = FontStr(row, "OVERLAY", 12)
         text:SetPoint("LEFT", row, "LEFT", 4, 0)
@@ -3162,11 +3308,14 @@ function GM:BuildAutoNameListUI()
         row.name = name
 
         -- "x" in fondo alla barra: rimuove il giocatore dalla lista.
+        local playerName = name
         local xBtn = CreateFrame("Button", nil, row)
-        xBtn:SetSize(8, 8)
-        xBtn:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+        xBtn:SetSize(11, 11)
+        xBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+        xBtn:EnableMouse(true)
+        xBtn:RegisterForClicks("LeftButtonUp")
         xBtn:SetScript("OnClick", function()
-            self:RemoveAutoName(name)
+            self:RemoveAutoName(playerName)
         end)
         row.xBtn = xBtn
         -- X BIANCA dal TGA in media/ (formato BCI: rende sempre).
@@ -3175,12 +3324,6 @@ function GM:BuildAutoNameListUI()
         row:SetFrameLevel((row:GetFrameLevel() or 1) + 1)
         xBtn:SetFrameLevel(row:GetFrameLevel() + 2)
 
-        -- clic destro sull'intera riga = rimozione (compatibilita').
-        row:SetScript("OnClick", function(s, button)
-            if button == "RightButton" then
-                self:RemoveAutoName(s.name)
-            end
-        end)
         row:SetScript("OnEnter", function(s)
             s.text:SetTextColor(1, 0.82, 0)
         end)
@@ -3403,6 +3546,24 @@ function GM:UpdateWLGroups()
                 byGroup[subgroup][groupCount[subgroup]] = { name = name, class = class, raidIndex = i }
             end
         end
+    end
+
+    -- Cache the current roster separately from the displayed bars so the
+    -- matching Whisper row can turn green only after its invited player joins.
+    local rosterNames = {}
+    for g = 1, WL_GROUPS do
+        for s = 1, 5 do
+            local member = byGroup[g][s]
+            local key = member and WhisperNameKey(member.name)
+            if key then rosterNames[key] = true end
+        end
+    end
+    self.wlRosterNames = rosterNames
+
+    -- Roster changes can happen while InviteEngine is open; restyle in place
+    -- so accepted rows update without rebuilding or replacing clickable rows.
+    if self.wlRows and self.StyleWhisperRows then
+        self:StyleWhisperRows()
     end
 
     -- Numero di colonne del pannello Raid Group (sempre 6: G1..G6).
@@ -3779,23 +3940,37 @@ function GM:CreateWhisperRow()
     row:SetHeight(24)
     row:EnableMouse(true)
     if row.SetMouseClickEnabled then row:SetMouseClickEnabled(true) end
-    row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    row:RegisterForClicks("LeftButtonUp")
+
+    -- An accepted invite gets a persistent green strip at the left of the
+    -- whisper row, without replacing the normal row/selection background.
+    local acceptedAccent = row:CreateTexture(nil, "OVERLAY")
+    acceptedAccent:SetTexture("Interface\\Buttons\\WHITE8x8")
+    acceptedAccent:SetVertexColor(WL_ACCEPTED_R, WL_ACCEPTED_G, WL_ACCEPTED_B, 1)
+    acceptedAccent:SetWidth(3)
+    acceptedAccent:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    acceptedAccent:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+    acceptedAccent:Hide()
+    row.acceptedAccent = acceptedAccent
 
     local text = FontStr(row, "OVERLAY", 12)
     text:SetPoint("LEFT", row, "LEFT", 6, 0)
-    text:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    text:SetPoint("RIGHT", row, "RIGHT", -22, 0)
     text:SetJustifyH("LEFT")
     row.text = text
 
-    row:SetScript("OnClick", function(s, button)
-        if button == "RightButton" then
-            -- Debug mode: il clic destro elimina il giocatore senza
-            -- inviare il messaggio di decline.
-            if RLSuite.DebugMode and RLSuite:DebugMode() then
-                self:QueueRemoveWhisperEntry(s.entry)
-            end
-            return
-        end
+    local xBtn = CreateFrame("Button", nil, row)
+    xBtn:SetSize(11, 11)
+    xBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+    xBtn:EnableMouse(true)
+    xBtn:RegisterForClicks("LeftButtonUp")
+    RLSuite.utils:ApplyIcon(xBtn, "media\\close.tga")
+    xBtn:SetScript("OnClick", function()
+        if row.entry then self:QueueRemoveWhisperEntry(row.entry) end
+    end)
+    row.xBtn = xBtn
+
+    row:SetScript("OnClick", function(s)
         self:SelectWhisperEntryByRef(s.entry)
     end)
     return row
@@ -3925,6 +4100,9 @@ function GM:UpdateWhisplist()
         -- "banda" della lista resta bassa e sottile — un eventuale menu a
         -- tendina aperto SOPRA la lista continua a ricevere i click.
         pinLvl(row, rowLvl)
+        if row.xBtn and row.xBtn.SetFrameLevel then
+            row.xBtn:SetFrameLevel((row:GetFrameLevel() or rowLvl) + 2)
+        end
         row.entry = entry
 
         local info = entry.name or "Unknown"
@@ -3970,9 +4148,9 @@ function GM:SelectWhisperEntryByRef(entry)
     end
 end
 
--- Rimozione "sicura" dal clic destro: i dati escono subito dalla lista,
--- la UI viene ricostruita al tick successivo. Ricostruire i frame dentro
--- il click distrugge il bottone cliccato e blocca i click successivi.
+-- Rimozione "sicura" dalla X: i dati escono subito dalla lista, la UI viene
+-- ricostruita al tick successivo. Ricostruire i frame dentro il click distrugge
+-- il bottone cliccato e blocca i click successivi.
 function GM:QueueRemoveWhisperEntry(entry)
     if not entry then return end
     local entries = self.whisperDB.entries or {}
@@ -4008,7 +4186,13 @@ function GM:StyleWhisperRows()
     local anyUnread = false
     for i, row in ipairs(self.wlRows or {}) do
         local entry = row.entry
+        local nameKey = entry and WhisperNameKey(entry.name)
+        local isAccepted = entry and entry.invited and nameKey
+            and self.wlRosterNames and self.wlRosterNames[nameKey] == true
         local isSelected = (i == self.selectedEntryIndex)
+        if row.acceptedAccent then
+            if isAccepted then row.acceptedAccent:Show() else row.acceptedAccent:Hide() end
+        end
         if isSelected then
             RLSuite.utils:SkinRow(row, true)
             if row.text then row.text:SetTextColor(1, 1, 1) end
@@ -4022,7 +4206,11 @@ function GM:StyleWhisperRows()
             RLSuite.utils:SkinRow(row, false)
             if row.text then
                 if entry and entry.invited then
-                    row.text:SetTextColor(0.5, 0.5, 0.5)
+                    if isAccepted then
+                        row.text:SetTextColor(WL_ACCEPTED_R, WL_ACCEPTED_G, WL_ACCEPTED_B)
+                    else
+                        row.text:SetTextColor(0.5, 0.5, 0.5)
+                    end
                 else
                     row.text:SetTextColor(1, 1, 1)
                 end

@@ -38,7 +38,7 @@
 
 ## D. Main bar e MacroBar (2)
 
-- [ ] **D1** La barretta: larghezza fissa, `Raid Control` apre il pannello **a destra** allineato in alto; la fase (preraid/preboss/infight) cambia da sola entrando in combat.
+- [ ] **D1** La barretta: `Raid Control` apre/chiude la matrice fissa 2×4 **sotto** la barra, che resta visibile; i comandi di debug stanno sotto la matrice. La fase (preraid/preboss/infight) cambia da sola entrando in combat.
 - [ ] **D2** Macro boss: con un boss nel target compaiono i suoi pulsanti; su **Gunship Battle** e **Faction Champions** funziona col counter; in un fight **senza boss** non compaiono macro.
 
 ## E. Group making, Loot, MS (3)
