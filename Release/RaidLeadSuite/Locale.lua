@@ -280,6 +280,7 @@ do
     L["Custom panel editor"] = true
     L["Drag this spell to an active custom panel."] = true
     L["No cooldowns to display for this panel."] = true
+    L["Open Modify Panels in Config to add spells."] = true
     L["Panel %d"] = true
     L["Panel name"] = true
     L["Enabled"] = true

@@ -6,6 +6,26 @@ RLSuite.msManager = {}
 local MSM = RLSuite.msManager
 
 local L = RLSuite.L or setmetatable({}, { __index = function(_, k) return k end })
+local MS_CHAT_LIMIT = 255
+local MS_SPEC_SHORT_NAMES = {
+    ["assassination"] = "Assa",
+    ["beast mastery"] = "BM",
+    ["balance"] = "Boomie",
+    ["destruction"] = "Destro",
+    ["demonology"] = "Demo",
+    ["discipline"] = "Disco",
+    ["elemental"] = "Ele",
+    ["enhancement"] = "Enha",
+    ["feral bear"] = "Bear",
+    ["feral cat"] = "Cat",
+    ["marksmanship"] = "MM",
+    ["protection"] = "Prot",
+    ["restoration"] = "Resto",
+    ["retribution"] = "Ret",
+    ["subtlety"] = "Sub",
+    ["survival"] = "Surv",
+    ["affliction"] = "Affly",
+}
 
 -- Ace3: il conto alla rovescia dei 40s di ascolto usa AceTimer-3.0
 -- (prima era un frame OnUpdate con accumulo manuale del tempo).
@@ -140,7 +160,7 @@ function MSM:StopListening(announce)
         self.listenTimer = nil
     end
     if announce then
-        RLSuite.utils:SendChat("MS CHANGES closed, no more MS changes will be saved", "RAID")
+        RLSuite.utils:SendChat("MS CHANGES closed, no more MS changes will be saved", "RAID_WARNING")
     end
 end
 
@@ -251,7 +271,7 @@ function MSM:RequestChanges()
     local dur = 40
     self.listenUntil = GetTime() + dur
     local msg = L["Requesting MS changes - type in raid: ms <spec> you have only 40s"]
-    RLSuite.utils:SendChat(msg, "RAID")
+    RLSuite.utils:SendChat(msg, "RAID_WARNING")
     -- bar timer in DBM/BigWigs if installed
     RLSuite.utils:StartDbmTimer(dur, "MS Changes", "Interface\\Icons\\Spell_Nature_AstralRecall")
     self.listenTimer = self:ScheduleTimer("OnListenExpire", dur)
@@ -262,13 +282,75 @@ function MSM:OnListenExpire()
     self:StopListening(true)
 end
 
-function MSM:GetChangesMessage()
-    if not self.db or #self.db == 0 then return "" end
+function MSM:FormatChangeEntries(abbreviateSpecs)
     local parts = {}
-    for _, entry in ipairs(self.db) do
-        table.insert(parts, (entry.name or "?") .. ": " .. (entry.spec or "?"))
+    for _, entry in ipairs(self.db or {}) do
+        local spec = tostring(entry.spec or "?")
+        if abbreviateSpecs then
+            local short
+            if entry.class and RLSuite.utils and RLSuite.utils.SpecShortName then
+                local candidate = RLSuite.utils:SpecShortName(entry.class, spec)
+                if type(candidate) == "string" and candidate ~= "" and #candidate < #spec then
+                    short = candidate
+                end
+            end
+            if not short then
+                short = MS_SPEC_SHORT_NAMES[string.lower(spec)]
+            end
+            if short and short ~= "" then spec = short end
+        end
+        table.insert(parts, tostring(entry.name or "?") .. ": " .. spec)
     end
-    return "MS CHANGES: " .. table.concat(parts, " | ")
+    return parts
+end
+
+function MSM:GetChangesMessages()
+    if not self.db or #self.db == 0 then return {} end
+
+    local fullEntries = self:FormatChangeEntries(false)
+    local fullMessage = "MS CHANGES: " .. table.concat(fullEntries, " | ")
+    -- Abbreviate specs only when the full announcement would exceed the
+    -- 255-character limit imposed by the WoW chat API.
+    local entries = #fullMessage > MS_CHAT_LIMIT
+        and self:FormatChangeEntries(true) or fullEntries
+
+    local messages = {}
+    local prefix = "MS CHANGES: "
+    local current = prefix
+    for _, entry in ipairs(entries) do
+        local separator = current == prefix and "" or " | "
+        if #current + #separator + #entry > MS_CHAT_LIMIT and current ~= prefix then
+            table.insert(messages, current)
+            current = prefix
+            separator = ""
+        end
+
+        -- Character names and canonical spec names normally fit in one entry;
+        -- this guard also keeps malformed/manual entries under the chat limit.
+        local maxEntryLength = MS_CHAT_LIMIT - #prefix
+        while #entry > maxEntryLength do
+            local cut = maxEntryLength
+            for i = maxEntryLength, 1, -1 do
+                if string.sub(entry, i, i) == " " then
+                    cut = i - 1
+                    break
+                end
+            end
+            if cut < 1 then cut = maxEntryLength end
+            table.insert(messages, prefix .. string.sub(entry, 1, cut))
+            entry = string.gsub(string.sub(entry, cut + 1), "^%s+", "")
+            current = prefix
+            separator = ""
+        end
+        current = current .. separator .. entry
+    end
+
+    if current ~= prefix then table.insert(messages, current) end
+    return messages
+end
+
+function MSM:GetChangesMessage()
+    return table.concat(self:GetChangesMessages(), "\n")
 end
 
 function MSM:RefreshLootPreMessage()
@@ -278,12 +360,15 @@ function MSM:RefreshLootPreMessage()
 end
 
 function MSM:GenerateMessage()
-    local msg = self:GetChangesMessage()
-    if msg == "" then
+    local messages = self:GetChangesMessages()
+    if #messages == 0 then
         RLSuite.utils:Print(L["No MS changes recorded."])
         return
     end
+    local msg = table.concat(messages, "\n")
     self:RefreshLootPreMessage()
-    RLSuite.utils:SendChat(msg, "RAID_WARNING")
+    for _, part in ipairs(messages) do
+        RLSuite.utils:SendChat(part, "RAID_WARNING")
+    end
     RLSuite.utils:Print("Announce Changes: " .. msg)
 end

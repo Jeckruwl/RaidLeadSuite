@@ -231,11 +231,11 @@ function MW:CreateFrame()
     -- fase e Raid Control sono nella title bar. La Config si apre dalla
     -- minimappa (clic destro) o da /rls config.
 
-    -- Ordine fisso della matrice: Pugger, Macrobar, MT/OT, MS, Loot,
-    -- SaveRaid, Raid Buffs, CD Watcher.
+    -- Ordine fisso della matrice: Pugger, Macrobar, MT/OT, MS Change,
+    -- Loot, Raid Buffs, CD Watcher, SaveRaid (ultimo pulsante).
     self.tabDefs = {
         { key = "group",     label = "Pugger" },
-        { key = "ms",        label = "MS" },
+        { key = "ms",        label = "MS Change" },
         { key = "macro",     label = "Macrobar" },
         { key = "loot",      label = "Loot" },
     }
@@ -396,7 +396,7 @@ function MW:CreateFrame()
     -- Config: accessibile dal clic destro sull'icona della minimappa e da
     -- /rls config (niente piu' icona rotellina nella barra principale).
 
-    -- Raid Buffs: tasto della settima cella della matrice Raid Control.
+    -- Raid Buffs: tasto della sesta cella della matrice Raid Control.
     -- Apre una finestra autonoma; non appartiene al Raid Frame.
     self.raidBuffBtn = CreateFrame("Button", "RLSuiteRaidBuffsBtn", f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.raidBuffBtn)
@@ -414,7 +414,7 @@ function MW:CreateFrame()
     end)
     self.raidBuffBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- CD Watcher: ottava cella della matrice Raid Control.
+    -- CD Watcher: settima cella della matrice Raid Control.
     self.cdWatcherBtn = CreateFrame("Button", "RLSuiteCDWatcherBtn", f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.cdWatcherBtn)
     self.cdWatcherBtn:SetSize(74, 22)
@@ -431,8 +431,7 @@ function MW:CreateFrame()
     end)
     self.cdWatcherBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- SaveRaid resta nella sua cella originale; Raid Buffs e CD Watcher
-    -- aggiungono rispettivamente la settima e l'ottava cella.
+    -- SaveRaid occupa l'ultima cella; Raid Buffs e CD Watcher restano prima.
     self.saveRaidBtn = CreateFrame("Button", "RLSuiteSaveRaidBtn", f, "UIPanelButtonTemplate")
     RLSuite.utils:SkinButton(self.saveRaidBtn)
     self.saveRaidBtn:SetSize(74, 22)
@@ -447,17 +446,16 @@ function MW:CreateFrame()
     end)
     self.saveRaidBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- Ordine delle otto celle: SaveRaid resta sesto, Raid Buffs settimo,
-    -- CD Watcher ottavo. MT/OT condivide la terza cella.
+    -- SaveRaid e' l'ultimo pulsante; MT/OT condivide la terza cella.
     self.matrixOrder = {
         { btn = self.tabs["group"] },
         { btn = self.tabs["macro"] },
         { role = true },
         { btn = self.tabs["ms"] },
         { btn = self.tabs["loot"] },
-        { btn = self.saveRaidBtn },
         { btn = self.raidBuffBtn },
         { btn = self.cdWatcherBtn },
+        { btn = self.saveRaidBtn },
     }
     self.matrixButtons = {}
     for _, c in ipairs(self.matrixOrder) do
@@ -536,7 +534,7 @@ function MW:ApplyLayout()
     local x0 = PAD
     local topY = -PAD
     -- POSIZIONAMENTO FISSO da sinistra a destra: Pugger, Macrobar, MT/OT,
-    -- MS, Loot, SaveRaid, Raid Buffs, CD Watcher. MT/OT condivide la terza cella.
+    -- MS Change, Loot, Raid Buffs, CD Watcher, SaveRaid. MT/OT condivide la terza cella.
     local halfGap = 4
     local halfW = (bw - halfGap) / 2
     for idx, c in ipairs(cells) do

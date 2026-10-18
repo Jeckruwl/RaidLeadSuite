@@ -1976,7 +1976,8 @@ function CDW:RenderCustomPanel(index)
         for row in pairs(usedBars) do self.rows[#self.rows+1]=row end
     end
     if count==0 then
-        window.emptyText:SetText(L["No cooldowns to display for this panel."])
+        window.emptyText:SetText(L["No cooldowns to display for this panel."] .. "\n"
+            .. L["Open Modify Panels in Config to add spells."])
         window.emptyText:Show()
         y=math.max(y,window.emptyText:GetStringHeight()+16)
     else

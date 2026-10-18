@@ -835,12 +835,67 @@ check(bool(rt.eval("RLSuite.groupmaking.spamTimer ~= nil")), "StartSpam schedule
 rt.execute("RLSuite.groupmaking:StopSpam()")
 check(bool(rt.eval("RLSuite.groupmaking.spamTimer == nil")), "StopSpam cancels the spam AceTimer")
 
-# MSManager 40s listen -> AceTimer one-shot
-rt.execute("RLSuite.msManager:RequestChanges()")
-check(bool(rt.eval("RLSuite.msManager.listenTimer ~= nil")), "RequestChanges schedules a listen AceTimer")
-check(bool(rt.eval("RLSuite.msManager.listening == true")), "RequestChanges sets listening=true")
-rt.execute("RLSuite.msManager:StopListening(false)")
-check(bool(rt.eval("RLSuite.msManager.listenTimer == nil")), "StopListening cancels the listen AceTimer")
+# MSManager 40s listen -> AceTimer one-shot; request lifecycle uses Raid Warning.
+rt.execute("""
+local ms=RLSuite.msManager
+local oldLeader,oldOfficer=IsRaidLeader,IsRaidOfficer
+local oldDebug,oldChat=RLSuite.db.profile.debug,CHAT_LOG
+IsRaidLeader=function() return true end
+IsRaidOfficer=function() return false end
+RLSuite.db.profile.debug=false
+CHAT_LOG={}
+ms:RequestChanges()
+MS_REQUEST_WARNING=CHAT_LOG[1]=='RAID_WARNING|Requesting MS changes - type in raid: ms <spec> you have only 40s'
+MS_TIMER_CREATED=ms.listenTimer~=nil
+MS_LISTENING=ms.listening==true
+ms:StopListening(true)
+MS_CLOSE_WARNING=CHAT_LOG[2]=='RAID_WARNING|MS CHANGES closed, no more MS changes will be saved'
+MS_TIMER_CLEARED=ms.listenTimer==nil
+IsRaidLeader,IsRaidOfficer=oldLeader,oldOfficer
+RLSuite.db.profile.debug=oldDebug
+CHAT_LOG=oldChat
+""")
+check(bool(rt.eval("MS_TIMER_CREATED and MS_LISTENING")), "RequestChanges schedules a listen AceTimer and starts listening")
+check(bool(rt.eval("MS_REQUEST_WARNING")), "MS change request is sent as a RAID_WARNING")
+check(bool(rt.eval("MS_CLOSE_WARNING")), "MS change request timeout announcement is sent as a RAID_WARNING")
+check(bool(rt.eval("MS_TIMER_CLEARED")), "StopListening cancels the listen AceTimer")
+
+# MS Change warnings abbreviate full specs when needed to fit WoW's 255-char limit.
+rt.execute("""
+local ms=RLSuite.msManager
+local oldDb,oldPre=ms.db,RLSuite.lootManager.preMessage
+local oldLeader,oldOfficer=IsRaidLeader,IsRaidOfficer
+local oldDebug,oldChat=RLSuite.db.profile.debug,CHAT_LOG
+IsRaidLeader=function() return true end
+IsRaidOfficer=function() return false end
+RLSuite.db.profile.debug=false
+ms.db={}
+for i=1,8 do
+    table.insert(ms.db,{name='LongPlayerName'..i,spec='Destruction',class='WARLOCK'})
+end
+local full='MS CHANGES: '..table.concat(ms:FormatChangeEntries(false),' | ')
+MS_FULL_OVER_255=#full>255
+local msg=ms:GetChangesMessage()
+MS_SHORT_MESSAGE=#msg<=255 and string.find(msg,'Destro',1,true)~=nil
+    and string.find(msg,'Destruction',1,true)==nil
+CHAT_LOG={}
+ms:GenerateMessage()
+MS_SHORT_WARNING=false
+MS_CHAT_SAFE=true
+for _,line in ipairs(CHAT_LOG) do
+    if string.sub(line,1,13)=='RAID_WARNING|' then
+        MS_SHORT_WARNING=string.find(line,'Destro',1,true)~=nil
+        if #string.sub(line,14)>255 then MS_CHAT_SAFE=false end
+    end
+end
+ms.db=oldDb
+RLSuite.lootManager:SetPreMessage(oldPre or '')
+IsRaidLeader,IsRaidOfficer=oldLeader,oldOfficer
+RLSuite.db.profile.debug=oldDebug
+CHAT_LOG=oldChat
+""")
+check(bool(rt.eval("MS_FULL_OVER_255 and MS_SHORT_MESSAGE")), "MS Change announcement switches to spec abbreviations above 255 characters")
+check(bool(rt.eval("MS_SHORT_WARNING and MS_CHAT_SAFE")), "abbreviated MS Change announcement is sent in RAID_WARNING within the chat limit")
 
 # LootManager roll -> AceEvent CHAT_MSG_SYSTEM registration
 rt.execute("RLSuite.lootManager:AddToHistory('|cffff8000|Hitem:1|h[Test]|h|r', 'Test Item', 'tex', 4)")
@@ -2783,7 +2838,7 @@ for index=1,6 do
     panelsEnabled=panelsEnabled and panel.enabled==true
     panelsEmpty=panelsEmpty and #panel.spells==0
     windowsHidden=windowsHidden and window~=nil and not window:IsShown()
-    emptyText=emptyText and window and window.emptyText:GetText()=='No cooldowns to display for this panel.'
+    emptyText=emptyText and window and window.emptyText:GetText()=='No cooldowns to display for this panel.\\nOpen Modify Panels in Config to add spells.'
 end
 local function near(a,b) return math.abs((tonumber(a) or 0)-b)<0.00001 end
 CDW_SCREENSHOT_DEFAULTS=s.layoutMode=='custom' and s.autoInspect==true and s.hideTooltips==false
@@ -3462,7 +3517,7 @@ if not wasOpen then cfg:CloseWindow() end
 check(bool(rt.eval("CDW_CONFIG_NAV")), "CD Watcher Config button opens the requested Bar options or General subsection")
 check(bool(rt.eval("RLSuite.raidFrame.GetAbilityRemaining == nil and RLSuite.raidFrame.OnSpellCast == nil and RLSuite.raidFrame.ApplySlotCDs == nil and RLSuite.cdwatcher.GetAbilityRemaining ~= nil and RLSuite.cdwatcher.OnSpellCast ~= nil")), "cooldown tracking methods moved from Raid Frame to CD Watcher")
 check(bool(rt.eval("RLSuite.raidFrame.buffPanelBtn == nil")), "Raid Frame no longer contains the Raid Buffs button")
-check(bool(rt.eval("RLSuite.mainWindow.matrixOrder[6].btn == RLSuite.mainWindow.saveRaidBtn and RLSuite.mainWindow.matrixOrder[7].btn == RLSuite.mainWindow.raidBuffBtn and RLSuite.mainWindow.matrixOrder[8].btn == RLSuite.mainWindow.cdWatcherBtn and RLSuite.mainWindow.saveRaidBtn:GetParent() == RLSuite.mainWindow.frame")), "SaveRaid stays sixth; Raid Buffs and CD Watcher occupy cells seven and eight")
+check(bool(rt.eval("RLSuite.mainWindow.matrixOrder[6].btn == RLSuite.mainWindow.raidBuffBtn and RLSuite.mainWindow.matrixOrder[7].btn == RLSuite.mainWindow.cdWatcherBtn and RLSuite.mainWindow.matrixOrder[8].btn == RLSuite.mainWindow.saveRaidBtn and RLSuite.mainWindow.tabs['ms']:GetText() == 'MS Change' and RLSuite.mainWindow.saveRaidBtn:GetParent() == RLSuite.mainWindow.frame")), "MS Change label is set and SaveRaid is last after Raid Buffs and CD Watcher")
 rt.execute("local b=RLSuite.mainWindow.cdWatcherBtn; local w=RLSuite.cdwatcher; b._scripts.OnClick(b); CDW_OPENED=w:IsOpen(); b._scripts.OnClick(b); CDW_CLOSED=not w:IsOpen()")
 check(bool(rt.eval("CDW_OPENED == true and CDW_CLOSED == true")), "CD Watcher matrix button opens and closes its standalone cooldown panel")
 rt.execute("local w=RLSuite.cdwatcher; w.cdTracker={}; local t=GetTime(); w:OnCombatLog('COMBAT_LOG_EVENT_UNFILTERED', t, 'SPELL_CAST_SUCCESS', 'Player-1', 'WatcherTest', 0, 'Player-2', 'Target', 0, 871); CDW_TRACK_REMAINING=w:GetAbilityRemaining('WatcherTest', nil, 'Shield Wall')")
@@ -4322,7 +4377,7 @@ CELL_LOOT_X, CELL_LOOT_Y = cellXY(5)  -- Loot = 5a cella
 """)
 rt.execute("""
 -- ORDINE RICHIESTO, letto dalle celle vere della matrice:
---   Pugger, Macrobar, MT & OT, MS, Loot, SaveRaid, Raid Buffs, CD Watcher
+--   Pugger, Macrobar, MT & OT, MS Change, Loot, Raid Buffs, CD Watcher, SaveRaid
 local MWo = RLSuite.mainWindow
 local names = {}
 for _, c in ipairs(MWo.matrixOrder or {}) do
@@ -4345,7 +4400,7 @@ local function cellXY(idx)
     local row = math.floor((idx - 1) / cols)
     return 4 + col * (74 + 6), -4 - row * (22 + 4)
 end
-local EXPECT = { "Pugger", "Macrobar", "MT & OT", "MS", "Loot", "SaveRaid", "Raid Buffs", "CD Watcher" }
+local EXPECT = { "Pugger", "Macrobar", "MT & OT", "MS Change", "Loot", "Raid Buffs", "CD Watcher", "SaveRaid" }
 BAR_ORDER_OK = true
 for i, want in ipairs(EXPECT) do
     local c = MWo.matrixOrder[i]
@@ -4369,8 +4424,8 @@ for i, c in ipairs(MWo.matrixOrder) do
 end
 BAR_POS_OK = posOK
 """)
-check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 8")), "Raid Control order is Pugger, Macrobar, MT & OT, MS, Loot, SaveRaid, Raid Buffs, CD Watcher (%s)" % rt.eval("BAR_ORDER"))
-check(bool(rt.eval("BAR_POS_OK == true")), "each button really sits in its fixed cell (SaveRaid is six; Raid Buffs seven; CD Watcher eight)")
+check(bool(rt.eval("BAR_ORDER_OK == true and BAR_CELLS == 8")), "Raid Control order is Pugger, Macrobar, MT & OT, MS Change, Loot, Raid Buffs, CD Watcher, SaveRaid (%s)" % rt.eval("BAR_ORDER"))
+check(bool(rt.eval("BAR_POS_OK == true")), "each button really sits in its fixed cell, with SaveRaid last")
 check(bool(rt.eval("MTXOF == CELL_MT_X and MTYOF == CELL_MT_Y")), "MT / OT pair occupies the 3rd cell of the matrix")
 check(bool(rt.eval("LOOTXOF == CELL_LOOT_X and LOOTYOF == CELL_LOOT_Y")), "Loot sits in its own 5th cell")
 # --- I tasti MT/OT sono ora SECURE macro buttons: SetPartyAssignment e' PROTETTA ---
@@ -5542,7 +5597,7 @@ check(bool(rt.eval("PH_LABEL == 'Pre-raid' or PH_LABEL == 'Pre-boss' or PH_LABEL
       "phase name shows the current phase ('%s')" % rt.eval("PH_LABEL"))
 check(bool(rt.eval("SAVE_TXT == 'SaveRaid'")), "SaveRaid is a TEXT BUTTON showing 'SaveRaid'")
 check(bool(rt.eval("SAVE_W == 74 and SAVE_H == 22")), "SaveRaid button has the same size as the matrix buttons (74x22)")
-check(bool(rt.eval("SAVE_IS_MATRIX == true and SAVE_IS_TITLE == false and SAVE_CELL == 6 and RAID_BUFFS_CELL == 7 and CDWATCHER_CELL == 8")), "SaveRaid stays in cell six, Raid Buffs in seven, and CD Watcher in eight")
+check(bool(rt.eval("SAVE_IS_MATRIX == true and SAVE_IS_TITLE == false and SAVE_CELL == 8 and RAID_BUFFS_CELL == 6 and CDWATCHER_CELL == 7")), "Raid Buffs and CD Watcher precede the last-cell SaveRaid button")
 check(bool(rt.eval("SAVE_HAS_ICON == false")), "SaveRaid is no longer an icon button")
 
 # -- la barra e' piu' bassa e i tasti sono ADERENTI al bordo (PAD ridotto)
