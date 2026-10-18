@@ -5269,6 +5269,10 @@ LM_LAYOUT_117 = {
         + (rEdit[4] or 0) + lm.ressRaidCountEdit:GetWidth()),
     rowFits = (lm.rollCommandRowLeft >= 8
         and lm.rollCommandRowLeft + lm.rollCommandRowWidth <= LM_MINW - 8),
+    rowAligned = (math.abs(lm.rollCommandRowWidth - (LM_MINW - 16)) < 0.001
+        and math.abs(lm.rollCommandRowLeft - 8) < 0.001),
+    buttonExtraDistribution = (lm.rollCommandRowMissingWidth > 0
+        and math.abs(lm.rollButtonExpansion * 5 - lm.rollCommandRowMissingWidth) < 0.001),
     announceWidth = (lm.announceMSBtn:GetWidth() == lm.rollCommandRowWidth
         and lm.announceMSBtn._points[1][4] == lm.rollCommandRowLeft),
     announceText = lm.announceMSBtn:GetText(),
@@ -5287,9 +5291,10 @@ check(bool(rt.eval("LM_LAYOUT_117.noNumberColumn")), "v1.11.121: Loot History ha
 check(bool(rt.eval("LM_LAYOUT_117.tightColumns and LM_LAYOUT_117.bossGetsReclaimed")), "v1.11.133: Type/Assigned fit their headers and all reclaimed width goes to Boss")
 check(bool(rt.eval("LM_LAYOUT_117.compactTop and LM_LAYOUT_117.compactBottom")), "v1.11.122: no stale vertical gaps remain after checkbox/button reflow")
 check(bool(rt.eval("LM_LAYOUT_117.rollText == 'Roll RES'")), "Loot Manager resource-roll button uses the shorter 'Roll RES' label")
-check(bool(rt.eval("LM_LAYOUT_117.rollButtonsCompact")), "all five roll buttons use the minimum width of the Roll RES label")
+check(bool(rt.eval("LM_LAYOUT_117.rollButtonsCompact")), "all five roll buttons remain equal-width and fit the Roll RES label")
 check(bool(rt.eval("LM_LAYOUT_117.oneButtonRow and LM_LAYOUT_117.ressFieldsBesideRES")), "U and R fields sit in the same row immediately after Roll RES")
 check(bool(rt.eval("LM_LAYOUT_117.rowWidth == LM_LAYOUT_117.expectedRowWidth and LM_LAYOUT_117.rowFits and LM_LAYOUT_117.announceWidth")), "roll buttons and U/R fields fit within the fixed Loot Manager width")
+check(bool(rt.eval("LM_LAYOUT_117.rowAligned and LM_LAYOUT_117.buttonExtraDistribution")), "missing row width is distributed evenly across five buttons so the row matches other elements")
 check(bool(rt.eval("LM_LAYOUT_117.announceText == 'Announce MSCh'")), "v1.11.119: announce button uses the shortened label")
 check(bool(rt.eval("LM_LAYOUT_117.rarityWithHistory")), "v1.11.119: Rarity threshold shares the Loot History row")
 check(bool(rt.eval("LM_LAYOUT_117.timer == '1h 1m'")), "v1.11.117: trade timer uses Xh Ym with no seconds")

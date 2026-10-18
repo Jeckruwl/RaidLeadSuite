@@ -301,9 +301,10 @@ function LM:CreateFrame()
     self.selectedItemText:SetPoint("LEFT", self.selectedItemIcon, "RIGHT", 8, 0)
     self.selectedItemText:SetPoint("RIGHT", self.selBox, "RIGHT", -8, 0)
 
-    -- La larghezza dei pulsanti è il minimo che contiene "Roll RES" con
-    -- un piccolo padding. I campi U/R completano la stessa riga, subito dopo
-    -- Roll RES; Announce MS resta allineato alla larghezza totale della fila.
+    -- Misura "Roll RES" come larghezza minima, aggiunge un piccolo padding,
+    -- poi calcola lo spazio libero fino alla larghezza degli altri elementi
+    -- (8px di margine per lato) e lo distribuisce uniformemente sui 5 tasti.
+    -- I campi U/R restano subito dopo Roll RES; Announce MS allinea la fila.
     local rollTextMeasure = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     rollTextMeasure:SetText("Roll RES")
     local rollTextWidth = math.ceil(rollTextMeasure:GetStringWidth() or 0)
@@ -316,12 +317,21 @@ function LM:CreateFrame()
     countTextMeasure:Hide()
     if countLabelWidth <= 0 then countLabelWidth = 7 end
 
-    local buttonWidth = rollTextWidth + 8
+    local minimumButtonWidth = rollTextWidth + 8
     local buttonGap, fieldGap, countEditWidth = 4, 6, 34
     local countFieldWidth = fieldGap + countLabelWidth + 3 + countEditWidth
+    local availableRowWidth = LM_FIXED_WIDTH - 16
+    local minimumCommandRowWidth = minimumButtonWidth * 5 + buttonGap * 4 + countFieldWidth * 2
+    local missingRowWidth = math.max(0, availableRowWidth - minimumCommandRowWidth)
+    local extraPerButton = missingRowWidth / 5
+    local buttonWidth = minimumButtonWidth + extraPerButton
     local commandRowWidth = buttonWidth * 5 + buttonGap * 4 + countFieldWidth * 2
     local commandRowLeft = (LM_FIXED_WIDTH - commandRowWidth) / 2
     local commandRowBottom = 40
+    self.rollButtonMinimumWidth = minimumButtonWidth
+    self.rollButtonExpansion = extraPerButton
+    self.rollCommandRowMinimumWidth = minimumCommandRowWidth
+    self.rollCommandRowMissingWidth = missingRowWidth
     self.rollButtonWidth = buttonWidth
     self.rollCommandRowWidth = commandRowWidth
     self.rollCommandRowLeft = commandRowLeft
