@@ -108,23 +108,32 @@ Stores the choices made in groupmaking, macrobar options and configs in a reusab
 <summary>Clicca per vedere gli screenshot</summary>
 
 **GroupMaking**
-![GroupInv](_dev/RLS%20screens/0_GROUPINV.png)
+![GroupInv](_dev/RLS%20screens/0.0_grpinv.png)
 
 **Macro Bar**
 
-![Macro Bar](_dev/RLS%20screens/1_MacroB.png)
-![Macro Editor](_dev/RLS%20screens/1.2_MacroED.png)
+![Macro Bar](_dev/RLS%20screens/2.0_macrob.png)
+![Macro Editor](_dev/RLS%20screens/1.0_macroed.png)
 
 **Raid Frame**
-![RaidFrame](_dev/RLS%20screens/2_raidframe.png)
+![RaidFrame](_dev/RLS%20screens/3.0_raidframe.png)
+
+**Raid Buffs**
+![MSCM](_dev/RLS%20screens/4.0_rbuffs.png)
+
+**Cooldown Watcher(custom panels)s**
+![MSCM](_dev/RLS%20screens/5.0_cdwpanele.png)
+
+**Cooldown watcher(CD Database)**
+![MSCM](_dev/RLS%20screens/6.0_cdwdatab.png)
 
 **MS Change Manager**
-![MSCM](_dev/RLS%20screens/3_MSCM.png)
+![MSCM](_dev/RLS%20screens/7.0_mscm.png)
 
-**4. Loot Manager**
-![LootM](_dev/RLS%20screens/4_LootM.png)
+**Loot Manager**
+![LootM](_dev/RLS%20screens/8.0_lootm.png)
 
-**Log Window**
-![LogW](_dev/RLS%20screens/5_LogW.png)
+**Raid control bar**
+![LogW](_dev/RLS%20screens/9.0_rcb.png)
 
 </details>
