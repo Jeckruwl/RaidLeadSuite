@@ -90,7 +90,7 @@ Chronological loot list with loot timers. Features:
 - Rarity threshold
 - Custom ignore list: Ctrl-click on an item to ignore it forever
 - BOE, Recipe, Shards filters to ignore if reserved
-- Roll MS,OS,FFA, Reroll
+- Roll MS,OS,FFA, Reroll, Reserved(User + Raid)
 - Double rolls filter
 - Winner announcement
 - Roll timers
