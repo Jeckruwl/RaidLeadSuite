@@ -34,14 +34,14 @@ In the config panel you can create all the macros using the custom macro editor.
 
 ### RAID FRAME:
 
-A convenient vertical raid frame to monitor anything you need. It features:
+A convenient matrix based raid frame to monitor anything you need. It features:
 
-- food&flask alert icons for each player. Left click: whisper alert, Right click: Raid alert
-- Class main CD monitoring icons
 - Distance-based fade out
 - drag&drop reorganization
+- Separate Main Tank & Main Assist frames
 
-Also provides a toggleable Raid Buff & Durability check with alerts for all categories. Each category can be assigned a provider by dragging and dropping a name on the icon. Each icon shows a tooltip showing:
+### RAID BUFFS & UTILITY:
+A toggleable Raid Buff & Durability check window with alerts for all categories. Each category can be assigned a provider by dragging and dropping a name on the icon. Each icon features a tooltip showing:
 
 - Actual comp providers in the raid
 - Assigments: Who is asigned to what
@@ -51,9 +51,31 @@ Buff category icons are color coded based on the current composition:
 
 - greyed-out: The comp can’t provide for it
 - red: someone is missing the buff. Clicking the icon sends raid warning alerts
-- normal: everyone that benefits the buff has it
+- normal: everyone that needs the buff has it
 
-Buff alerts can also be character specific. Ctrl-click on a name in the frame sends an alert with the buffs missing and the players who have to provide for it.
+Buff alerts can also be character specific. Ctrl-click on a name in the frame sends an alert with the buffs missing and the players who have to provide for them.
+
+### COOLDOWNS WATCHER:
+A Panel based bar CD watcher to montor all the Cooldowns of your raid.
+Comes with a database already but will feature the ability to add any spells and/or item CD in the future.
+CDs are grouped my category and can either be displayed in one of three modes:
+- single panel per category
+- Default groups of category
+- custom Panels
+
+Spells in a panel gan be grouped by:
+- Caster
+- Ability
+- none
+
+Custom panels lets you choose which spell to put in up to 6 panels for which you can set a name.
+Spells can be chosen from a database window and simply dragged and dropped inside the custom panels
+
+each bar is fully customizable but has different fixed modes with their indicators on the right:
+- In CD
+- Ready Alive (green bar and square indicator)
+- Ready DEAD (Greyed bar with skull icon)
+- Ready Disconnected (reddish black bar with null icon)
 
 ### MS CHANGE MANAGER:
 
@@ -78,13 +100,10 @@ Chronological loot list with loot timers. Features:
 
 Stores the choices made in groupmaking, macrobar options and configs in a reusable profile so you don't have to set up each time for the same raid
 
-### LOGGING:
-
-In-game UwULogs style log window
 
 
 
-
+!!!!screens not updated!!!!
 <details>
 <summary>Clicca per vedere gli screenshot</summary>
 
