@@ -108,7 +108,7 @@ Stores the choices made in groupmaking, macrobar options and configs in a reusab
 <summary>Clicca per vedere gli screenshot</summary>
 
 **GroupMaking**
-![GroupInv](_dev/RLS%20screens/0.0_grpinv.png)
+![GroupInv](_dev/RLS%20Screens/0.0_grpinv.png)
 
 **Macro Bar**
 
