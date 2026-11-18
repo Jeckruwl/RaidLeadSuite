@@ -1,0 +1,80 @@
+# RLSuite — elenco COMPLETO dei comandi (v1.11.85)
+
+Documento interno (sta in `_dev/`, NON nella README e NON nell'help in gioco).
+La lista PUBBLICA mostrata da `/rls help` e nella README è solo la prima
+sezione: tutto il resto resta attivo ma non viene pubblicizzato.
+
+---
+
+## 1. Comandi PUBBLICI (in `/rls help` e nella README)
+
+| Comando | Cosa fa |
+|---|---|
+| `/rls` | Barra principale (matrice pulsanti + fase). Con `/rls` vuoto apre/chiude |
+| `/rls help` | Questa lista (alias storico: `/rls ?`) |
+| `/rls config` | Finestra Config (Ace3). Anche col **clic destro sull'icona della minimappa** |
+| `/rls group` | Pannello Groupmaking |
+| `/rls inv` | Pannello InviteEngine (whisper ricevuti + auto-invito) |
+| `/rls macrobar` | HUD MacroBar (mostra/nascondi) |
+| `/rls ms` | Pannello MS Manager |
+| `/rls loot` | Pannello Loot Manager |
+| `/rls raidframe` | HUD Raid Frame (mostra/nascondi) |
+
+---
+
+## 2. Alias accettati (funzionano, non elencati)
+
+| Alias | Equivale a |
+|---|---|
+| `/rls ?` | `/rls help` |
+| `/rls wl`, `/rls ie`, `/rls whisplist`, `/rls inviteengine` | `/rls inv` (nome vecchio, tenuto per abitudine) |
+| `/rls rf` | `/rls raidframe` |
+| `/rls rlsuite` (chat command separato) | `/rls` |
+
+---
+
+## 3. Comandi di DIAGNOSTICA (attivi, nascosti da help e README)
+
+| Comando | Cosa fa | Quando serve |
+|---|---|---|
+| `/rls diag` | Diagnostica **installazione**: cartella caricata, versione in uso, eventuali **copie multiple** dell'addon in `Interface\AddOns` | Primo comando da chiedere a un tester |
+| `/rls version` | Alias di `/rls diag` | — |
+| `/rls rfdump` | Geometria dell'HUD: per ogni barra con un player, nome, riga mostrata/nascosta, barra mostrata, rettangoli di riga/barra/finestra | "Il trascinamento non fa niente" |
+| `/rls lootdiag` | Persistenza loot: quanti item in sessione vs SavedVariables, link memoria↔SV, ultimo item | Loot che sparisce dopo `/reload` |
+| `/rls debugbuff` | Icone di intestazione del pannello Raid Buffs (percorsi texture, file mancanti) | Icone buff vuote/errate |
+| `/rls icondbg` | Diagnostica icone (percorsi + presenza file) | Icone consumabili/alert |
+| `/rls minimap` | Diagnostica icona minimappa (creazione, texture, posizione) | Icona minimappa assente |
+
+---
+
+## 4. Comandi RIMOSSI in 1.11.85
+
+| Comando | Motivo | Alternativa |
+|---|---|---|
+| `/rls macro` | Rimosso su richiesta | `Config → Macros → Macro Editor` |
+| `/rls rfhud` | Rimosso su richiesta (era un doppione) | `/rls raidframe` |
+
+Digitandoli ora l'addon risponde "Unknown command" e stampa la lista pubblica.
+
+---
+
+## 5. Tracce automatiche (non sono comandi)
+
+In **debug mode** la chat riceve righe di traccia, utili nelle segnalazioni:
+
+- `RF …` → HUD Raid Frame: pressioni (`RF shift+left: barra 8 (Nome)`), rilasci
+  (`RF drag: rilascio sullo slot 12`), annulli, rifiuti;
+- `RG …` → pannello Raid Group: stessa cosa per il suo drag&drop;
+- `[RLSuite-Debug] …` → cambi di roster simulato e altre note interne.
+
+---
+
+## 6. Come si aggiorna questo file
+
+Quando si aggiunge/rimuove/rinomina un comando:
+
+1. `ChatCommand` in `Core.lua` (ramo del comando);
+2. `PrintHelp` in `Core.lua` + le chiavi in `Locale.lua` **solo se il comando è pubblico**;
+3. la tabella comandi nella `README.md` **solo se pubblico**;
+4. questo file (elenco completo, sempre);
+5. un controllo nella suite (`_dev/tests/rls_ace3_test.py`, blocco v1.11.85).
